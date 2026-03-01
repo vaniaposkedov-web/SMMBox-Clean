@@ -1,0 +1,35 @@
+// backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // Для продакшена позже поменяем на "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Таблица пользователей системы (владельцев аккаунтов SMMBOX)
+model User {
+  id        String    @id @default(uuid())
+  email     String?   @unique
+  name      String?
+  accounts  Account[] 
+  createdAt DateTime  @default(now())
+}
+
+// Таблица подключенных социальных сетей
+model Account {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  provider     String   // 'vk', 'telegram' и т.д.
+  providerId   String   // ID пользователя в соцсети
+  accessToken  String   // Бессрочный токен для автопостинга
+  name         String   // Имя в соцсети
+  avatarUrl    String?  // Аватарка
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([provider, providerId]) 
+}
