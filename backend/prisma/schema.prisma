@@ -33,3 +33,39 @@ model Account {
 
   @@unique([provider, providerId]) 
 }
+
+// backend/prisma/schema.prisma
+
+// ... (твой предыдущий код оставляем как есть)
+
+// Добавляем связь в модель Account
+model Account {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  provider     String
+  providerId   String
+  accessToken  String
+  name         String
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  posts        Post[]   // НОВОЕ: Связь с постами
+
+  @@unique([provider, providerId]) 
+}
+
+// НОВАЯ ТАБЛИЦА: Отложенные посты
+model Post {
+  id            String   @id @default(uuid())
+  text          String?  // Текст поста
+  mediaUrls     String?  // Ссылки на картинки (можно хранить как JSON строку)
+  publishAt     DateTime // Когда опубликовать
+  status        String   @default("PENDING") // Статусы: PENDING, PUBLISHED, ERROR
+  
+  accountId     String   // В какую соцсеть публикуем
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime @default(now())
+}
