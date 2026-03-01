@@ -1,71 +1,108 @@
-// backend/prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite" // Для продакшена позже поменяем на "postgresql"
+  provider = "sqlite" // Для продакшена поменяешь на postgresql
   url      = env("DATABASE_URL")
 }
 
-// Таблица пользователей системы (владельцев аккаунтов SMMBOX)
 model User {
-  id        String    @id @default(uuid())
-  email     String?   @unique
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
   name      String?
+  pavilion  String?  // НОВОЕ ПОЛЕ: Номер павильона
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
   accounts  Account[] 
-  createdAt DateTime  @default(now())
+  watermark Watermark? 
+
+  // НОВЫЕ СВЯЗИ ДЛЯ ПАРТНЕРОВ И УВЕДОМЛЕНИЙ
+  sentRequests     Partnership[] @relation("SentRequests")
+  receivedRequests Partnership[] @relation("ReceivedRequests")
+  notifications    Notification[]
 }
 
-// Таблица подключенных социальных сетей
-model Account {
-  id           String   @id @default(uuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id])
-  provider     String   // 'vk', 'telegram' и т.д.
-  providerId   String   // ID пользователя в соцсети
-  accessToken  String   // Бессрочный токен для автопостинга
-  name         String   // Имя в соцсети
-  avatarUrl    String?  // Аватарка
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+model Partnership {
+  id          String   @id @default(uuid())
+  requesterId String   // Кто отправил
+  receiverId  String   // Кому отправили
+  status      String   @default("PENDING") // PENDING (ожидает) или ACCEPTED (принята)
+  createdAt   DateTime @default(now())
 
-  @@unique([provider, providerId]) 
+  requester   User     @relation("SentRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiver    User     @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, receiverId]) // Защита от дублей заявок
 }
 
-// backend/prisma/schema.prisma
+// НОВАЯ ТАБЛИЦА: Уведомления
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text      String   // Текст уведомления
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
 
-// ... (твой предыдущий код оставляем как есть)
-
-// Добавляем связь в модель Account
 model Account {
-  id           String   @id @default(uuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id])
-  provider     String
-  providerId   String
-  accessToken  String
-  name         String
-  avatarUrl    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    String   // 'vk', 'telegram'
+  providerId  String
+  accessToken String
+  name        String
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
   
-  posts        Post[]   // НОВОЕ: Связь с постами
+  posts       Post[]
 
   @@unique([provider, providerId]) 
 }
 
-// НОВАЯ ТАБЛИЦА: Отложенные посты
 model Post {
+  id          String   @id @default(uuid())
+  text        String?  
+  mediaUrls   String?  
+  publishAt   DateTime 
+  status      String   @default("PENDING") 
+  
+  accountId   String   
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+}
+
+// === НОВАЯ ТАБЛИЦА: Настройки водяного знака ===
+model Watermark {
   id            String   @id @default(uuid())
-  text          String?  // Текст поста
-  mediaUrls     String?  // Ссылки на картинки (можно хранить как JSON строку)
-  publishAt     DateTime // Когда опубликовать
-  status        String   @default("PENDING") // Статусы: PENDING, PUBLISHED, ERROR
   
-  accountId     String   // В какую соцсеть публикуем
-  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId        String   @unique // Привязка к User
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  createdAt     DateTime @default(now())
+  type          String   @default("text") // 'text' или 'image'
+  
+  // Текстовые настройки
+  text          String?
+  fontFamily    String?  @default("font-sans")
+  visualStyle   String?  @default("glass")
+  hasBackground Boolean  @default(true)
+  textColor     String?  @default("#FFFFFF")
+  bgColor       String?  @default("#000000")
+  
+  // Настройки картинки (URL сохраненного файла)
+  imageUrl      String?  
+  
+  // Общие настройки
+  position      String   @default("br")
+  size          Int      @default(100)
+  opacity       Int      @default(90)
+  angle         Int      @default(0)
+
+  updatedAt     DateTime @updatedAt
 }

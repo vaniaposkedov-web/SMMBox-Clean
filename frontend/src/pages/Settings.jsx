@@ -1,72 +1,64 @@
-// frontend/src/pages/Settings.jsx
-import { Settings as SettingsIcon, CreditCard, Droplet, Key } from 'lucide-react';
-import { useStore } from '../store';
+import { useState } from 'react';
+import { Users, Share2, Droplet, Settings as SettingsIcon } from 'lucide-react';
+import WatermarkConstructor from '../components/settings/WatermarkConstructor';
 
 export default function Settings() {
-  const user = useStore((state) => state.user);
+  const [activeTab, setActiveTab] = useState('watermark');
+
+  // Удобная функция для рендера кнопок, чтобы не дублировать классы
+  const TabButton = ({ id, icon: Icon, label }) => {
+    const isActive = activeTab === id;
+    return (
+      <button 
+        onClick={() => setActiveTab(id)} 
+        className={`flex items-center gap-2 px-5 py-3 md:p-3 rounded-2xl transition-all font-medium whitespace-nowrap shrink-0 ${
+          isActive 
+            ? 'bg-admin-accent text-white shadow-lg shadow-blue-500/30' 
+            : 'bg-admin-card border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800'
+        }`}
+      >
+        <Icon size={18} /> {label}
+      </button>
+    );
+  };
 
   return (
-    <div className="p-4 md:p-8">
-      <h1 className="text-2xl font-bold mb-8">Настройки проекта</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className="p-4 md:p-8 flex flex-col md:flex-row gap-6 md:gap-8 max-w-7xl mx-auto">
+      
+      {/* Боковое меню (на ПК) / Горизонтальный скролл (на телефонах) */}
+      <div className="w-full md:w-64 shrink-0">
+        <h1 className="text-2xl font-bold mb-4 md:mb-6 hidden md:flex items-center gap-2">
+          <SettingsIcon className="text-admin-accent" /> Настройки
+        </h1>
         
-        {/* Профиль и Тариф */}
-        <div className="bg-admin-card border border-gray-800 rounded-3xl p-6 md:col-span-1">
-          <div className="w-20 h-20 bg-admin-accent/20 text-admin-accent rounded-full flex items-center justify-center text-3xl font-bold mb-4 mx-auto uppercase">
-            {user?.name?.charAt(0) || 'U'}
-          </div>
-          <h2 className="text-xl font-bold text-center mb-1">{user?.name}</h2>
-          <p className="text-gray-400 text-sm text-center mb-6">{user?.email}</p>
-          
-          <div className="bg-gray-900 rounded-2xl p-4 border border-gray-800 text-center">
-            <p className="text-gray-400 text-xs mb-1 uppercase font-bold tracking-wider">Текущий тариф</p>
-            <p className="text-admin-accent font-bold text-lg mb-2">FREE (Пробный)</p>
-            <button className="w-full bg-admin-accent text-white py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-blue-600">
-              <CreditCard size={16} /> Улучшить до PRO
-            </button>
-          </div>
-        </div>
-
-        {/* Настройки функционала */}
-        <div className="md:col-span-2 space-y-4">
-          
-          <div className="bg-admin-card border border-gray-800 rounded-3xl p-6 flex flex-col sm:flex-row gap-6 items-center sm:items-start justify-between">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-blue-500/10 text-admin-accent rounded-xl">
-                <Droplet size={24} />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">Водяные знаки (Watermarks)</h3>
-                <p className="text-gray-400 text-sm mt-1 max-w-sm">
-                  Автоматически накладывать ваш логотип на все публикуемые изображения.
-                </p>
-              </div>
-            </div>
-            <button className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-medium whitespace-nowrap">
-              Настроить
-            </button>
-          </div>
-
-          <div className="bg-admin-card border border-gray-800 rounded-3xl p-6 flex flex-col sm:flex-row gap-6 items-center sm:items-start justify-between">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-purple-500/10 text-purple-400 rounded-xl">
-                <Key size={24} />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">API Ключи</h3>
-                <p className="text-gray-400 text-sm mt-1 max-w-sm">
-                  Подключение сторонних сервисов (OpenAI для генерации текстов, RSS-ленты).
-                </p>
-              </div>
-            </div>
-            <button className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-medium whitespace-nowrap">
-              Добавить
-            </button>
-          </div>
-
+        {/* Адаптивный контейнер вкладок */}
+        <div className="flex md:flex-col gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
+          <TabButton id="watermark" icon={Droplet} label="Водяной знак" />
+          <TabButton id="partners" icon={Users} label="Мои партнеры" />
+          <TabButton id="accounts" icon={Share2} label="Мои аккаунты" />
         </div>
       </div>
+
+      {/* Рабочая область */}
+      <div className="flex-1 min-w-0">
+        {activeTab === 'watermark' && <WatermarkConstructor />}
+
+        {activeTab === 'partners' && (
+          <div className="bg-admin-card border border-gray-800 rounded-3xl p-6 h-[400px] flex flex-col items-center justify-center text-gray-500 text-center">
+            <Users size={64} className="mb-4 opacity-20" />
+            <h2 className="text-xl font-bold text-white mb-2">Мои партнеры</h2>
+            <p className="text-sm max-w-xs">Здесь будет система управления партнерским доступом к вашим проектам.</p>
+          </div>
+        )}
+
+        {activeTab === 'accounts' && (
+          <div className="bg-admin-card border border-gray-800 rounded-3xl p-6 h-[400px] flex flex-col items-center justify-center text-gray-500 text-center">
+            <Share2 size={64} className="mb-4 opacity-20" />
+            <h2 className="text-xl font-bold text-white mb-2">Подключенные соцсети</h2>
+            <p className="text-sm max-w-xs">Управление привязанными аккаунтами ВКонтакте и Telegram.</p>
+          </div>
+        )}
+      </div>
     </div>
-  )
+  );
 }
