@@ -7,70 +7,94 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// === 1. ПОЛЬЗОВАТЕЛИ И РОЛИ ===
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
   password  String
   name      String?
-  pavilion  String?  // НОВОЕ ПОЛЕ: Номер павильона
+  pavilion  String?
+  role      String   @default("USER") // Может быть "ADMIN"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
   accounts  Account[] 
-  watermark Watermark? 
-
-  // НОВЫЕ СВЯЗИ ДЛЯ ПАРТНЕРОВ И УВЕДОМЛЕНИЙ
+  
+  // Связи для партнеров и уведомлений
   sentRequests     Partnership[] @relation("SentRequests")
   receivedRequests Partnership[] @relation("ReceivedRequests")
   notifications    Notification[]
+
+  // Подписка (Тариф)
+  planId    String?
+  plan      SubscriptionPlan? @relation(fields: [planId], references: [id])
 }
 
-model Partnership {
-  id          String   @id @default(uuid())
-  requesterId String   // Кто отправил
-  receiverId  String   // Кому отправили
-  status      String   @default("PENDING") // PENDING (ожидает) или ACCEPTED (принята)
-  createdAt   DateTime @default(now())
-
-  requester   User     @relation("SentRequests", fields: [requesterId], references: [id], onDelete: Cascade)
-  receiver    User     @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
-
-  @@unique([requesterId, receiverId]) // Защита от дублей заявок
+// === 2. ТАРИФЫ (ПОДПИСКИ) ===
+model SubscriptionPlan {
+  id             String @id @default(uuid())
+  name           String // "Базовый", "PRO"
+  maxAccounts    Int    // Сколько групп можно привязать
+  maxPostsPerDay Int    // Лимит постов в сутки
+  price          Int    @default(0)
+  
+  users          User[]
 }
 
-// НОВАЯ ТАБЛИЦА: Уведомления
-model Notification {
-  id        String   @id @default(uuid())
-  userId    String   
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  text      String   // Текст уведомления
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-}
-
+// === 3. ПОДКЛЮЧЕННЫЕ АККАУНТЫ (ГРУППЫ ВК/ТГ) ===
 model Account {
   id          String   @id @default(uuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider    String   // 'vk', 'telegram'
-  providerId  String
-  accessToken String
-  name        String
+  provider    String   // 'vk', 'telegram', 'ok'
+  providerId  String   // ID группы или канала
+  accessToken String   // Токен для постинга
+  name        String   // Название группы
   avatarUrl   String?
+  
+  // Уникальная подпись для этой группы (footer)
+  signature   String?  
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
   posts       Post[]
+  watermark   Watermark? // ВОДЯНОЙ ЗНАК ТЕПЕРЬ ПРИВЯЗАН СЮДА!
 
   @@unique([provider, providerId]) 
 }
 
+// === 4. ВОДЯНЫЕ ЗНАКИ (Индивидуально для каждого Аккаунта) ===
+model Watermark {
+  id            String   @id @default(uuid())
+  
+  accountId     String   @unique
+  account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  type          String   @default("text")
+  text          String?
+  fontFamily    String?  @default("font-sans")
+  visualStyle   String?  @default("glass")
+  hasBackground Boolean  @default(true)
+  textColor     String?  @default("#FFFFFF")
+  bgColor       String?  @default("#000000")
+  imageUrl      String?  
+  position      String   @default("br")
+  size          Int      @default(100)
+  opacity       Int      @default(90)
+  angle         Int      @default(0)
+
+  updatedAt     DateTime @updatedAt
+}
+
+// === 5. ПОСТЫ И ПЛАНИРОВЩИК ===
 model Post {
   id          String   @id @default(uuid())
   text        String?  
   mediaUrls   String?  
-  publishAt   DateTime 
-  status      String   @default("PENDING") 
+  
+  publishAt   DateTime? // Время публикации (если null - публикуем сразу)
+  status      String   @default("DRAFT") // DRAFT, SCHEDULED, PUBLISHED, FAILED
   
   accountId   String   
   account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -78,31 +102,26 @@ model Post {
   createdAt   DateTime @default(now())
 }
 
-// === НОВАЯ ТАБЛИЦА: Настройки водяного знака ===
-model Watermark {
-  id            String   @id @default(uuid())
-  
-  userId        String   @unique // Привязка к User
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  type          String   @default("text") // 'text' или 'image'
-  
-  // Текстовые настройки
-  text          String?
-  fontFamily    String?  @default("font-sans")
-  visualStyle   String?  @default("glass")
-  hasBackground Boolean  @default(true)
-  textColor     String?  @default("#FFFFFF")
-  bgColor       String?  @default("#000000")
-  
-  // Настройки картинки (URL сохраненного файла)
-  imageUrl      String?  
-  
-  // Общие настройки
-  position      String   @default("br")
-  size          Int      @default(100)
-  opacity       Int      @default(90)
-  angle         Int      @default(0)
+// === 6. ПАРТНЕРЫ ===
+model Partnership {
+  id          String   @id @default(uuid())
+  requesterId String   
+  receiverId  String   
+  status      String   @default("PENDING") 
+  createdAt   DateTime @default(now())
 
-  updatedAt     DateTime @updatedAt
+  requester   User     @relation("SentRequests", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiver    User     @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, receiverId]) 
+}
+
+// === 7. УВЕДОМЛЕНИЯ ===
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text      String   
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
 }

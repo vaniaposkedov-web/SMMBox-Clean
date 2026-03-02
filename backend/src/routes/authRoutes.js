@@ -1,9 +1,13 @@
-// backend/src/routes/authRoutes.js
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 
-router.get('/vk/url', authController.getVkAuthUrl);
+// Наши новые реальные роуты
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+
+// Старые роуты ВК
+router.get('/vk/url', authController.vkUrl);
 router.get('/vk/callback', authController.vkCallback);
 
 module.exports = router;

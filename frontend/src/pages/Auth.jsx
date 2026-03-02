@@ -1,140 +1,97 @@
 import { useState } from 'react';
 import { useStore } from '../store';
-import { AlertCircle } from 'lucide-react';
+import { Box, AlertCircle } from 'lucide-react';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
-  
-  // Поля формы
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
-  // Состояние для ошибок
+  const [name, setName] = useState('');
+  const [pavilion, setPavilion] = useState('');
   const [error, setError] = useState('');
 
-  // Достаем функции из базы
   const login = useStore((state) => state.login);
   const register = useStore((state) => state.register);
+  const user = useStore((state) => state.user);
 
-  const handleSubmit = (e) => {
+  // Регулярное выражение: Ожидает текст, пробелы, цифры и обязательный дефис
+  const pavilionRegex = /^[А-Яа-яЁёA-Za-z0-9\s]+-\d+[а-яА-Яa-zA-Z]?$/;
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); // Очищаем старые ошибки
+    setError('');
 
-    // Валидация (проверки) перед отправкой в БД
-    if (!email.includes('@') || !email.includes('.')) {
-      setError('Пожалуйста, введите корректный email адрес');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Пароль должен содержать минимум 6 символов');
-      return;
-    }
-    if (!isLogin && name.trim().length < 2) {
-      setError('Имя должно содержать минимум 2 буквы');
-      return;
-    }
-
-    // Попытка связи с базой данных
-    try {
-      if (isLogin) {
-        login(email, password);
-      } else {
-        register(email, password, name);
+    if (isLogin) {
+      const result = await login(email, password);
+      if (!result.success) setError(result.error);
+    } else {
+      if (!pavilionRegex.test(pavilion.trim())) {
+        setError('Неверный формат павильона. Пример: Корпус Б 2Г-37а или СТ7-43');
+        return;
       }
-    } catch (err) {
-      // Если store.js выкинул ошибку (неверный пароль, нет юзера), показываем её
-      setError(err.message);
-      
-      // Если пользователя нет в базе, автоматически предлагаем регистрацию (удобство для клиента)
-      if (err.message.includes('не найден')) {
-        setTimeout(() => setIsLogin(false), 2000); // Переключим на регистрацию через 2 секунды
-      }
+      const result = await register(email, password, name, pavilion.trim());
+      if (!result.success) setError(result.error);
     }
   };
 
-  // Функция для переключения между Входом и Регистрацией
-  const toggleMode = () => {
-    setIsLogin(!isLogin);
-    setError(''); // Очищаем ошибки при переключении
-    setPassword(''); // В целях безопасности очищаем пароль
-  };
+  if (user) return null;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-admin-card p-6 rounded-3xl border border-gray-800 shadow-2xl relative overflow-hidden">
-        
-        {/* Декоративное свечение */}
-        <div className="absolute -top-10 -right-10 w-32 h-32 bg-admin-accent/20 rounded-full blur-3xl"></div>
+    <div className="min-h-screen bg-admin-bg flex flex-col items-center justify-center p-4">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-10 h-10 bg-admin-accent rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+          <Box size={24} />
+        </div>
+        <span className="text-3xl font-bold tracking-wide text-white">SMM<span className="text-admin-accent">BOX</span></span>
+      </div>
 
-        <h1 className="text-2xl font-bold text-center mb-6 relative z-10">
-          {isLogin ? 'Вход в SMMBOX' : 'Регистрация'}
-        </h1>
+      <div className="bg-admin-card border border-gray-800 rounded-3xl p-8 w-full max-w-md shadow-2xl">
+        <h2 className="text-2xl font-bold text-white mb-6 text-center">
+          {isLogin ? 'Вход в систему' : 'Регистрация'}
+        </h2>
 
-        {/* Блок вывода ошибок */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-sm p-3 rounded-xl mb-4 flex items-start gap-2 relative z-10 animate-pulse">
-            <AlertCircle size={18} className="shrink-0 mt-0.5" />
-            <span>{error}</span>
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl mb-6 text-sm flex items-start gap-2">
+            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+            <p>{error}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
-          
-          {/* Поле "Имя" показываем ТОЛЬКО при регистрации */}
+        <form onSubmit={handleSubmit} className="space-y-4">
           {!isLogin && (
-            <div>
-              <label className="text-sm text-gray-400 mb-1 block">Ваше имя</label>
-              <input 
-                type="text" 
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-admin-bg border border-gray-700 rounded-xl p-3 text-white focus:outline-none focus:border-admin-accent transition-colors"
-                placeholder="Например, Алексей"
-              />
-            </div>
+            <>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Ваше Имя</label>
+                <input required type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-admin-accent" placeholder="Иван Иванов" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Номер павильона (Место)</label>
+                <input required type="text" value={pavilion} onChange={(e) => setPavilion(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-admin-accent" placeholder="Например: Корпус Б 2Г-37а" />
+                <p className="text-xs text-gray-500 mt-1">Обязательно используйте дефис для указания места.</p>
+              </div>
+            </>
           )}
 
           <div>
-            <label className="text-sm text-gray-400 mb-1 block">Email</label>
-            <input 
-              type="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-admin-bg border border-gray-700 rounded-xl p-3 text-white focus:outline-none focus:border-admin-accent transition-colors"
-              placeholder="name@example.com"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm text-gray-400 mb-1 block">Пароль</label>
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-admin-bg border border-gray-700 rounded-xl p-3 text-white focus:outline-none focus:border-admin-accent transition-colors"
-              placeholder="Минимум 6 символов"
-            />
+            <label className="block text-sm text-gray-400 mb-2">Email</label>
+            <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-admin-accent" placeholder="test@test.com" />
           </div>
 
-          <button 
-            type="submit"
-            className="w-full bg-admin-accent text-white font-bold py-3 rounded-xl hover:bg-blue-600 transition-colors mt-2 shadow-lg shadow-blue-500/20"
-          >
-            {isLogin ? 'Войти в панель' : 'Создать аккаунт'}
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Пароль</label>
+            <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-admin-accent" placeholder="••••••••" />
+          </div>
+
+          <button type="submit" className="w-full bg-admin-accent text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-600 transition-colors mt-4">
+            {isLogin ? 'Войти' : 'Зарегистрироваться'}
           </button>
         </form>
 
-        <p className="text-center text-gray-500 text-sm mt-6 relative z-10">
-          {isLogin ? 'Нет аккаунта? ' : 'Уже зарегистрированы? '}
-          <button 
-            onClick={toggleMode}
-            type="button"
-            className="text-admin-accent font-medium hover:underline"
-          >
-            {isLogin ? 'Создать сейчас' : 'Войти'}
+        <div className="mt-6 text-center">
+          <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-sm text-gray-400 hover:text-white transition-colors">
+            {isLogin ? 'Нет аккаунта? Создать' : 'Уже есть аккаунт? Войти'}
           </button>
-        </p>
+        </div>
       </div>
     </div>
   );
