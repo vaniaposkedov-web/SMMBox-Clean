@@ -1,6 +1,10 @@
 {
   "name": "smmbox-root",
   "version": "1.0.0",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "postinstall": "prisma generate --schema=backend/prisma/schema.prisma"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
