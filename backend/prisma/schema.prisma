@@ -9,27 +9,27 @@ datasource db {
 
 // === 1. ПОЛЬЗОВАТЕЛИ И РОЛИ ===
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String?
-  pavilion  String?
-  role      String   @default("USER") // Может быть "ADMIN"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                   String    @id @default(uuid())
+  email                String    @unique
+  password             String
+  name                 String?
+  pavilion             String?
+  avatarUrl            String?  
+  role                 String    @default("USER")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
   
-  accounts  Account[] 
+  // === НОВЫЕ ПОЛЯ ДЛЯ БЕЗОПАСНОСТИ ===
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
   
-  // Связи для партнеров и уведомлений
-  sentRequests     Partnership[] @relation("SentRequests")
-  receivedRequests Partnership[] @relation("ReceivedRequests")
-  notifications    Notification[]
-
-  // Подписка (Тариф)
-  planId    String?
-  plan      SubscriptionPlan? @relation(fields: [planId], references: [id])
+  accounts             Account[] 
+  sentRequests         Partnership[] @relation("SentRequests")
+  receivedRequests     Partnership[] @relation("ReceivedRequests")
+  notifications        Notification[]
+  planId               String?
+  plan                 SubscriptionPlan? @relation(fields: [planId], references: [id])
 }
-
 // === 2. ТАРИФЫ (ПОДПИСКИ) ===
 model SubscriptionPlan {
   id             String @id @default(uuid())

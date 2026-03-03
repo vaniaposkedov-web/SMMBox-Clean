@@ -15,6 +15,8 @@ exports.getAccounts = async (req, res) => {
   }
 };
 
+
+
 exports.deleteAccount = async (req, res) => {
   const { accountId } = req.params;
   try {
@@ -70,5 +72,38 @@ exports.vkAddByToken = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Ошибка на сервере' });
+  }
+};
+
+// === ТЕСТОВЫЙ МЕТОД: Добавление мок-аккаунта (Telegram и др.) ===
+exports.addMockAccount = async (req, res) => {
+  const { userId, name, provider } = req.body;
+
+  if (!name || !provider) {
+    return res.status(400).json({ error: 'Необходимо указать название и провайдера' });
+  }
+
+  try {
+    // Генерируем фейковые данные для теста, чтобы база данных не ругалась на уникальность
+    const fakeProviderId = `mock_${provider}_${Date.now()}`;
+    const fakeToken = `test_token_${Math.random().toString(36).substring(7)}`;
+
+    // Создаем группу в базе
+    const account = await prisma.account.create({
+      data: {
+        userId: userId,
+        provider: provider,
+        providerId: fakeProviderId,
+        accessToken: fakeToken,
+        name: name,
+        // Ставим заглушку-картинку для Телеграма
+        avatarUrl: 'https://cdn-icons-png.flaticon.com/512/2111/2111646.png' 
+      }
+    });
+
+    res.json({ success: true, account });
+  } catch (error) {
+    console.error('Ошибка добавления тестового аккаунта:', error);
+    res.status(500).json({ error: 'Ошибка сервера при добавлении группы' });
   }
 };

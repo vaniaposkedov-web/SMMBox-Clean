@@ -1,97 +1,189 @@
 import { useState } from 'react';
 import { useStore } from '../store';
-import { Box, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, MapPin, Eye, EyeOff } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function Auth() {
+  const login = useStore((state) => state.login);
+  const register = useStore((state) => state.register);
+
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [pavilion, setPavilion] = useState('');
   const [error, setError] = useState('');
-
-  const login = useStore((state) => state.login);
-  const register = useStore((state) => state.register);
-  const user = useStore((state) => state.user);
-
-  // Регулярное выражение: Ожидает текст, пробелы, цифры и обязательный дефис
-  const pavilionRegex = /^[А-Яа-яЁёA-Za-z0-9\s]+-\d+[а-яА-Яa-zA-Z]?$/;
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAccepted, setIsAccepted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // Состояние для "глазка"
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    if (!isLogin && !isAccepted) return;
 
+    setError('');
+    setIsLoading(true);
+
+    let result;
     if (isLogin) {
-      const result = await login(email, password);
-      if (!result.success) setError(result.error);
+      result = await login(email, password);
     } else {
-      if (!pavilionRegex.test(pavilion.trim())) {
-        setError('Неверный формат павильона. Пример: Корпус Б 2Г-37а или СТ7-43');
-        return;
-      }
-      const result = await register(email, password, name, pavilion.trim());
-      if (!result.success) setError(result.error);
+      result = await register(email, password, name, pavilion);
     }
+
+    if (!result.success) setError(result.error);
+    setIsLoading(false);
   };
 
-  if (user) return null;
-
   return (
-    <div className="min-h-screen bg-admin-bg flex flex-col items-center justify-center p-4">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-10 h-10 bg-admin-accent rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
-          <Box size={24} />
+    <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-blue-500/10 blur-[100px] sm:blur-[120px] rounded-full pointer-events-none"></div>
+
+      <div className="w-full max-w-md bg-admin-card border border-gray-800 p-5 sm:p-8 rounded-2xl sm:rounded-3xl shadow-2xl relative z-10">
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-wide text-white mb-1 sm:mb-2">
+            SMM<span className="text-blue-500">BOXSS</span>
+          </h1>
+          <p className="text-xs sm:text-sm text-gray-400">Панель управления автопостингом</p>
         </div>
-        <span className="text-3xl font-bold tracking-wide text-white">SMM<span className="text-admin-accent">BOX</span></span>
-      </div>
 
-      <div className="bg-admin-card border border-gray-800 rounded-3xl p-8 w-full max-w-md shadow-2xl">
-        <h2 className="text-2xl font-bold text-white mb-6 text-center">
-          {isLogin ? 'Вход в систему' : 'Регистрация'}
-        </h2>
+        <div className="flex bg-gray-900 rounded-xl p-1 mb-5 sm:mb-6 border border-gray-800">
+          <button
+            type="button"
+            onClick={() => { setIsLogin(true); setError(''); }}
+            className={`flex-1 py-3 sm:py-2.5 rounded-lg text-sm font-bold transition-all ${isLogin ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+          >
+            Вход
+          </button>
+          <button
+            type="button"
+            onClick={() => { setIsLogin(false); setError(''); }}
+            className={`flex-1 py-3 sm:py-2.5 rounded-lg text-sm font-bold transition-all ${!isLogin ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+          >
+            Регистрация
+          </button>
+        </div>
 
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl mb-6 text-sm flex items-start gap-2">
-            <AlertCircle size={16} className="shrink-0 mt-0.5" />
-            <p>{error}</p>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+          
           {!isLogin && (
             <>
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">Ваше Имя</label>
-                <input required type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-admin-accent" placeholder="Иван Иванов" />
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                <input 
+                  type="text" 
+                  value={name} 
+                  onChange={(e) => setName(e.target.value)} 
+                  placeholder="Ваше Имя" 
+                  required 
+                  autoComplete="name"
+                  autoCapitalize="words" // Имя с большой буквы
+                  spellCheck="false"
+                  className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-3.5 sm:py-3 pl-12 pr-4 outline-none focus:border-blue-500 transition-colors text-base" 
+                />
               </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-2">Номер павильона (Место)</label>
-                <input required type="text" value={pavilion} onChange={(e) => setPavilion(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-admin-accent" placeholder="Например: Корпус Б 2Г-37а" />
-                <p className="text-xs text-gray-500 mt-1">Обязательно используйте дефис для указания места.</p>
+              <div className="relative">
+                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                <input 
+                  type="text" 
+                  value={pavilion} 
+                  onChange={(e) => setPavilion(e.target.value)} 
+                  placeholder="Номер павильона" 
+                  autoComplete="off"
+                  className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-3.5 sm:py-3 pl-12 pr-4 outline-none focus:border-blue-500 transition-colors text-base" 
+                />
               </div>
             </>
           )}
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Email</label>
-            <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-admin-accent" placeholder="test@test.com" />
+          <div className="relative">
+            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+            <input 
+              type="email" 
+              inputMode="email" // Показывает @ на клавиатуре
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              placeholder="Email" 
+              required 
+              autoComplete="email" // Для автозаполнения
+              autoCapitalize="none" // Отключаем большую букву
+              autoCorrect="off" // Отключаем Т9
+              spellCheck="false" // Отключаем подчеркивание
+              className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-3.5 sm:py-3 pl-12 pr-4 outline-none focus:border-blue-500 transition-colors text-base" 
+            />
           </div>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Пароль</label>
-            <input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-admin-accent" placeholder="••••••••" />
+          <div className="relative">
+            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+            <input 
+              type={showPassword ? "text" : "password"} 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              placeholder="Пароль" 
+              required 
+              autoComplete={isLogin ? "current-password" : "new-password"} // Подсказка для менеджера паролей
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck="false"
+              className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-3.5 sm:py-3 pl-12 pr-12 outline-none focus:border-blue-500 transition-colors text-base" 
+            />
+            {/* Кнопка "Глазок" с увеличенной зоной нажатия */}
+            <button 
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-2 transition-colors"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
           </div>
 
-          <button type="submit" className="w-full bg-admin-accent text-white font-bold py-3 px-4 rounded-xl hover:bg-blue-600 transition-colors mt-4">
-            {isLogin ? 'Войти' : 'Зарегистрироваться'}
+          {!isLogin && (
+            <div className="flex items-start gap-3 mt-4 sm:mt-6 mb-2 sm:mb-4 p-3 sm:p-4 bg-gray-900/60 rounded-xl sm:rounded-2xl border border-gray-800">
+              <div className="flex items-center h-6 sm:h-5 mt-0.5">
+                <input 
+                  type="checkbox" 
+                  id="privacy"
+                  checked={isAccepted}
+                  onChange={(e) => setIsAccepted(e.target.checked)}
+                  className="w-5 h-5 accent-blue-500 bg-gray-800 border-gray-700 rounded cursor-pointer"
+                  required
+                />
+              </div>
+              <label htmlFor="privacy" className="text-xs sm:text-sm text-gray-400 leading-snug cursor-pointer select-none">
+                Я ознакомлен(а) и согласен(на) с{' '}
+                <Link to="/privacy" target="_blank" className="text-blue-500 hover:text-blue-400 underline font-medium">
+                  политикой конфиденциальности
+                </Link>
+                {' '}и даю согласие на обработку данных.
+              </label>
+            </div>
+          )}
+
+          {isLogin && (
+            <div className="text-right mt-1 mb-2">
+              <Link to="/forgot-password" className="text-sm text-blue-500 hover:text-blue-400 font-medium p-2 -mr-2">
+                Забыли пароль?
+              </Link>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-red-500 text-xs sm:text-sm text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20 mb-2 sm:mb-4">
+              {error}
+            </p>
+          )}
+
+          <button 
+            type="submit"
+            disabled={isLoading || (!isLogin && !isAccepted)} 
+            className="w-full font-bold py-4 rounded-xl transition-all mt-2 
+              disabled:opacity-50 disabled:bg-gray-800 disabled:text-gray-500
+              bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 active:scale-[0.98]"
+          >
+            {isLoading ? 'Загрузка...' : (isLogin ? 'Войти в аккаунт' : 'Создать аккаунт')}
           </button>
+
         </form>
-
-        <div className="mt-6 text-center">
-          <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-sm text-gray-400 hover:text-white transition-colors">
-            {isLogin ? 'Нет аккаунта? Создать' : 'Уже есть аккаунт? Войти'}
-          </button>
-        </div>
       </div>
     </div>
   );

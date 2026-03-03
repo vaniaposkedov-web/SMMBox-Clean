@@ -29,11 +29,11 @@ export const useStore = create(
         size: 100,
         angle: 0,
         opacity: 90
-      }, // <--- ВОТ ЗДЕСЬ НЕ ХВАТАЛО ЗАКРЫВАЮЩЕЙ СКОБКИ!
+      },
 
       // === СТЕЙТЫ ЧЕРНОВИКА ПУБЛИКАЦИИ ===
       publishDraft: {
-        step: 1, // Текущий шаг (1, 2, 3 или 4-Успех)
+        step: 1, 
         photos: [], 
         text: '',
         accountIds: [],
@@ -53,8 +53,7 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
-      // === ЛОГИКА АВТОРИЗАЦИИ (БЭКЕНД) ===
-      
+      // === ЛОГИКА АВТОРИЗАЦИИ ===
       login: async (email, password) => {
         try {
           const res = await fetch('http://localhost:5000/api/auth/login', {
@@ -63,13 +62,11 @@ export const useStore = create(
             body: JSON.stringify({ email, password })
           });
           const data = await res.json();
-          
           if (res.ok) {
             set({ user: data.user, token: data.token });
             return { success: true };
-          } else {
-            return { success: false, error: data.error };
           }
+          return { success: false, error: data.error };
         } catch (error) {
           return { success: false, error: 'Ошибка соединения с сервером' };
         }
@@ -83,15 +80,69 @@ export const useStore = create(
             body: JSON.stringify({ email, password, name, pavilion })
           });
           const data = await res.json();
-          
           if (res.ok) {
             set({ user: data.user, token: data.token });
             return { success: true };
-          } else {
-            return { success: false, error: data.error };
           }
+          return { success: false, error: data.error };
         } catch (error) {
           return { success: false, error: 'Ошибка соединения с сервером' };
+        }
+      },
+
+
+      // Запрос письма на почту
+      forgotPasswordAction: async (email) => {
+        try {
+          const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          const data = await res.json();
+          if (res.ok) return { success: true };
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения' };
+        }
+      },
+
+      // Установка нового пароля
+      resetPasswordAction: async (token, newPassword) => {
+        try {
+          const res = await fetch(`http://localhost:5000/api/auth/reset-password/${token}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: newPassword })
+          });
+          const data = await res.json();
+          if (res.ok) return { success: true };
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения' };
+        }
+      },
+
+      
+      // НОВЫЙ МЕТОД ДЛЯ ОБНОВЛЕНИЯ ПРОФИЛЯ С КАРТИНКАМИ И ЗАЩИТОЙ
+      updateUser: async (formData) => {
+        try {
+          const res = await fetch('http://localhost:5000/api/auth/profile', {
+            method: 'PUT',
+            headers: {
+              // Передаем токен безопасности на сервер!
+              'Authorization': `Bearer ${get().token}`
+            },
+            body: formData
+          });
+          const data = await res.json();
+          if (data.success) {
+            set({ user: { ...get().user, ...data.user } });
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети' };
         }
       },
 
@@ -104,42 +155,29 @@ export const useStore = create(
         publishDraft: { step: 1, photos: [], text: '', accountIds: [], isScheduled: false, publishDate: '' }
       }),
 
-      // === ЛОГИКА ПАРТНЕРОВ (БЭКЕНД) ===
-      
-      // 1. Загрузка всех данных при входе
+      // === ЛОГИКА ПАРТНЕРОВ ===
       fetchPartnerData: async (userId) => {
         try {
           const res = await fetch(`http://localhost:5000/api/partners/data?userId=${userId}`);
           if (res.ok) {
             const data = await res.json();
-            set({ 
-              myPartners: data.partners, 
-              incomingRequests: data.incomingRequests, 
-              notifications: data.notifications 
-            });
+            set({ myPartners: data.partners, incomingRequests: data.incomingRequests, notifications: data.notifications });
           }
         } catch (error) {
           console.error('Ошибка загрузки данных партнеров');
         }
       },
 
-      // 2. Поиск на сервере
       searchUsersFromApi: async (query, userId) => {
         try {
-          const safeQuery = encodeURIComponent(query);
-          const res = await fetch(`http://localhost:5000/api/partners/search?query=${safeQuery}&userId=${userId}`);
-          
-          if (res.ok) {
-            return await res.json();
-          }
+          const res = await fetch(`http://localhost:5000/api/partners/search?query=${encodeURIComponent(query)}&userId=${userId}`);
+          if (res.ok) return await res.json();
           return [];
         } catch (error) {
-          console.error('Ошибка при поиске:', error);
           return [];
         }
       },
 
-      // 3. Отправка заявки
       sendPartnershipRequest: async (requesterId, receiverId) => {
         await fetch('http://localhost:5000/api/partners/request', {
           method: 'POST',
@@ -149,7 +187,6 @@ export const useStore = create(
         get().fetchPartnerData(requesterId);
       },
 
-      // 4. Принятие заявки
       acceptPartnership: async (partnershipId) => {
         await fetch('http://localhost:5000/api/partners/accept', {
           method: 'POST',
@@ -159,7 +196,6 @@ export const useStore = create(
         get().fetchPartnerData(get().user.id);
       },
 
-      // 5. Удаление партнера
       removePartnerAction: async (currentUserId, partnerId) => {
         await fetch('http://localhost:5000/api/partners/remove', {
           method: 'POST',
@@ -169,7 +205,6 @@ export const useStore = create(
         get().fetchPartnerData(currentUserId);
       },
 
-      // 6. Очистка уведомлений
       clearNotifications: async (userId) => {
         await fetch('http://localhost:5000/api/partners/notifications/clear', {
           method: 'POST',
@@ -199,24 +234,17 @@ export const useStore = create(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, name, provider })
           });
-          if (res.ok) {
-            get().fetchAccounts(userId); // Перезапрашиваем список
-          }
-        } catch (error) {
-          console.error('Ошибка добавления аккаунта');
-        }
+          if (res.ok) get().fetchAccounts(userId);
+        } catch (error) {}
       },
 
       removeAccount: async (accountId) => {
         try {
           await fetch(`http://localhost:5000/api/accounts/${accountId}`, { method: 'DELETE' });
           get().fetchAccounts(get().user.id);
-        } catch (error) {
-          console.error('Ошибка удаления');
-        }
+        } catch (error) {}
       },
 
-      // === НОВАЯ ФУНКЦИЯ: Отправка дизайна на сервер ===
       saveAccountDesign: async (accountId, signature, watermarkData) => {
         try {
           const res = await fetch(`http://localhost:5000/api/accounts/${accountId}/design`, {
@@ -224,14 +252,12 @@ export const useStore = create(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ signature, watermark: watermarkData })
           });
-          
           if (res.ok) {
-            get().fetchAccounts(get().user.id); // Перезагружаем аккаунты, чтобы красная плашка пропала
+            get().fetchAccounts(get().user.id);
             return { success: true };
           }
           return { success: false };
         } catch (error) {
-          console.error('Ошибка сохранения дизайна');
           return { success: false };
         }
       },
@@ -244,13 +270,9 @@ export const useStore = create(
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text, mediaUrls, accountIds, publishAt })
           });
-          
-          if (res.ok) {
-            return { success: true };
-          }
+          if (res.ok) return { success: true };
           return { success: false, error: 'Ошибка при публикации' };
         } catch (error) {
-          console.error('Ошибка сети при публикации');
           return { success: false, error: 'Ошибка соединения с сервером' };
         }
       }
