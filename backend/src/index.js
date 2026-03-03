@@ -34,4 +34,13 @@ app.use('/api/accounts', accountRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-module.exports = app;
+// Если проект запущен на Vercel, экспортируем app
+if (process.env.VERCEL) {
+  module.exports = app;
+} else {
+  // Если проект запущен локально, слушаем порт 5000
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`Server is running locally on port ${PORT}`);
+  });
+}
