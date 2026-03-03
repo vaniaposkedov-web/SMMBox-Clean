@@ -74,7 +74,7 @@ export const useStore = create(
 
       register: async (email, password, name, pavilion) => {
         try {
-          const res = await fetch('http://localhost:5000/api/auth/register', {
+          const res = await fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, name, pavilion })
@@ -94,7 +94,7 @@ export const useStore = create(
       // Запрос письма на почту
       forgotPasswordAction: async (email) => {
         try {
-          const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
+          const res = await fetch('/api/auth/forgot-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
@@ -110,7 +110,7 @@ export const useStore = create(
       // Установка нового пароля
       resetPasswordAction: async (token, newPassword) => {
         try {
-          const res = await fetch(`http://localhost:5000/api/auth/reset-password/${token}`, {
+          const res = await fetch(`/api/auth/reset-password/${token}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password: newPassword })
@@ -127,7 +127,7 @@ export const useStore = create(
       // НОВЫЙ МЕТОД ДЛЯ ОБНОВЛЕНИЯ ПРОФИЛЯ С КАРТИНКАМИ И ЗАЩИТОЙ
       updateUser: async (formData) => {
         try {
-          const res = await fetch('http://localhost:5000/api/auth/profile', {
+          const res = await fetch('/api/auth/profile', {
             method: 'PUT',
             headers: {
               // Передаем токен безопасности на сервер!
@@ -158,7 +158,7 @@ export const useStore = create(
       // === ЛОГИКА ПАРТНЕРОВ ===
       fetchPartnerData: async (userId) => {
         try {
-          const res = await fetch(`http://localhost:5000/api/partners/data?userId=${userId}`);
+          const res = await fetch(`/api/partners/data?userId=${userId}`);
           if (res.ok) {
             const data = await res.json();
             set({ myPartners: data.partners, incomingRequests: data.incomingRequests, notifications: data.notifications });
@@ -170,7 +170,7 @@ export const useStore = create(
 
       searchUsersFromApi: async (query, userId) => {
         try {
-          const res = await fetch(`http://localhost:5000/api/partners/search?query=${encodeURIComponent(query)}&userId=${userId}`);
+          const res = await fetch(`/api/partners/search?query=${encodeURIComponent(query)}&userId=${userId}`);
           if (res.ok) return await res.json();
           return [];
         } catch (error) {
@@ -179,7 +179,7 @@ export const useStore = create(
       },
 
       sendPartnershipRequest: async (requesterId, receiverId) => {
-        await fetch('http://localhost:5000/api/partners/request', {
+        await fetch('/api/partners/request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ requesterId, receiverId })
@@ -188,7 +188,7 @@ export const useStore = create(
       },
 
       acceptPartnership: async (partnershipId) => {
-        await fetch('http://localhost:5000/api/partners/accept', {
+        await fetch('/api/partners/accept', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ partnershipId })
@@ -197,7 +197,7 @@ export const useStore = create(
       },
 
       removePartnerAction: async (currentUserId, partnerId) => {
-        await fetch('http://localhost:5000/api/partners/remove', {
+        await fetch('/api/partners/remove', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ currentUserId, partnerId })
@@ -206,7 +206,7 @@ export const useStore = create(
       },
 
       clearNotifications: async (userId) => {
-        await fetch('http://localhost:5000/api/partners/notifications/clear', {
+        await fetch('/api/partners/notifications/clear', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId })
@@ -217,7 +217,7 @@ export const useStore = create(
       // === ЛОГИКА АККАУНТОВ ===
       fetchAccounts: async (userId) => {
         try {
-          const res = await fetch(`http://localhost:5000/api/accounts?userId=${userId}`);
+          const res = await fetch(`/api/accounts?userId=${userId}`);
           if (res.ok) {
             const data = await res.json();
             set({ accounts: data });
@@ -229,7 +229,7 @@ export const useStore = create(
 
       addMockAccount: async (userId, name, provider) => {
         try {
-          const res = await fetch('http://localhost:5000/api/accounts/mock-add', {
+          const res = await fetch('/api/accounts/mock-add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, name, provider })
@@ -240,14 +240,14 @@ export const useStore = create(
 
       removeAccount: async (accountId) => {
         try {
-          await fetch(`http://localhost:5000/api/accounts/${accountId}`, { method: 'DELETE' });
+          await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
           get().fetchAccounts(get().user.id);
         } catch (error) {}
       },
 
       saveAccountDesign: async (accountId, signature, watermarkData) => {
         try {
-          const res = await fetch(`http://localhost:5000/api/accounts/${accountId}/design`, {
+          const res = await fetch(`/api/accounts/${accountId}/design`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ signature, watermark: watermarkData })
@@ -265,7 +265,7 @@ export const useStore = create(
       // === ЛОГИКА ПУБЛИКАЦИИ ПОСТОВ ===
       createPostAction: async (text, mediaUrls, accountIds, publishAt) => {
         try {
-          const res = await fetch('http://localhost:5000/api/posts/create', {
+          const res = await fetch('/api/posts/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text, mediaUrls, accountIds, publishAt })
