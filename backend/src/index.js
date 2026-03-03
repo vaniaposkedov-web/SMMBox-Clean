@@ -36,11 +36,11 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Если проект запущен на Vercel, экспортируем app
 if (process.env.VERCEL) {
+  // Если проект запущен на Vercel, мы просто экспортируем app (без listen)
   module.exports = app;
 } else {
-  // Если проект запущен локально, слушаем порт 5000
-  const PORT = process.env.PORT || 5000;
+  // Если проект запущен у тебя на компе, запускаем сервер как обычно
   app.listen(PORT, () => {
-    console.log(`Server is running locally on port ${PORT}`);
+      console.log(`Сервер SMMBOX запущен локально на порту ${PORT}`);
   });
 }
