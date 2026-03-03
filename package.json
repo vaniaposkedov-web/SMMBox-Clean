@@ -1,7 +1,15 @@
 {
+  "name": "smmbox-root",
+  "version": "1.0.0",
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.1.0"
+    "multer": "^2.1.0",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "cookie-parser": "^1.4.6",
+    "dotenv": "^16.3.1",
+    "@prisma/client": "^6.19.2",
+    "nodemailer": "^6.9.4"
   }
 }
