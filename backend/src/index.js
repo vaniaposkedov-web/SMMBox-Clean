@@ -34,6 +34,4 @@ app.use('/api/accounts', accountRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-app.listen(PORT, () => {
-    console.log(`Сервер SMMBOX запущен на порту ${PORT}`);
-});
+module.exports = app;
