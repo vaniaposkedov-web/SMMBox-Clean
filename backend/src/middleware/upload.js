@@ -1,24 +1,9 @@
 // backend/src/middleware/upload.js
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 
-// Создаем папку uploads, если её нет
-const dir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(dir)) {
-  fs.mkdirSync(dir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    // Генерируем уникальное имя: avatar-123456789.jpg
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// На Vercel файловая система "только для чтения", поэтому создавать папки нельзя.
+// Используем хранение в оперативной памяти (MemoryStorage)
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage,
