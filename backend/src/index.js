@@ -8,8 +8,8 @@ const authRoutes = require('./routes/authRoutes');
 const partnerRoutes = require('./routes/partnerRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const postRoutes = require('./routes/postRoutes');
-const path = require('path');
 const aiRoutes = require('./routes/aiRoutes');
+const path = require('path');
 
 const allowedOrigins = [
   process.env.FRONTEND_URL, 
@@ -29,19 +29,33 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Базовые роуты
 app.use('/api/auth', authRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/posts', postRoutes);
-app.use('/api/ai', aiRoutes);
+
+// === ЗАЩИТА НЕЙРОСЕТИ (RATE LIMITER) ===
+const rateLimit = require('express-rate-limit');
+
+const aiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 минута
+  max: 5, // Максимум 5 генераций в минуту с одного IP
+  message: { success: false, error: 'Слишком много запросов. Подождите одну минуту и попробуйте снова.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Ставим охранника ЖЕСТКО на весь модуль ИИ
+app.use('/api/ai', aiLimiter, aiRoutes);
+
+// Статика
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Если проект запущен на Vercel, экспортируем app
+// Запуск сервера
 if (process.env.VERCEL) {
-  // Если проект запущен на Vercel, мы просто экспортируем app (без listen)
   module.exports = app;
 } else {
-  // Если проект запущен у тебя на компе, запускаем сервер как обычно
   app.listen(PORT, () => {
       console.log(`Сервер SMMBOX запущен локально на порту ${PORT}`);
   });
