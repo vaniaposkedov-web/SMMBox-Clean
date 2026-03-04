@@ -53,10 +53,15 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
-      // === ЛОГИКА АВТОРИЗАЦИИ ===
+      // ==========================================
+      // === ЛОГИКА АВТОРИЗАЦИИ (ОБНОВЛЕННАЯ) ===
+      // ==========================================
+      
       login: async (email, password) => {
         try {
-          const res = await fetch('/api/auth/login', {
+          // Обратите внимание: я поменял URL на ваш полный http://localhost:5000/api... 
+          // чтобы не было проблем с CORS, как в старом коде
+          const res = await fetch('http://localhost:5000/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
@@ -64,6 +69,7 @@ export const useStore = create(
           const data = await res.json();
           if (res.ok) {
             set({ user: data.user, token: data.token });
+            localStorage.setItem('token', data.token); // Добавили сохранение токена
             return { success: true };
           }
           return { success: false, error: data.error };
@@ -72,16 +78,18 @@ export const useStore = create(
         }
       },
 
-      register: async (email, password, name, pavilion) => {
+      // ОБНОВЛЕННАЯ РЕГИСТРАЦИЯ (заменили pavilion на phone, убрали токен)
+      register: async (email, password, name, phone) => {
         try {
-          const res = await fetch('/api/auth/register', {
+          const res = await fetch('http://localhost:5000/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, name, pavilion })
+            body: JSON.stringify({ email, password, name, phone })
           });
           const data = await res.json();
+          
           if (res.ok) {
-            set({ user: data.user, token: data.token });
+            // Теперь мы не устанавливаем токен сразу, так как ждем ввод 6-значного кода!
             return { success: true };
           }
           return { success: false, error: data.error };
@@ -90,6 +98,63 @@ export const useStore = create(
         }
       },
 
+      // === НОВЫЕ МЕТОДЫ ДЛЯ СОЦСЕТЕЙ ===
+
+      vkLogin: async (code, redirectUri) => {
+        try {
+          const res = await fetch('http://localhost:5000/api/auth/vk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, redirectUri }),
+          });
+          const data = await res.json();
+          
+          if (!res.ok) return { success: false, error: data.error };
+          if (data.requiresEmailVerification) return { success: true, requiresEmailVerification: true, userId: data.userId };
+          
+          set({ user: data.user, token: data.token });
+          localStorage.setItem('token', data.token);
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети при входе через ВК' };
+        }
+      },
+
+      telegramLogin: async (userData) => {
+        try {
+          const res = await fetch('http://localhost:5000/api/auth/telegram', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userData),
+          });
+          const data = await res.json();
+          
+          if (!res.ok) return { success: false, error: data.error };
+          if (data.requiresEmailVerification) return { success: true, requiresEmailVerification: true, userId: data.userId };
+          
+          set({ user: data.user, token: data.token });
+          localStorage.setItem('token', data.token);
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети при входе через Telegram' };
+        }
+      },
+
+      linkEmail: async (userId, email) => {
+        try {
+          const res = await fetch('http://localhost:5000/api/auth/link-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, email }),
+          });
+          const data = await res.json();
+          if (!res.ok) return { success: false, error: data.error };
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети' };
+        }
+      },
+      // ==========================================
 
       // Запрос письма на почту
       forgotPasswordAction: async (email) => {
@@ -123,14 +188,11 @@ export const useStore = create(
         }
       },
 
-      
-      // НОВЫЙ МЕТОД ДЛЯ ОБНОВЛЕНИЯ ПРОФИЛЯ С КАРТИНКАМИ И ЗАЩИТОЙ
       updateUser: async (formData) => {
         try {
           const res = await fetch('/api/auth/profile', {
             method: 'PUT',
             headers: {
-              // Передаем токен безопасности на сервер!
               'Authorization': `Bearer ${get().token}`
             },
             body: formData
@@ -146,14 +208,17 @@ export const useStore = create(
         }
       },
 
-      logout: () => set({ 
-        user: null, 
-        token: null,
-        myPartners: [],
-        incomingRequests: [],
-        notifications: [],
-        publishDraft: { step: 1, photos: [], text: '', accountIds: [], isScheduled: false, publishDate: '' }
-      }),
+      logout: () => {
+        localStorage.removeItem('token'); // Очищаем локальное хранилище
+        set({ 
+          user: null, 
+          token: null,
+          myPartners: [],
+          incomingRequests: [],
+          notifications: [],
+          publishDraft: { step: 1, photos: [], text: '', accountIds: [], isScheduled: false, publishDate: '' }
+        });
+      },
 
       // === ЛОГИКА ПАРТНЕРОВ ===
       fetchPartnerData: async (userId) => {

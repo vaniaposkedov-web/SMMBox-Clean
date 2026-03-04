@@ -2,7 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { 
   ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, 
   Send, CheckCircle2, Share2, Users, LayoutTemplate,
-  Search, CalendarClock, Clock, AlertCircle, MessageSquare, Plus
+  Search, CalendarClock, Clock, MessageSquare, Plus, Loader2
 } from 'lucide-react';
 
 export default function Publish() {
@@ -22,12 +22,16 @@ export default function Publish() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [scheduleTime, setScheduleTime] = useState('');
 
-  // === UI СОСТОЯНИЯ ===
+  // === UI СОСТОЯНИЯ ИИ ===
   const [isImprovingAI, setIsImprovingAI] = useState(false);
+  const [aiProgress, setAiProgress] = useState(0); // Состояние прогресс-бара
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+
   const [isPublishing, setIsPublishing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showPartnerModal, setShowPartnerModal] = useState(false);
-  const [partnerStatus, setPartnerStatus] = useState('idle'); // idle | sending | sent
+  const [partnerStatus, setPartnerStatus] = useState('idle'); 
   const fileInputRef = useRef(null);
 
   const MAX_PHOTOS = 10;
@@ -103,14 +107,81 @@ export default function Publish() {
     setPhotos(prev => prev.filter(p => p.id !== idToRemove));
   };
 
-  // === ОБРАБОТЧИКИ ТЕКСТА ===
-  const handleAIImprove = () => {
-    if (!text.trim()) return alert('Сначала напишите хотя бы пару слов!');
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+    });
+  };
+
+  // === ИНТЕГРАЦИЯ НЕЙРОСЕТИ С ПРОГРЕСС-БАРОМ ===
+  const handleAiAction = async (actionType, customPrompt = '') => {
+    const textToProcess = actionType === 'rewrite' ? text : customPrompt;
+    if (!textToProcess) return;
+
     setIsImprovingAI(true);
-    setTimeout(() => {
-      setText(prev => prev + '\n\n✨ [Улучшено нейросетью: добавлены продающие триггеры и призыв к действию. Заказывайте прямо сейчас!]');
-      setIsImprovingAI(false);
-    }, 2000);
+    setShowAiModal(false); // Закрываем модалку
+    setAiPrompt(''); // Очищаем поле ввода
+    setAiProgress(0); // Сбрасываем прогресс
+
+    // Имитация загрузки для крутого визуального отклика
+    // === НОВЫЙ ЖЕЛЕЗОБЕТОННЫЙ ТАЙМЕР ===
+    let currentProgress = 0;
+    const progressInterval = setInterval(() => {
+        currentProgress += Math.floor(Math.random() * 12) + 4;
+        if (currentProgress > 95) currentProgress = 95; // Тормозим на 95%, пока ждем ответа
+        setAiProgress(currentProgress);
+    }, 400);
+
+    try {
+        let base64Images = [];
+        // Берем до 2 фото для анализа Гуглом
+        if (photos.length > 0) {
+            const photosToProcess = photos.slice(0, 2);
+            base64Images = await Promise.all(photosToProcess.map(p => fileToBase64(p.file)));
+        }
+
+        const token = localStorage.getItem('token'); 
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        
+        const response = await fetch(`${apiUrl}/api/ai/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ 
+                prompt: textToProcess, 
+                action: actionType,
+                images: base64Images 
+            })
+        });
+
+        const data = await response.json();
+        
+        clearInterval(progressInterval);
+        setAiProgress(100); // Резко заполняем до 100% при успехе
+        
+        // Небольшая задержка, чтобы пользователь насладился 100% загрузкой
+        setTimeout(() => {
+            if (data.success) {
+                setText(data.text);
+            } else {
+                alert(data.error || 'Ошибка при генерации текста');
+            }
+            setIsImprovingAI(false);
+            setAiProgress(0);
+        }, 500);
+
+    } catch (error) {
+        clearInterval(progressInterval);
+        setIsImprovingAI(false);
+        setAiProgress(0);
+        console.error('Ошибка ИИ:', error);
+        alert('Ошибка соединения с нейросетью. Проверьте API ключ на бэкенде.');
+    }
   };
 
   // === ОБРАБОТЧИКИ ПУБЛИКАЦИИ ===
@@ -142,7 +213,7 @@ export default function Publish() {
     setStep(1);
     setShowPartnerModal(false);
     setPartnerStatus('idle');
-    setView('start'); // Возвращаем в самое начало
+    setView('start'); 
   };
 
   // ==========================================
@@ -164,7 +235,6 @@ export default function Publish() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full max-w-2xl relative z-10">
           
-          {/* Кнопка: ЗАПОСТИТЬ СЕЙЧАС */}
           <button 
             onClick={() => { setPublishMode('now'); setView('wizard'); setStep(1); }} 
             className="bg-admin-card border border-gray-800 hover:border-blue-500 rounded-[2rem] p-6 sm:p-8 flex flex-col items-center text-center transition-all group active:scale-95 shadow-xl hover:shadow-blue-500/10"
@@ -176,7 +246,6 @@ export default function Publish() {
             <p className="text-sm text-gray-400">Мгновенная публикация во все выбранные социальные сети</p>
           </button>
 
-          {/* Кнопка: ЗАПОСТИТЬ ПОЗЖЕ (КАЛЕНДАРЬ) */}
           <button 
             onClick={() => setView('calendar')} 
             className="bg-admin-card border border-gray-800 hover:border-purple-500 rounded-[2rem] p-6 sm:p-8 flex flex-col items-center text-center transition-all group active:scale-95 shadow-xl hover:shadow-purple-500/10"
@@ -211,7 +280,6 @@ export default function Publish() {
 
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6">Контент-план</h2>
 
-          {/* ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ ДАТ */}
           <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 mb-4">
             {calendarDays.map((d) => {
               const isoDate = d.toISOString().split('T')[0];
@@ -219,7 +287,6 @@ export default function Publish() {
               const dayName = d.toLocaleDateString('ru-RU', { weekday: 'short' });
               const dayNum = d.getDate();
               
-              // Проверяем, есть ли посты на эту дату
               const hasPosts = mockScheduledPosts.some(p => p.date === isoDate);
 
               return (
@@ -237,7 +304,6 @@ export default function Publish() {
             })}
           </div>
 
-          {/* СПИСОК ПОСТОВ НА ВЫБРАННЫЙ ДЕНЬ */}
           <div className="mt-2">
             <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <Clock size={20} className="text-purple-500" />
@@ -272,7 +338,6 @@ export default function Publish() {
           </div>
         </div>
 
-        {/* ЗАЛИПАЮЩИЙ ПОДВАЛ ДЛЯ КАЛЕНДАРЯ */}
         <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
           <div className="max-w-3xl mx-auto">
             <button 
@@ -298,7 +363,6 @@ export default function Publish() {
     <div className="min-h-[100dvh] bg-admin-bg pb-32 md:pb-8 font-sans relative animate-fade-in">
       <div className="p-4 sm:p-8 max-w-3xl mx-auto">
         
-        {/* ПРОГРЕСС-БАР ВИЗАРДА */}
         {step < 4 && (
           <div className="mb-6">
             <div className="flex justify-between text-xs font-bold text-gray-500 mb-2 px-1">
@@ -335,7 +399,7 @@ export default function Publish() {
                     <div key={photo.id} className="relative aspect-square rounded-2xl overflow-hidden group border border-gray-800">
                       <img src={photo.url} alt="Preview" className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                      <button onClick={() => removePhoto(photo.id)} className="absolute top-2 right-2 bg-red-500/90 text-white p-1.5 rounded-xl hover:bg-red-500 active:scale-90 transition-all">
+                      <button onClick={() => removePhoto(photo.id)} className="absolute top-2 right-2 bg-red-500/90 text-white p-1.5 rounded-xl hover:bg-red-50 active:scale-90 transition-all">
                         <span className="flex items-center justify-center"><X size={16} /></span>
                       </button>
                     </div>
@@ -355,38 +419,75 @@ export default function Publish() {
 
         {/* ШАГ 2: ТЕКСТ И НЕЙРОСЕТЬ */}
         {step === 2 && (
-          <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl animate-fade-in">
+          <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl animate-fade-in relative">
             <div className="flex justify-between items-end mb-4">
               <div>
                 <h2 className="text-xl font-bold text-white mb-1">Описание поста</h2>
-                <p className="text-sm text-gray-400">Напишите продающий текст</p>
+                <p className="text-sm text-gray-400">Напишите текст или поручите это ИИ</p>
               </div>
-              <span className={`text-xs font-bold px-2 py-1 rounded-lg ${text.length > MAX_CHARS ? 'bg-red-500/10 text-red-500' : 'bg-gray-900 text-gray-500'}`}>
-                {text.length} / {MAX_CHARS}
-              </span>
+              {/* === УМНЫЙ СЧЕТЧИК СИМВОЛОВ === */}
+              <div className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors border ${
+                (text || '').length >= MAX_CHARS 
+                  ? 'bg-red-500/10 text-red-500 border-red-500/20' 
+                  : (text || '').length > MAX_CHARS * 0.8 
+                    ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' 
+                    : 'bg-gray-900 text-gray-500 border-gray-800'
+              }`}>
+                {(text || '').length} / {MAX_CHARS}
+              </div>
             </div>
 
-            <div className={`relative border border-gray-800 rounded-2xl overflow-hidden bg-gray-900 transition-colors ${publishMode === 'schedule' ? 'focus-within:border-purple-500' : 'focus-within:border-blue-500'}`}>
+            <div className={`relative border border-gray-800 rounded-2xl overflow-hidden bg-gray-900 transition-all ${publishMode === 'schedule' ? 'focus-within:border-purple-500' : 'focus-within:border-blue-500'}`}>
+              
+              {/* === КРАСИВЫЙ PROGRESS BAR OVERLAY === */}
+              {isImprovingAI && (
+                <div className="absolute inset-0 z-20 bg-gray-900/80 backdrop-blur-[2px] flex flex-col items-center justify-center animate-fade-in rounded-2xl">
+                  <div className="relative mb-4 flex items-center justify-center">
+                    <Loader2 className="text-purple-500 animate-spin absolute" size={48} />
+                    <Sparkles className="text-purple-400 animate-pulse" size={20} />
+                  </div>
+                  <h3 className="text-white font-bold mb-1 text-lg">Нейросеть пишет текст...</h3>
+                  <p className="text-gray-400 text-xs mb-4">Анализируем фото и подбираем слова</p>
+                  
+                  {/* Шкала загрузки */}
+                  <div className="w-48 h-2 bg-gray-800 rounded-full overflow-hidden shadow-inner relative">
+                    <div 
+                      className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300 ease-out"
+                      style={{ width: `${aiProgress}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-purple-400 font-bold text-xs mt-2">{aiProgress}%</span>
+                </div>
+              )}
+
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value.slice(0, MAX_CHARS))}
-                placeholder="Расскажите о товаре, укажите цены, размеры и преимущества..."
+                placeholder="Расскажите о товаре, укажите цены, размеры и особенности..."
                 className="w-full min-h-[200px] bg-transparent p-4 text-white text-base resize-none outline-none placeholder:text-gray-600"
               />
               
-              <div className="bg-gray-800/50 p-3 border-t border-gray-800 flex justify-between items-center">
+              <div className="bg-gray-800/50 p-3 border-t border-gray-800 flex flex-wrap gap-2 justify-between items-center">
                 <span className="text-xs text-gray-500 hidden sm:block">Поддерживаются эмодзи 🚀</span>
-                <button 
-                  onClick={handleAIImprove} 
-                  disabled={isImprovingAI || !text} 
-                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50 disabled:grayscale ml-auto"
-                >
-                  {isImprovingAI ? (
-                    <span className="animate-pulse flex items-center gap-2"><Sparkles size={16}/> Думаю...</span>
-                  ) : (
-                    <span className="flex items-center gap-2"><Sparkles size={16} /> Улучшить текст</span>
-                  )}
-                </button>
+                
+                {/* === АДАПТИВНЫЕ КНОПКИ === */}
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-3 sm:mt-0">
+                  <button 
+                    onClick={() => setShowAiModal(true)} 
+                    disabled={isImprovingAI} 
+                    className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    ✨ Написать с нуля
+                  </button>
+
+                  <button 
+                    onClick={() => handleAiAction('rewrite')} 
+                    disabled={isImprovingAI || !(text || '').trim()} 
+                    className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    <Sparkles size={16} /> Улучшить текст
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -396,7 +497,6 @@ export default function Publish() {
         {step === 3 && (
           <div className="space-y-6 animate-fade-in">
             
-            {/* БЛОК 1: ВЫБОР АККАУНТОВ */}
             <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 <div>
@@ -451,7 +551,6 @@ export default function Publish() {
               </div>
             </div>
 
-            {/* БЛОК 2: ВРЕМЯ (Зависит от режима) */}
             <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
               {publishMode === 'schedule' ? (
                 <>
@@ -531,12 +630,47 @@ export default function Publish() {
 
       </div>
 
-      {/* ЗАЛИПАЮЩИЙ ПОДВАЛ ВИЗАРДА (Навигация) */}
+      {/* === МОДАЛЬНОЕ ОКНО "НАПИСАТЬ С НУЛЯ" === */}
+      {showAiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-admin-card w-full max-w-md border border-gray-800 rounded-3xl p-6 shadow-2xl relative">
+            <button onClick={() => setShowAiModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 transition-colors">
+              <span className="flex items-center justify-center"><X size={20} /></span>
+            </button>
+
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-purple-500/10 text-purple-500">
+              <Sparkles size={32} />
+            </div>
+            
+            <h3 className="text-xl font-bold text-white mb-2">О чем написать пост?</h3>
+            <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+              Напишите короткую мысль. Нейросеть проанализирует загруженные фотографии и создаст сочный, естественный текст.
+            </p>
+
+            <textarea
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder="Например: Скидка 50% на стикеры 'ЗАКРЫВАЮ', в наличии 10 штук..."
+              className="w-full bg-gray-900 border border-gray-800 rounded-2xl p-4 text-white resize-none outline-none focus:border-purple-500 transition-colors h-32 mb-4"
+              autoFocus
+            />
+
+            <button 
+              onClick={() => handleAiAction('generate', aiPrompt)}
+              disabled={!aiPrompt.trim() || isImprovingAI}
+              className="w-full bg-purple-600 hover:bg-purple-500 text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:grayscale active:scale-95"
+            >
+              <Sparkles size={18} /> Сгенерировать пост
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ */}
       {step < 4 && (
         <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
           <div className="max-w-3xl mx-auto flex items-center gap-3">
             
-            {/* Кнопка НАЗАД */}
             <button 
               onClick={() => {
                 if (step === 1) setView(publishMode === 'schedule' ? 'calendar' : 'start');
@@ -547,11 +681,10 @@ export default function Publish() {
               <span className="flex items-center justify-center"><ChevronLeft size={24} /></span>
             </button>
 
-            {/* Кнопка ДАЛЕЕ / ОПУБЛИКОВАТЬ */}
             <button 
               onClick={() => {
                 if (step === 1 && photos.length === 0) return alert('Добавьте хотя бы 1 фото!');
-                if (step === 2 && !text.trim()) return alert('Напишите текст поста!');
+                if (step === 2 && !text.trim() && !isImprovingAI) return alert('Напишите текст поста!');
                 if (step === 3) return handlePublish();
                 setStep(step + 1);
               }}
@@ -579,7 +712,6 @@ export default function Publish() {
         </div>
       )}
 
-      {/* МОДАЛЬНОЕ ОКНО "ОТПРАВИТЬ ПАРТНЕРАМ" */}
       {showPartnerModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-admin-card w-full max-w-md border border-gray-800 rounded-3xl p-6 shadow-2xl relative">
