@@ -9,6 +9,7 @@ const partnerRoutes = require('./routes/partnerRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const postRoutes = require('./routes/postRoutes');
 const path = require('path');
+const aiRoutes = require('./routes/aiRoutes');
 
 const allowedOrigins = [
   process.env.FRONTEND_URL, 
@@ -32,6 +33,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/posts', postRoutes);
+app.use('/api/ai', aiRoutes);
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Если проект запущен на Vercel, экспортируем app

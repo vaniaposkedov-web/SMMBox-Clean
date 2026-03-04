@@ -9,26 +9,42 @@ datasource db {
 
 // === 1. ПОЛЬЗОВАТЕЛИ И РОЛИ ===
 model User {
-  id                   String    @id @default(uuid())
-  email                String    @unique
-  password             String
-  name                 String?
-  pavilion             String?
-  avatarUrl            String?  
-  role                 String    @default("USER")
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  id                       String    @id @default(uuid())
+  email                    String?   @unique // ИЗМЕНЕНО: теперь опционально
+  phone                    String?   @unique 
+  password                 String?           
+  name                     String?
   
-  // === НОВЫЕ ПОЛЯ ДЛЯ БЕЗОПАСНОСТИ ===
-  resetPasswordToken   String?
-  resetPasswordExpires DateTime?
+  // === НОВЫЕ ПОЛЯ ДЛЯ TELEGRAM ===
+  firstName                String?
+  lastName                 String?
+  username                 String?   @unique // Никнейм в ТГ
   
-  accounts             Account[] 
-  sentRequests         Partnership[] @relation("SentRequests")
-  receivedRequests     Partnership[] @relation("ReceivedRequests")
-  notifications        Notification[]
-  planId               String?
-  plan                 SubscriptionPlan? @relation(fields: [planId], references: [id])
+  pavilion                 String?
+  avatarUrl                String?
+  role                     String    @default("USER")
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  
+  // === ПРИВЯЗКА СОЦСЕТЕЙ ===
+  vkId                     String?   @unique
+  telegramId               String?   @unique
+
+  // === ПОДТВЕРЖДЕНИЕ ПОЧТЫ ===
+  isEmailVerified          Boolean   @default(false)
+  emailVerificationCode    String?
+  emailVerificationExpires DateTime?
+  
+  // === БЕЗОПАСНОСТЬ ===
+  resetPasswordToken       String?
+  resetPasswordExpires     DateTime?
+  
+  accounts                 Account[] 
+  sentRequests             Partnership[] @relation("SentRequests")
+  receivedRequests         Partnership[] @relation("ReceivedRequests")
+  notifications            Notification[]
+  planId                   String?
+  plan                     SubscriptionPlan? @relation(fields: [planId], references: [id])
 }
 // === 2. ТАРИФЫ (ПОДПИСКИ) ===
 model SubscriptionPlan {
