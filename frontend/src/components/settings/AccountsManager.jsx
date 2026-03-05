@@ -8,6 +8,8 @@ export default function AccountsManager() {
   const fetchAccounts = useStore((state) => state.fetchAccounts);
   const addMockAccount = useStore((state) => state.addMockAccount);
   const removeAccount = useStore((state) => state.removeAccount);
+  const [tgChannelUrl, setTgChannelUrl] = useState('');
+  const [isTgConnecting, setIsTgConnecting] = useState(false);
 
   // --- СОСТОЯНИЯ ---
   const [newGroupName, setNewGroupName] = useState(''); // Для теста Telegram
@@ -56,6 +58,35 @@ export default function AccountsManager() {
     setIsVkConnecting(false);
   };
 
+
+  // Отправка ссылки на Telegram канал на бэкенд
+  const handleTgSubmit = async () => {
+    if (!tgChannelUrl) return alert('Введите ссылку на канал!');
+    setIsTgConnecting(true);
+    
+    try {
+      const res = await fetch('http://localhost:5000/api/accounts/tg/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, channelUrl: tgChannelUrl })
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        setTgChannelUrl(''); // Очищаем поле
+        fetchAccounts(user.id); // Обновляем список групп на экране
+        alert('Telegram канал успешно подключен!');
+      } else {
+        alert(data.error || 'Произошла ошибка при добавлении');
+      }
+    } catch (e) {
+      alert('Ошибка соединения с сервером');
+    }
+    
+    setIsTgConnecting(false);
+  };
+
   // --- ИНТЕРФЕЙС ---
   return (
     <div className="space-y-8">
@@ -75,7 +106,7 @@ export default function AccountsManager() {
           </ol>
           
           <a 
-            // Обрати внимание: здесь вшит твой ID 54468937
+            // Поменяй 54468937 на ID твоего Android/iOS приложения, если он другой
             href="https://oauth.vk.com/authorize?client_id=54468937&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=groups,wall,photos,offline&response_type=token&v=5.131"
             target="_blank" 
             rel="noreferrer"
@@ -102,19 +133,30 @@ export default function AccountsManager() {
           </div>
         </div>
 
-        {/* СТАРЫЙ БЛОК: Telegram (для тестов) */}
+        {/* НОВЫЙ БЛОК: Telegram */}
         <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 space-y-4 shadow-inner">
-          <h3 className="text-white font-bold flex items-center gap-2">Подключение Telegram (Тестовый режим)</h3>
-          <div className="flex flex-col sm:flex-row gap-4">
+          <h3 className="text-white font-bold flex items-center gap-2">Подключение Telegram канала</h3>
+          
+          <ol className="text-sm text-gray-400 list-decimal pl-4 space-y-2">
+            <li>Добавьте нашего бота <b>@smmbox_auth_bot</b> (или имя вашего бота) в администраторы вашего канала.</li>
+            <li>Дайте боту права на "Публикацию сообщений".</li>
+            <li>Введите @username вашего канала или ссылку на него ниже.</li>
+          </ol>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-800">
             <input 
               type="text" 
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              placeholder="Название вашей группы (для теста)..."
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-xl py-3 px-4 text-white focus:outline-none focus:border-sky-500 transition-all"
+              value={tgChannelUrl}
+              onChange={(e) => setTgChannelUrl(e.target.value)}
+              placeholder="Например: @my_channel или t.me/my_channel"
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-sky-500 transition-all"
             />
-            <button onClick={() => handleAddMock('telegram')} className="bg-sky-500 hover:bg-sky-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all">
-              <Plus size={18} /> Добавить ТГ
+            <button 
+              onClick={handleTgSubmit}
+              disabled={isTgConnecting}
+              className="bg-sky-500 hover:bg-sky-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+            >
+              {isTgConnecting ? 'Проверка...' : <><Plus size={18} /> Подключить ТГ</>}
             </button>
           </div>
         </div>
