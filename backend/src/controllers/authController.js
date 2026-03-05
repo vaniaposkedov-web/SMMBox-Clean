@@ -251,27 +251,28 @@ exports.telegramAuth = async (req, res) => {
   }
 };
 
-// ОБНОВЛЕННАЯ ЛОГИКА ВК (Использует PKCE code_verifier)
 exports.vkAuth = async (req, res) => {
   const { code, redirectUri, codeVerifier } = req.body;
   
   try {
+    // 1. Обмениваем код на токен (ВК требует code_verifier)
     const tokenResponse = await axios.get('https://oauth.vk.com/access_token', {
       params: {
         client_id: process.env.VK_APP_ID,
         client_secret: process.env.VK_APP_SECRET,
         redirect_uri: redirectUri,
         code: code,
-        code_verifier: codeVerifier // ВК проверяет этот ключ для безопасности
+        code_verifier: codeVerifier 
       }
     });
 
     const { user_id, email, access_token } = tokenResponse.data;
 
     if (!access_token) {
-       return res.status(400).json({ error: 'Не удалось получить токен' });
+       return res.status(400).json({ error: 'Не удалось получить токен ВК' });
     }
 
+    // 2. Получаем имя пользователя
     const userResponse = await axios.get('https://api.vk.com/method/users.get', {
       params: { user_ids: user_id, access_token, v: '5.131' }
     });
@@ -279,11 +280,12 @@ exports.vkAuth = async (req, res) => {
     const vkUser = userResponse.data.response[0];
     const name = `${vkUser.first_name} ${vkUser.last_name}`;
 
+    // 3. Авторизуем в нашей системе
     const result = await handleSocialLogin(user_id.toString(), 'vk', name, email);
     res.json(result);
 
   } catch (error) {
-    console.error('Ошибка VK Auth:', error?.response?.data || error.message);
+    console.error('Ошибка VK Auth Backend:', error?.response?.data || error.message);
     res.status(500).json({ error: 'Ошибка авторизации через ВКонтакте' });
   }
 };
