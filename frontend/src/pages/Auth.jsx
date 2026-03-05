@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
@@ -18,6 +18,7 @@ export default function Auth() {
   const [isVerification, setIsVerification] = useState(false); 
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const isProcessingCode = useRef(false);
   const [error, setError] = useState('');
   const [isAccepted, setIsAccepted] = useState(false);
 
@@ -31,34 +32,37 @@ export default function Auth() {
   const REDIRECT_URI = 'https://smmdeck.ru/auth';
 
   // === 1. ПЕРЕХВАТ КОДА ОТ ВКОНТАКТЕ ===
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const authCode = params.get('code');
-    
-    if (authCode) {
-      setIsLoading(true);
-      window.history.replaceState({}, document.title, '/auth'); 
-      
-      const codeVerifier = localStorage.getItem('vk_code_verifier');
-      
-      // Отправляем объект с данными на наш бэкенд
-      vkLogin({
-        code: authCode,
-        redirectUri: REDIRECT_URI,
-        codeVerifier: codeVerifier
-      }).then((result) => {
-        if (result.success) {
-          if (result.requiresEmailVerification) setIsVerification(true);
-          else navigate('/');
-        } else {
-          setError(result.error || 'Ошибка входа через ВКонтакте');
-        }
-        setIsLoading(false);
-        localStorage.removeItem('vk_code_verifier');
-      });
-    }
-  }, [location.search, vkLogin, navigate]);
+// === 1. ПЕРЕХВАТ КОДА ОТ ВКОНТАКТЕ ===
+useEffect(() => {
+  const params = new URLSearchParams(location.search);
+  const authCode = params.get('code');
 
+  // Если код есть И мы его еще не начали обрабатывать
+  if (authCode && !isProcessingCode.current) {
+    isProcessingCode.current = true; // Ставим жесткую блокировку от дублей!
+    setIsLoading(true);
+
+    // Стираем код из адресной строки браузера
+    window.history.replaceState({}, document.title, '/auth'); 
+
+    const codeVerifier = localStorage.getItem('vk_code_verifier');
+
+    vkLogin({
+      code: authCode,
+      redirectUri: REDIRECT_URI,
+      codeVerifier: codeVerifier
+    }).then((result) => {
+      if (result.success) {
+        if (result.requiresEmailVerification) setIsVerification(true);
+        else navigate('/');
+      } else {
+        setError(result.error || 'Ошибка входа через ВКонтакте');
+      }
+      setIsLoading(false);
+      localStorage.removeItem('vk_code_verifier');
+    });
+  }
+}, [location.search, vkLogin, navigate]);
   // === 2. РОДНАЯ КНОПКА ВК (100% КЛИКАБЕЛЬНАЯ) ===
   const handleVkClick = async () => {
     try {
