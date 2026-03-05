@@ -4,18 +4,14 @@ import { persist } from 'zustand/middleware';
 export const useStore = create(
   persist(
     (set, get) => ({
-      // === СТЕЙТЫ ПОЛЬЗОВАТЕЛЯ ===
       user: null,
       token: null,
       accounts: [],
       posts: [],
-
-      // === СТЕЙТЫ ПАРТНЕРОВ И УВЕДОМЛЕНИЙ ===
       myPartners: [],
       incomingRequests: [],
       notifications: [],
       
-      // === НАСТРОЙКИ ВОДЯНОГО ЗНАКА ===
       watermarkSettings: {
         type: 'text',
         text: 'SMMBOX © 2024',
@@ -31,7 +27,6 @@ export const useStore = create(
         opacity: 90
       },
 
-      // === СТЕЙТЫ ЧЕРНОВИКА ПУБЛИКАЦИИ ===
       publishDraft: {
         step: 1, 
         photos: [], 
@@ -53,10 +48,6 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
-      // ==========================================
-      // === ЛОГИКА АВТОРИЗАЦИИ ===
-      // ==========================================
-      
       login: async (email, password) => {
         try {
           const res = await fetch('/api/auth/login', {
@@ -84,22 +75,20 @@ export const useStore = create(
             body: JSON.stringify({ email, password, name, phone })
           });
           const data = await res.json();
-          
-          if (res.ok) {
-            return { success: true };
-          }
+          if (res.ok) return { success: true };
           return { success: false, error: data.error };
         } catch (error) {
           return { success: false, error: 'Ошибка соединения с сервером' };
         }
       },
 
-      vkLogin: async (vkData) => {
+      // ВК МЕТОД: Принимает секретный ключ (codeVerifier)
+      vkLogin: async (code, redirectUri, codeVerifier) => {
         try {
           const res = await fetch('/api/auth/vk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(vkData), // Передаем { access_token, user_id, email }
+            body: JSON.stringify({ code, redirectUri, codeVerifier }),
           });
           const data = await res.json();
           
@@ -132,8 +121,6 @@ export const useStore = create(
         }
       },
 
-      // --- НОВЫЕ МЕТОДЫ ДЛЯ ПРИВЯЗКИ ПОЧТЫ ЧЕРЕЗ КОД ---
-
       requestEmailLink: async (userId, email) => {
         try {
           const res = await fetch('/api/auth/request-link-email', {
@@ -163,8 +150,6 @@ export const useStore = create(
           return { success: false, error: 'Ошибка сети' };
         }
       },
-      
-      // ==========================================
 
       forgotPasswordAction: async (email) => {
         try {
@@ -200,9 +185,7 @@ export const useStore = create(
         try {
           const res = await fetch('/api/auth/profile', {
             method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${get().token}`
-            },
+            headers: { 'Authorization': `Bearer ${get().token}` },
             body: formData
           });
           const data = await res.json();
@@ -219,16 +202,11 @@ export const useStore = create(
       logout: () => {
         localStorage.removeItem('token');
         set({ 
-          user: null, 
-          token: null,
-          myPartners: [],
-          incomingRequests: [],
-          notifications: [],
+          user: null, token: null, myPartners: [], incomingRequests: [], notifications: [],
           publishDraft: { step: 1, photos: [], text: '', accountIds: [], isScheduled: false, publishDate: '' }
         });
       },
 
-      // === ЛОГИКА ПАРТНЕРОВ ===
       fetchPartnerData: async (userId) => {
         try {
           const res = await fetch(`/api/partners/data?userId=${userId}`);
@@ -236,9 +214,7 @@ export const useStore = create(
             const data = await res.json();
             set({ myPartners: data.partners, incomingRequests: data.incomingRequests, notifications: data.notifications });
           }
-        } catch (error) {
-          console.error('Ошибка загрузки данных партнеров');
-        }
+        } catch (error) {}
       },
 
       searchUsersFromApi: async (query, userId) => {
@@ -246,48 +222,37 @@ export const useStore = create(
           const res = await fetch(`/api/partners/search?query=${encodeURIComponent(query)}&userId=${userId}`);
           if (res.ok) return await res.json();
           return [];
-        } catch (error) {
-          return [];
-        }
+        } catch (error) { return []; }
       },
 
       sendPartnershipRequest: async (requesterId, receiverId) => {
         await fetch('/api/partners/request', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requesterId, receiverId })
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId, receiverId })
         });
         get().fetchPartnerData(requesterId);
       },
 
       acceptPartnership: async (partnershipId) => {
         await fetch('/api/partners/accept', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ partnershipId })
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId })
         });
         get().fetchPartnerData(get().user.id);
       },
 
       removePartnerAction: async (currentUserId, partnerId) => {
         await fetch('/api/partners/remove', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ currentUserId, partnerId })
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentUserId, partnerId })
         });
         get().fetchPartnerData(currentUserId);
       },
 
       clearNotifications: async (userId) => {
         await fetch('/api/partners/notifications/clear', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId })
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId })
         });
         set({ notifications: [] });
       },
 
-      // === ЛОГИКА АККАУНТОВ ===
       fetchAccounts: async (userId) => {
         try {
           const res = await fetch(`/api/accounts?userId=${userId}`);
@@ -295,17 +260,13 @@ export const useStore = create(
             const data = await res.json();
             set({ accounts: data });
           }
-        } catch (error) {
-          console.error('Ошибка загрузки аккаунтов');
-        }
+        } catch (error) {}
       },
 
       addMockAccount: async (userId, name, provider) => {
         try {
           const res = await fetch('/api/accounts/mock-add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, name, provider })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, name, provider })
           });
           if (res.ok) get().fetchAccounts(userId);
         } catch (error) {}
@@ -321,33 +282,24 @@ export const useStore = create(
       saveAccountDesign: async (accountId, signature, watermarkData) => {
         try {
           const res = await fetch(`/api/accounts/${accountId}/design`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ signature, watermark: watermarkData })
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature, watermark: watermarkData })
           });
           if (res.ok) {
             get().fetchAccounts(get().user.id);
             return { success: true };
           }
           return { success: false };
-        } catch (error) {
-          return { success: false };
-        }
+        } catch (error) { return { success: false }; }
       },
 
-      // === ЛОГИКА ПУБЛИКАЦИИ ПОСТОВ ===
       createPostAction: async (text, mediaUrls, accountIds, publishAt) => {
         try {
           const res = await fetch('/api/posts/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, mediaUrls, accountIds, publishAt })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, mediaUrls, accountIds, publishAt })
           });
           if (res.ok) return { success: true };
           return { success: false, error: 'Ошибка при публикации' };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения с сервером' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка соединения с сервером' }; }
       }
 
     }),
