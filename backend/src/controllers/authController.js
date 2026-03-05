@@ -251,46 +251,34 @@ exports.telegramAuth = async (req, res) => {
   }
 };
 
+// === ИДЕАЛЬНЫЙ БЭКЕНД: НИКАКИХ ОБМЕНОВ КОДА ===
 exports.vkAuth = async (req, res) => {
-  const { code, redirectUri, codeVerifier } = req.body;
+  const { access_token, user_id, email } = req.body;
   
   try {
-    if (!code || !codeVerifier) {
-      return res.status(400).json({ error: 'Не хватает данных для авторизации (нет code или codeVerifier)' });
+    if (!access_token || !user_id) {
+      return res.status(400).json({ error: 'Не получен токен от ВКонтакте' });
     }
 
-    // Бэкенд сам обменивает код на access_token, передавая обязательный code_verifier
-    const tokenResponse = await axios.get('https://oauth.vk.com/access_token', {
-      params: {
-        client_id: process.env.VK_APP_ID,
-        client_secret: process.env.VK_APP_SECRET,
-        redirect_uri: redirectUri,
-        code: code,
-        code_verifier: codeVerifier 
-      }
-    });
-
-    const { user_id, email, access_token } = tokenResponse.data;
-
-    if (!access_token) {
-       return res.status(400).json({ error: 'Не удалось получить токен ВК' });
-    }
-
-    // Получаем имя и фамилию
+    // Бэкенд просто проверяет валидность готового токена
     const userResponse = await axios.get('https://api.vk.com/method/users.get', {
-      params: { user_ids: user_id, access_token, v: '5.131' }
+      params: { user_ids: user_id, access_token: access_token, v: '5.131' }
     });
+
+    if (userResponse.data.error) {
+      console.error('VK API Error:', userResponse.data.error);
+      return res.status(401).json({ error: 'Недействительный токен ВКонтакте' });
+    }
 
     const vkUser = userResponse.data.response[0];
     const name = `${vkUser.first_name} ${vkUser.last_name}`;
 
-    // Пускаем пользователя в систему
     const result = await handleSocialLogin(user_id.toString(), 'vk', name, email);
     res.json(result);
 
   } catch (error) {
-    console.error('Ошибка VK Auth Backend:', error?.response?.data || error.message);
-    res.status(500).json({ error: 'Ошибка авторизации через ВКонтакте' });
+    console.error('Ошибка VK Auth Backend:', error?.message);
+    res.status(500).json({ error: 'Ошибка сервера при авторизации через ВКонтакте' });
   }
 };
 
