@@ -3,16 +3,21 @@ import { useEffect } from 'react';
 export default function CustomTelegramButton({ botId, onAuth }) {
   useEffect(() => {
     const handleTelegramMessage = (event) => {
-      // Проверяем, что сообщение пришло именно от официального сервера Telegram
       if (event.origin !== 'https://oauth.telegram.org') return;
 
       try {
         const data = JSON.parse(event.data);
         if (data && data.event === 'auth_result') {
+          // ДОБАВИЛИ ЛОГ: Теперь мы увидим в F12, если ТГ отдал данные
+          console.log('✅ Данные от Telegram успешно получены:', data.result); 
+          
+          if (window.TelegramAuthWindow) {
+            window.TelegramAuthWindow.close();
+          }
           onAuth(data.result);
         }
       } catch (e) {
-        // Игнорируем технические сообщения
+        console.error('Ошибка обработки сообщения от Telegram', e);
       }
     };
 
@@ -20,21 +25,21 @@ export default function CustomTelegramButton({ botId, onAuth }) {
     return () => window.removeEventListener('message', handleTelegramMessage);
   }, [onAuth]);
 
-  const handleLogin = () => {
-    const width = 550;
-    const height = 470;
-    const left = (window.screen.width - width) / 2;
-    const top = (window.screen.height - height) / 2;
-    
-    // Формируем ссылку на окно авторизации (работает только на HTTPS!)
-    const authUrl = `https://oauth.telegram.org/auth?bot_id=${botId}&origin=${encodeURIComponent(window.location.origin)}&embed=1&request_access=write`;
+ const handleLogin = () => {
+      const width = 550;
+      const height = 470;
+      const left = (window.screen.width - width) / 2;
+      const top = (window.screen.height - height) / 2;
+      
+      // УБРАЛИ embed=1, чтобы окно не закрывалось в панике
+      const authUrl = `https://oauth.telegram.org/auth?bot_id=${botId}&origin=${encodeURIComponent(window.location.origin)}&request_access=write`;
 
-    window.open(
-      authUrl,
-      'TelegramAuth',
-      `width=${width},height=${height},left=${left},top=${top},status=0,location=0,menubar=0,toolbar=0`
-    );
-  };
+      window.TelegramAuthWindow = window.open(
+        authUrl,
+        'TelegramAuth',
+        `width=${width},height=${height},left=${left},top=${top},status=0,location=0,menubar=0,toolbar=0`
+      );
+    };
 
   return (
     <button
