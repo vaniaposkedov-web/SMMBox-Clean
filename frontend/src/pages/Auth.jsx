@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 
-// ИМПОРТ НАШЕЙ НОВОЙ КАСТОМНОЙ КНОПКИ ТЕЛЕГРАМ
+// ИМПОРТ НАШЕЙ КАСТОМНОЙ КНОПКИ ТЕЛЕГРАМ
 import CustomTelegramButton from '../components/CustomTelegramButton';
 
 export default function Auth() {
@@ -34,83 +34,39 @@ export default function Auth() {
   const VK_APP_ID = 54471878; 
   const REDIRECT_URI = 'https://smmdeck.ru/auth';
 
-  // === ИНИЦИАЛИЗАЦИЯ VK ID (LOW-CODE) ===
+  // === 1. ПЕРЕХВАТ КОДА ОТ ВКОНТАКТЕ ===
+  // Этот useEffect сработает, когда ВК вернет пользователя на сайт
   useEffect(() => {
-    const SCRIPT_ID = 'vk-sdk-script';
-    let script = document.getElementById(SCRIPT_ID);
-
-    const initVK = () => {
-      // Проверяем объект SDK в глобальном окне
-      const VKID = window.VKIDSDK;
+    const params = new URLSearchParams(location.search);
+    const authCode = params.get('code');
+    
+    if (authCode) {
+      setIsLoading(true);
+      // Очищаем адресную строку от кода
+      window.history.replaceState({}, document.title, '/auth'); 
       
-      if (VKID) {
-        VKID.Config.init({
-          app: VK_APP_ID,
-          redirectUrl: REDIRECT_URI,
-          responseMode: VKID.ConfigResponseMode.Callback,
-          source: VKID.ConfigSource.LOWCODE,
-          scope: 'email',
-        });
-
-        const oAuth = new VKID.OAuthList();
-        const container = document.getElementById('vk-oauth-container');
-
-        if (container) {
-          container.innerHTML = ''; // Очистка перед рендером для предотвращения дублей
-          oAuth.render({
-            container: container,
-            oauthList: ['vkid'],
-            scheme: VKID.Scheme.DARK,
-            styles: {
-              height: 56,
-              borderRadius: 28
-            }
-          })
-          .on(VKID.WidgetEvents.ERROR, (err) => {
-            console.error("VK SDK ERROR:", err);
-            setError('Ошибка инициализации виджета ВКонтакте');
-          })
-          .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, (payload) => {
-            setIsLoading(true);
-            setError('');
-            
-            // Вызываем метод из store.js, передавая code и redirectUri
-            vkLogin(payload.code, REDIRECT_URI)
-              .then((result) => {
-                if (result.success) {
-                  if (result.requiresEmailVerification) {
-                    setIsVerification(true);
-                  } else {
-                    navigate('/');
-                  }
-                } else {
-                  setError(result.error || 'Ошибка входа через ВКонтакте');
-                }
-              })
-              .catch(() => setError('Ошибка связи с сервером при входе ВК'))
-              .finally(() => setIsLoading(false));
-          });
+      // Отправляем код на наш бэкенд
+      vkLogin(authCode, REDIRECT_URI).then((result) => {
+        if (result.success) {
+          if (result.requiresEmailVerification) {
+            setIsVerification(true);
+          } else {
+            navigate('/');
+          }
+        } else {
+          setError(result.error || 'Ошибка входа через ВКонтакте');
         }
-      }
-    };
-
-    if (!script) {
-      script = document.createElement('script');
-      script.id = SCRIPT_ID;
-      script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js';
-      script.async = true;
-      script.onload = initVK;
-      document.body.appendChild(script);
-    } else {
-      initVK();
+        setIsLoading(false);
+      });
     }
+  }, [location.search, vkLogin, navigate]);
 
-    return () => {
-      // При размонтировании очищаем контейнер, чтобы виджет не наслаивался
-      const container = document.getElementById('vk-oauth-container');
-      if (container) container.innerHTML = '';
-    };
-  }, [navigate, vkLogin]);
+  // === 2. ФУНКЦИЯ КЛИКА ПО КНОПКЕ ВК ===
+  // Перенаправляем на официальную страницу входа нового VK ID
+  const handleVkClick = () => {
+    const url = `https://id.vk.com/authorize?client_id=${VK_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=email`;
+    window.location.href = url;
+  };
 
   // === ОБРАБОТЧИК ТЕЛЕГРАМ ===
   const handleTelegramAuth = async (telegramData) => {
@@ -357,18 +313,19 @@ export default function Auth() {
         <div className="mt-8 pt-6 border-t border-gray-800">
           <p className="text-center text-xs text-gray-500 mb-5">Быстрый вход через соцсети</p>
           
-          <div className="flex items-center justify-center gap-8">
+          <div className="flex items-center justify-center gap-6">
             
-            {/* КРУГЛАЯ КНОПКА ВК */}
-            <div className="relative w-14 h-14 hover:scale-105 transition-all duration-300">
-              {/* SDK вставит iframe в этот div */}
-              <div 
-                id="vk-oauth-container" 
-                className="absolute inset-0 flex items-center justify-center z-20"
-              ></div>
-              {/* Синий фон-заглушка на случай медленной загрузки */}
-              <div className="absolute inset-0 bg-[#0077FF]/10 rounded-full border border-[#0077FF]/20 z-10"></div>
-            </div>
+            {/* КРУГЛАЯ КНОПКА ВК (Родная и 100% рабочая) */}
+            <button 
+              type="button" 
+              onClick={handleVkClick}
+              title="Войти через ВКонтакте"
+              className="w-14 h-14 flex items-center justify-center rounded-full bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 transition-all duration-300 shadow-lg hover:scale-105 shrink-0"
+            >
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M22.688 8.441c.148-.485.006-.841-.69-.841h-2.38c-.595 0-.882.316-1.03.664 0 0-1.211 2.945-2.922 4.85-.55.549-.8.723-1.096.723-.15 0-.369-.174-.369-.664v-4.733c0-.594-.173-.861-.669-.861h-3.66c-.367 0-.589.273-.589.527 0 .548.824.675.908 2.222v3.354c0 .753-.135.889-.431.889-.792 0-2.716-2.96-3.858-6.353-.227-.655-.453-.861-1.053-.861h-2.38c-.669 0-.805.316-.805.664 0 .626.804 3.743 3.75 7.876 1.965 2.816 4.731 4.336 7.24 4.336 1.506 0 1.693-.339 1.693-.918v-2.12c0-.687.145-.824.636-.824.368 0 1.004.184 2.482 1.62 1.69 1.693 1.969 2.463 2.862 2.463h2.38c.669 0 .972-.335.782-.993-.217-.714-1.006-1.637-2.049-2.82-.55-.636-1.373-1.309-1.625-1.66-.349-.484-.247-.698 0-1.097 0 0 2.866-4.045 3.12-5.421z"/>
+              </svg>
+            </button>
             
             {/* КРУГЛАЯ КНОПКА TELEGRAM */}
             <CustomTelegramButton 
