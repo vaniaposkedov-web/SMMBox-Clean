@@ -58,38 +58,23 @@ export default function Auth() {
     }
   }, [location.search, vkLogin, navigate]);
 
-  // === 2. ГЕНЕРАЦИЯ PKCE КЛЮЧЕЙ И РЕДИРЕКТ В ВК ===
   const handleVkClick = async () => {
-    try {
-      // 1. Создаем случайный верификатор (защита от перехвата)
-      const validChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-      let array = new Uint8Array(64);
-      window.crypto.getRandomValues(array);
-      let codeVerifier = '';
-      for (let i = 0; i < array.length; i++) {
-        codeVerifier += validChars[array[i] % validChars.length];
-      }
-      localStorage.setItem('vk_code_verifier', codeVerifier);
+    // 1. Генерируем случайный ключ (code_verifier)
+    const validChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+    let array = new Uint8Array(64);
+    window.crypto.getRandomValues(array);
+    let codeVerifier = Array.from(array, val => validChars[val % validChars.length]).join('');
+    localStorage.setItem('vk_code_verifier', codeVerifier);
 
-      // 2. Шифруем его в SHA-256 (создаем code_challenge)
-      const encoder = new TextEncoder();
-      const data = encoder.encode(codeVerifier);
-      const digest = await window.crypto.subtle.digest('SHA-256', data);
-      const base64Digest = btoa(String.fromCharCode(...new Uint8Array(digest)));
-      const codeChallenge = base64Digest.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    // 2. Хешируем его в code_challenge
+    const data = new TextEncoder().encode(codeVerifier);
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-      // 3. Создаем state
-      const state = Math.random().toString(36).substring(2, 15);
-      localStorage.setItem('vk_state', state);
-
-      // 4. Идем на официальную авторизацию ВК с правильными параметрами PKCE
-      const url = `https://id.vk.com/authorize?client_id=${VK_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=email&code_challenge=${codeChallenge}&code_challenge_method=S256&state=${state}`;
-      
-      window.location.href = url;
-    } catch (err) {
-      console.error('Ошибка криптографии:', err);
-      setError('Ваш браузер не поддерживает безопасный вход');
-    }
+    // 3. Перенаправляем пользователя с нужными параметрами защиты
+    const url = `https://id.vk.com/authorize?client_id=${VK_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=email&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+    window.location.href = url;
   };
 
   const handleTelegramAuth = async (telegramData) => {
