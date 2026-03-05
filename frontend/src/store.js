@@ -136,12 +136,12 @@ export const useStore = create(
         }
       },
 
-      verifyEmailLink: async (userId, email, code) => {
+      verifyEmailLink: async (userId, email, code, phone) => { // <-- Добавили phone сюда
         try {
           const res = await fetch('/api/auth/verify-link-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, email, code }),
+            body: JSON.stringify({ userId, email, code, phone }), // <-- Отправляем phone на сервер
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };

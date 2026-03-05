@@ -21,14 +21,16 @@ export default function Profile() {
   const [isSaving, setIsSaving] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
   
-  // Данные формы
+  // Данные формы профиля
   const [name, setName] = useState(user?.name || '');
   const [pavilion, setPavilion] = useState(user?.pavilion || '');
+  const [phone, setPhone] = useState(user?.phone || ''); 
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(user?.avatarUrl || null);
 
-  // Состояния для привязки Email
+  // Состояния для привязки Email/Телефона (Умная плашка)
   const [realEmail, setRealEmail] = useState('');
+  const [realPhone, setRealPhone] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [isCodeSent, setIsCodeSent] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
@@ -48,9 +50,11 @@ export default function Profile() {
     { id: 2, text: 'Скидки 50% на весь ассортимент...', status: 'scheduled', date: 'Завтра, 10:00', network: 'VK' },
     { id: 3, text: 'Обзор новинок этой недели...', status: 'error', date: 'Вчера, 18:00', network: 'TG' },
   ];
-  // ======================
 
   if (!user) return null;
+
+  // Главная проверка: Уязвим ли аккаунт? (Техническая почта или нет телефона)
+  const isVulnerable = user?.email?.includes('.local') || !user?.phone;
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -74,6 +78,7 @@ export default function Profile() {
     formData.append('userId', user.id);
     formData.append('name', name);
     formData.append('pavilion', pavilion);
+    formData.append('phone', phone);
     if (avatarFile) formData.append('avatar', avatarFile);
 
     const result = await updateUser(formData);
@@ -90,6 +95,7 @@ export default function Profile() {
     setIsEditing(false);
     setName(user?.name || '');
     setPavilion(user?.pavilion || '');
+    setPhone(user?.phone || '');
     setAvatarFile(null);
     setPreviewUrl(user?.avatarUrl || null);
   };
@@ -102,7 +108,7 @@ export default function Profile() {
     alert(`Ссылка на пост #${postId} скопирована для партнеров!`);
   };
 
-  // === ЛОГИКА ОТПРАВКИ И ПРОВЕРКИ КОДА НА ПОЧТУ ===
+  // === ЛОГИКА ОТПРАВКИ И ПРОВЕРКИ ДАННЫХ ===
   const handleRequestCode = async (e) => {
     e.preventDefault();
     setIsLinking(true);
@@ -120,11 +126,14 @@ export default function Profile() {
     e.preventDefault();
     setIsLinking(true);
     setLinkError('');
-    const res = await verifyEmailLink(user.id, realEmail, verifyCode);
+    // Отправляем на проверку код, почту и телефон
+    const res = await verifyEmailLink(user.id, realEmail, verifyCode, realPhone);
     if (res.success) {
-      useStore.setState({ user: { ...user, email: realEmail } });
+      // Мгновенно обновляем стейт, чтобы плашка пропала
+      useStore.setState({ user: { ...user, email: realEmail, phone: realPhone || user.phone } });
       setIsCodeSent(false);
       setRealEmail('');
+      setRealPhone('');
       setVerifyCode('');
     } else {
       setLinkError(res.error || 'Неверный код подтверждения');
@@ -132,11 +141,10 @@ export default function Profile() {
     setIsLinking(false);
   };
 
-  // Определяем способ регистрации
   const getRegMethod = () => {
     if (user?.telegramId) return 'Telegram';
     if (user?.vkId) return 'ВКонтакте';
-    return 'Почта / Пароль';
+    return 'Почта';
   };
 
   const StatusBadge = ({ status }) => {
@@ -162,8 +170,8 @@ export default function Profile() {
   return (
     <div className="min-h-[100dvh] bg-admin-bg p-4 sm:p-8 pb-24 md:pb-8 font-sans">
       
-      {/* ПЛАШКА ПРИВЯЗКИ EMAIL ДЛЯ ТЕЛЕГРАМ-ЮЗЕРОВ */}
-      {user?.email?.includes('@telegram.local') && (
+      {/* === УМНАЯ ПЛАШКА ЗАПРОСА ДАННЫХ === */}
+      {isVulnerable && (
         <div className="bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/30 rounded-3xl p-5 sm:p-6 mb-6 shadow-xl relative overflow-hidden">
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative z-10">
             <div className="flex items-start gap-4">
@@ -171,35 +179,48 @@ export default function Profile() {
                 <AlertCircle size={28} />
               </div>
               <div>
-                <h3 className="text-white font-bold text-lg mb-1">Ваш аккаунт уязвим!</h3>
-                <p className="text-gray-400 text-sm">Привяжите реальную почту для восстановления пароля и получения уведомлений.</p>
+                <h3 className="text-white font-bold text-lg mb-1">Заполните профиль!</h3>
+                <p className="text-gray-400 text-sm">Для полноценной работы укажите настоящую почту и номер телефона.</p>
               </div>
             </div>
             
             {!isCodeSent ? (
               <form onSubmit={handleRequestCode} className="flex flex-col sm:flex-row w-full lg:w-auto gap-3 shrink-0 mt-2 lg:mt-0">
-                <div className="relative flex-1 sm:w-64">
+                <div className="relative">
                   <input 
                     type="email" 
                     value={realEmail}
                     onChange={(e) => setRealEmail(e.target.value)}
-                    placeholder="Ваш реальный Email" 
+                    placeholder="Укажите Email" 
                     required
-                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-red-500 outline-none transition-all"
+                    className="w-full sm:w-48 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-red-500 transition-colors"
                   />
-                  {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0">{linkError}</p>}
+                  {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0 w-max">{linkError}</p>}
                 </div>
+                
+                {/* Запрашиваем телефон, только если его нет в базе */}
+                {!user?.phone && (
+                   <input 
+                     type="tel" 
+                     value={realPhone}
+                     onChange={(e) => setRealPhone(e.target.value)}
+                     placeholder="Номер телефона" 
+                     required 
+                     className="w-full sm:w-48 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-red-500 transition-colors"
+                   />
+                )}
+                
                 <button 
                   type="submit" 
                   disabled={isLinking}
                   className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0"
                 >
-                  {isLinking ? 'Отправка...' : 'Получить код'}
+                  {isLinking ? 'Отправка...' : 'Подтвердить'}
                 </button>
               </form>
             ) : (
               <form onSubmit={handleVerifyCode} className="flex flex-col sm:flex-row w-full lg:w-auto gap-3 shrink-0 mt-2 lg:mt-0">
-                <div className="relative flex-1 sm:w-64">
+                <div className="relative">
                   <input 
                     type="text" 
                     maxLength="6"
@@ -207,16 +228,16 @@ export default function Profile() {
                     onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
                     placeholder="Код из письма" 
                     required
-                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm text-center tracking-widest focus:border-green-500 outline-none transition-all"
+                    className="w-full sm:w-36 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm text-center tracking-widest outline-none focus:border-green-500 transition-colors"
                   />
-                  {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0">{linkError}</p>}
+                  {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0 w-max">{linkError}</p>}
                 </div>
                 <button 
                   type="submit" 
                   disabled={isLinking || verifyCode.length !== 6}
                   className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0"
                 >
-                  {isLinking ? 'Проверка...' : 'Подтвердить'}
+                  {isLinking ? 'Проверка...' : 'Завершить'}
                 </button>
                 <button 
                   type="button" 
@@ -256,21 +277,25 @@ export default function Profile() {
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 max-w-xl mx-auto sm:mx-0 bg-gray-900/50 p-4 rounded-2xl border border-gray-800/50">
             <p className="text-gray-400 text-sm flex items-center gap-2">
-              <Mail size={14} className="text-gray-500" /> 
-              <span className="text-gray-300">{user.email}</span>
+              <Mail size={14} className="text-gray-500 shrink-0" /> 
+              <span className={`truncate ${user.email.includes('.local') ? "text-red-400 font-medium" : "text-gray-300"}`}>
+                {user.email.includes('.local') ? 'Не указан' : user.email}
+              </span>
             </p>
             <p className="text-gray-400 text-sm flex items-center gap-2">
-              <Phone size={14} className="text-gray-500" /> 
-              <span className="text-gray-300">{user.phone || 'Не указан'}</span>
+              <Phone size={14} className="text-gray-500 shrink-0" /> 
+              <span className={!user.phone ? "text-red-400 font-medium" : "text-gray-300"}>
+                {user.phone || 'Не указан'}
+              </span>
             </p>
             <p className="text-gray-400 text-sm flex items-center gap-2">
-              <Key size={14} className="text-gray-500" /> 
+              <Key size={14} className="text-gray-500 shrink-0" /> 
               <span className="text-gray-300">Вход через {getRegMethod()}</span>
             </p>
             <p className="text-gray-400 text-sm flex items-center gap-2">
-              <Hash size={14} className="text-gray-500" /> 
-              <span className="text-gray-300">ID: {user.id}</span>
-              <button onClick={handleCopyId} className="ml-1 hover:text-white transition-colors">
+              <Hash size={14} className="text-gray-500 shrink-0" /> 
+              <span className="text-gray-300 truncate">ID: {user.id}</span>
+              <button onClick={handleCopyId} className="ml-1 hover:text-white transition-colors shrink-0">
                 {copiedId ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
               </button>
             </p>
@@ -433,6 +458,10 @@ export default function Profile() {
                 <div>
                   <label className="text-xs text-gray-500 mb-1.5 block font-medium uppercase tracking-wider">Рабочий Павильон</label>
                   <input type="text" value={pavilion} onChange={(e) => {setPavilion(e.target.value); setIsEditing(true);}} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-blue-500 outline-none transition-all" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1.5 block font-medium uppercase tracking-wider">Номер телефона</label>
+                  <input type="tel" value={phone} onChange={(e) => {setPhone(e.target.value); setIsEditing(true);}} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-blue-500 outline-none transition-all" />
                 </div>
                 
                 {isEditing && (

@@ -9,6 +9,8 @@ const nodemailer = require('nodemailer');
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-dev';
+
+// Универсальный генератор красивых 10-значных ID
 const generate10DigitId = () => Math.floor(1000000000 + Math.random() * 9000000000).toString();
 
 const transporter = nodemailer.createTransport({
@@ -169,14 +171,14 @@ exports.resetPassword = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   const userId = req.user.userId;
-  const { name, pavilion } = req.body;
+  const { name, pavilion, phone } = req.body;
   let avatarUrl = undefined;
   if (req.file) avatarUrl = `http://localhost:5000/uploads/${req.file.filename}`;
 
   try {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: { name, pavilion, ...(avatarUrl && { avatarUrl }) }
+      data: { name, pavilion, phone, ...(avatarUrl && { avatarUrl }) }
     });
     const { password: _, ...userWithoutPassword } = updatedUser;
     res.json({ success: true, user: userWithoutPassword });
@@ -185,38 +187,92 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
-const handleSocialLogin = async (socialId, provider, name, emailFromProvider = null) => {
+// ==========================================
+// УМНОЕ СЛИЯНИЕ АККАУНТОВ СОЦСЕТЕЙ
+// ==========================================
+const handleSocialLogin = async (socialId, provider, name, emailFromProvider = null, avatarUrl = null) => {
   let user = await prisma.user.findFirst({
     where: provider === 'vk' ? { vkId: socialId } : { telegramId: socialId }
   });
 
+  if (!user && emailFromProvider) {
+    user = await prisma.user.findUnique({ where: { email: emailFromProvider } });
+    if (user) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          ...(provider === 'vk' ? { vkId: socialId } : { telegramId: socialId }),
+          avatarUrl: user.avatarUrl || avatarUrl
+        }
+      });
+    }
+  }
+
   if (!user) {
-    const numericId = Math.floor(10000000 + Math.random() * 90000000).toString();
+    const fakeEmail = `${socialId}@${provider}.local`;
+    const finalEmail = emailFromProvider || fakeEmail;
+
     user = await prisma.user.create({
       data: {
-        id: numericId,
+        id: generate10DigitId(),
         vkId: provider === 'vk' ? socialId : null,
         telegramId: provider === 'telegram' ? socialId : null,
         name: name,
-        email: emailFromProvider || `temp_${socialId}@smmbox.local`, 
-        isEmailVerified: false
+        email: finalEmail,
+        isEmailVerified: !!emailFromProvider,
+        avatarUrl: avatarUrl || null,
+        password: await bcrypt.hash(crypto.randomBytes(10).toString('hex'), 10), 
       }
     });
   }
 
-  if (!user.isEmailVerified || user.email.includes('@smmbox.local')) {
-    return { success: true, requiresEmailVerification: true, userId: user.id };
-  }
-
   const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
   const { password: _, ...userWithoutPassword } = user;
+  
   return { success: true, user: userWithoutPassword, token };
 };
 
+// ==========================================
+// АВТОРИЗАЦИЯ ВКОНТАКТЕ
+// ==========================================
+exports.vkAuth = async (req, res) => {
+  const { access_token, user_id, email } = req.body;
+  try {
+    if (!access_token || !user_id) return res.status(400).json({ error: 'Нет токена ВК' });
+
+    const serviceToken = process.env.VK_SERVICE_TOKEN;
+    if (!serviceToken) return res.status(500).json({ error: 'Ошибка настройки сервера ВК (VK_SERVICE_TOKEN)' });
+
+    const checkResponse = await axios.get('https://api.vk.com/method/secure.checkToken', {
+      params: { token: access_token, access_token: serviceToken, v: '5.199' }
+    });
+
+    if (checkResponse.data.error || checkResponse.data.response.success !== 1 || checkResponse.data.response.user_id.toString() !== user_id.toString()) {
+      return res.status(401).json({ error: 'Токен ВКонтакте недействителен' });
+    }
+
+    const userResponse = await axios.get('https://api.vk.com/method/users.get', {
+      params: { user_ids: user_id, access_token: serviceToken, fields: 'photo_200', v: '5.199' }
+    });
+
+    const vkUser = userResponse.data.response[0];
+    const name = `${vkUser.first_name} ${vkUser.last_name}`;
+    const avatarUrl = vkUser.photo_200 || null;
+
+    const result = await handleSocialLogin(user_id.toString(), 'vk', name, email, avatarUrl);
+    res.json(result);
+  } catch (error) {
+    console.error('Ошибка ВК:', error);
+    res.status(500).json({ error: 'Ошибка сервера при авторизации ВК' });
+  }
+};
+
+// ==========================================
+// АВТОРИЗАЦИЯ TELEGRAM
+// ==========================================
 exports.telegramAuth = async (req, res) => {
   try {
-    const telegramData = req.body;
-    const { hash, ...userData } = telegramData;
+    const { hash, ...userData } = req.body;
     const secretKey = crypto.createHash('sha256').update(process.env.TELEGRAM_BOT_TOKEN).digest();
     
     const dataCheckString = Object.keys(userData).sort().map(key => `${key}=${userData[key]}`).join('\n');
@@ -228,117 +284,29 @@ exports.telegramAuth = async (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     if (now - authDate > 86400) return res.status(401).json({ error: 'Данные авторизации устарели' });
 
-    let user = await prisma.user.findFirst({
-      where: { telegramId: userData.id.toString() }
-    });
+    const name = userData.first_name + (userData.last_name ? ` ${userData.last_name}` : '');
+    const avatarUrl = userData.photo_url || null;
 
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          telegramId: userData.id.toString(),
-          name: userData.first_name + (userData.last_name ? ` ${userData.last_name}` : ''),
-          email: `${userData.id}@telegram.local`, 
-          password: await bcrypt.hash(crypto.randomBytes(10).toString('hex'), 10), 
-        }
-      });
-    }
-
-    const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.status(200).json({ token, user: { id: user.id, name: user.name, email: user.email } });
+    const result = await handleSocialLogin(userData.id.toString(), 'telegram', name, null, avatarUrl);
+    res.status(200).json({ token: result.token, user: result.user });
   } catch (error) {
-    console.error('Ошибка Telegram авторизации:', error);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    console.error('Ошибка Telegram:', error);
+    res.status(500).json({ error: 'Ошибка сервера Telegram' });
   }
 };
 
-// === ПРАВИЛЬНЫЙ БЭКЕНД: ПРОВЕРКА ЧЕРЕЗ СЕРВИСНЫЙ КЛЮЧ (БЕЗ БЛОКИРОВКИ ПО IP) ===
-exports.vkAuth = async (req, res) => {
-  const { access_token, user_id, email } = req.body;
-  
-  try {
-    if (!access_token || !user_id) {
-      return res.status(400).json({ error: 'Не получен токен от ВКонтакте' });
-    }
-
-    const serviceToken = process.env.VK_SERVICE_TOKEN;
-    if (!serviceToken) {
-      console.error('КРИТИЧЕСКАЯ ОШИБКА: Не задан VK_SERVICE_TOKEN в .env');
-      return res.status(500).json({ error: 'Ошибка настройки сервера ВК' });
-    }
-
-    // 1. Проверяем подлинность токена клиента через специальный безопасный метод
-    const checkResponse = await axios.get('https://api.vk.com/method/secure.checkToken', {
-      params: {
-        token: access_token,
-        access_token: serviceToken, // Запрос подписывается серверным ключом!
-        v: '5.199'
-      }
-    });
-
-    // Если токен поддельный или не принадлежит этому пользователю — отбрасываем
-    if (checkResponse.data.error || checkResponse.data.response.success !== 1 || checkResponse.data.response.user_id.toString() !== user_id.toString()) {
-      console.error('VK Token Verification Error:', checkResponse.data.error);
-      return res.status(401).json({ error: 'Токен ВКонтакте не прошел проверку подлинности.' });
-    }
-
-    // 2. Получаем профиль пользователя (Сервисный ключ игнорирует блокировки по IP)
-    const userResponse = await axios.get('https://api.vk.com/method/users.get', {
-      params: {
-        user_ids: user_id,
-        access_token: serviceToken, // Запрашиваем имя от лица сервера
-        v: '5.199'
-      }
-    });
-
-    if (userResponse.data.error) {
-      console.error('VK Users Get Error:', userResponse.data.error);
-      return res.status(401).json({ error: 'Не удалось получить профиль пользователя ВКонтакте.' });
-    }
-
-    const vkUser = userResponse.data.response[0];
-    const name = `${vkUser.first_name} ${vkUser.last_name}`;
-
-    // 3. Авторизуем или регистрируем пользователя в базе
-    const result = await handleSocialLogin(user_id.toString(), 'vk', name, email);
-    res.json(result);
-
-  } catch (error) {
-    console.error('Ошибка VK Auth Backend:', error?.message);
-    res.status(500).json({ error: 'Ошибка сервера при авторизации через ВКонтакте' });
-  }
-};
-
-exports.linkEmailAndSendCode = async (req, res) => {
-  const { userId, email } = req.body;
-  try {
-    const existingEmail = await prisma.user.findFirst({ where: { email } });
-    if (existingEmail && existingEmail.id !== userId) return res.status(400).json({ error: 'Этот Email уже привязан к другому аккаунту' });
-
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const verificationExpires = new Date(Date.now() + 15 * 60 * 1000);
-
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: { email: email, emailVerificationCode: verificationCode, emailVerificationExpires: verificationExpires }
-    });
-
-    await sendEmail({
-      email: user.email,
-      subject: '🔐 Привязка Email к SMMBOXSS',
-      message: `Ваш код для подтверждения почты: ${verificationCode}. Код действителен 15 минут.`
-    });
-
-    res.json({ success: true, message: 'Код подтверждения отправлен на почту' });
-  } catch (error) {
-    console.error('Ошибка привязки email:', error);
-    res.status(500).json({ error: 'Ошибка сервера при привязке Email' });
-  }
-};
-
+// ==========================================
+// ПРИВЯЗКА ПОЧТЫ И ТЕЛЕФОНА
+// ==========================================
 exports.requestLinkEmail = async (req, res) => {
   try {
     const { userId, email } = req.body;
     const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    const existingEmail = await prisma.user.findUnique({ where: { email } });
+    if (existingEmail && existingEmail.id !== userId) {
+      return res.status(400).json({ error: 'Этот Email уже привязан к другому аккаунту' });
+    }
 
     await prisma.user.update({
       where: { id: userId },
@@ -348,15 +316,14 @@ exports.requestLinkEmail = async (req, res) => {
     const mailOptions = {
       from: `"SMMBOX" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: 'Привязка почты к аккаунту SMMBOX',
+      subject: 'Привязка данных к профилю',
       html: `
         <div style="font-family: sans-serif; padding: 20px; text-align: center;">
           <h2>Здравствуйте!</h2>
-          <p>Для привязки этого адреса электронной почты к вашему аккаунту введите следующий код:</p>
+          <p>Для подтверждения данных введите следующий код:</p>
           <div style="background-color: #f3f4f6; padding: 15px; border-radius: 10px; display: inline-block; margin: 20px 0;">
             <h1 style="color: #2563eb; letter-spacing: 5px; margin: 0;">${code}</h1>
           </div>
-          <p style="color: #6b7280; font-size: 12px;">Если вы не запрашивали этот код, просто проигнорируйте письмо.</p>
         </div>
       `,
     };
@@ -371,19 +338,47 @@ exports.requestLinkEmail = async (req, res) => {
 
 exports.verifyLinkEmail = async (req, res) => {
   try {
-    const { userId, email, code } = req.body;
+    const { userId, email, code, phone } = req.body;
     const user = await prisma.user.findUnique({ where: { id: userId } });
+    
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
     if (user.verificationCode !== code) return res.status(400).json({ error: 'Неверный код подтверждения' });
 
+    if (phone) {
+      const existingPhone = await prisma.user.findUnique({ where: { phone } });
+      if (existingPhone && existingPhone.id !== userId) {
+        return res.status(400).json({ error: 'Этот номер телефона уже зарегистрирован' });
+      }
+    }
+
     await prisma.user.update({
       where: { id: userId },
-      data: { email: email, verificationCode: null },
+      data: { 
+        email: email, 
+        phone: phone || user.phone,
+        verificationCode: null,
+        isEmailVerified: true
+      },
     });
 
-    res.status(200).json({ success: true, message: 'Почта успешно привязана!' });
+    res.status(200).json({ success: true, message: 'Данные успешно сохранены!' });
   } catch (error) {
-    console.error('Ошибка проверки кода привязки:', error);
+    console.error('Ошибка сохранения данных:', error);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+};
+
+// Старая функция (на всякий случай оставим, чтобы не сломать роуты, если они где-то используются)
+exports.linkEmailAndSendCode = async (req, res) => {
+  const { userId, email } = req.body;
+  try {
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    await prisma.user.update({
+      where: { id: userId },
+      data: { email: email, emailVerificationCode: verificationCode, emailVerificationExpires: new Date(Date.now() + 15 * 60 * 1000) }
+    });
+    res.json({ success: true, message: 'Код отправлен' });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
