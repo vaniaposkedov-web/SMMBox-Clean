@@ -34,19 +34,23 @@ export default function Auth() {
   const VK_APP_ID = 54471878; 
   const REDIRECT_URI = 'https://smmdeck.ru/auth';
 
-  // === 1. ПЕРЕХВАТ КОДА ОТ ВКОНТАКТЕ ===
-  // Этот useEffect сработает, когда ВК вернет пользователя на сайт
+  // === 1. ИНИЦИАЛИЗАЦИЯ SDK И ПЕРЕХВАТ КОДА ОТ ВКОНТАКТЕ ===
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const authCode = params.get('code');
-    
-    if (authCode) {
+    const processCode = async (authCode, deviceId, VKID) => {
       setIsLoading(true);
-      // Очищаем адресную строку от кода
-      window.history.replaceState({}, document.title, '/auth'); 
+      window.history.replaceState({}, document.title, '/auth'); // Очищаем URL
       
-      // Отправляем код на наш бэкенд
-      vkLogin(authCode, REDIRECT_URI).then((result) => {
+      try {
+        // SDK сам применяет PKCE-ключи и обменивает код на токен
+        const data = await VKID.Auth.exchangeCode(authCode, deviceId);
+        
+        // Передаем готовый токен на наш бэкенд
+        const result = await vkLogin({
+          access_token: data.access_token,
+          user_id: data.user_id,
+          email: data.email || null
+        });
+        
         if (result.success) {
           if (result.requiresEmailVerification) {
             setIsVerification(true);
@@ -56,16 +60,63 @@ export default function Auth() {
         } else {
           setError(result.error || 'Ошибка входа через ВКонтакте');
         }
+      } catch(err) {
+        console.error('VK Exchange Error:', err);
+        setError('Ошибка обмена токена ВК. Попробуйте снова.');
+      } finally {
         setIsLoading(false);
-      });
+      }
+    };
+
+    const initSDK = () => {
+      const VKID = window.VKIDSDK;
+      if (VKID) {
+        VKID.Config.init({
+          app: VK_APP_ID,
+          redirectUrl: REDIRECT_URI,
+          responseMode: VKID.ConfigResponseMode.Redirect, // Заставляем ВК делать редирект для получения PKCE
+          scope: 'email'
+        });
+
+        // Проверяем, вернулся ли пользователь от ВК с ключами в URL
+        const params = new URLSearchParams(location.search);
+        
+        const payloadStr = params.get('payload');
+        if (payloadStr) {
+          try {
+            const payload = JSON.parse(payloadStr);
+            if (payload.code && payload.device_id) {
+              processCode(payload.code, payload.device_id, VKID);
+            }
+          } catch(e) {
+            console.error('Ошибка парсинга payload ВК:', e);
+          }
+        } else if (params.get('code') && params.get('device_id')) {
+          processCode(params.get('code'), params.get('device_id'), VKID);
+        }
+      }
+    };
+
+    if (!document.getElementById('vk-sdk-script')) {
+      const script = document.createElement('script');
+      script.id = 'vk-sdk-script';
+      script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js';
+      script.async = true;
+      script.onload = initSDK;
+      document.body.appendChild(script);
+    } else {
+      initSDK();
     }
-  }, [location.search, vkLogin, navigate]);
+  }, [location.search, navigate, vkLogin]);
 
   // === 2. ФУНКЦИЯ КЛИКА ПО КНОПКЕ ВК ===
-  // Перенаправляем на официальную страницу входа нового VK ID
   const handleVkClick = () => {
-    const url = `https://id.vk.com/authorize?client_id=${VK_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=email`;
-    window.location.href = url;
+    if (window.VKIDSDK) {
+      const auth = new window.VKIDSDK.Auth();
+      auth.login(); // Автоматически перенаправляет с правильным code_challenge
+    } else {
+      setError("Модуль ВКонтакте еще загружается...");
+    }
   };
 
   // === ОБРАБОТЧИК ТЕЛЕГРАМ ===
