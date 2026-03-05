@@ -10,6 +10,7 @@ export default function Auth() {
   const login = useStore((state) => state.login);
   const register = useStore((state) => state.register);
   const telegramLogin = useStore((state) => state.telegramLogin);
+  const vkLogin = useStore((state) => state.vkLogin); // Оставили одно объявление
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -21,20 +22,15 @@ export default function Auth() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState(''); 
   const [code, setCode] = useState(''); 
-  const vkLogin = useStore((state) => state.vkLogin);
 
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isAccepted, setIsAccepted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // === ЛОГИКА ВКОНТАКТЕ ===
-  const VK_APP_ID = '54471878'; // Вставили новый ID
+  // === КОНСТАНТЫ ВК ===
+  const VK_APP_ID = 54471878; 
   const REDIRECT_URI = 'https://smmdeck.ru/auth';
-
-  const handleVkClick = () => {
-    window.location.href = `https://oauth.vk.com/authorize?client_id=${VK_APP_ID}&display=page&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=email&response_type=code`;
-  };
 
   // === ЛОГИКА TELEGRAM ===
   const handleTelegramAuth = async (telegramData) => {
@@ -50,23 +46,23 @@ export default function Auth() {
     setIsLoading(false);
   };
 
-useEffect(() => {
-    console.log("VK SDK: Попытка загрузки..."); // ЛОГ 1
+  // === ИНИЦИАЛИЗАЦИЯ VK ID (LOW-CODE) ===
+  useEffect(() => {
+    console.log("VK SDK: Попытка загрузки...");
     
     const script = document.createElement('script');
     script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js';
     script.async = true;
+    script.id = 'vk-sdk-script';
     document.body.appendChild(script);
 
     script.onload = () => {
-      console.log("VK SDK: Скрипт загружен"); // ЛОГ 2
       if ('VKIDSDK' in window) {
         const VKID = window.VKIDSDK;
-        console.log("VK SDK: Обьект найден, инициализация..."); // ЛОГ 3
-
+        
         VKID.Config.init({
-          app: 54471878, // Твой новый ID
-          redirectUrl: 'https://smmdeck.ru/auth',
+          app: VK_APP_ID,
+          redirectUrl: REDIRECT_URI,
           responseMode: VKID.ConfigResponseMode.Callback,
           source: VKID.ConfigSource.LOWCODE,
           scope: 'email',
@@ -76,7 +72,7 @@ useEffect(() => {
         const container = document.getElementById('vk-oauth-container');
 
         if (container) {
-          console.log("VK SDK: Контейнер найден, рендер..."); // ЛОГ 4
+          container.innerHTML = ''; // Очистка перед рендером
           oAuth.render({
             container: container,
             oauthList: ['vkid'],
@@ -88,15 +84,16 @@ useEffect(() => {
           })
           .on(VKID.WidgetEvents.ERROR, (err) => {
             console.error("VK SDK ERROR:", err);
-            setError("Ошибка виджета ВК");
           })
           .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, (payload) => {
             setIsLoading(true);
+            // Обмениваем код через SDK и отправляем в store
             VKID.Auth.exchangeCode(payload.code, payload.device_id)
               .then(async (data) => {
-                const result = await vkLogin(data);
+                // Передаем данные в vkLogin (код и редирект для твоего бэкенда)
+                const result = await vkLogin(payload.code, REDIRECT_URI); 
                 if (result.success) navigate('/');
-                else setError(result.error);
+                else setError(result.error || 'Ошибка входа ВК');
                 setIsLoading(false);
               })
               .catch(err => {
@@ -104,24 +101,15 @@ useEffect(() => {
                 setIsLoading(false);
               });
           });
-        } else {
-          console.error("VK SDK: Контейнер #vk-oauth-container НЕ НАЙДЕН в DOM");
         }
       }
     };
 
     return () => {
-      if (document.body.contains(script)) document.body.removeChild(script);
+      const existingScript = document.getElementById('vk-sdk-script');
+      if (existingScript) document.body.removeChild(existingScript);
     };
   }, [navigate, vkLogin]);
-
-  const handleTelegramAuth = async (telegramData) => {
-    setIsLoading(true);
-    const result = await telegramLogin(telegramData);
-    if (result.success) navigate('/');
-    else setError(result.error || 'Ошибка Telegram');
-    setIsLoading(false);
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -160,7 +148,7 @@ useEffect(() => {
       if (!res.ok) {
         setError(data.error || 'Ошибка проверки кода');
       } else {
-        useStore.setState({ user: data.user, token: data.token, isAuthenticated: true });
+        useStore.setState({ user: data.user, token: data.token });
         localStorage.setItem('token', data.token);
         navigate('/'); 
       }
@@ -188,7 +176,7 @@ useEffect(() => {
               maxLength="6"
               value={code} 
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} 
-              placeholder="Введите код (например 123456)" 
+              placeholder="000000" 
               required 
               className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-4 text-center text-xl tracking-widest outline-none focus:border-blue-500 transition-colors" 
             />
@@ -214,7 +202,6 @@ useEffect(() => {
     );
   }
 
-  // === ОСНОВНОЙ ИНТЕРФЕЙС ===
   return (
     <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-blue-500/10 blur-[100px] sm:blur-[120px] rounded-full pointer-events-none"></div>
@@ -245,7 +232,6 @@ useEffect(() => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
-          
           {!isLogin && (
             <>
               <div className="relative">
@@ -305,16 +291,14 @@ useEffect(() => {
 
           {!isLogin && (
             <div className="flex items-start gap-3 mt-4 p-3 bg-gray-900/60 rounded-xl border border-gray-800">
-              <div className="flex items-center h-5 mt-0.5">
-                <input 
-                  type="checkbox" 
-                  id="privacy"
-                  checked={isAccepted}
-                  onChange={(e) => setIsAccepted(e.target.checked)}
-                  className="w-5 h-5 accent-blue-500"
-                  required
-                />
-              </div>
+              <input 
+                type="checkbox" 
+                id="privacy"
+                checked={isAccepted}
+                onChange={(e) => setIsAccepted(e.target.checked)}
+                className="w-5 h-5 accent-blue-500 mt-0.5"
+                required
+              />
               <label htmlFor="privacy" className="text-xs text-gray-400 cursor-pointer select-none">
                 Я согласен(на) с{' '}
                 <Link to="/privacy" target="_blank" className="text-blue-500 hover:text-blue-400 underline">
@@ -347,32 +331,24 @@ useEffect(() => {
           </button>
         </form>
 
-        {/* === БЛОК СОЦСЕТЕЙ: КРУГЛЫЕ КНОПКИ === */}
         <div className="mt-8 pt-6 border-t border-gray-800">
           <p className="text-center text-xs text-gray-500 mb-5">Быстрый вход через соцсети</p>
           
           <div className="flex items-center justify-center gap-6">
+            {/* КРУГЛАЯ КНОПКА ВК (ИСПРАВЛЕНО) */}
+            <div 
+              id="vk-oauth-container" 
+              className="w-14 h-14 shrink-0 rounded-full flex items-center justify-center bg-gray-900 border border-gray-800 hover:scale-105 transition-all cursor-pointer"
+            >
+              {/* SDK вставит iframe сюда */}
+            </div>
             
-            {/* КРУГЛАЯ КНОПКА ВК */}
-              <div className="flex flex-col items-center gap-2">
-                <div 
-                  id="vk-oauth-container" 
-                  className="w-14 h-14 shrink-0 flex items-center justify-center bg-[#0077FF]/10 rounded-full hover:scale-105 transition-all cursor-pointer"
-                >
-                  {/* Сюда SDK вставит iframe */}
-                </div>
-              </div>
-            
-            {/* КРУГЛАЯ КНОПКА TELEGRAM */}
-            {/* ВАЖНО: ЗАМЕНИ botId НА ЦИФРЫ ИЗ СВОЕГО ТОКЕНА */}
             <CustomTelegramButton 
               botId="8750764796" 
               onAuth={handleTelegramAuth} 
             />
-
           </div>
         </div>
-
       </div>
     </div>
   );
