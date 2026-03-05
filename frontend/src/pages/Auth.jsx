@@ -1,9 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-
-// ИМПОРТ НАШЕЙ КАСТОМНОЙ КНОПКИ ТЕЛЕГРАМ
 import CustomTelegramButton from '../components/CustomTelegramButton';
 
 export default function Auth() {
@@ -15,82 +13,72 @@ export default function Auth() {
   const location = useLocation();
 
   const [isLogin, setIsLogin] = useState(true);
-  const [isVerification, setIsVerification] = useState(false); 
+  const [isVerification, setIsVerification] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const isProcessingCode = useRef(false);
   const [error, setError] = useState('');
   const [isAccepted, setIsAccepted] = useState(false);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState(''); 
-  const [code, setCode] = useState(''); 
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
 
-  const VK_APP_ID = 54471878; 
+  const VK_APP_ID = 54471878;
   const REDIRECT_URI = 'https://smmdeck.ru/auth';
 
-  // === 1. ПЕРЕХВАТ КОДА ОТ ВКОНТАКТЕ ===
-// === 1. ПЕРЕХВАТ КОДА ОТ ВКОНТАКТЕ ===
-useEffect(() => {
-  const params = new URLSearchParams(location.search);
-  const authCode = params.get('code');
-
-  // Если код есть И мы его еще не начали обрабатывать
-  if (authCode && !isProcessingCode.current) {
-    isProcessingCode.current = true; // Ставим жесткую блокировку от дублей!
-    setIsLoading(true);
-
-    // Стираем код из адресной строки браузера
-    window.history.replaceState({}, document.title, '/auth'); 
-
-    const codeVerifier = localStorage.getItem('vk_code_verifier');
-
-    vkLogin({
-      code: authCode,
-      redirectUri: REDIRECT_URI,
-      codeVerifier: codeVerifier
-    }).then((result) => {
-      if (result.success) {
-        if (result.requiresEmailVerification) setIsVerification(true);
-        else navigate('/');
-      } else {
-        setError(result.error || 'Ошибка входа через ВКонтакте');
-      }
-      setIsLoading(false);
-      localStorage.removeItem('vk_code_verifier');
-    });
-  }
-}, [location.search, vkLogin, navigate]);
-  // === 2. РОДНАЯ КНОПКА ВК (100% КЛИКАБЕЛЬНАЯ) ===
-  const handleVkClick = async () => {
-    try {
-      const validChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-      let array = new Uint8Array(64);
-      window.crypto.getRandomValues(array);
-      let codeVerifier = Array.from(array, val => validChars[val % validChars.length]).join('');
-      localStorage.setItem('vk_code_verifier', codeVerifier);
-
-      const data = new TextEncoder().encode(codeVerifier);
-      const digest = await window.crypto.subtle.digest('SHA-256', data);
-      const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-      const url = `https://id.vk.com/authorize?client_id=${VK_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=email&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+  // === 1. ПЕРЕХВАТ ГОТОВОГО ТОКЕНА ИЗ URL ===
+  useEffect(() => {
+    const hash = location.hash;
+    
+    // ВКонтакте возвращает токен после символа #
+    if (hash && hash.includes('access_token')) {
+      setIsLoading(true);
       
-      window.location.href = url;
-    } catch (err) {
-      console.error('Ошибка криптографии:', err);
-      setError('Ваш браузер не поддерживает безопасный вход');
+      // Парсим параметры из хэша
+      const params = new URLSearchParams(hash.substring(1));
+      const accessToken = params.get('access_token');
+      const userId = params.get('user_id');
+      const userEmail = params.get('email'); // ВК отдаст email, если мы его запросили
+
+      // Немедленно очищаем URL, чтобы не было двойных запросов
+      window.history.replaceState({}, document.title, location.pathname);
+
+      if (accessToken && userId) {
+        // Отправляем ГОТОВЫЙ токен на наш бэкенд
+        vkLogin({
+          access_token: accessToken,
+          user_id: userId,
+          email: userEmail || null
+        }).then((result) => {
+          if (result.success) {
+            if (result.requiresEmailVerification) setIsVerification(true);
+            else navigate('/');
+          } else {
+            setError(result.error || 'Ошибка входа через ВКонтакте');
+          }
+          setIsLoading(false);
+        });
+      } else {
+        setError('Не удалось получить данные от ВКонтакте');
+        setIsLoading(false);
+      }
     }
+  }, [location.hash, location.pathname, vkLogin, navigate]);
+
+  // === 2. РОДНАЯ КНОПКА ВК (ЗАПРОС ТОКЕНА НАПРЯМУЮ) ===
+  const handleVkClick = () => {
+    // Используем response_type=token (Implicit Flow). Это мгновенно вернет токен в URL
+    const url = `https://oauth.vk.com/authorize?client_id=${VK_APP_ID}&display=page&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=email&response_type=token&v=5.131`;
+    window.location.href = url;
   };
 
   const handleTelegramAuth = async (telegramData) => {
     setIsLoading(true);
     setError('');
     const result = await telegramLogin(telegramData);
-    if (result.success) navigate('/'); 
+    if (result.success) navigate('/');
     else setError(result.error || 'Ошибка авторизации через Telegram');
     setIsLoading(false);
   };
@@ -104,11 +92,14 @@ useEffect(() => {
     if (isLogin) {
       const result = await login(email, password);
       if (!result.success) setError(result.error);
-      else navigate('/'); 
+      else navigate('/');
     } else {
       const result = await register(email, password, name, phone);
-      if (!result.success) setError(result.error);
-      else setIsVerification(true); 
+      if (!result.success) {
+        setError(result.error);
+      } else {
+        setIsVerification(true);
+      }
     }
     setIsLoading(false);
   };
@@ -122,7 +113,7 @@ useEffect(() => {
       const res = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code })
+        body: JSON.stringify({ email, code }),
       });
       const data = await res.json();
 
@@ -131,7 +122,7 @@ useEffect(() => {
       } else {
         useStore.setState({ user: data.user, token: data.token });
         localStorage.setItem('token', data.token);
-        navigate('/'); 
+        navigate('/');
       }
     } catch (err) {
       setError('Ошибка соединения с сервером');
@@ -207,7 +198,6 @@ useEffect(() => {
           <p className="text-center text-xs text-gray-500 mb-5">Быстрый вход через соцсети</p>
           <div className="flex items-center justify-center gap-8">
             
-            {/* ИДЕАЛЬНАЯ РОДНАЯ КНОПКА ВК */}
             <button 
               type="button" 
               onClick={handleVkClick}
