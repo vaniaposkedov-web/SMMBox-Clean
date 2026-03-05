@@ -251,6 +251,7 @@ exports.telegramAuth = async (req, res) => {
   }
 };
 
+// === ПРАВИЛЬНЫЙ БЭКЕНД: ПРОВЕРКА ЧЕРЕЗ СЕРВИСНЫЙ КЛЮЧ (БЕЗ БЛОКИРОВКИ ПО IP) ===
 exports.vkAuth = async (req, res) => {
   const { access_token, user_id, email } = req.body;
   
@@ -259,25 +260,45 @@ exports.vkAuth = async (req, res) => {
       return res.status(400).json({ error: 'Не получен токен от ВКонтакте' });
     }
 
-    // НОВЫЙ СТАНДАРТ ВК: Токен передается в заголовке Bearer! (axios.post)
-    const userResponse = await axios.post('https://api.vk.com/method/users.get', null, {
-      params: { 
-        user_ids: user_id, 
-        v: '5.199' 
-      },
-      headers: {
-        Authorization: `Bearer ${access_token}`
+    const serviceToken = process.env.VK_SERVICE_TOKEN;
+    if (!serviceToken) {
+      console.error('КРИТИЧЕСКАЯ ОШИБКА: Не задан VK_SERVICE_TOKEN в .env');
+      return res.status(500).json({ error: 'Ошибка настройки сервера ВК' });
+    }
+
+    // 1. Проверяем подлинность токена клиента через специальный безопасный метод
+    const checkResponse = await axios.get('https://api.vk.com/method/secure.checkToken', {
+      params: {
+        token: access_token,
+        access_token: serviceToken, // Запрос подписывается серверным ключом!
+        v: '5.199'
+      }
+    });
+
+    // Если токен поддельный или не принадлежит этому пользователю — отбрасываем
+    if (checkResponse.data.error || checkResponse.data.response.success !== 1 || checkResponse.data.response.user_id.toString() !== user_id.toString()) {
+      console.error('VK Token Verification Error:', checkResponse.data.error);
+      return res.status(401).json({ error: 'Токен ВКонтакте не прошел проверку подлинности.' });
+    }
+
+    // 2. Получаем профиль пользователя (Сервисный ключ игнорирует блокировки по IP)
+    const userResponse = await axios.get('https://api.vk.com/method/users.get', {
+      params: {
+        user_ids: user_id,
+        access_token: serviceToken, // Запрашиваем имя от лица сервера
+        v: '5.199'
       }
     });
 
     if (userResponse.data.error) {
-      console.error('VK API Error:', userResponse.data.error);
-      return res.status(401).json({ error: `ВК отклонил токен: ${userResponse.data.error.error_msg}` });
+      console.error('VK Users Get Error:', userResponse.data.error);
+      return res.status(401).json({ error: 'Не удалось получить профиль пользователя ВКонтакте.' });
     }
 
     const vkUser = userResponse.data.response[0];
     const name = `${vkUser.first_name} ${vkUser.last_name}`;
 
+    // 3. Авторизуем или регистрируем пользователя в базе
     const result = await handleSocialLogin(user_id.toString(), 'vk', name, email);
     res.json(result);
 
