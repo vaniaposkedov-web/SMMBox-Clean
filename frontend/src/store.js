@@ -61,7 +61,7 @@ export const useStore = create(
         try {
           // Обратите внимание: я поменял URL на ваш полный http://localhost:5000/api... 
           // чтобы не было проблем с CORS, как в старом коде
-          const res = await fetch('http://localhost:5000/api/auth/login', {
+          const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
@@ -81,7 +81,7 @@ export const useStore = create(
       // ОБНОВЛЕННАЯ РЕГИСТРАЦИЯ (заменили pavilion на phone, убрали токен)
       register: async (email, password, name, phone) => {
         try {
-          const res = await fetch('http://localhost:5000/api/auth/register', {
+          const res = await fetch('/api/auth/vk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, name, phone })
@@ -122,7 +122,7 @@ export const useStore = create(
 
       telegramLogin: async (userData) => {
         try {
-          const res = await fetch('http://localhost:5000/api/auth/telegram', {
+          const res = await fetch('/api/auth/link-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(userData),
