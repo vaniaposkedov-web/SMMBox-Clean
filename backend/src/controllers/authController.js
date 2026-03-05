@@ -310,7 +310,10 @@ exports.requestLinkEmail = async (req, res) => {
 
     await prisma.user.update({
       where: { id: userId },
-      data: { verificationCode: code },
+      data: { 
+        emailVerificationCode: code,
+        emailVerificationExpires: new Date(Date.now() + 15 * 60 * 1000) // Добавляем срок жизни кода 15 мин
+      },
     });
 
     const mailOptions = {
@@ -342,7 +345,9 @@ exports.verifyLinkEmail = async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-    if (user.verificationCode !== code) return res.status(400).json({ error: 'Неверный код подтверждения' });
+    if (user.emailVerificationCode !== code || (user.emailVerificationExpires && user.emailVerificationExpires < new Date())) {
+      return res.status(400).json({ error: 'Неверный или просроченный код подтверждения' });
+    }
 
     if (phone) {
       const existingPhone = await prisma.user.findUnique({ where: { phone } });
@@ -356,7 +361,8 @@ exports.verifyLinkEmail = async (req, res) => {
       data: { 
         email: email, 
         phone: phone || user.phone,
-        verificationCode: null,
+        emailVerificationCode: null, // Правильное поле
+        emailVerificationExpires: null, // Правильное поле
         isEmailVerified: true
       },
     });
