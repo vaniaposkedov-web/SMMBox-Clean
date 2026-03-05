@@ -26,6 +26,8 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN} # <--- ДОБАВЬ ТОЛЬКО ЭТУ СТРОКУ
+      - VK_APP_ID=${VK_APP_ID}          # <-- Добавляем эту строку
+      - VK_APP_SECRET=${VK_APP_SECRET}
       - PORT=5000
     depends_on:
       - db

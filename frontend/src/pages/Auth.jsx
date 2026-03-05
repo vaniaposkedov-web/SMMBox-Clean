@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 
 // ИМПОРТ НАШЕЙ НОВОЙ КАСТОМНОЙ КНОПКИ ТЕЛЕГРАМ
 import CustomTelegramButton from '../components/CustomTelegramButton';
@@ -11,6 +11,7 @@ export default function Auth() {
   const register = useStore((state) => state.register);
   const telegramLogin = useStore((state) => state.telegramLogin);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [isLogin, setIsLogin] = useState(true);
   const [isVerification, setIsVerification] = useState(false); 
@@ -20,6 +21,7 @@ export default function Auth() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState(''); 
   const [code, setCode] = useState(''); 
+  const vkLogin = useStore((state) => state.vkLogin);
 
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +29,7 @@ export default function Auth() {
   const [showPassword, setShowPassword] = useState(false);
 
   // === ЛОГИКА ВКОНТАКТЕ ===
-  const VK_APP_ID = '54470861'; 
+  const VK_APP_ID = '54471878'; // Вставили новый ID
   const REDIRECT_URI = 'https://smmdeck.ru/auth';
 
   const handleVkClick = () => {
@@ -47,6 +49,34 @@ export default function Auth() {
     }
     setIsLoading(false);
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const code = params.get('code');
+
+    if (code) {
+      setIsLoading(true);
+      // Очищаем адресную строку от кода для красоты
+      window.history.replaceState({}, document.title, '/auth');
+      
+      const processVkAuth = async () => {
+        const result = await vkLogin(code, REDIRECT_URI);
+        
+        if (result.success) {
+          if (result.requiresEmailVerification) {
+            setError('Аккаунт ВК успешно найден, но необходимо привязать Email. Данный интерфейс в разработке.');
+          } else {
+            navigate('/'); 
+          }
+        } else {
+          setError(result.error || 'Ошибка авторизации через ВКонтакте');
+        }
+        setIsLoading(false);
+      };
+
+      processVkAuth();
+    }
+  }, [location.search, vkLogin, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

@@ -14,6 +14,9 @@ router.post('/vk', authController.vkAuth);
 router.post('/link-email', authController.linkEmailAndSendCode);
 // ------------------------------------
 
+router.post('/request-link-email', authController.requestLinkEmail);
+router.post('/verify-link-email', authController.verifyLinkEmail);
+
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password/:token', authController.resetPassword);
 
