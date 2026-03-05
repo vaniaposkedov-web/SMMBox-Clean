@@ -10,6 +10,7 @@ export default function Profile() {
   const user = useStore((state) => state.user);
   const logout = useStore((state) => state.logout);
   const updateUser = useStore((state) => state.updateUser);
+  const linkEmail = useStore((state) => state.linkEmail);
 
   const fileInputRef = useRef(null);
 
@@ -25,13 +26,18 @@ export default function Profile() {
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(user?.avatarUrl || null);
 
-  // === МОКОВЫЕ ДАННЫЕ (Базовый тариф для новых клиентов) ===
+  // Состояния для привязки Email (Telegram)
+  const [realEmail, setRealEmail] = useState('');
+  const [isLinking, setIsLinking] = useState(false);
+  const [linkError, setLinkError] = useState('');
+
+  // === МОКОВЫЕ ДАННЫЕ ===
   const subscription = {
     plan: 'Базовый',
     daysLeft: 14,
-    totalDays: 14, // Длина триала или бесплатного периода
+    totalDays: 14, 
     postsUsed: 3,
-    postsLimit: 50, // Лимит постов на бесплатном тарифе
+    postsLimit: 50, 
   };
 
   const recentPosts = [
@@ -39,7 +45,7 @@ export default function Profile() {
     { id: 2, text: 'Скидки 50% на весь ассортимент...', status: 'scheduled', date: 'Завтра, 10:00', network: 'VK' },
     { id: 3, text: 'Обзор новинок этой недели...', status: 'error', date: 'Вчера, 18:00', network: 'TG' },
   ];
-  // =========================================================
+  // ======================
 
   if (!user) return null;
 
@@ -85,18 +91,31 @@ export default function Profile() {
     setPreviewUrl(user?.avatarUrl || null);
   };
 
-  // Вспомогательные функции для кнопок постов
   const handleViewPost = (postId) => {
     alert(`Открытие подробностей поста #${postId}`);
-    // Здесь будет логика открытия модального окна или перехода на страницу поста
   };
 
   const handleSharePost = (postId) => {
     alert(`Ссылка на пост #${postId} скопирована для партнеров!`);
-    // Здесь будет логика копирования ссылки или открытия окна "Поделиться"
   };
 
-  // Вспомогательный компонент для бейджей статуса
+  // Метод для привязки настоящей почты (если вход через ТГ)
+  const handleLinkEmail = async (e) => {
+    e.preventDefault();
+    setIsLinking(true);
+    setLinkError('');
+    
+    const res = await linkEmail(user.id, realEmail);
+    
+    if (res.success) {
+      // Моментально обновляем интерфейс, чтобы плашка пропала
+      useStore.setState({ user: { ...user, email: realEmail } });
+    } else {
+      setLinkError(res.error || 'Ошибка при привязке почты');
+    }
+    setIsLinking(false);
+  };
+
   const StatusBadge = ({ status }) => {
     const styles = {
       published: 'bg-green-500/10 text-green-500 border-green-500/20',
@@ -120,6 +139,44 @@ export default function Profile() {
   return (
     <div className="min-h-[100dvh] bg-admin-bg p-4 sm:p-8 pb-24 md:pb-8 font-sans">
       
+      {/* ПЛАШКА ПРИВЯЗКИ EMAIL ДЛЯ ТЕЛЕГРАМ-ЮЗЕРОВ */}
+      {user?.email?.includes('@telegram.local') && (
+        <div className="bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/30 rounded-3xl p-5 sm:p-6 mb-6 shadow-xl relative overflow-hidden">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 relative z-10">
+            <div className="flex items-start gap-4">
+              <div className="bg-red-500/20 p-3 rounded-full text-red-500 shrink-0">
+                <AlertCircle size={28} />
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-lg mb-1">Ваш аккаунт уязвим!</h3>
+                <p className="text-gray-400 text-sm">Вы вошли через Telegram. Пожалуйста, привяжите реальную почту, чтобы не потерять доступ к аккаунту.</p>
+              </div>
+            </div>
+            
+            <form onSubmit={handleLinkEmail} className="flex flex-col sm:flex-row w-full md:w-auto gap-3 shrink-0 mt-2 md:mt-0">
+              <div className="relative flex-1 sm:w-64">
+                <input 
+                  type="email" 
+                  value={realEmail}
+                  onChange={(e) => setRealEmail(e.target.value)}
+                  placeholder="Введите реальный Email" 
+                  required
+                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-red-500 outline-none transition-all"
+                />
+                {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0">{linkError}</p>}
+              </div>
+              <button 
+                type="submit" 
+                disabled={isLinking}
+                className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0"
+              >
+                {isLinking ? 'Сохранение...' : 'Привязать'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ШАПКА ПРОФИЛЯ */}
       <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden mb-6 flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl rounded-full pointer-events-none"></div>
@@ -185,7 +242,6 @@ export default function Profile() {
             
             {/* Карточка Базового Тарифа */}
             <div className="lg:col-span-2 bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden group">
-              {/* Сине-голубая полоса сверху для базового тарифа */}
               <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-500"></div>
               
               <div className="flex flex-col sm:flex-row justify-between items-start mb-6 gap-4">
@@ -195,14 +251,12 @@ export default function Profile() {
                   </h3>
                   <p className="text-sm text-gray-400 mt-1">Стартовые лимиты. Идеально для начала.</p>
                 </div>
-                {/* Кнопка апгрейда с золотым акцентом */}
                 <button className="w-full sm:w-auto bg-gradient-to-r from-yellow-600/20 to-orange-600/20 hover:from-yellow-500/30 hover:to-orange-500/30 text-yellow-500 border border-yellow-500/30 px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-yellow-500/5">
                   <Crown size={16} /> Перейти на PRO
                 </button>
               </div>
 
               <div className="space-y-5">
-                {/* Прогресс бар дней */}
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-400">Осталось дней:</span>
@@ -213,7 +267,6 @@ export default function Profile() {
                   </div>
                 </div>
 
-                {/* Прогресс бар постов */}
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-gray-400">Лимит постов (в месяц):</span>
@@ -260,8 +313,6 @@ export default function Profile() {
             <div className="space-y-4">
               {recentPosts.map((post) => (
                 <div key={post.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 bg-gray-900 hover:bg-gray-800 transition-colors rounded-2xl border border-gray-800 group">
-                  
-                  {/* Левая часть: Иконка и Текст */}
                   <div className="flex items-start gap-4 overflow-hidden w-full sm:w-auto flex-1">
                     <div className="w-10 h-10 shrink-0 bg-gray-800 rounded-xl flex items-center justify-center text-sm font-bold text-gray-400 border border-gray-700">
                       {post.network}
@@ -276,8 +327,6 @@ export default function Profile() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Правая часть: Кнопки действий */}
                   <div className="flex items-center gap-2 pt-3 sm:pt-0 border-t border-gray-800 sm:border-t-0 sm:ml-auto w-full sm:w-auto justify-end shrink-0">
                     <button 
                       onClick={() => handleViewPost(post.id)}
@@ -292,7 +341,6 @@ export default function Profile() {
                       <Share2 size={14} /> <span className="sm:hidden md:block">Партнерам</span>
                     </button>
                   </div>
-
                 </div>
               ))}
             </div>
