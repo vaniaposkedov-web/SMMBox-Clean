@@ -88,7 +88,7 @@ export const useStore = create(
           const res = await fetch('/api/auth/vk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(vkData), // Отправляем объект { access_token, user_id, email }
+            body: JSON.stringify(vkData), // Отправляем объект с кодом и ключом
           });
           const data = await res.json();
           
