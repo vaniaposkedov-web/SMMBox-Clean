@@ -15,7 +15,6 @@ services:
     ports:
       - "5432:5432"
 
-  
   # 2. Наш Бэкенд
   backend:
     build: ./backend
@@ -28,25 +27,23 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - VK_APP_ID=${VK_APP_ID}
       - VK_APP_SECRET=${VK_APP_SECRET}
-      - VK_SERVICE_TOKEN=${VK_SERVICE_TOKEN} # <-- ВК токен для проверки
-      - SMTP_USER=${SMTP_USER}               # <-- Почта для писем
-      - SMTP_PASS=${SMTP_PASS}               # <-- Пароль от почты
-      - FRONTEND_URL=${FRONTEND_URL}         # <-- Ссылка для сброса пароля
+      - VK_SERVICE_TOKEN=${VK_SERVICE_TOKEN}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - FRONTEND_URL=${FRONTEND_URL}
       - PORT=5000
     depends_on:
       - db
 
-  # 3. Наш Фронтенд (React + Nginx)
   # 3. Наш Фронтенд (React + Nginx)
   frontend:
     build: ./frontend
     container_name: smmbox_frontend
     restart: always
     ports:
-      - "80:80"   # Оставляем для переадресации
-      - "443:443" # Добавляем защищенный порт HTTPS
+      - "80:80"
+      - "443:443"
     volumes:
-      # Прокидываем сертификаты Let's Encrypt внутрь Nginx (только для чтения)
       - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - backend
