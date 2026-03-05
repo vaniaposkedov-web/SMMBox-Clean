@@ -251,7 +251,6 @@ exports.telegramAuth = async (req, res) => {
   }
 };
 
-// === ИДЕАЛЬНЫЙ БЭКЕНД: НИКАКИХ ОБМЕНОВ КОДА ===
 exports.vkAuth = async (req, res) => {
   const { access_token, user_id, email } = req.body;
   
@@ -260,14 +259,20 @@ exports.vkAuth = async (req, res) => {
       return res.status(400).json({ error: 'Не получен токен от ВКонтакте' });
     }
 
-    // Бэкенд просто проверяет валидность готового токена
-    const userResponse = await axios.get('https://api.vk.com/method/users.get', {
-      params: { user_ids: user_id, access_token: access_token, v: '5.131' }
+    // НОВЫЙ СТАНДАРТ ВК: Токен передается в заголовке Bearer! (axios.post)
+    const userResponse = await axios.post('https://api.vk.com/method/users.get', null, {
+      params: { 
+        user_ids: user_id, 
+        v: '5.199' 
+      },
+      headers: {
+        Authorization: `Bearer ${access_token}`
+      }
     });
 
     if (userResponse.data.error) {
       console.error('VK API Error:', userResponse.data.error);
-      return res.status(401).json({ error: 'Недействительный токен ВКонтакте' });
+      return res.status(401).json({ error: `ВК отклонил токен: ${userResponse.data.error.error_msg}` });
     }
 
     const vkUser = userResponse.data.response[0];
