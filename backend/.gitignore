@@ -1,5 +1,18 @@
-node_modules
-# Keep environment variables out of version control
+# Зависимости
+node_modules/
+
+# Логи
+npm-debug.log
+*.log
+
+# Переменные окружения (ОЧЕНЬ ВАЖНО СКРЫВАТЬ ПАРОЛИ)
 .env
 
-/generated/prisma
+# База данных Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Редакторы и ОС
+.vscode/
+.idea/
+.DS_Store
