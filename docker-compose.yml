@@ -25,9 +25,13 @@ services:
       - DATABASE_URL=postgresql://admin:superpassword123@db:5432/smmbox?schema=public
       - JWT_SECRET=${JWT_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN} # <--- ДОБАВЬ ТОЛЬКО ЭТУ СТРОКУ
-      - VK_APP_ID=${VK_APP_ID}          # <-- Добавляем эту строку
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - VK_APP_ID=${VK_APP_ID}
       - VK_APP_SECRET=${VK_APP_SECRET}
+      - VK_SERVICE_TOKEN=${VK_SERVICE_TOKEN} # <-- ВК токен для проверки
+      - SMTP_USER=${SMTP_USER}               # <-- Почта для писем
+      - SMTP_PASS=${SMTP_PASS}               # <-- Пароль от почты
+      - FRONTEND_URL=${FRONTEND_URL}         # <-- Ссылка для сброса пароля
       - PORT=5000
     depends_on:
       - db
