@@ -368,19 +368,6 @@ exports.verifyLinkEmail = async (req, res) => {
   }
 };
 
-exports.completeOnboarding = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    await prisma.user.update({
-      where: { id: userId },
-      data: { isOnboardingCompleted: true }
-    });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Ошибка при сохранении статуса' });
-  }
-};
-
 // Старая функция (на всякий случай оставим, чтобы не сломать роуты, если они где-то используются)
 exports.linkEmailAndSendCode = async (req, res) => {
   const { userId, email } = req.body;
