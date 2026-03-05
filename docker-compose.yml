@@ -29,12 +29,17 @@ services:
       - db
 
   # 3. Наш Фронтенд (React + Nginx)
+  # 3. Наш Фронтенд (React + Nginx)
   frontend:
     build: ./frontend
     container_name: smmbox_frontend
     restart: always
     ports:
-      - "80:80" # Сайт будет доступен по стандартному порту
+      - "80:80"   # Оставляем для переадресации
+      - "443:443" # Добавляем защищенный порт HTTPS
+    volumes:
+      # Прокидываем сертификаты Let's Encrypt внутрь Nginx (только для чтения)
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - backend
 

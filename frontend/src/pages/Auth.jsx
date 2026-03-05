@@ -3,13 +3,12 @@ import { useStore } from '../store';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
-// ДОБАВЛЕН ИМПОРТ КНОПКИ ТЕЛЕГРАМ
-import TelegramLoginButton from '../components/TelegramLoginButton';
+// ИМПОРТ НАШЕЙ НОВОЙ КАСТОМНОЙ КНОПКИ ТЕЛЕГРАМ
+import CustomTelegramButton from '../components/CustomTelegramButton';
 
 export default function Auth() {
   const login = useStore((state) => state.login);
   const register = useStore((state) => state.register);
-  // ДОСТАЕМ МЕТОД АВТОРИЗАЦИИ ТЕЛЕГРАМ ИЗ STORE
   const telegramLogin = useStore((state) => state.telegramLogin);
   const navigate = useNavigate();
 
@@ -29,20 +28,20 @@ export default function Auth() {
 
   // === ЛОГИКА ВКОНТАКТЕ ===
   const VK_APP_ID = '54470861'; 
-  const REDIRECT_URI = 'https://felicia-semivulcanized-leatha.ngrok-free.dev/auth';
+  const REDIRECT_URI = 'https://smmdeck.ru/auth';
 
   const handleVkClick = () => {
     window.location.href = `https://oauth.vk.com/authorize?client_id=${VK_APP_ID}&display=page&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=email&response_type=code`;
   };
 
-  // === ДОБАВЛЕНА ЛОГИКА TELEGRAM ===
+  // === ЛОГИКА TELEGRAM ===
   const handleTelegramAuth = async (telegramData) => {
     setIsLoading(true);
     setError('');
     const result = await telegramLogin(telegramData);
     
     if (result.success) {
-      navigate('/'); // Успешный вход — пускаем в систему
+      navigate('/'); 
     } else {
       setError(result.error || 'Ошибка авторизации через Telegram');
     }
@@ -76,7 +75,7 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/verify-email', {
+      const res = await fetch('/api/auth/verify-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, code })
@@ -273,28 +272,34 @@ export default function Auth() {
           </button>
         </form>
 
-        {/* КНОПКИ СОЦСЕТЕЙ */}
-        <div className="mt-6 pt-6 border-t border-gray-800">
-          <p className="text-center text-xs text-gray-500 mb-4">Или войдите через соцсети</p>
-          <div className="flex flex-col gap-3">
-            {/* ДОБАВЛЕНО onClick={handleVkClick} */}
-            <button type="button" onClick={handleVkClick} className="w-full flex items-center justify-center gap-3 py-3 rounded-xl bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 font-medium transition-all">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        {/* === БЛОК СОЦСЕТЕЙ: КРУГЛЫЕ КНОПКИ === */}
+        <div className="mt-8 pt-6 border-t border-gray-800">
+          <p className="text-center text-xs text-gray-500 mb-5">Быстрый вход через соцсети</p>
+          
+          <div className="flex items-center justify-center gap-6">
+            
+            {/* КРУГЛАЯ КНОПКА ВК */}
+            <button 
+              type="button" 
+              onClick={handleVkClick} 
+              title="Войти через ВКонтакте"
+              className="w-14 h-14 flex items-center justify-center rounded-full bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 transition-all duration-300 shadow-lg hover:scale-105 shrink-0"
+            >
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M13.162 18.994c.609 0 .858-.406.851-.915-.031-1.917.714-2.949 2.059-1.604 1.488 1.488 1.796 2.519 3.603 2.519h3.2c.808 0 1.126-.26 1.126-.668 0-.863-1.533-2.825-2.852-4.22-.711-.753-.922-1.218-.178-2.43 1.086-1.76 2.519-4.136 2.519-5.402 0-.739-.39-1.082-1.187-1.082h-3.465c-.773 0-1.146.311-1.46.741-1.203 2.003-2.247 3.678-3.869 3.678-.512 0-.826-.189-.826-2.035 0-2.305.437-3.546-1.057-3.906-.681-.164-1.376-.233-2.853-.233-1.979 0-3.047.521-3.047 1.402 0 .522.547.74 1.171.843 1.33.221 1.531 1.082 1.531 2.888 0 2.214-.42 2.804-1.144 2.804-1.558 0-3.328-2.015-4.636-4.052-.403-.631-.76-1.008-1.543-1.008H.47c-.966 0-1.256.32-1.256.772 0 .682.892 2.75 4.144 7.281 2.735 3.791 5.98 5.627 9.804 5.627Z"/>
               </svg>
-              ВКонтакте
             </button>
             
-            {/* ИЗМЕНЕНА КНОПКА TELEGRAM НА НАШ КОМПОНЕНТ ВИДЖЕТА */}
-            <div className="w-full flex justify-center py-1">
-              <TelegramLoginButton 
-                botName="smmbox_auth_bot" 
-                onAuth={handleTelegramAuth} 
-              />
-            </div>
+            {/* КРУГЛАЯ КНОПКА TELEGRAM */}
+            {/* ВАЖНО: ЗАМЕНИ botId НА ЦИФРЫ ИЗ СВОЕГО ТОКЕНА */}
+            <CustomTelegramButton 
+              botId="8750764796" 
+              onAuth={handleTelegramAuth} 
+            />
 
           </div>
         </div>
+
       </div>
     </div>
   );
