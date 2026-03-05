@@ -129,12 +129,7 @@ export default function Auth() {
   }, [navigate]);
 
     // Очистка при размонтировании компонента
-    return () => {
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
-    };
-  }, [navigate]);
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
