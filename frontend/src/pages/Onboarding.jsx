@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, ArrowRight, X, Mail, Phone, Send, Info, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, ArrowRight, X, Mail, Phone, Send, Info, CheckCircle2, Plus, Trash2 } from 'lucide-react';
 
 export default function Onboarding() {
   const user = useStore(state => state.user);
@@ -11,18 +11,38 @@ export default function Onboarding() {
   const [step, setStep] = useState('welcome');
   const [firstChoice, setFirstChoice] = useState(null);
   
-  // Состояния для форм
-  const [tgChannel, setTgChannel] = useState(''); // <--- Новое состояние для поля ТГ
+  // Состояния для множественного добавления Telegram
+  const [tgInput, setTgInput] = useState('');
+  const [tgChannels, setTgChannels] = useState([]); 
+  
+  // Состояния для ВК (визуальная заглушка для будущего списка групп)
+  const [vkConnected, setVkConnected] = useState(false);
+
+  // Состояния для форм контактов
   const [email, setEmail] = useState(user?.email && !user.email.includes('.local') ? user.email : '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Завершение онбординга
+  // Логика добавления и удаления ТГ каналов в список
+  const handleAddTgChannel = () => {
+    if (!tgInput.trim()) return;
+    if (!tgChannels.includes(tgInput.trim())) {
+      setTgChannels([...tgChannels, tgInput.trim()]);
+    }
+    setTgInput(''); // Очищаем поле после добавления
+  };
+
+  const handleRemoveTgChannel = (channelToRemove) => {
+    setTgChannels(tgChannels.filter(c => c !== channelToRemove));
+  };
+
+  // Завершение онбординга (Отправка на бэкенд)
   const finishOnboarding = async () => {
     setLoading(true);
     try {
+      // Здесь в будущем можно добавить отправку массива tgChannels и vkGroups на бэкенд
       const res = await fetch('/api/auth/complete-onboarding', {
         method: 'POST',
         headers: { 
@@ -84,7 +104,7 @@ export default function Onboarding() {
   return (
     <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
       
-      {/* КРАСИВЫЙ ФОН С БЛЮРОМ (Стиль проекта) */}
+      {/* КРАСИВЫЙ ФОН С БЛЮРОМ */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[600px] sm:h-[600px] bg-blue-600/10 blur-[100px] sm:blur-[130px] rounded-full pointer-events-none"></div>
 
       {/* Кнопка выхода */}
@@ -92,7 +112,7 @@ export default function Onboarding() {
         <span className="text-sm font-medium">Пропустить настройку</span> <X size={16} />
       </button>
 
-      {/* ГЛАВНАЯ КАРТОЧКА (Glassmorphism) */}
+      {/* ГЛАВНАЯ КАРТОЧКА */}
       <div className="w-full max-w-xl bg-admin-card/60 backdrop-blur-2xl border border-gray-800/60 p-8 sm:p-10 rounded-3xl shadow-2xl relative z-10">
         
         {/* ШАГ 1: ПРИВЕТСТВИЕ И ВЫБОР */}
@@ -117,67 +137,103 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* ШАГ 2a: НАСТРОЙКА ВК */}
+        {/* ШАГ 2a: НАСТРОЙКА ВК (МНОЖЕСТВЕННАЯ) */}
         {step === 'vk_setup' && (
           <div className="space-y-6 text-center animate-in fade-in slide-in-from-right-8 duration-500">
-            <h2 className="text-2xl font-bold text-white">Подключение ВКонтакте</h2>
-            <p className="text-gray-400 text-sm">Предоставьте доступ, чтобы система могла публиковать посты от вашего имени или в ваших группах.</p>
+            <h2 className="text-2xl font-bold text-white">Сообщества ВКонтакте</h2>
+            <p className="text-gray-400 text-sm">Привяжите аккаунт, чтобы выбрать все группы и паблики, в которых вы хотите публиковать посты.</p>
             
-            {/* Заглушка под ВК */}
-            <div className="bg-gray-900/50 backdrop-blur-sm p-8 rounded-2xl border border-dashed border-gray-700 text-gray-500 text-sm my-8">
-              [Здесь скоро появится кнопка подключения ВК]
-            </div>
+            {!vkConnected ? (
+              <div className="bg-gray-900/50 backdrop-blur-sm p-8 rounded-2xl border border-gray-700 my-6">
+                <button 
+                  onClick={() => setVkConnected(true)} // В будущем здесь будет вызов авторизации ВК
+                  className="bg-[#0077FF] hover:bg-[#0066DD] text-white font-bold py-3 px-6 rounded-xl transition-colors shadow-lg shadow-[#0077FF]/30 mx-auto block"
+                >
+                  Привязать аккаунт ВКонтакте
+                </button>
+              </div>
+            ) : (
+              <div className="bg-green-500/10 border border-green-500/20 p-6 rounded-2xl my-6">
+                <CheckCircle2 className="mx-auto text-green-500 mb-3" size={32} />
+                <h3 className="text-green-500 font-bold mb-1">Аккаунт успешно привязан!</h3>
+                <p className="text-sm text-gray-400">Список ваших сообществ для выбора появится в панели управления.</p>
+              </div>
+            )}
 
-            <button onClick={() => setStep(firstChoice === 'vk' ? 'offer_second' : 'contacts')} className="w-full bg-white text-black font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors shadow-lg shadow-white/10">
+            <button 
+              onClick={() => setStep(firstChoice === 'vk' ? 'offer_second' : 'contacts')} 
+              className="w-full bg-white text-black font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors shadow-lg shadow-white/10"
+            >
               Продолжить <ArrowRight size={20} />
             </button>
           </div>
         )}
 
-        {/* ШАГ 2b: НАСТРОЙКА TG (С ИНСТРУКЦИЕЙ) */}
+        {/* ШАГ 2b: НАСТРОЙКА TG (МНОЖЕСТВЕННАЯ С ИНСТРУКЦИЕЙ) */}
         {step === 'tg_setup' && (
           <div className="space-y-6 text-left animate-in fade-in slide-in-from-right-8 duration-500">
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold text-white">Подключение Telegram</h2>
-              <p className="text-gray-400 text-sm mt-2">Следуйте инструкции, чтобы привязать ваш канал.</p>
+              <h2 className="text-2xl font-bold text-white">Каналы Telegram</h2>
+              <p className="text-gray-400 text-sm mt-2">Добавьте неограниченное количество каналов.</p>
             </div>
             
             {/* Блок с инструкцией */}
             <div className="bg-[#0088CC]/10 border border-[#0088CC]/20 rounded-2xl p-5 space-y-3">
               <h3 className="text-[#0088CC] font-semibold flex items-center gap-2 mb-2">
-                <Info size={18} /> Как подключить канал:
+                <Info size={18} /> Как подключить каналы:
               </h3>
               <ol className="list-decimal list-inside text-gray-300 text-sm space-y-2.5 ml-1">
                 <li>Откройте настройки вашего канала в Telegram.</li>
                 <li>Перейдите в раздел <b>Администраторы</b>.</li>
-                <li>Добавьте нашего бота <span className="bg-gray-900 px-2 py-0.5 rounded text-white font-mono text-xs">@ИмяВашегоБота</span> в список админов.</li>
-                <li>Выдайте боту права на <b>публикацию сообщений</b>.</li>
-                <li>Вставьте ссылку на канал ниже.</li>
+                <li>Добавьте бота <span className="bg-gray-900 px-2 py-0.5 rounded text-white font-mono text-xs select-all">@smmbox_auth_bot</span> в администраторы.</li>
+                <li>Выдайте ему права на <b>публикацию сообщений</b>.</li>
+                <li>Вставьте ссылку на канал ниже и нажмите «Добавить».</li>
               </ol>
             </div>
 
-            {/* Рабочее поле ввода */}
-            <div className="space-y-2 mt-6">
-              <label className="text-sm font-medium text-gray-400 ml-1">Ссылка на канал или @username</label>
-              <input 
-                type="text" 
-                value={tgChannel}
-                onChange={(e) => setTgChannel(e.target.value)}
-                placeholder="Например: t.me/tes_bota_haha" 
-                className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-4 px-4 outline-none focus:border-[#0088CC] transition-colors placeholder:text-gray-600"
-              />
+            {/* Добавление нескольких каналов */}
+            <div className="space-y-4 mt-6">
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={tgInput}
+                  onChange={(e) => setTgInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddTgChannel()}
+                  placeholder="t.me/ваш_канал или @username" 
+                  className="flex-1 bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 outline-none focus:border-[#0088CC] transition-colors placeholder:text-gray-600"
+                />
+                <button 
+                  onClick={handleAddTgChannel}
+                  disabled={!tgInput.trim()}
+                  className="bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 rounded-xl border border-gray-700 transition-colors flex items-center justify-center"
+                >
+                  <Plus size={24} />
+                </button>
+              </div>
+
+              {/* Список добавленных каналов */}
+              {tgChannels.length > 0 && (
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                  {tgChannels.map((channel, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-gray-900/50 border border-gray-800 p-3 rounded-xl animate-in fade-in slide-in-from-bottom-2">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <Send size={16} className="text-[#0088CC] flex-shrink-0" />
+                        <span className="text-gray-200 text-sm truncate">{channel}</span>
+                      </div>
+                      <button onClick={() => handleRemoveTgChannel(channel)} className="text-gray-500 hover:text-red-400 transition-colors p-1">
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <button 
-              onClick={() => {
-                // Здесь позже добавим логику сохранения канала в базу
-                console.log("Сохраняем ТГ канал:", tgChannel);
-                setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts');
-              }} 
-              disabled={!tgChannel.trim()}
-              className="mt-6 w-full bg-[#0088CC] text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] disabled:opacity-50 disabled:hover:bg-[#0088CC] transition-colors shadow-lg shadow-[#0088CC]/20"
+              onClick={() => setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts')} 
+              className="mt-6 w-full bg-[#0088CC] text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20"
             >
-              Подтвердить и продолжить <ArrowRight size={20} />
+              {tgChannels.length > 0 ? `Продолжить (${tgChannels.length} добавлено)` : 'Пропустить этот шаг'} <ArrowRight size={20} />
             </button>
           </div>
         )}
@@ -188,8 +244,8 @@ export default function Onboarding() {
             <div className="w-16 h-16 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mx-auto mb-2">
               <CheckCircle2 size={32} />
             </div>
-            <h2 className="text-2xl font-bold text-white">Канал успешно добавлен!</h2>
-            <p className="text-gray-400">Хотите сразу настроить интеграцию с {firstChoice === 'vk' ? 'Telegram' : 'ВКонтакте'}?</p>
+            <h2 className="text-2xl font-bold text-white">Отличное начало!</h2>
+            <p className="text-gray-400">Хотите сразу настроить сообщества для {firstChoice === 'vk' ? 'Telegram' : 'ВКонтакте'}?</p>
             <div className="flex flex-col sm:flex-row gap-3 pt-4">
               <button onClick={() => setStep(firstChoice === 'vk' ? 'tg_setup' : 'vk_setup')} className="flex-1 bg-blue-600 hover:bg-blue-500 transition-colors text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/20">
                 Да, настроить
