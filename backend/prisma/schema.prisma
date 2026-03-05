@@ -19,7 +19,6 @@ model User {
   firstName                String?
   lastName                 String?
   username                 String?   @unique // Никнейм в ТГ
-  isOnboardingCompleted    Boolean   @default(false)
   
   pavilion                 String?
   avatarUrl                String?

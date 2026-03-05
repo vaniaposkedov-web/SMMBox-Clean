@@ -3,7 +3,6 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const upload = require('../middleware/upload'); // Подключаем мидлвар
 const authMiddleware = require('../middleware/auth');
-const { protect } = require('../middleware/auth');
 
 router.post('/register', authController.register);
 router.post('/verify-email', authController.verifyEmail);
@@ -23,7 +22,5 @@ router.post('/reset-password/:token', authController.resetPassword);
 
 // Используем upload.single('avatar') чтобы multer ловил файл с именем avatar
 router.put('/profile', authMiddleware, upload.single('avatar'), authController.updateProfile);
-router.post('/complete-onboarding', protect, authController.completeOnboarding);
-
 
 module.exports = router;

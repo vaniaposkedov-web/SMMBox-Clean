@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
-import { PlusSquare, Inbox, Settings as SettingsIcon, User, Crown, Box, LogOut, ShieldAlert } from 'lucide-react'; // Добавил ShieldAlert
+import { PlusSquare, Inbox, Settings as SettingsIcon, User, Crown, Box, LogOut } from 'lucide-react';
 import { useStore } from './store'; 
 
 // --- СТРАНИЦЫ ДЛЯ АВТОРИЗОВАННЫХ ---
@@ -9,7 +9,6 @@ import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import Subscription from './pages/Subscription';
 import PrivacyPolicy from './pages/PrivacyPolicy';
-import Onboarding from './pages/Onboarding'; // <--- НОВЫЙ ИМПОРТ
 
 // --- СТРАНИЦЫ АВТОРИЗАЦИИ И ВОССТАНОВЛЕНИЯ ---
 import Auth from './pages/Auth'; 
@@ -115,14 +114,8 @@ function App() {
     <BrowserRouter>
       <Routes>
         
-        {/* --- ОНБОРДИНГ --- */}
-        <Route 
-          path="/onboarding" 
-          element={user.isOnboardingCompleted ? <Navigate to="/profile" replace /> : <Onboarding />} 
-        />
-
-        {/* --- СТАНДАРТНЫЙ ИНТЕРФЕЙС (Защищен от непрошедших онбординг) --- */}
-        <Route element={!user.isOnboardingCompleted ? <Navigate to="/onboarding" replace /> : <UserLayout />}>
+        {/* --- СТАНДАРТНЫЙ ИНТЕРФЕЙС --- */}
+        <Route element={<UserLayout />}>
           <Route path="/" element={<Navigate to="/profile" replace />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/publish" element={<Publish />} />
@@ -132,18 +125,15 @@ function App() {
           <Route path="/privacy" element={<PrivacyPolicy />} />
         </Route>
 
-        {/* --- АДМИН ПАНЕЛЬ (Также защищена) --- */}
-        <Route path="/admin" element={
-          !user.isOnboardingCompleted 
-            ? <Navigate to="/onboarding" replace /> 
-            : <AdminRoute><AdminLayout /></AdminRoute>
-        }>
+        {/* --- АДМИН ПАНЕЛЬ --- */}
+        <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
           <Route index element={<AdminDashboard />} />
+          {/* Будущие страницы админки добавим сюда */}
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
 
-        {/* Любая другая ссылка вернет в профиль (или в онбординг, если он не пройден) */}
-        <Route path="*" element={<Navigate to={!user.isOnboardingCompleted ? "/onboarding" : "/profile"} replace />} />
+        {/* Любая другая ссылка вернет в профиль */}
+        <Route path="*" element={<Navigate to="/profile" replace />} />
       </Routes>
     </BrowserRouter>
   );
