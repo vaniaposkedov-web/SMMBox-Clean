@@ -120,23 +120,21 @@ export const useStore = create(
         }
       },
 
-      telegramLogin: async (userData) => {
+      telegramLogin: async (telegramData) => {
         try {
-          const res = await fetch('/api/auth/telegram', {
+          const res = await fetch('/api/auth/telegram', { // <-- Никаких localhost!
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(userData),
+            body: JSON.stringify(telegramData)
           });
           const data = await res.json();
-          
-          if (!res.ok) return { success: false, error: data.error };
-          if (data.requiresEmailVerification) return { success: true, requiresEmailVerification: true, userId: data.userId };
-          
-          set({ user: data.user, token: data.token });
-          localStorage.setItem('token', data.token);
-          return { success: true };
+          if (res.ok) {
+            set({ user: data.user, token: data.token });
+            return { success: true };
+          }
+          return { success: false, error: data.error };
         } catch (error) {
-          return { success: false, error: 'Ошибка сети при входе через Telegram' };
+          return { success: false, error: 'Ошибка сервера' };
         }
       },
 

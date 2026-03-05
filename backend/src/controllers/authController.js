@@ -9,6 +9,7 @@ const templates = require('../utils/emailTemplates');
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-dev';
 
+
 // РЕГИСТРАЦИЯ (Отправка кода)
 exports.register = async (req, res) => {
   const { email, phone, password, name, pavilion } = req.body;
@@ -267,33 +268,60 @@ const handleSocialLogin = async (socialId, provider, name, emailFromProvider = n
 
 // 1. АВТОРИЗАЦИЯ ЧЕРЕЗ TELEGRAM
 exports.telegramAuth = async (req, res) => {
-  const data = req.body;
-  const botToken = process.env.TELEGRAM_BOT_TOKEN; // Добавим позже в .env
-  
-  // Проверка подлинности данных от Telegram (Хэширование)
-  const { hash, ...userData } = data;
-  const secretKey = crypto.createHash('sha256').update(botToken).digest();
-  
-  const dataCheckString = Object.keys(userData)
-    .sort()
-    .map(key => `${key}=${userData[key]}`)
-    .join('\n');
-    
-  const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-
-  if (hmac !== hash && process.env.NODE_ENV === 'production') {
-    return res.status(401).json({ error: 'Неверная подпись Telegram' });
-  } // В режиме разработки пока пропускаем строгую проверку хэша, если токена нет
-
   try {
-    const socialId = userData.id.toString();
-    const name = userData.first_name + (userData.last_name ? ` ${userData.last_name}` : '');
+    const telegramData = req.body;
+    const { hash, ...userData } = telegramData;
     
-    const result = await handleSocialLogin(socialId, 'telegram', name);
-    res.json(result);
+    // 1. Криптографическая проверка подлинности данных от Telegram
+    const secretKey = crypto.createHash('sha256').update(process.env.TELEGRAM_BOT_TOKEN).digest();
+    
+    // Сортируем ключи по алфавиту и собираем строку (требование Telegram)
+    const dataCheckString = Object.keys(userData)
+      .sort()
+      .map(key => `${key}=${userData[key]}`)
+      .join('\n');
+      
+    const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+    
+    if (hmac !== hash) {
+      return res.status(401).json({ error: 'Неверная подпись Telegram' });
+    }
+
+    // 2. Проверка даты (защита от устаревших запросов - опционально, но рекомендуется)
+    const authDate = parseInt(userData.auth_date, 10);
+    const now = Math.floor(Date.now() / 1000);
+    if (now - authDate > 86400) { // Запрос старше 24 часов
+      return res.status(401).json({ error: 'Данные авторизации устарели' });
+    }
+
+    // 3. Поиск или создание пользователя в БД
+    // Предполагается, что в schema.prisma у тебя есть поле telegramId (String, опциональное)
+    let user = await prisma.user.findFirst({
+      where: { telegramId: userData.id.toString() }
+    });
+
+    if (!user) {
+      // Регистрируем нового юзера
+      user = await prisma.user.create({
+        data: {
+          telegramId: userData.id.toString(),
+          name: userData.first_name + (userData.last_name ? ` ${userData.last_name}` : ''),
+          // Telegram не отдает email, поэтому генерируем заглушку или оставляем пустым, 
+          // в зависимости от того, требует ли Prisma email как обязательное поле
+          email: `${userData.id}@telegram.local`, 
+          password: await bcrypt.hash(crypto.randomBytes(10).toString('hex'), 10), // Рандомный пароль
+        }
+      });
+    }
+
+    // 4. Генерация JWT токена
+    const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.status(200).json({ token, user: { id: user.id, name: user.name, email: user.email } });
+
   } catch (error) {
-    console.error('Ошибка Telegram Auth:', error);
-    res.status(500).json({ error: 'Ошибка авторизации через Telegram' });
+    console.error('Ошибка Telegram авторизации:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 };
 
