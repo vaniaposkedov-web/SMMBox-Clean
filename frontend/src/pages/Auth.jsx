@@ -52,67 +52,55 @@ export default function Auth() {
 
   // === ИНТЕГРАЦИЯ VK ID LOW-CODE ===
   // === ИНТЕГРАЦИЯ VK ID LOW-CODE ===
+  // === ИНТЕГРАЦИЯ VK ID LOW-CODE ===
   useEffect(() => {
-    // 1. Создаем скрипт динамически
-    const script = document.createElement('script');
-    // Используем точную версию для стабильности
-    script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js'; 
-    script.async = true;
-    document.body.appendChild(script);
+    const SCRIPT_ID = 'vk-sdk-script';
+    let script = document.getElementById(SCRIPT_ID);
 
-    // 2. Когда скрипт загрузился, инициализируем виджет
-    script.onload = () => {
-      if ('VKIDSDK' in window) {
-        const VKID = window.VKIDSDK;
-
+    const initVK = () => {
+      // Проверяем оба варианта имени объекта в window
+      const VKID = window.VKIDSDK || window.VKID;
+      
+      if (VKID) {
         VKID.Config.init({
           app: 54471878,
           redirectUrl: 'https://smmdeck.ru/auth',
-          responseMode: VKID.ConfigResponseMode.Callback, // Важно для работы без перезагрузки
+          responseMode: VKID.ConfigResponseMode.Callback,
           source: VKID.ConfigSource.LOWCODE,
-          scope: 'email', // Запрашиваем email
+          scope: 'email',
         });
 
         const oAuth = new VKID.OAuthList();
         const container = document.getElementById('vk-oauth-container');
 
         if (container) {
+          // Очищаем контейнер перед рендером, чтобы не было дублей
+          container.innerHTML = ''; 
+
           oAuth.render({
             container: container,
             oauthList: ['vkid'],
-            // === НОВЫЕ ПАРАМЕТРЫ СТИЛИЗАЦИИ ВИДЖЕТА ===
-            scheme: VKID.Scheme.DARK, // Темная тема
+            scheme: VKID.Scheme.DARK,
             styles: {
-              height: 56,       // Высота виджета ровно 56px
-              borderRadius: 28  // Делает виджет идеально круглым
+              height: 56,
+              borderRadius: 28
             }
           })
-          .on(VKID.WidgetEvents.ERROR, (error) => {
-             console.error('VKID Ошибка виджета:', error);
-             setError('Произошла ошибка при загрузке виджета ВК');
+          .on(VKID.WidgetEvents.ERROR, (err) => {
+             console.error('VKID Error:', err);
+             setError('Ошибка виджета ВК');
           })
           .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, function (payload) {
             setIsLoading(true);
-            const code = payload.code;
-            const deviceId = payload.device_id;
-
-            // Фронтенд обменивает код на токены
-            VKID.Auth.exchangeCode(code, deviceId)
+            VKID.Auth.exchangeCode(payload.code, payload.device_id)
               .then(async (data) => {
-                // data содержит access_token, user_id и другие данные
-                // Отправляем их в наш Zustand store
                 const result = await useStore.getState().vkLogin(data);
-                
-                if (result.success) {
-                  navigate('/'); // Успешный вход
-                } else {
-                  setError(result.error || 'Ошибка при входе через ВК');
-                }
+                if (result.success) navigate('/');
+                else setError(result.error || 'Ошибка входа');
                 setIsLoading(false);
               })
-              .catch((error) => {
-                console.error('Ошибка обмена кода ВК:', error);
-                setError('Не удалось обменять код авторизации');
+              .catch(() => {
+                setError('Ошибка обмена токена');
                 setIsLoading(false);
               });
           });
@@ -120,16 +108,25 @@ export default function Auth() {
       }
     };
 
-    // Очистка скрипта при размонтировании компонента (уходе со страницы)
+    if (!script) {
+      script = document.createElement('script');
+      script.id = SCRIPT_ID;
+      script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js';
+      script.async = true;
+      document.body.appendChild(script);
+      script.onload = initVK;
+    } else {
+      // Если скрипт уже есть (например, при переходе между страницами)
+      initVK();
+    }
+
     return () => {
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
+      // Не удаляем скрипт полностью, чтобы не грузить заново, 
+      // но можно очистить контейнер
+      const container = document.getElementById('vk-oauth-container');
+      if (container) container.innerHTML = '';
     };
   }, [navigate]);
-
-    // Очистка при размонтировании компонента
-
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -362,11 +359,12 @@ export default function Auth() {
           <div className="flex items-center justify-center gap-6">
             
             {/* КРУГЛАЯ КНОПКА ВК */}
-            
-            <div 
-              id="vk-oauth-container" 
-              className="w-14 h-14 shrink-0 rounded-full overflow-hidden shadow-lg hover:scale-105 transition-transform duration-300 flex items-center justify-center"
-            ></div>
+              <div 
+                id="vk-oauth-container" 
+                className="w-14 h-14 shrink-0 flex items-center justify-center hover:scale-105 transition-transform duration-300"
+              >
+                {/* Виджет вставится сюда. Если он не виден, проверьте консоль браузера (F12) */}
+              </div>
             
             {/* КРУГЛАЯ КНОПКА TELEGRAM */}
             {/* ВАЖНО: ЗАМЕНИ botId НА ЦИФРЫ ИЗ СВОЕГО ТОКЕНА */}
