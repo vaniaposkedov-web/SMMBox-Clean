@@ -31,50 +31,80 @@ export default function Auth() {
   const REDIRECT_URI = 'https://smmdeck.ru/auth';
 
   // === 1. ПЕРЕХВАТ КОДА ОТ ВКОНТАКТЕ ===
-useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const authCode = params.get('code');
-    
-    if (authCode) {
-      setIsLoading(true);
-      window.history.replaceState({}, document.title, '/auth'); 
-      
-      // Достаем наш ключ верификации
-      const codeVerifier = localStorage.getItem('vk_code_verifier');
-      
-      // Вызываем vkLogin с тремя аргументами!
-      vkLogin(authCode, REDIRECT_URI, codeVerifier).then((result) => {
-        if (result.success) {
-          if (result.requiresEmailVerification) setIsVerification(true);
-          else navigate('/');
-        } else {
-          setError(result.error || 'Ошибка входа через ВКонтакте');
+// === ИНИЦИАЛИЗАЦИЯ VK ID (LOW-CODE) И ПЕРЕХВАТ ТОКЕНА ===
+  useEffect(() => {
+    const initVK = () => {
+      const VKID = window.VKIDSDK;
+      if (VKID) {
+        VKID.Config.init({
+          app: 54471878, // Ваш VK_APP_ID
+          redirectUrl: 'https://smmdeck.ru/auth',
+          responseMode: VKID.ConfigResponseMode.Callback, // Работает через виджет без перезагрузки
+          source: VKID.ConfigSource.LOWCODE,
+          scope: 'email',
+        });
+
+        const oAuth = new VKID.OAuthList();
+        const container = document.getElementById('vk-oauth-container');
+
+        if (container) {
+          container.innerHTML = ''; // Очистка контейнера перед рендером
+          oAuth.render({
+            container: container,
+            oauthList: ['vkid'],
+            scheme: VKID.Scheme.DARK,
+            styles: { height: 56, borderRadius: 28 }
+          })
+          .on(VKID.WidgetEvents.ERROR, (err) => {
+            console.error("VK SDK ERROR:", err);
+          })
+          .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, (payload) => {
+            setIsLoading(true);
+            
+            // 1. SDK ВК сам обменивает код из payload на access_token
+            VKID.Auth.exchangeCode(payload.code, payload.device_id)
+              .then(async (data) => {
+                // data содержит готовый { access_token, user_id, email }
+                
+                // 2. Отправляем готовые данные на наш бэкенд
+                const result = await vkLogin({
+                  access_token: data.access_token,
+                  user_id: data.user_id,
+                  email: data.email || null
+                });
+
+                if (result.success) {
+                  if (result.requiresEmailVerification) setIsVerification(true);
+                  else navigate('/');
+                } else {
+                  setError(result.error || 'Ошибка входа через ВКонтакте');
+                }
+                setIsLoading(false);
+              })
+              .catch((err) => {
+                console.error('Ошибка обмена токена ВК:', err);
+                setError('Не удалось получить токен авторизации ВК');
+                setIsLoading(false);
+              });
+          });
         }
-        setIsLoading(false);
-        // Чистим память
-        localStorage.removeItem('vk_code_verifier');
-      });
+      }
+    };
+
+    // Динамическая загрузка скрипта, если его еще нет
+    if (!document.getElementById('vk-sdk-script')) {
+      const script = document.createElement('script');
+      script.id = 'vk-sdk-script';
+      script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js';
+      script.async = true;
+      script.onload = initVK;
+      document.body.appendChild(script);
+    } else {
+      initVK();
     }
-  }, [location.search, vkLogin, navigate]);
+  }, [navigate, vkLogin]);
 
-  const handleVkClick = async () => {
-    // 1. Генерируем случайный ключ (code_verifier)
-    const validChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-    let array = new Uint8Array(64);
-    window.crypto.getRandomValues(array);
-    let codeVerifier = Array.from(array, val => validChars[val % validChars.length]).join('');
-    localStorage.setItem('vk_code_verifier', codeVerifier);
-
-    // 2. Хешируем его в code_challenge
-    const data = new TextEncoder().encode(codeVerifier);
-    const digest = await window.crypto.subtle.digest('SHA-256', data);
-    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-    // 3. Перенаправляем пользователя с нужными параметрами защиты
-    const url = `https://id.vk.com/authorize?client_id=${VK_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=email&code_challenge=${codeChallenge}&code_challenge_method=S256`;
-    window.location.href = url;
-  };
+  
 
   const handleTelegramAuth = async (telegramData) => {
     setIsLoading(true);
@@ -197,16 +227,11 @@ useEffect(() => {
           <p className="text-center text-xs text-gray-500 mb-5">Быстрый вход через соцсети</p>
           <div className="flex items-center justify-center gap-8">
             
-            <button 
-              type="button" 
-              onClick={handleVkClick}
-              title="Войти через ВКонтакте"
-              className="w-14 h-14 flex items-center justify-center rounded-full bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 transition-all duration-300 shadow-lg hover:scale-105 shrink-0"
-            >
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M22.688 8.441c.148-.485.006-.841-.69-.841h-2.38c-.595 0-.882.316-1.03.664 0 0-1.211 2.945-2.922 4.85-.55.549-.8.723-1.096.723-.15 0-.369-.174-.369-.664v-4.733c0-.594-.173-.861-.669-.861h-3.66c-.367 0-.589.273-.589.527 0 .548.824.675.908 2.222v3.354c0 .753-.135.889-.431.889-.792 0-2.716-2.96-3.858-6.353-.227-.655-.453-.861-1.053-.861h-2.38c-.669 0-.805.316-.805.664 0 .626.804 3.743 3.75 7.876 1.965 2.816 4.731 4.336 7.24 4.336 1.506 0 1.693-.339 1.693-.918v-2.12c0-.687.145-.824.636-.824.368 0 1.004.184 2.482 1.62 1.69 1.693 1.969 2.463 2.862 2.463h2.38c.669 0 .972-.335.782-.993-.217-.714-1.006-1.637-2.049-2.82-.55-.636-1.373-1.309-1.625-1.66-.349-.484-.247-.698 0-1.097 0 0 2.866-4.045 3.12-5.421z"/>
-              </svg>
-            </button>
+            {/* КРУГЛАЯ КНОПКА ВК */}
+            <div className="relative w-14 h-14 hover:scale-105 transition-all duration-300">
+              <div id="vk-oauth-container" className="absolute inset-0 flex items-center justify-center z-20"></div>
+              <div className="absolute inset-0 bg-[#0077FF]/10 rounded-full border border-[#0077FF]/20 z-10"></div>
+            </div>
             
             <CustomTelegramButton botId="8750764796" onAuth={handleTelegramAuth} />
 
