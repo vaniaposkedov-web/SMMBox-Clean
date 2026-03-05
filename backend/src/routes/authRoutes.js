@@ -13,6 +13,7 @@ router.post('/telegram', authController.telegramAuth);
 router.post('/vk', authController.vkAuth);
 router.post('/link-email', authController.linkEmailAndSendCode);
 // ------------------------------------
+router.post('/complete-onboarding', protect, authController.completeOnboarding);
 
 router.post('/request-link-email', authController.requestLinkEmail);
 router.post('/verify-link-email', authController.verifyLinkEmail);

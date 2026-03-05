@@ -382,3 +382,19 @@ exports.linkEmailAndSendCode = async (req, res) => {
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
+
+exports.completeOnboarding = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { isOnboardingCompleted: true }
+    });
+    // Возвращаем обновленного юзера без пароля
+    const { password: _, ...userWithoutPassword } = updatedUser;
+    res.json({ success: true, user: userWithoutPassword });
+  } catch (error) {
+    console.error('Ошибка онбординга:', error);
+    res.status(500).json({ error: 'Ошибка при сохранении статуса' });
+  }
+};
