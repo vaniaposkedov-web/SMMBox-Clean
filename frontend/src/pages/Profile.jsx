@@ -3,19 +3,20 @@ import { useStore } from '../store';
 import { 
   User, Mail, Shield, Crown, Edit2, Clock, Save, X, Hash, Camera, 
   Check, Copy, CalendarClock, CheckCircle2, AlertCircle, BarChart3, 
-  Settings as SettingsIcon, LayoutDashboard, Lock, Zap, Eye, Share2
+  Settings as SettingsIcon, LayoutDashboard, Lock, Zap, Eye, Share2, Phone, Key
 } from 'lucide-react';
 
 export default function Profile() {
   const user = useStore((state) => state.user);
   const logout = useStore((state) => state.logout);
   const updateUser = useStore((state) => state.updateUser);
-  const linkEmail = useStore((state) => state.linkEmail);
+  const requestEmailLink = useStore((state) => state.requestEmailLink);
+  const verifyEmailLink = useStore((state) => state.verifyEmailLink);
 
   const fileInputRef = useRef(null);
 
   // Состояния
-  const [activeTab, setActiveTab] = useState('overview'); // overview | posts | settings
+  const [activeTab, setActiveTab] = useState('overview'); 
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -26,8 +27,10 @@ export default function Profile() {
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(user?.avatarUrl || null);
 
-  // Состояния для привязки Email (Telegram)
+  // Состояния для привязки Email
   const [realEmail, setRealEmail] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
+  const [isCodeSent, setIsCodeSent] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   const [linkError, setLinkError] = useState('');
 
@@ -99,21 +102,41 @@ export default function Profile() {
     alert(`Ссылка на пост #${postId} скопирована для партнеров!`);
   };
 
-  // Метод для привязки настоящей почты (если вход через ТГ)
-  const handleLinkEmail = async (e) => {
+  // === ЛОГИКА ОТПРАВКИ И ПРОВЕРКИ КОДА НА ПОЧТУ ===
+  const handleRequestCode = async (e) => {
     e.preventDefault();
     setIsLinking(true);
     setLinkError('');
-    
-    const res = await linkEmail(user.id, realEmail);
-    
+    const res = await requestEmailLink(user.id, realEmail);
     if (res.success) {
-      // Моментально обновляем интерфейс, чтобы плашка пропала
-      useStore.setState({ user: { ...user, email: realEmail } });
+      setIsCodeSent(true);
     } else {
-      setLinkError(res.error || 'Ошибка при привязке почты');
+      setLinkError(res.error || 'Ошибка при отправке кода');
     }
     setIsLinking(false);
+  };
+
+  const handleVerifyCode = async (e) => {
+    e.preventDefault();
+    setIsLinking(true);
+    setLinkError('');
+    const res = await verifyEmailLink(user.id, realEmail, verifyCode);
+    if (res.success) {
+      useStore.setState({ user: { ...user, email: realEmail } });
+      setIsCodeSent(false);
+      setRealEmail('');
+      setVerifyCode('');
+    } else {
+      setLinkError(res.error || 'Неверный код подтверждения');
+    }
+    setIsLinking(false);
+  };
+
+  // Определяем способ регистрации
+  const getRegMethod = () => {
+    if (user?.telegramId) return 'Telegram';
+    if (user?.vkId) return 'ВКонтакте';
+    return 'Почта / Пароль';
   };
 
   const StatusBadge = ({ status }) => {
@@ -142,37 +165,68 @@ export default function Profile() {
       {/* ПЛАШКА ПРИВЯЗКИ EMAIL ДЛЯ ТЕЛЕГРАМ-ЮЗЕРОВ */}
       {user?.email?.includes('@telegram.local') && (
         <div className="bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/30 rounded-3xl p-5 sm:p-6 mb-6 shadow-xl relative overflow-hidden">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 relative z-10">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative z-10">
             <div className="flex items-start gap-4">
               <div className="bg-red-500/20 p-3 rounded-full text-red-500 shrink-0">
                 <AlertCircle size={28} />
               </div>
               <div>
                 <h3 className="text-white font-bold text-lg mb-1">Ваш аккаунт уязвим!</h3>
-                <p className="text-gray-400 text-sm">Вы вошли через Telegram. Пожалуйста, привяжите реальную почту, чтобы не потерять доступ к аккаунту.</p>
+                <p className="text-gray-400 text-sm">Привяжите реальную почту для восстановления пароля и получения уведомлений.</p>
               </div>
             </div>
             
-            <form onSubmit={handleLinkEmail} className="flex flex-col sm:flex-row w-full md:w-auto gap-3 shrink-0 mt-2 md:mt-0">
-              <div className="relative flex-1 sm:w-64">
-                <input 
-                  type="email" 
-                  value={realEmail}
-                  onChange={(e) => setRealEmail(e.target.value)}
-                  placeholder="Введите реальный Email" 
-                  required
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-red-500 outline-none transition-all"
-                />
-                {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0">{linkError}</p>}
-              </div>
-              <button 
-                type="submit" 
-                disabled={isLinking}
-                className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0"
-              >
-                {isLinking ? 'Сохранение...' : 'Привязать'}
-              </button>
-            </form>
+            {!isCodeSent ? (
+              <form onSubmit={handleRequestCode} className="flex flex-col sm:flex-row w-full lg:w-auto gap-3 shrink-0 mt-2 lg:mt-0">
+                <div className="relative flex-1 sm:w-64">
+                  <input 
+                    type="email" 
+                    value={realEmail}
+                    onChange={(e) => setRealEmail(e.target.value)}
+                    placeholder="Ваш реальный Email" 
+                    required
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm focus:border-red-500 outline-none transition-all"
+                  />
+                  {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0">{linkError}</p>}
+                </div>
+                <button 
+                  type="submit" 
+                  disabled={isLinking}
+                  className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0"
+                >
+                  {isLinking ? 'Отправка...' : 'Получить код'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyCode} className="flex flex-col sm:flex-row w-full lg:w-auto gap-3 shrink-0 mt-2 lg:mt-0">
+                <div className="relative flex-1 sm:w-64">
+                  <input 
+                    type="text" 
+                    maxLength="6"
+                    value={verifyCode}
+                    onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Код из письма" 
+                    required
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm text-center tracking-widest focus:border-green-500 outline-none transition-all"
+                  />
+                  {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0">{linkError}</p>}
+                </div>
+                <button 
+                  type="submit" 
+                  disabled={isLinking || verifyCode.length !== 6}
+                  className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0"
+                >
+                  {isLinking ? 'Проверка...' : 'Подтвердить'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setIsCodeSent(false)} 
+                  className="px-4 text-sm text-gray-400 hover:text-white transition-colors"
+                >
+                  Отмена
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}
@@ -183,7 +237,7 @@ export default function Profile() {
         
         {/* Аватар */}
         <div className="relative group shrink-0 cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-          <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gray-900 rounded-full flex items-center justify-center border-4 border-gray-800 shadow-inner overflow-hidden transition-all group-hover:border-blue-500/50">
+          <div className="w-20 h-20 sm:w-28 sm:h-28 bg-gray-900 rounded-full flex items-center justify-center border-4 border-gray-800 shadow-inner overflow-hidden transition-all group-hover:border-blue-500/50">
             {previewUrl ? (
               <img src={previewUrl} alt="Аватар" className="w-full h-full object-cover" />
             ) : (
@@ -197,25 +251,40 @@ export default function Profile() {
         </div>
 
         {/* Инфо */}
-        <div className="flex-1 text-center sm:text-left z-10">
-          <h1 className="text-2xl font-bold text-white leading-tight">{user.name || 'Пользователь'}</h1>
-          <p className="text-gray-400 text-sm flex items-center justify-center sm:justify-start gap-1.5 mt-1">
-            <Mail size={14} /> {user.email}
-          </p>
+        <div className="flex-1 text-center sm:text-left z-10 w-full">
+          <h1 className="text-2xl font-bold text-white leading-tight mb-3">{user.name || 'Пользователь'}</h1>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 max-w-xl mx-auto sm:mx-0 bg-gray-900/50 p-4 rounded-2xl border border-gray-800/50">
+            <p className="text-gray-400 text-sm flex items-center gap-2">
+              <Mail size={14} className="text-gray-500" /> 
+              <span className="text-gray-300">{user.email}</span>
+            </p>
+            <p className="text-gray-400 text-sm flex items-center gap-2">
+              <Phone size={14} className="text-gray-500" /> 
+              <span className="text-gray-300">{user.phone || 'Не указан'}</span>
+            </p>
+            <p className="text-gray-400 text-sm flex items-center gap-2">
+              <Key size={14} className="text-gray-500" /> 
+              <span className="text-gray-300">Вход через {getRegMethod()}</span>
+            </p>
+            <p className="text-gray-400 text-sm flex items-center gap-2">
+              <Hash size={14} className="text-gray-500" /> 
+              <span className="text-gray-300">ID: {user.id}</span>
+              <button onClick={handleCopyId} className="ml-1 hover:text-white transition-colors">
+                {copiedId ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+              </button>
+            </p>
+          </div>
 
-          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-3">
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-4">
             <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5">
               <Shield size={12} /> {user.role === 'ADMIN' ? 'Администратор' : 'Пользователь'}
             </span>
             {user.pavilion && (
               <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-3 py-1 rounded-lg text-xs font-medium">
-                📍 {user.pavilion}
+                📍 Павильон: {user.pavilion}
               </span>
             )}
-            
-            <button onClick={handleCopyId} className="flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-lg px-2 py-1 text-xs text-gray-400 hover:text-white transition-colors">
-              <Hash size={12} /> ID {copiedId ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-            </button>
           </div>
         </div>
       </div>
