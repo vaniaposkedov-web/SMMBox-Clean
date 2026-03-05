@@ -8,7 +8,8 @@ const templates = require('../utils/emailTemplates');
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-dev';
-
+// Функция генерирует случайный 10-значный ID
+const generate10DigitId = () => Math.floor(1000000000 + Math.random() * 9000000000).toString();
 
 // РЕГИСТРАЦИЯ (Отправка кода)
 exports.register = async (req, res) => {
@@ -42,7 +43,7 @@ exports.register = async (req, res) => {
     // 5. Создание записи в базе
     const user = await prisma.user.create({
       data: {
-        id: numericId,
+        id: generate10DigitId(),
         email,
         phone: phone || null, // <-- Наш фикс для пустого телефона
         password: hashedPassword,
@@ -396,5 +397,99 @@ exports.linkEmailAndSendCode = async (req, res) => {
   } catch (error) {
     console.error('Ошибка привязки email:', error);
     res.status(500).json({ error: 'Ошибка сервера при привязке Email' });
+  }
+};
+
+// Подключаем почтовый модуль (если он у тебя не подключен в начале файла)
+const nodemailer = require('nodemailer');
+
+// Настройка почтальона (использует твои ключи из .env)
+const transporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com', // или другой SMTP, который ты используешь
+  port: 465,
+  secure: true,
+  auth: {
+    user: process.env.SMTP_USER, // Твоя почта (например, smmbox@gmail.com)
+    pass: process.env.SMTP_PASS, // Пароль приложения
+  },
+});
+
+// ==========================================
+// 1. ФУНКЦИЯ: ЗАПРОС КОДА НА ПОЧТУ
+// ==========================================
+exports.requestLinkEmail = async (req, res) => {
+  try {
+    const { userId, email } = req.body;
+
+    // Генерируем случайный 6-значный код (например: 482910)
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Записываем этот код в базу данных конкретному пользователю
+    await prisma.user.update({
+      where: { id: userId },
+      data: { verificationCode: code },
+    });
+
+    // Формируем красивое письмо
+    const mailOptions = {
+      from: `"SMMBOX" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: 'Привязка почты к аккаунту SMMBOX',
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; text-align: center;">
+          <h2>Здравствуйте!</h2>
+          <p>Для привязки этого адреса электронной почты к вашему аккаунту введите следующий код:</p>
+          <div style="background-color: #f3f4f6; padding: 15px; border-radius: 10px; display: inline-block; margin: 20px 0;">
+            <h1 style="color: #2563eb; letter-spacing: 5px; margin: 0;">${code}</h1>
+          </div>
+          <p style="color: #6b7280; font-size: 12px;">Если вы не запрашивали этот код, просто проигнорируйте письмо.</p>
+        </div>
+      `,
+    };
+
+    // Отправляем письмо
+    await transporter.sendMail(mailOptions);
+
+    res.status(200).json({ success: true, message: 'Код успешно отправлен' });
+  } catch (error) {
+    console.error('Ошибка при отправке кода привязки:', error);
+    res.status(500).json({ error: 'Не удалось отправить письмо. Проверьте адрес почты.' });
+  }
+};
+
+// ==========================================
+// 2. ФУНКЦИЯ: ПРОВЕРКА ВВЕДЕННОГО КОДА
+// ==========================================
+exports.verifyLinkEmail = async (req, res) => {
+  try {
+    const { userId, email, code } = req.body;
+
+    // Находим пользователя в базе
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    // Сверяем код, который ввел пользователь, с тем, что в базе
+    if (user.verificationCode !== code) {
+      return res.status(400).json({ error: 'Неверный код подтверждения' });
+    }
+
+    // ЕСЛИ КОД ВЕРНЫЙ: Обновляем почту и удаляем использованный код
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        email: email,             // Записываем настоящую почту вместо @telegram.local
+        verificationCode: null,   // Очищаем код (он одноразовый)
+      },
+    });
+
+    res.status(200).json({ success: true, message: 'Почта успешно привязана!' });
+  } catch (error) {
+    console.error('Ошибка проверки кода привязки:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 };

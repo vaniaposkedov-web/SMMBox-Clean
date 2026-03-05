@@ -54,13 +54,11 @@ export const useStore = create(
       })),
 
       // ==========================================
-      // === ЛОГИКА АВТОРИЗАЦИИ (ОБНОВЛЕННАЯ) ===
+      // === ЛОГИКА АВТОРИЗАЦИИ ===
       // ==========================================
       
       login: async (email, password) => {
         try {
-          // Обратите внимание: я поменял URL на ваш полный http://localhost:5000/api... 
-          // чтобы не было проблем с CORS, как в старом коде
           const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -69,7 +67,7 @@ export const useStore = create(
           const data = await res.json();
           if (res.ok) {
             set({ user: data.user, token: data.token });
-            localStorage.setItem('token', data.token); // Добавили сохранение токена
+            localStorage.setItem('token', data.token);
             return { success: true };
           }
           return { success: false, error: data.error };
@@ -78,7 +76,6 @@ export const useStore = create(
         }
       },
 
-      // ОБНОВЛЕННАЯ РЕГИСТРАЦИЯ (заменили pavilion на phone, убрали токен)
       register: async (email, password, name, phone) => {
         try {
           const res = await fetch('/api/auth/register', {
@@ -89,7 +86,6 @@ export const useStore = create(
           const data = await res.json();
           
           if (res.ok) {
-            // Теперь мы не устанавливаем токен сразу, так как ждем ввод 6-значного кода!
             return { success: true };
           }
           return { success: false, error: data.error };
@@ -97,8 +93,6 @@ export const useStore = create(
           return { success: false, error: 'Ошибка соединения с сервером' };
         }
       },
-
-      // === НОВЫЕ МЕТОДЫ ДЛЯ СОЦСЕТЕЙ ===
 
       vkLogin: async (code, redirectUri) => {
         try {
@@ -122,7 +116,7 @@ export const useStore = create(
 
       telegramLogin: async (telegramData) => {
         try {
-          const res = await fetch('/api/auth/telegram', { // <-- Никаких localhost!
+          const res = await fetch('/api/auth/telegram', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(telegramData)
@@ -138,9 +132,11 @@ export const useStore = create(
         }
       },
 
-      linkEmail: async (userId, email) => {
+      // --- НОВЫЕ МЕТОДЫ ДЛЯ ПРИВЯЗКИ ПОЧТЫ ЧЕРЕЗ КОД ---
+
+      requestEmailLink: async (userId, email) => {
         try {
-          const res = await fetch('/api/auth/link-email', {
+          const res = await fetch('/api/auth/request-link-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, email }),
@@ -152,9 +148,24 @@ export const useStore = create(
           return { success: false, error: 'Ошибка сети' };
         }
       },
+
+      verifyEmailLink: async (userId, email, code) => {
+        try {
+          const res = await fetch('/api/auth/verify-link-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, email, code }),
+          });
+          const data = await res.json();
+          if (!res.ok) return { success: false, error: data.error };
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети' };
+        }
+      },
+      
       // ==========================================
 
-      // Запрос письма на почту
       forgotPasswordAction: async (email) => {
         try {
           const res = await fetch('/api/auth/forgot-password', {
@@ -170,7 +181,6 @@ export const useStore = create(
         }
       },
 
-      // Установка нового пароля
       resetPasswordAction: async (token, newPassword) => {
         try {
           const res = await fetch(`/api/auth/reset-password/${token}`, {
@@ -207,7 +217,7 @@ export const useStore = create(
       },
 
       logout: () => {
-        localStorage.removeItem('token'); // Очищаем локальное хранилище
+        localStorage.removeItem('token');
         set({ 
           user: null, 
           token: null,
