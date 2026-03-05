@@ -255,6 +255,10 @@ exports.vkAuth = async (req, res) => {
   const { code, redirectUri, codeVerifier } = req.body;
   
   try {
+    if (!code || !codeVerifier) {
+      return res.status(400).json({ error: 'Не хватает данных для авторизации (нет code или codeVerifier)' });
+    }
+
     // 1. Обмениваем код на токен (ВК требует code_verifier)
     const tokenResponse = await axios.get('https://oauth.vk.com/access_token', {
       params: {

@@ -31,18 +31,18 @@ export default function Auth() {
   const REDIRECT_URI = 'https://smmdeck.ru/auth';
 
   // === 1. ПЕРЕХВАТ КОДА ОТ ВКОНТАКТЕ ===
-  useEffect(() => {
+useEffect(() => {
     const params = new URLSearchParams(location.search);
     const authCode = params.get('code');
     
     if (authCode) {
       setIsLoading(true);
-      window.history.replaceState({}, document.title, '/auth'); // Очищаем URL
+      window.history.replaceState({}, document.title, '/auth'); 
       
-      // Достаем секретный ключ из памяти браузера
+      // Достаем наш ключ верификации
       const codeVerifier = localStorage.getItem('vk_code_verifier');
       
-      // Отправляем код и ключ на бэкенд
+      // Вызываем vkLogin с тремя аргументами!
       vkLogin(authCode, REDIRECT_URI, codeVerifier).then((result) => {
         if (result.success) {
           if (result.requiresEmailVerification) setIsVerification(true);
@@ -51,9 +51,8 @@ export default function Auth() {
           setError(result.error || 'Ошибка входа через ВКонтакте');
         }
         setIsLoading(false);
-        // Очищаем кэш
+        // Чистим память
         localStorage.removeItem('vk_code_verifier');
-        localStorage.removeItem('vk_state');
       });
     }
   }, [location.search, vkLogin, navigate]);
