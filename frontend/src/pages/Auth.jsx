@@ -50,33 +50,91 @@ export default function Auth() {
     setIsLoading(false);
   };
 
+  // === ИНТЕГРАЦИЯ VK ID LOW-CODE ===
+  // === ИНТЕГРАЦИЯ VK ID LOW-CODE ===
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const code = params.get('code');
+    // 1. Создаем скрипт динамически
+    const script = document.createElement('script');
+    // Используем точную версию для стабильности
+    script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js'; 
+    script.async = true;
+    document.body.appendChild(script);
 
-    if (code) {
-      setIsLoading(true);
-      // Очищаем адресную строку от кода для красоты
-      window.history.replaceState({}, document.title, '/auth');
-      
-      const processVkAuth = async () => {
-        const result = await vkLogin(code, REDIRECT_URI);
-        
-        if (result.success) {
-          if (result.requiresEmailVerification) {
-            setError('Аккаунт ВК успешно найден, но необходимо привязать Email. Данный интерфейс в разработке.');
-          } else {
-            navigate('/'); 
-          }
-        } else {
-          setError(result.error || 'Ошибка авторизации через ВКонтакте');
+    // 2. Когда скрипт загрузился, инициализируем виджет
+    script.onload = () => {
+      if ('VKIDSDK' in window) {
+        const VKID = window.VKIDSDK;
+
+        VKID.Config.init({
+          app: 54471878,
+          redirectUrl: 'https://smmdeck.ru/auth',
+          responseMode: VKID.ConfigResponseMode.Callback, // Важно для работы без перезагрузки
+          source: VKID.ConfigSource.LOWCODE,
+          scope: 'email', // Запрашиваем email
+        });
+
+        const oAuth = new VKID.OAuthList();
+        const container = document.getElementById('vk-oauth-container');
+
+        if (container) {
+          oAuth.render({
+            container: container,
+            oauthList: ['vkid'],
+            // === НОВЫЕ ПАРАМЕТРЫ СТИЛИЗАЦИИ ВИДЖЕТА ===
+            scheme: VKID.Scheme.DARK, // Темная тема
+            styles: {
+              height: 56,       // Высота виджета ровно 56px
+              borderRadius: 28  // Делает виджет идеально круглым
+            }
+          })
+          .on(VKID.WidgetEvents.ERROR, (error) => {
+             console.error('VKID Ошибка виджета:', error);
+             setError('Произошла ошибка при загрузке виджета ВК');
+          })
+          .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, function (payload) {
+            setIsLoading(true);
+            const code = payload.code;
+            const deviceId = payload.device_id;
+
+            // Фронтенд обменивает код на токены
+            VKID.Auth.exchangeCode(code, deviceId)
+              .then(async (data) => {
+                // data содержит access_token, user_id и другие данные
+                // Отправляем их в наш Zustand store
+                const result = await useStore.getState().vkLogin(data);
+                
+                if (result.success) {
+                  navigate('/'); // Успешный вход
+                } else {
+                  setError(result.error || 'Ошибка при входе через ВК');
+                }
+                setIsLoading(false);
+              })
+              .catch((error) => {
+                console.error('Ошибка обмена кода ВК:', error);
+                setError('Не удалось обменять код авторизации');
+                setIsLoading(false);
+              });
+          });
         }
-        setIsLoading(false);
-      };
+      }
+    };
 
-      processVkAuth();
-    }
-  }, [location.search, vkLogin, navigate]);
+    // Очистка скрипта при размонтировании компонента (уходе со страницы)
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+  }, [navigate]);
+
+    // Очистка при размонтировании компонента
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -309,16 +367,11 @@ export default function Auth() {
           <div className="flex items-center justify-center gap-6">
             
             {/* КРУГЛАЯ КНОПКА ВК */}
-            <button 
-              type="button" 
-              onClick={handleVkClick} 
-              title="Войти через ВКонтакте"
-              className="w-14 h-14 flex items-center justify-center rounded-full bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 transition-all duration-300 shadow-lg hover:scale-105 shrink-0"
-            >
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M13.162 18.994c.609 0 .858-.406.851-.915-.031-1.917.714-2.949 2.059-1.604 1.488 1.488 1.796 2.519 3.603 2.519h3.2c.808 0 1.126-.26 1.126-.668 0-.863-1.533-2.825-2.852-4.22-.711-.753-.922-1.218-.178-2.43 1.086-1.76 2.519-4.136 2.519-5.402 0-.739-.39-1.082-1.187-1.082h-3.465c-.773 0-1.146.311-1.46.741-1.203 2.003-2.247 3.678-3.869 3.678-.512 0-.826-.189-.826-2.035 0-2.305.437-3.546-1.057-3.906-.681-.164-1.376-.233-2.853-.233-1.979 0-3.047.521-3.047 1.402 0 .522.547.74 1.171.843 1.33.221 1.531 1.082 1.531 2.888 0 2.214-.42 2.804-1.144 2.804-1.558 0-3.328-2.015-4.636-4.052-.403-.631-.76-1.008-1.543-1.008H.47c-.966 0-1.256.32-1.256.772 0 .682.892 2.75 4.144 7.281 2.735 3.791 5.98 5.627 9.804 5.627Z"/>
-              </svg>
-            </button>
+            
+            <div 
+              id="vk-oauth-container" 
+              className="w-14 h-14 shrink-0 rounded-full overflow-hidden shadow-lg hover:scale-105 transition-transform duration-300 flex items-center justify-center"
+            ></div>
             
             {/* КРУГЛАЯ КНОПКА TELEGRAM */}
             {/* ВАЖНО: ЗАМЕНИ botId НА ЦИФРЫ ИЗ СВОЕГО ТОКЕНА */}
