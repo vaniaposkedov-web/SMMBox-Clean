@@ -94,18 +94,24 @@ export const useStore = create(
         }
       },
 
-      vkLogin: async (code, redirectUri) => {
+      vkLogin: async (vkData) => {
         try {
+          // Отправляем данные, полученные от виджета ВК, на наш сервер
           const res = await fetch('/api/auth/vk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, redirectUri }),
+            body: JSON.stringify(vkData) 
           });
           const data = await res.json();
           
           if (!res.ok) return { success: false, error: data.error };
-          if (data.requiresEmailVerification) return { success: true, requiresEmailVerification: true, userId: data.userId };
           
+          // Если сервер просит привязать email
+          if (data.requiresEmailVerification) {
+            return { success: true, requiresEmailVerification: true, userId: data.userId };
+          }
+          
+          // Успешный вход
           set({ user: data.user, token: data.token });
           localStorage.setItem('token', data.token);
           return { success: true };

@@ -327,36 +327,48 @@ exports.telegramAuth = async (req, res) => {
 };
 
 // 2. АВТОРИЗАЦИЯ ЧЕРЕЗ ВКОНТАКТЕ
+// В начале файла убедись, что axios подключен
+// const axios = require('axios');
+
 exports.vkAuth = async (req, res) => {
-  const { code, redirectUri } = req.body;
-  
   try {
-    // Получаем токен и данные от ВК по коду
-    const tokenResponse = await axios.get('https://oauth.vk.com/access_token', {
-      params: {
-        client_id: process.env.VK_APP_ID,
-        client_secret: process.env.VK_APP_SECRET,
-        redirect_uri: redirectUri,
-        code: code
+    // Получаем данные от фронтенда (VKID.Auth.exchangeCode)
+    const { access_token, user_id } = req.body;
+
+    if (!access_token || !user_id) {
+      return res.status(400).json({ error: 'Некорректные данные от ВКонтакте' });
+    }
+
+    // 1. Обращаемся к API ВК, чтобы подтвердить валидность токена 
+    // и получить Имя, Фамилию и Email (если пользователь его разрешил)
+    const userRes = await axios.get('https://api.vk.com/method/users.get', {
+      params: { 
+        user_ids: user_id, 
+        access_token: access_token, 
+        fields: 'email', // Запрашиваем email
+        v: '5.131' 
       }
     });
 
-    const { user_id, email, access_token } = tokenResponse.data;
+    if (userRes.data.error) {
+      return res.status(401).json({ error: 'Недействительный токен ВКонтакте' });
+    }
 
-    // Получаем имя пользователя
-    const userResponse = await axios.get('https://api.vk.com/method/users.get', {
-      params: { user_ids: user_id, access_token, v: '5.131' }
-    });
-
-    const vkUser = userResponse.data.response[0];
+    const vkUser = userRes.data.response[0];
     const name = `${vkUser.first_name} ${vkUser.last_name}`;
+    // Если ВК не отдал email, генерируем временный
+    const email = req.body.email || vkUser.email || `temp_vk_${user_id}@smmdeck.local`;
 
+    // 2. Ищем пользователя в базе или создаем нового
+    // Функция handleSocialLogin уже написана у тебя в контроллере!
     const result = await handleSocialLogin(user_id.toString(), 'vk', name, email);
+    
+    // 3. Возвращаем результат (JWT токен и данные юзера) на фронтенд
     res.json(result);
 
   } catch (error) {
-    console.error('Ошибка VK Auth:', error);
-    res.status(500).json({ error: 'Ошибка авторизации через ВКонтакте' });
+    console.error('Ошибка VK Auth Backend:', error);
+    res.status(500).json({ error: 'Ошибка сервера при авторизации ВК' });
   }
 };
 
