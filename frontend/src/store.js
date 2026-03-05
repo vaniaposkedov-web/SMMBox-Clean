@@ -81,7 +81,7 @@ export const useStore = create(
       // ОБНОВЛЕННАЯ РЕГИСТРАЦИЯ (заменили pavilion на phone, убрали токен)
       register: async (email, password, name, phone) => {
         try {
-          const res = await fetch('/api/auth/vk', {
+          const res = await fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password, name, phone })
@@ -102,7 +102,7 @@ export const useStore = create(
 
       vkLogin: async (code, redirectUri) => {
         try {
-          const res = await fetch('http://localhost:5000/api/auth/vk', {
+          const res = await fetch('/api/auth/vk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code, redirectUri }),
@@ -122,7 +122,7 @@ export const useStore = create(
 
       telegramLogin: async (userData) => {
         try {
-          const res = await fetch('/api/auth/link-email', {
+          const res = await fetch('/api/auth/telegram', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(userData),
@@ -142,7 +142,7 @@ export const useStore = create(
 
       linkEmail: async (userId, email) => {
         try {
-          const res = await fetch('http://localhost:5000/api/auth/link-email', {
+          const res = await fetch('/api/auth/link-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, email }),
