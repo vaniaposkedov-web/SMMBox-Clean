@@ -354,11 +354,13 @@ useEffect(() => {
           <div className="flex items-center justify-center gap-6">
             
             {/* КРУГЛАЯ КНОПКА ВК */}
-              <div 
-                id="vk-oauth-container" 
-                className="w-14 h-14 shrink-0 flex items-center justify-center hover:scale-105 transition-transform duration-300"
-              >
-                {/* Виджет вставится сюда. Если он не виден, проверьте консоль браузера (F12) */}
+              <div className="flex flex-col items-center gap-2">
+                <div 
+                  id="vk-oauth-container" 
+                  className="w-14 h-14 shrink-0 flex items-center justify-center bg-[#0077FF]/10 rounded-full hover:scale-105 transition-all cursor-pointer"
+                >
+                  {/* Сюда SDK вставит iframe */}
+                </div>
               </div>
             
             {/* КРУГЛАЯ КНОПКА TELEGRAM */}
