@@ -50,20 +50,22 @@ export default function Auth() {
     setIsLoading(false);
   };
 
-  // === ИНТЕГРАЦИЯ VK ID LOW-CODE ===
-  // === ИНТЕГРАЦИЯ VK ID LOW-CODE ===
-  // === ИНТЕГРАЦИЯ VK ID LOW-CODE ===
-  useEffect(() => {
-    const SCRIPT_ID = 'vk-sdk-script';
-    let script = document.getElementById(SCRIPT_ID);
+useEffect(() => {
+    console.log("VK SDK: Попытка загрузки..."); // ЛОГ 1
+    
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js';
+    script.async = true;
+    document.body.appendChild(script);
 
-    const initVK = () => {
-      // Проверяем оба варианта имени объекта в window
-      const VKID = window.VKIDSDK || window.VKID;
-      
-      if (VKID) {
+    script.onload = () => {
+      console.log("VK SDK: Скрипт загружен"); // ЛОГ 2
+      if ('VKIDSDK' in window) {
+        const VKID = window.VKIDSDK;
+        console.log("VK SDK: Обьект найден, инициализация..."); // ЛОГ 3
+
         VKID.Config.init({
-          app: 54471878,
+          app: 54471878, // Твой новый ID
           redirectUrl: 'https://smmdeck.ru/auth',
           responseMode: VKID.ConfigResponseMode.Callback,
           source: VKID.ConfigSource.LOWCODE,
@@ -74,9 +76,7 @@ export default function Auth() {
         const container = document.getElementById('vk-oauth-container');
 
         if (container) {
-          // Очищаем контейнер перед рендером, чтобы не было дублей
-          container.innerHTML = ''; 
-
+          console.log("VK SDK: Контейнер найден, рендер..."); // ЛОГ 4
           oAuth.render({
             container: container,
             oauthList: ['vkid'],
@@ -87,46 +87,41 @@ export default function Auth() {
             }
           })
           .on(VKID.WidgetEvents.ERROR, (err) => {
-             console.error('VKID Error:', err);
-             setError('Ошибка виджета ВК');
+            console.error("VK SDK ERROR:", err);
+            setError("Ошибка виджета ВК");
           })
-          .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, function (payload) {
+          .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, (payload) => {
             setIsLoading(true);
             VKID.Auth.exchangeCode(payload.code, payload.device_id)
               .then(async (data) => {
-                const result = await useStore.getState().vkLogin(data);
+                const result = await vkLogin(data);
                 if (result.success) navigate('/');
-                else setError(result.error || 'Ошибка входа');
+                else setError(result.error);
                 setIsLoading(false);
               })
-              .catch(() => {
-                setError('Ошибка обмена токена');
+              .catch(err => {
+                console.error("VK Exchange Error:", err);
                 setIsLoading(false);
               });
           });
+        } else {
+          console.error("VK SDK: Контейнер #vk-oauth-container НЕ НАЙДЕН в DOM");
         }
       }
     };
 
-    if (!script) {
-      script = document.createElement('script');
-      script.id = SCRIPT_ID;
-      script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js';
-      script.async = true;
-      document.body.appendChild(script);
-      script.onload = initVK;
-    } else {
-      // Если скрипт уже есть (например, при переходе между страницами)
-      initVK();
-    }
-
     return () => {
-      // Не удаляем скрипт полностью, чтобы не грузить заново, 
-      // но можно очистить контейнер
-      const container = document.getElementById('vk-oauth-container');
-      if (container) container.innerHTML = '';
+      if (document.body.contains(script)) document.body.removeChild(script);
     };
-  }, [navigate]);
+  }, [navigate, vkLogin]);
+
+  const handleTelegramAuth = async (telegramData) => {
+    setIsLoading(true);
+    const result = await telegramLogin(telegramData);
+    if (result.success) navigate('/');
+    else setError(result.error || 'Ошибка Telegram');
+    setIsLoading(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
