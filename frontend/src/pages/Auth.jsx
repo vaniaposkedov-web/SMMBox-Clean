@@ -288,7 +288,7 @@ export default function Auth() {
             {/* ИЗМЕНЕНА КНОПКА TELEGRAM НА НАШ КОМПОНЕНТ ВИДЖЕТА */}
             <div className="w-full flex justify-center py-1">
               <TelegramLoginButton 
-                botName="ТВОЙ_ЮЗЕРНЕЙМ_БОТА" 
+                botName="smmbox_auth_bot" 
                 onAuth={handleTelegramAuth} 
               />
             </div>
