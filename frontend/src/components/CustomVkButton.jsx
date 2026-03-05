@@ -2,35 +2,37 @@ import { useEffect, useRef } from 'react';
 
 export default function CustomVkButton({ onAuth }) {
   const containerRef = useRef(null);
+  const onAuthRef = useRef(onAuth);
+
+  // Сохраняем свежую функцию onAuth, но НЕ провоцируем перезапуск виджета
+  useEffect(() => {
+    onAuthRef.current = onAuth;
+  }, [onAuth]);
 
   useEffect(() => {
-    const scriptId = 'vkid-sdk-script';
     let isInitialized = false;
-
-    // 1. Загружаем скрипт ВК
+    const scriptId = 'vkid-sdk-script';
+    
+    // 1. Загружаем официальный скрипт
     if (!document.getElementById(scriptId)) {
       const script = document.createElement('script');
       script.id = scriptId;
       script.src = 'https://unpkg.com/@vkid/sdk@3.0.0/dist-sdk/umd/index.js';
       script.async = true;
-      script.onload = () => initVKID();
+      script.onload = initVKID;
       document.body.appendChild(script);
     } else {
-      // Небольшая задержка, если скрипт уже есть, чтобы React успел отрендерить div
-      setTimeout(initVKID, 100);
+      initVKID();
     }
 
-    // 2. Инициализация виджета
     function initVKID() {
       if (isInitialized) return;
       if (!('VKIDSDK' in window) || !containerRef.current) return;
       
-      // Защита от дублирования кнопки в React Strict Mode
-      if (containerRef.current.innerHTML !== '') return;
-      
       isInitialized = true;
       const VKID = window.VKIDSDK;
 
+      // 2. Инициализируем конфиг
       VKID.Config.init({
         app: 54471878,
         redirectUrl: 'https://smmdeck.ru/auth',
@@ -40,36 +42,39 @@ export default function CustomVkButton({ onAuth }) {
       });
 
       const oAuth = new VKID.OAuthList();
+      
+      // Очищаем контейнер строго ОДИН раз перед отрисовкой
+      containerRef.current.innerHTML = '';
 
+      // 3. Рендерим родной виджет ВК, задаем размеры как у Телеграма
       oAuth.render({
         container: containerRef.current,
         oauthList: ['vkid'],
-        styles: {
-          height: 56,        // Жестко задаем высоту как у Telegram
-          borderRadius: 28,  // Делаем круглым
+        styles: { 
+          height: 56, 
+          borderRadius: 28 
         }
       })
       .on(VKID.WidgetEvents.ERROR, (error) => {
         console.error('Ошибка виджета VK:', error);
       })
       .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, function (payload) {
-        // Ловим успешный вход и обмениваем код на данные
+        // Получаем код и меняем на токен доступа
         VKID.Auth.exchangeCode(payload.code, payload.device_id)
-          .then((data) => onAuth(data))
-          .catch((error) => console.error('Ошибка обмена кода VK:', error));
+          .then((data) => {
+            // Передаем данные в Auth.jsx через замороженный реф
+            if (onAuthRef.current) onAuthRef.current(data);
+          })
+          .catch((err) => console.error('Ошибка обмена кода VK:', err));
       });
     }
-  }, [onAuth]);
+  }, []); // ПУСТОЙ МАССИВ! Виджет отрисуется 1 раз и больше никогда не сломается.
 
   return (
-    <div className="hover:scale-105 transition-transform duration-300">
-      {/* Идеально чистый контейнер без absolute и z-index. 
-        ВК сам отрисует внутри свою красивую кнопку. 
-      */}
-      <div 
-        ref={containerRef} 
-        className="h-[56px] min-w-[56px] flex items-center justify-center rounded-full overflow-hidden shadow-lg border border-gray-800 bg-[#0077FF]/10 shrink-0"
-      ></div>
-    </div>
+    // Чистейший контейнер без костылей. ВК сам вставит сюда свою иконку.
+    <div 
+      ref={containerRef} 
+      className="w-[56px] h-[56px] shrink-0 hover:scale-105 transition-transform duration-300 shadow-lg rounded-full"
+    ></div>
   );
 }
