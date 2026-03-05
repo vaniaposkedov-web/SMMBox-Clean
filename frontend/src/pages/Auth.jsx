@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useStore } from '../store';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft } from 'lucide-react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+
+// ИМПОРТИРУЕМ НАШИ КНОПКИ СОЦСЕТЕЙ
 import CustomTelegramButton from '../components/CustomTelegramButton';
+import CustomVkButton from '../components/CustomVkButton';
 
 export default function Auth() {
   const login = useStore((state) => state.login);
@@ -10,7 +13,6 @@ export default function Auth() {
   const telegramLogin = useStore((state) => state.telegramLogin);
   const vkLogin = useStore((state) => state.vkLogin);
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [isLogin, setIsLogin] = useState(true);
   const [isVerification, setIsVerification] = useState(false);
@@ -25,55 +27,27 @@ export default function Auth() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
 
-  const VK_APP_ID = 54471878;
-  const REDIRECT_URI = 'https://smmdeck.ru/auth';
-
-  // === 1. ПЕРЕХВАТ ГОТОВОГО ТОКЕНА ИЗ URL ===
-  useEffect(() => {
-    const hash = location.hash;
+  // === НОВАЯ ЛОГИКА АВТОРИЗАЦИИ ВКОНТАКТЕ ===
+  const handleVkAuth = async (vkData) => {
+    setIsLoading(true);
+    setError('');
     
-    // ВКонтакте возвращает токен после символа #
-    if (hash && hash.includes('access_token')) {
-      setIsLoading(true);
-      
-      // Парсим параметры из хэша
-      const params = new URLSearchParams(hash.substring(1));
-      const accessToken = params.get('access_token');
-      const userId = params.get('user_id');
-      const userEmail = params.get('email'); // ВК отдаст email, если мы его запросили
-
-      // Немедленно очищаем URL, чтобы не было двойных запросов
-      window.history.replaceState({}, document.title, location.pathname);
-
-      if (accessToken && userId) {
-        // Отправляем ГОТОВЫЙ токен на наш бэкенд
-        vkLogin({
-          access_token: accessToken,
-          user_id: userId,
-          email: userEmail || null
-        }).then((result) => {
-          if (result.success) {
-            if (result.requiresEmailVerification) setIsVerification(true);
-            else navigate('/');
-          } else {
-            setError(result.error || 'Ошибка входа через ВКонтакте');
-          }
-          setIsLoading(false);
-        });
+    // Передаем данные, полученные от CustomVkButton, в store
+    const result = await vkLogin(vkData);
+    
+    if (result.success) {
+      if (result.requiresEmailVerification) {
+        setIsVerification(true);
       } else {
-        setError('Не удалось получить данные от ВКонтакте');
-        setIsLoading(false);
+        navigate('/');
       }
+    } else {
+      setError(result.error || 'Ошибка авторизации через ВКонтакте');
     }
-  }, [location.hash, location.pathname, vkLogin, navigate]);
-
-  // === 2. РОДНАЯ КНОПКА ВК (ЗАПРОС ТОКЕНА НАПРЯМУЮ) ===
-  const handleVkClick = () => {
-    // Используем response_type=token (Implicit Flow). Это мгновенно вернет токен в URL
-    const url = `https://oauth.vk.com/authorize?client_id=${VK_APP_ID}&display=page&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=email&response_type=token&v=5.131`;
-    window.location.href = url;
+    setIsLoading(false);
   };
 
+  // === ЛОГИКА TELEGRAM ===
   const handleTelegramAuth = async (telegramData) => {
     setIsLoading(true);
     setError('');
@@ -130,6 +104,7 @@ export default function Auth() {
     setIsLoading(false);
   };
 
+  // === ИНТЕРФЕЙС ПРОВЕРКИ КОДА ===
   if (isVerification) {
     return (
       <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -152,6 +127,7 @@ export default function Auth() {
     );
   }
 
+  // === ОСНОВНОЙ ИНТЕРФЕЙС ===
   return (
     <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-blue-500/10 blur-[100px] sm:blur-[120px] rounded-full pointer-events-none"></div>
@@ -198,17 +174,10 @@ export default function Auth() {
           <p className="text-center text-xs text-gray-500 mb-5">Быстрый вход через соцсети</p>
           <div className="flex items-center justify-center gap-8">
             
-            <button 
-              type="button" 
-              onClick={handleVkClick}
-              title="Войти через ВКонтакте"
-              className="w-14 h-14 flex items-center justify-center rounded-full bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 transition-all duration-300 shadow-lg hover:scale-105 shrink-0"
-            >
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M22.688 8.441c.148-.485.006-.841-.69-.841h-2.38c-.595 0-.882.316-1.03.664 0 0-1.211 2.945-2.922 4.85-.55.549-.8.723-1.096.723-.15 0-.369-.174-.369-.664v-4.733c0-.594-.173-.861-.669-.861h-3.66c-.367 0-.589.273-.589.527 0 .548.824.675.908 2.222v3.354c0 .753-.135.889-.431.889-.792 0-2.716-2.96-3.858-6.353-.227-.655-.453-.861-1.053-.861h-2.38c-.669 0-.805.316-.805.664 0 .626.804 3.743 3.75 7.876 1.965 2.816 4.731 4.336 7.24 4.336 1.506 0 1.693-.339 1.693-.918v-2.12c0-.687.145-.824.636-.824.368 0 1.004.184 2.482 1.62 1.69 1.693 1.969 2.463 2.862 2.463h2.38c.669 0 .972-.335.782-.993-.217-.714-1.006-1.637-2.049-2.82-.55-.636-1.373-1.309-1.625-1.66-.349-.484-.247-.698 0-1.097 0 0 2.866-4.045 3.12-5.421z"/>
-              </svg>
-            </button>
+            {/* НОВЫЙ КОМПОНЕНТ ВК */}
+            <CustomVkButton onAuth={handleVkAuth} />
             
+            {/* СУЩЕСТВУЮЩИЙ КОМПОНЕНТ TELEGRAM */}
             <CustomTelegramButton botId="8750764796" onAuth={handleTelegramAuth} />
 
           </div>
