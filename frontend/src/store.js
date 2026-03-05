@@ -83,12 +83,12 @@ export const useStore = create(
       },
 
       // ВК МЕТОД: Принимает секретный ключ (codeVerifier)
-      vkLogin: async (vkData) => {
+      vkLogin: async (code, redirectUri, codeVerifier) => {
         try {
           const res = await fetch('/api/auth/vk', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(vkData), // Отправляем объект { code, redirectUri, codeVerifier }
+            body: JSON.stringify({ code, redirectUri, codeVerifier }),
           });
           const data = await res.json();
           
