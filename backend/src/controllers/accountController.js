@@ -1,4 +1,4 @@
-// Подключаем необходимые библиотеки
+
 const axios = require('axios'); // <-- ВОТ ОН, СПАСИТЕЛЬ ОТ 500 ОШИБКИ!
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
