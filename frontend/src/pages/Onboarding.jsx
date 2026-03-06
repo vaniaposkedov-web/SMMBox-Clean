@@ -239,10 +239,6 @@ export default function Onboarding() {
                   <Plus size={20} />
                 </button>
               </div>
-
-              {tgChannels.length > 0 && (
-                <div className="space-y-2 max-h-32 sm:max-h-40 overflow-y-auto pr-1 custom-scrollbar">
-                  {/* Список добавленных каналов */}
               {tgChannels.length > 0 && (
                 <div className="space-y-2 max-h-32 sm:max-h-40 overflow-y-auto pr-1 custom-scrollbar">
                   {tgChannels.map((channel, idx) => (
@@ -270,8 +266,6 @@ export default function Onboarding() {
                       </button>
                     </div>
                   ))}
-                </div>
-              )}
                 </div>
               )}
             </div>
