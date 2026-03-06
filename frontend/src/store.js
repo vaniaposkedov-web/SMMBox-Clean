@@ -226,6 +226,28 @@ export const useStore = create(
         } catch (error) { return []; }
       },
 
+      // ДОБАВИТЬ В store.js
+      saveVkAccounts: async (userId, accessToken, selectedGroups) => {
+        try {
+          const res = await fetch('/api/accounts/vk/save', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${get().token}`
+            },
+            body: JSON.stringify({ userId, accessToken, groups: selectedGroups })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            get().fetchAccounts(userId);
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения с сервером' };
+        }
+      },
+
       sendPartnershipRequest: async (requesterId, receiverId) => {
         await fetch('/api/partners/request', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId, receiverId })

@@ -1,109 +1,115 @@
+// Используем встроенный fetch (Node 18+)
 const { PrismaClient } = require('@prisma/client');
-const axios = require('axios');
 const prisma = new PrismaClient();
 
-exports.getAccounts = async (req, res) => {
-  const { userId } = req.query;
+// Обработка возврата от ВКонтакте (OAuth Callback)
+exports.vkCallback = async (req, res) => {
+  const { code, error, error_description } = req.query;
+
+  // Если пользователь нажал "Отмена"
+  if (error) {
+    return res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: '${error_description}' }, '*'); window.close();</script>`);
+  }
+
   try {
-    const accounts = await prisma.account.findMany({
-      where: { userId },
-      include: { watermark: true }
-    });
-    res.json(accounts);
-  } catch (error) {
-    res.status(500).json({ error: 'Ошибка получения аккаунтов' });
+    const clientId = process.env.VK_APP_ID;
+    const clientSecret = process.env.VK_SECURE_KEY;
+    const redirectUri = process.env.VK_REDIRECT_URI; // "https://smmdeck.ru/api/accounts/vk/callback"
+
+    // 1. Обмениваем временный код на бессрочный access_token
+    const tokenRes = await fetch(`https://oauth.vk.com/access_token?client_id=${clientId}&client_secret=${clientSecret}&redirect_uri=${redirectUri}&code=${code}`);
+    const tokenData = await tokenRes.json();
+
+    if (tokenData.error) {
+      return res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: '${tokenData.error_description}' }, '*'); window.close();</script>`);
+    }
+
+    const access_token = tokenData.access_token;
+
+    // 2. Получаем список групп, где пользователь является админом или редактором
+    // filter=admin,editor гарантирует, что мы не получим группы, где он просто подписчик
+    const groupsRes = await fetch(`https://api.vk.com/method/groups.get?extended=1&filter=admin,editor&access_token=${access_token}&v=5.199`);
+    const groupsData = await groupsRes.json();
+
+    if (groupsData.error) {
+      return res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: '${groupsData.error.error_msg}' }, '*'); window.close();</script>`);
+    }
+
+    // Это массив объектов с группами (id, name, photo_50 и т.д.)
+    const groups = groupsData.response.items;
+
+    // 3. Формируем HTML, который отправит данные в родительское окно (на фронтенд) и закроет попап
+    const html = `
+      <script>
+        window.opener.postMessage({
+          type: 'VK_GROUPS_LOADED',
+          payload: {
+            accessToken: '${access_token}',
+            groups: ${JSON.stringify(groups)}
+          }
+        }, '*');
+        window.close();
+      </script>
+    `;
+    
+    // Отдаем HTML-скрипт в браузер
+    res.send(html);
+
+  } catch (err) {
+    console.error('Ошибка OAuth ВК:', err);
+    res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: 'Internal Server Error' }, '*'); window.close();</script>`);
   }
 };
 
-
-
-exports.deleteAccount = async (req, res) => {
-  const { accountId } = req.params;
-  try {
-    await prisma.account.delete({ where: { id: accountId } });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Ошибка удаления аккаунта' });
-  }
-};
-
-// === НОВЫЙ МЕТОД: Добавление через токен из ссылки ===
-exports.vkAddByToken = async (req, res) => {
-  const { userId, tokenUrl } = req.body;
+// Сохранение выбранных групп ВК
+exports.saveVkGroups = async (req, res) => {
+  const { userId, accessToken, groups } = req.body;
 
   try {
-    // Извлекаем access_token из URL
-    const tokenMatch = tokenUrl.match(/access_token=([^&]+)/);
-    if (!tokenMatch) {
-      return res.status(400).json({ error: 'Токен не найден в ссылке. Скопируйте её целиком.' });
-    }
-    const access_token = tokenMatch[1];
-
-    // Получаем список групп
-    const groupsUrl = `https://api.vk.com/method/groups.get?extended=1&filter=admin&v=5.131&access_token=${access_token}`;
-    const groupsResponse = await axios.get(groupsUrl);
-
-    if (groupsResponse.data.error) {
-       return res.status(400).json({ error: 'Ошибка ВК: ' + groupsResponse.data.error.error_msg });
+    if (!userId || !groups || groups.length === 0) {
+      return res.status(400).json({ error: 'Нет данных для сохранения' });
     }
 
-    const groups = groupsResponse.data.response.items;
-
-    for (const group of groups) {
-      await prisma.account.upsert({
-        where: { provider_providerId: { provider: 'vk', providerId: group.id.toString() } },
-        update: {
-          accessToken: access_token,
-          name: group.name,
-          avatarUrl: group.photo_200 || group.photo_100 || group.photo_50
-        },
-        create: {
+    // Сохраняем каждую выбранную группу в базу
+    const savedAccounts = await Promise.all(groups.map(async (group) => {
+      // Ищем, нет ли уже такого аккаунта, чтобы не создавать дубли
+      const existing = await prisma.account.findFirst({
+        where: { 
           userId: userId,
-          provider: 'vk',
-          providerId: group.id.toString(),
-          accessToken: access_token,
-          name: group.name,
-          avatarUrl: group.photo_200 || group.photo_100 || group.photo_50
+          provider: 'VK',
+          providerAccountId: group.id.toString() 
         }
       });
-    }
 
-    res.json({ success: true, count: groups.length });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Ошибка на сервере' });
-  }
-};
-
-// === ТЕСТОВЫЙ МЕТОД: Добавление мок-аккаунта (Telegram и др.) ===
-exports.addMockAccount = async (req, res) => {
-  const { userId, name, provider } = req.body;
-
-  if (!name || !provider) {
-    return res.status(400).json({ error: 'Необходимо указать название и провайдера' });
-  }
-
-  try {
-    // Генерируем фейковые данные для теста, чтобы база данных не ругалась на уникальность
-    const fakeProviderId = `mock_${provider}_${Date.now()}`;
-    const fakeToken = `test_token_${Math.random().toString(36).substring(7)}`;
-
-    // Создаем группу в базе
-    const account = await prisma.account.create({
-      data: {
-        userId: userId,
-        provider: provider,
-        providerId: fakeProviderId,
-        accessToken: fakeToken,
-        name: name,
-        // Ставим заглушку-картинку для Телеграма
-        avatarUrl: 'https://cdn-icons-png.flaticon.com/512/2111/2111646.png' 
+      if (existing) {
+        // Обновляем токен и аватарку, если они изменились
+        return prisma.account.update({
+          where: { id: existing.id },
+          data: { 
+            accessToken: accessToken,
+            avatarUrl: group.photo_50 || null,
+            name: group.name
+          }
+        });
+      } else {
+        // Создаем новый аккаунт
+        return prisma.account.create({
+          data: {
+            userId: userId,
+            provider: 'VK',
+            providerAccountId: group.id.toString(),
+            name: group.name,
+            accessToken: accessToken,
+            avatarUrl: group.photo_50 || null,
+            type: 'GROUP' // Помечаем, что это группа
+          }
+        });
       }
-    });
+    }));
 
-    res.json({ success: true, account });
+    res.json({ success: true, count: savedAccounts.length });
   } catch (error) {
-    console.error('Ошибка добавления тестового аккаунта:', error);
-    res.status(500).json({ error: 'Ошибка сервера при добавлении группы' });
+    console.error('Ошибка сохранения групп ВК:', error);
+    res.status(500).json({ error: 'Ошибка сервера при сохранении аккаунтов' });
   }
 };
