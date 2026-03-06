@@ -62,6 +62,7 @@ exports.vkCallback = async (req, res) => {
 };
 
 // Сохранение выбранных групп ВК
+// Сохранение выбранных групп ВК
 exports.saveVkGroups = async (req, res) => {
   const { userId, accessToken, groups } = req.body;
 
@@ -70,19 +71,17 @@ exports.saveVkGroups = async (req, res) => {
       return res.status(400).json({ error: 'Нет данных для сохранения' });
     }
 
-    // Сохраняем каждую выбранную группу в базу
     const savedAccounts = await Promise.all(groups.map(async (group) => {
-      // Ищем, нет ли уже такого аккаунта, чтобы не создавать дубли
+      // ИСПОЛЬЗУЕМ providerId ВМЕСТО providerAccountId
       const existing = await prisma.account.findFirst({
         where: { 
           userId: userId,
           provider: 'VK',
-          providerAccountId: group.id.toString() 
+          providerId: group.id.toString() 
         }
       });
 
       if (existing) {
-        // Обновляем токен и аватарку, если они изменились
         return prisma.account.update({
           where: { id: existing.id },
           data: { 
@@ -92,16 +91,15 @@ exports.saveVkGroups = async (req, res) => {
           }
         });
       } else {
-        // Создаем новый аккаунт
         return prisma.account.create({
           data: {
             userId: userId,
             provider: 'VK',
-            providerAccountId: group.id.toString(),
+            providerId: group.id.toString(), // Исправлено
             name: group.name,
             accessToken: accessToken,
-            avatarUrl: group.photo_50 || null,
-            type: 'GROUP' // Помечаем, что это группа
+            avatarUrl: group.photo_50 || null
+            // Поле type удалено, так как его нет в базе
           }
         });
       }
@@ -111,6 +109,48 @@ exports.saveVkGroups = async (req, res) => {
   } catch (error) {
     console.error('Ошибка сохранения групп ВК:', error);
     res.status(500).json({ error: 'Ошибка сервера при сохранении аккаунтов' });
+  }
+};
+
+// Сохранение выбранных Telegram-каналов
+exports.saveTgAccounts = async (req, res) => {
+  const { userId, channels } = req.body;
+
+  try {
+    if (!userId || !channels || channels.length === 0) {
+      return res.status(400).json({ error: 'Нет данных для сохранения' });
+    }
+
+    const savedAccounts = await Promise.all(channels.map(async (channel) => {
+      // ИСПОЛЬЗУЕМ providerId ВМЕСТО providerAccountId
+      const existing = await prisma.account.findFirst({
+        where: { userId: userId, provider: 'TELEGRAM', providerId: channel.chatId }
+      });
+
+      if (existing) {
+        return prisma.account.update({
+          where: { id: existing.id },
+          data: { avatarUrl: channel.avatar, name: channel.title }
+        });
+      } else {
+        return prisma.account.create({
+          data: {
+            userId: userId,
+            provider: 'TELEGRAM',
+            providerId: channel.chatId, // Исправлено
+            name: channel.title,
+            avatarUrl: channel.avatar,
+            accessToken: '' // Обязательное поле в БД, для ТГ передаем пустоту
+            // Поле type удалено
+          }
+        });
+      }
+    }));
+
+    res.json({ success: true, count: savedAccounts.length });
+  } catch (error) {
+    console.error('Ошибка сохранения ТГ:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 
