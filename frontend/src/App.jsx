@@ -92,11 +92,21 @@ function UserLayout() {
 }
 
 // --- ГЛАВНЫЙ КОМПОНЕНТ ---
+// --- ГЛАВНЫЙ КОМПОНЕНТ ---
 function App() {
   const user = useStore((state) => state.user);
+  const logout = useStore((state) => state.logout); // Достаем функцию выхода
+  const token = localStorage.getItem('token'); // Проверяем реальный токен
+
+  // === ЖЕСТКАЯ ПРОВЕРКА СЕССИИ ===
+  // Если есть юзер, но кто-то удалил токен - принудительно очищаем кэш
+  if (user && !token) {
+    logout();
+    return null; // Ждем пока Zustand очистится
+  }
 
   // === ВЕТКА 1: ЕСЛИ ПОЛЬЗОВАТЕЛЬ НЕ АВТОРИЗОВАН ===
-  if (!user) {
+  if (!user || !token) {
     return (
       <BrowserRouter>
         <Routes>
@@ -109,6 +119,8 @@ function App() {
       </BrowserRouter>
     );
   }
+
+  // ... дальше ваш код ВЕТКИ 2 И 3 без изменений ...
 
   // === ВЕТКИ 2 И 3: АВТОРИЗОВАН ===
   return (

@@ -391,13 +391,20 @@ exports.linkEmailAndSendCode = async (req, res) => {
 
 exports.completeOnboarding = async (req, res) => {
   try {
-    // Теперь берем ID напрямую из запроса (железобетонно)
-    const { userId } = req.body; 
-    
+    // Ищем ID везде: и в токене (req.user), и в теле запроса (req.body)
+    const userId = (req.user && req.user.userId) || req.body.userId;
+
     if (!userId) {
-      return res.status(400).json({ error: 'Не указан ID пользователя' });
+      return res.status(400).json({ error: 'Сессия устарела. Пожалуйста, перезайдите в аккаунт.' });
     }
 
+    // Проверяем, существует ли вообще юзер в базе
+    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!existingUser) {
+      return res.status(404).json({ error: 'Пользователь не найден в базе данных.' });
+    }
+
+    // Сохраняем статус
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: { isOnboardingCompleted: true }
@@ -406,8 +413,8 @@ exports.completeOnboarding = async (req, res) => {
     const { password: _, ...userWithoutPassword } = updatedUser;
     res.json({ success: true, user: userWithoutPassword });
   } catch (error) {
-    console.error('Ошибка онбординга:', error);
-    res.status(500).json({ error: 'Ошибка при сохранении статуса' });
+    console.error('КРИТИЧЕСКАЯ ОШИБКА completeOnboarding:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера: ' + error.message });
   }
 };
 
