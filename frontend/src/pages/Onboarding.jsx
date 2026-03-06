@@ -23,17 +23,26 @@ export default function Onboarding() {
   const [copied, setCopied] = useState(false);
   const [tgLoading, setTgLoading] = useState(false);
 
-  // --- УМНАЯ МАСКА ДЛЯ ТЕЛЕФОНА ---
-  const handlePhoneInput = (e) => {
-    let input = e.target.value.replace(/\D/g, ''); // Оставляем только цифры
-    if (!input) return setPhone('');
+  // --- ИДЕАЛЬНАЯ МАСКА ТЕЛЕФОНА ---
+  const handlePhoneFocus = () => {
+    if (!phone) setPhone('+7 (');
+  };
 
-    // Если начинается с 7, 8 или 9 (Россия/СНГ)
-    if (['7', '8', '9'].indexOf(input[0]) > -1) {
+  const handlePhoneChange = (e) => {
+    let input = e.target.value.replace(/\D/g, ''); // Оставляем только цифры
+    
+    // Если стираем всё
+    if (input.length === 0) {
+      setPhone('');
+      return;
+    }
+
+    // Жесткий формат России (+7)
+    if (['7', '8', '9'].includes(input[0])) {
       if (input[0] === '9') input = '7' + input;
-      let firstSymbols = (input[0] === '8') ? '8' : '+7';
-      let formatted = firstSymbols + ' ';
+      if (input[0] === '8') input = '7' + input.substring(1);
       
+      let formatted = '+7 ';
       if (input.length > 1) formatted += '(' + input.substring(1, 4);
       if (input.length >= 5) formatted += ') ' + input.substring(4, 7);
       if (input.length >= 8) formatted += '-' + input.substring(7, 9);
@@ -327,7 +336,8 @@ export default function Onboarding() {
                 <input 
                   type="tel" 
                   value={phone} 
-                  onChange={handlePhoneInput} 
+                  onFocus={handlePhoneFocus}
+                  onChange={handlePhoneChange} 
                   placeholder="+7 (999) 000-00-00" 
                   className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 sm:py-4 pl-10 sm:pl-12 pr-4 outline-none focus:border-blue-500 transition-colors text-base" 
                 />
