@@ -93,6 +93,7 @@ function UserLayout() {
 
 // --- ГЛАВНЫЙ КОМПОНЕНТ ---
 // --- ГЛАВНЫЙ КОМПОНЕНТ ---
+import { useEffect } from 'react';
 function App() {
   const user = useStore((state) => state.user);
   const logout = useStore((state) => state.logout); // Достаем функцию выхода
@@ -100,9 +101,14 @@ function App() {
 
   // === ЖЕСТКАЯ ПРОВЕРКА СЕССИИ ===
   // Если есть юзер, но кто-то удалил токен - принудительно очищаем кэш
+  useEffect(() => {
+    if (user && !token) {
+      logout();
+    }
+  }, [user, token, logout]);
+
   if (user && !token) {
-    logout();
-    return null; // Ждем пока Zustand очистится
+    return null; // Просто ждем, пока useEffect очистит хранилище
   }
 
   // === ВЕТКА 1: ЕСЛИ ПОЛЬЗОВАТЕЛЬ НЕ АВТОРИЗОВАН ===
