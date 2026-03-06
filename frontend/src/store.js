@@ -137,6 +137,27 @@ export const useStore = create(
         }
       },
 
+      saveTgAccounts: async (userId, channels) => {
+        try {
+          const res = await fetch('/api/accounts/tg/save', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${get().token}`
+            },
+            body: JSON.stringify({ userId, channels })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            get().fetchAccounts(userId);
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети' };
+        }
+      },
+
       verifyEmailLink: async (userId, email, code, phone) => { // <-- Добавили phone сюда
         try {
           const res = await fetch('/api/auth/verify-link-email', {
