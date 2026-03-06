@@ -157,9 +157,14 @@ export default function Onboarding() {
       const token = localStorage.getItem('token');
       if (!token) { setError('Сессия истекла. Пожалуйста, войдите заново.'); setLoading(false); return; }
       
-      // ПОДСТРАХОВКА: Сохраняем ТГ каналы перед завершением, если они не сохранились
+      // ПОДСТРАХОВКА: Сохраняем ТГ каналы перед завершением
       if (tgChannels.length > 0) {
-        await useStore.getState().saveTgAccounts(user?.id, tgChannels);
+        const res = await useStore.getState().saveTgAccounts(user?.id, tgChannels);
+        if (!res.success) {
+          setError(res.error); // ВЫВОДИМ ОШИБКУ "КАНАЛ ЗАНЯТ"
+          setLoading(false);
+          return; // ОСТАНАВЛИВАЕМ РЕГИСТРАЦИЮ
+        }
       }
 
       const res = await fetch('/api/auth/complete-onboarding', {
@@ -306,6 +311,7 @@ export default function Onboarding() {
               <h2 className="text-xl sm:text-2xl font-bold text-white">Каналы Telegram</h2>
               <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">Добавьте неограниченное количество каналов.</p>
             </div>
+            {error && <p className="text-red-400 bg-red-400/10 py-2 px-3 rounded-lg border border-red-400/20 text-xs sm:text-sm text-left mb-4">{error}</p>}
             
             <div className="bg-[#0088CC]/10 border border-[#0088CC]/20 rounded-2xl p-4 sm:p-5 space-y-3">
               <h3 className="text-[#0088CC] font-semibold flex items-center gap-2 mb-2 text-sm sm:text-base">
@@ -356,15 +362,26 @@ export default function Onboarding() {
             
             {/* === ДОБАВЛЕНО ИСПРАВЛЕНИЕ: КНОПКА ШАГА ТГ === */}
             <button 
+              disabled={tgLoading}
               onClick={async () => {
                 if (tgChannels.length > 0) {
-                  await useStore.getState().saveTgAccounts(user?.id, tgChannels);
+                  setTgLoading(true);
+                  setError('');
+                  const res = await useStore.getState().saveTgAccounts(user?.id, tgChannels);
+                  setTgLoading(false);
+                  
+                  if (!res.success) {
+                    setError(res.error); // Показываем ошибку
+                    return; // БЛОКИРУЕМ ПЕРЕХОД НА СЛЕДУЮЩИЙ ШАГ
+                  }
                 }
                 setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts');
               }} 
-              className="mt-4 sm:mt-6 w-full bg-[#0088CC] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-base"
+              className="mt-4 sm:mt-6 w-full bg-[#0088CC] disabled:opacity-50 text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-base"
             >
-              <span>{tgChannels.length > 0 ? `Продолжить (${tgChannels.length})` : 'Пропустить'}</span> <ArrowRight size={18} />
+              {tgLoading ? <Loader2 className="animate-spin" size={18} /> : null}
+              <span>{tgChannels.length > 0 ? `Продолжить (${tgChannels.length})` : 'Пропустить'}</span> 
+              {!tgLoading && <ArrowRight size={18} />}
             </button>
           </div>
         )}
