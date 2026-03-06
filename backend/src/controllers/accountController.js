@@ -195,12 +195,15 @@ exports.verifyTgAccountsStatus = async (req, res) => {
         });
 
       } catch (error) {
-        return prisma.account.update({
+        // === ЛОВИМ НАСТОЯЩУЮ ОШИБКУ ОТ ТЕЛЕГРАМ ===
+        console.error('=== ОШИБКА ОТ TELEGRAM API ===');
+        console.error('ID Канала:', acc.providerId);
+        console.error('Ответ ТГ:', error.response?.data || error.message);
+        
+        // Если Телеграм вернул ошибку, аккуратно сохраняем её текст
+        return await prisma.account.update({
           where: { id: acc.id },
-          data: { 
-            isValid: false, 
-            errorMsg: 'Бот удален из канала или канал не существует' 
-          }
+          data: { isValid: false, errorMsg: error.response?.data?.description || 'Бот удален из канала' }
         });
       }
     }));
