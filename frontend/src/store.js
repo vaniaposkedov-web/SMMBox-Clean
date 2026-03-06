@@ -158,6 +158,24 @@ export const useStore = create(
         }
       },
 
+      verifyAccountsStatus: async () => {
+    try {
+      const res = await fetch('/api/accounts/tg/verify-status', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${get().token}` // Не забываем токен!
+        }
+      });
+      if (res.ok) {
+        // После проверки заново скачиваем список аккаунтов, чтобы обновить UI
+        get().fetchAccounts(get().user.id); 
+      }
+    } catch (error) {
+      console.error('Ошибка верификации аккаунтов:', error);
+    }
+  },
+
       verifyEmailLink: async (userId, email, code, phone) => { // <-- Добавили phone сюда
         try {
           const res = await fetch('/api/auth/verify-link-email', {
