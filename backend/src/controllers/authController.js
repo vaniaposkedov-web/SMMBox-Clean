@@ -404,3 +404,45 @@ exports.completeOnboarding = async (req, res) => {
     res.status(500).json({ error: 'Ошибка при сохранении статуса' });
   }
 };
+
+// ==========================================
+// ПОЛУЧЕНИЕ ИНФОРМАЦИИ О КАНАЛЕ TELEGRAM
+// ==========================================
+exports.getTgChatInfo = async (req, res) => {
+  const { channel } = req.body;
+  try {
+    // Очищаем ссылку, чтобы получить @username
+    let chatId = channel.trim();
+    if (chatId.includes('t.me/')) {
+      chatId = '@' + chatId.split('t.me/')[1];
+    } else if (!chatId.startsWith('@')) {
+      chatId = '@' + chatId;
+    }
+
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) return res.status(500).json({ error: 'Токен бота не настроен' });
+
+    // 1. Получаем базовую инфу о чате
+    const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChat?chat_id=${chatId}`);
+    const chat = tgRes.data.result;
+    
+    let avatarUrl = null;
+
+    // 2. Если есть аватарка, получаем прямую ссылку на файл
+    if (chat.photo) {
+       const fileRes = await axios.get(`https://api.telegram.org/bot${botToken}/getFile?file_id=${chat.photo.small_file_id}`);
+       const filePath = fileRes.data.result.file_path;
+       avatarUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+    }
+
+    res.json({
+      success: true,
+      title: chat.title || chat.username,
+      username: chat.username ? `@${chat.username}` : chatId,
+      avatar: avatarUrl
+    });
+  } catch (error) {
+    console.error('Ошибка получения чата ТГ:', error?.response?.data || error.message);
+    res.status(400).json({ error: 'Канал не найден. Убедитесь, что бот добавлен в администраторы.' });
+  }
+};
