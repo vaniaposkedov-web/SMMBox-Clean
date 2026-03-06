@@ -23,24 +23,27 @@ export default function Onboarding() {
   const [copied, setCopied] = useState(false);
   const [tgLoading, setTgLoading] = useState(false);
 
-  // --- ЖЕЛЕЗОБЕТОННАЯ МАСКА ТЕЛЕФОНА ---
+  // --- ЖЕЛЕЗОБЕТОННАЯ МАСКА ТЕЛЕФОНА (Только +7) ---
   const handlePhoneChange = (e) => {
     let input = e.target.value.replace(/\D/g, ''); // Оставляем только цифры
-
     if (!input) {
       setPhone('');
       return;
     }
-
-    // Всегда начинаем с 7
+    
+    // Если пользователь печатает первую цифру, и это не 7 и не 8 (например 6)
+    if (input.length === 1 && input !== '7' && input !== '8') {
+      input = '7' + input;
+    }
+    
+    // Заменяем 8 на 7
     if (input[0] === '8') input = '7' + input.substring(1);
-    if (input[0] === '9') input = '79' + input.substring(1);
+    
+    // Жестко гарантируем первую семерку
     if (input[0] !== '7') input = '7' + input;
 
-    // Максимум 11 цифр (7 + 10 цифр номера)
-    input = input.substring(0, 11);
+    input = input.substring(0, 11); // Максимум 11 цифр
 
-    // Формируем строку
     let formatted = '+7';
     if (input.length > 1) formatted += ' (' + input.substring(1, 4);
     if (input.length >= 5) formatted += ') ' + input.substring(4, 7);
@@ -120,13 +123,10 @@ export default function Onboarding() {
 
   const handleRequestCode = async (e) => {
     e.preventDefault();
-    
-    // Блокируем отправку, если телефон введен не до конца (нужно 18 символов)
     if (phone && phone.length < 18) {
       setError('Пожалуйста, введите номер телефона полностью');
       return;
     }
-
     setLoading(true);
     setError('');
     
@@ -157,7 +157,7 @@ export default function Onboarding() {
       });
       const data = await res.json();
       if (data.success) {
-        finishOnboarding(); // Вызываем финальное сохранение
+        finishOnboarding(); 
       } else {
         setError(data.error);
       }
@@ -169,7 +169,6 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-3 sm:p-4 relative overflow-x-hidden font-sans">
-      
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] sm:w-[600px] sm:h-[600px] bg-blue-600/10 blur-[90px] sm:blur-[130px] rounded-full pointer-events-none"></div>
 
       <button onClick={finishOnboarding} className="absolute top-4 right-4 sm:top-6 sm:right-6 text-gray-400 hover:text-white flex items-center gap-2 bg-gray-900/50 backdrop-blur-md border border-gray-800 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl transition-all z-20 hover:bg-gray-800">
@@ -203,13 +202,9 @@ export default function Onboarding() {
           <div className="space-y-5 sm:space-y-6 text-center animate-in fade-in slide-in-from-right-8 duration-500">
             <h2 className="text-xl sm:text-2xl font-bold text-white">Сообщества ВКонтакте</h2>
             <p className="text-gray-400 text-xs sm:text-sm">Привяжите аккаунт, чтобы выбрать все группы и паблики, в которых вы хотите публиковать посты.</p>
-            
             {!vkConnected ? (
               <div className="bg-gray-900/50 backdrop-blur-sm p-6 sm:p-8 rounded-2xl border border-gray-700 my-4 sm:my-6">
-                <button 
-                  onClick={() => setVkConnected(true)} 
-                  className="bg-[#0077FF] hover:bg-[#0066DD] text-white font-bold py-3 px-4 sm:px-6 text-sm sm:text-base rounded-xl transition-colors shadow-lg shadow-[#0077FF]/30 mx-auto block w-full sm:w-auto"
-                >
+                <button onClick={() => setVkConnected(true)} className="bg-[#0077FF] hover:bg-[#0066DD] text-white font-bold py-3 px-4 sm:px-6 text-sm sm:text-base rounded-xl transition-colors shadow-lg shadow-[#0077FF]/30 mx-auto block w-full sm:w-auto">
                   Привязать аккаунт ВКонтакте
                 </button>
               </div>
@@ -220,7 +215,6 @@ export default function Onboarding() {
                 <p className="text-xs sm:text-sm text-gray-400">Список ваших сообществ появится в панели управления.</p>
               </div>
             )}
-
             <button onClick={() => setStep(firstChoice === 'vk' ? 'offer_second' : 'contacts')} className="w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors shadow-lg shadow-white/10 text-base">
               Продолжить <ArrowRight size={18} />
             </button>
@@ -246,10 +240,12 @@ export default function Onboarding() {
                     onClick={handleCopyBot}
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md font-mono text-xs transition-all active:scale-95 ${copied ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gray-900 text-white border border-gray-700 hover:border-gray-500'}`}
                   >
-                    <span className="flex items-center gap-1">
-                      {copied ? <Check size={12}/> : <Copy size={12}/>}
-                      {copied ? 'Скопировано' : '@smmbox_auth_bot'}
-                    </span>
+                    {/* ЗАЩИТА ОТ ПАДЕНИЯ REACT С ПОМОЩЬЮ KEY */}
+                    {copied ? (
+                      <span key="copied" className="flex items-center gap-1"><Check size={12}/> Скопировано</span>
+                    ) : (
+                      <span key="idle" className="flex items-center gap-1"><Copy size={12}/> @smmbox_auth_bot</span>
+                    )}
                   </button>
                 </li>
                 <li>Выдайте права на <b>публикацию сообщений</b>.</li>
