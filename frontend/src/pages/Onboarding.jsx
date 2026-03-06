@@ -23,36 +23,30 @@ export default function Onboarding() {
   const [copied, setCopied] = useState(false);
   const [tgLoading, setTgLoading] = useState(false);
 
-  // --- ИДЕАЛЬНАЯ МАСКА ТЕЛЕФОНА ---
-  const handlePhoneFocus = () => {
-    if (!phone) setPhone('+7 (');
-  };
-
+  // --- ЖЕЛЕЗОБЕТОННАЯ МАСКА ТЕЛЕФОНА ---
   const handlePhoneChange = (e) => {
     let input = e.target.value.replace(/\D/g, ''); // Оставляем только цифры
-    
+
     if (!input) {
       setPhone('');
       return;
     }
 
-    // Принудительно начинаем номер с 7
-    if (input[0] === '8' || input[0] === '9') {
-      input = '7' + (input[0] === '9' ? input : input.substring(1));
-    } else if (input[0] !== '7') {
-      input = '7' + input; 
-    }
+    // Всегда начинаем с 7
+    if (input[0] === '8') input = '7' + input.substring(1);
+    if (input[0] === '9') input = '79' + input.substring(1);
+    if (input[0] !== '7') input = '7' + input;
 
-    // Ограничиваем длину (1 цифра кода страны + 10 цифр номера)
+    // Максимум 11 цифр (7 + 10 цифр номера)
     input = input.substring(0, 11);
 
-    // Формируем красивую строку
-    let formatted = '+7 ';
-    if (input.length > 1) formatted += '(' + input.substring(1, 4);
+    // Формируем строку
+    let formatted = '+7';
+    if (input.length > 1) formatted += ' (' + input.substring(1, 4);
     if (input.length >= 5) formatted += ') ' + input.substring(4, 7);
     if (input.length >= 8) formatted += '-' + input.substring(7, 9);
     if (input.length >= 10) formatted += '-' + input.substring(9, 11);
-    
+
     setPhone(formatted);
   };
 
@@ -114,9 +108,12 @@ export default function Onboarding() {
       if (data.success) {
         useStore.setState({ user: data.user });
         navigate('/profile');
+      } else {
+        setError(data.error || 'Ошибка при завершении настройки');
       }
     } catch (err) {
       console.error(err);
+      setError('Ошибка соединения при сохранении профиля');
     }
     setLoading(false);
   };
@@ -124,8 +121,7 @@ export default function Onboarding() {
   const handleRequestCode = async (e) => {
     e.preventDefault();
     
-    // ДОБАВЛЯЕМ ВАЛИДАЦИЮ ТЕЛЕФОНА
-    // Длина идеального номера "+7 (999) 000-00-00" ровно 18 символов
+    // Блокируем отправку, если телефон введен не до конца (нужно 18 символов)
     if (phone && phone.length < 18) {
       setError('Пожалуйста, введите номер телефона полностью');
       return;
@@ -160,8 +156,11 @@ export default function Onboarding() {
         body: JSON.stringify({ userId: user.id, email, code, phone })
       });
       const data = await res.json();
-      if (data.success) finishOnboarding();
-      else setError(data.error);
+      if (data.success) {
+        finishOnboarding(); // Вызываем финальное сохранение
+      } else {
+        setError(data.error);
+      }
     } catch (err) {
       setError('Ошибка соединения');
     }
@@ -247,7 +246,10 @@ export default function Onboarding() {
                     onClick={handleCopyBot}
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md font-mono text-xs transition-all active:scale-95 ${copied ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gray-900 text-white border border-gray-700 hover:border-gray-500'}`}
                   >
-                    {copied ? <><Check size={12}/> Скопировано</> : <><Copy size={12}/> @smmbox_auth_bot</>}
+                    <span className="flex items-center gap-1">
+                      {copied ? <Check size={12}/> : <Copy size={12}/>}
+                      {copied ? 'Скопировано' : '@smmbox_auth_bot'}
+                    </span>
                   </button>
                 </li>
                 <li>Выдайте права на <b>публикацию сообщений</b>.</li>
@@ -346,7 +348,6 @@ export default function Onboarding() {
                 <input 
                   type="tel" 
                   value={phone} 
-                  onFocus={handlePhoneFocus}
                   onChange={handlePhoneChange} 
                   placeholder="+7 (999) 000-00-00" 
                   className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 sm:py-4 pl-10 sm:pl-12 pr-4 outline-none focus:border-blue-500 transition-colors text-base" 
