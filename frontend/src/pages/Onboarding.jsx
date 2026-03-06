@@ -271,8 +271,17 @@ export default function Onboarding() {
               </div>
             )}
 
-            <button onClick={() => setStep(firstChoice === 'vk' ? 'offer_second' : 'contacts')} className="w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors shadow-lg shadow-white/10 text-base">
-              Продолжить <ArrowRight size={18} />
+            <button 
+              onClick={async () => {
+                if (tgChannels.length > 0) {
+                  // Вызываем сохранение в базу перед тем, как переключить шаг
+                  await useStore.getState().saveTgAccounts(user.id, tgChannels);
+                }
+                setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts');
+              }} 
+              className="mt-4 sm:mt-6 w-full bg-[#0088CC] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-base"
+            >
+              <span>{tgChannels.length > 0 ? `Сохранить и продолжить (${tgChannels.length})` : 'Пропустить'}</span> <ArrowRight size={18} />
             </button>
           </div>
         )}

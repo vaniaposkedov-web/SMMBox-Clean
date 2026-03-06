@@ -472,3 +472,55 @@ exports.getTgChatInfo = async (req, res) => {
     res.status(400).json({ error: 'Канал не найден. Убедитесь, что бот добавлен в администраторы.' });
   }
 };
+
+// Получение информации о Telegram-канале (название, аватарка)
+exports.getTgChatInfo = async (req, res) => {
+  const { channel } = req.body;
+
+  try {
+    if (!channel) return res.status(400).json({ error: 'Укажите ссылку или username канала' });
+
+    // 1. Очищаем ввод (превращаем t.me/mychannel в @mychannel)
+    let chatId = channel.trim();
+    if (chatId.includes('t.me/')) {
+      chatId = '@' + chatId.split('t.me/')[1].replace('/', '');
+    } else if (!chatId.startsWith('@') && !chatId.startsWith('-100')) {
+      chatId = '@' + chatId;
+    }
+
+    const botToken = process.env.TELEGRAM_BOT_TOKEN; 
+    if (!botToken) return res.status(500).json({ error: 'Токен бота не настроен на сервере' });
+
+    // 2. Запрашиваем данные у Telegram API
+    const chatRes = await fetch(`https://api.telegram.org/bot${botToken}/getChat?chat_id=${chatId}`);
+    const chatData = await chatRes.json();
+
+    if (!chatData.ok) {
+      return res.status(400).json({ error: 'Канал не найден или бот не добавлен в администраторы!' });
+    }
+
+    const chat = chatData.result;
+    let avatarUrl = null;
+
+    // 3. Если у канала есть аватарка, получаем ссылку на файл
+    if (chat.photo && chat.photo.small_file_id) {
+      const fileRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${chat.photo.small_file_id}`);
+      const fileData = await fileRes.json();
+      if (fileData.ok) {
+        avatarUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
+      }
+    }
+
+    res.json({
+      success: true,
+      chatId: chat.id.toString(), // ID канала (например, -100123456789)
+      title: chat.title || chat.username,
+      username: chat.username ? `@${chat.username}` : '',
+      avatar: avatarUrl
+    });
+
+  } catch (error) {
+    console.error('Ошибка получения данных ТГ:', error);
+    res.status(500).json({ error: 'Ошибка сервера при запросе к Telegram' });
+  }
+};

@@ -6,5 +6,6 @@ const authMiddleware = require('../middleware/auth');
 // Этот роут вызывает сам ВКонтакте, поэтому здесь не нужна проверка авторизации (JWT)
 router.get('/vk/callback', accountController.vkCallback);
 router.post('/vk/save', authMiddleware, accountController.saveVkGroups);
+router.post('/tg/save', authMiddleware, accountController.saveTgAccounts);
 
 module.exports = router;
