@@ -20,20 +20,38 @@ export default function Onboarding() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  // Состояние для копирования
   const [copied, setCopied] = useState(false);
-  const [tgLoading, setTgLoading] = useState(false); // Добавьте это состояние рядом с остальными
+  const [tgLoading, setTgLoading] = useState(false);
 
-  // Умное добавление канала с подгрузкой аватарки
+  // --- УМНАЯ МАСКА ДЛЯ ТЕЛЕФОНА ---
+  const handlePhoneInput = (e) => {
+    let input = e.target.value.replace(/\D/g, ''); // Оставляем только цифры
+    if (!input) return setPhone('');
+
+    // Если начинается с 7, 8 или 9 (Россия/СНГ)
+    if (['7', '8', '9'].indexOf(input[0]) > -1) {
+      if (input[0] === '9') input = '7' + input;
+      let firstSymbols = (input[0] === '8') ? '8' : '+7';
+      let formatted = firstSymbols + ' ';
+      
+      if (input.length > 1) formatted += '(' + input.substring(1, 4);
+      if (input.length >= 5) formatted += ') ' + input.substring(4, 7);
+      if (input.length >= 8) formatted += '-' + input.substring(7, 9);
+      if (input.length >= 10) formatted += '-' + input.substring(9, 11);
+      
+      setPhone(formatted);
+    } else {
+      // Для других стран просто добавляем +
+      setPhone('+' + input.substring(0, 15));
+    }
+  };
+
   const handleAddTgChannel = async () => {
     if (!tgInput.trim() || tgLoading) return;
-    
-    // Проверяем, нет ли уже такого канала в списке (по username)
     if (tgChannels.some(c => c.originalInput === tgInput.trim())) {
       setTgInput('');
       return;
     }
-
     setTgLoading(true);
     setError('');
 
@@ -46,21 +64,19 @@ export default function Onboarding() {
       const data = await res.json();
 
       if (data.success) {
-        // Добавляем в список объект с картинкой и названием
         setTgChannels([...tgChannels, { 
           originalInput: tgInput.trim(),
           title: data.title,
           username: data.username,
           avatar: data.avatar 
         }]);
-        setTgInput(''); // Очищаем поле
+        setTgInput('');
       } else {
-        setError(data.error); // Выводим ошибку (например, бот не админ)
+        setError(data.error);
       }
     } catch (err) {
       setError('Ошибка соединения с сервером');
     }
-    
     setTgLoading(false);
   };
 
@@ -68,7 +84,6 @@ export default function Onboarding() {
     setTgChannels(tgChannels.filter(c => c !== channelToRemove));
   };
 
-  // Функция копирования юзернейма бота
   const handleCopyBot = () => {
     navigator.clipboard.writeText('@smmbox_auth_bot');
     setCopied(true);
@@ -135,7 +150,7 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-3 sm:p-4 relative overflow-hidden font-sans">
+    <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-3 sm:p-4 relative overflow-x-hidden font-sans">
       
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[250px] sm:w-[600px] sm:h-[600px] bg-blue-600/10 blur-[90px] sm:blur-[130px] rounded-full pointer-events-none"></div>
 
@@ -143,7 +158,7 @@ export default function Onboarding() {
         <span className="text-xs sm:text-sm font-medium">Пропустить</span> <X size={16} />
       </button>
 
-      <div className="w-full max-w-xl bg-admin-card/60 backdrop-blur-2xl border border-gray-800/60 p-5 sm:p-10 rounded-2xl sm:rounded-3xl shadow-2xl relative z-10 mt-10 sm:mt-0">
+      <div className="w-full max-w-xl bg-admin-card/80 backdrop-blur-2xl border border-gray-800/60 p-5 sm:p-10 rounded-2xl sm:rounded-3xl shadow-2xl relative z-10 mt-10 sm:mt-0">
         
         {step === 'welcome' && (
           <div className="text-center space-y-4 sm:space-y-6 animate-in fade-in zoom-in-95 duration-500">
@@ -188,7 +203,7 @@ export default function Onboarding() {
               </div>
             )}
 
-            <button onClick={() => setStep(firstChoice === 'vk' ? 'offer_second' : 'contacts')} className="w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors shadow-lg shadow-white/10 text-sm sm:text-base">
+            <button onClick={() => setStep(firstChoice === 'vk' ? 'offer_second' : 'contacts')} className="w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors shadow-lg shadow-white/10 text-base">
               Продолжить <ArrowRight size={18} />
             </button>
           </div>
@@ -229,7 +244,7 @@ export default function Onboarding() {
                   onChange={(e) => setTgInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddTgChannel()}
                   placeholder="t.me/канал или @username" 
-                  className="flex-1 w-full min-w-0 bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-3 sm:px-4 outline-none focus:border-[#0088CC] transition-colors placeholder:text-gray-500 text-sm"
+                  className="flex-1 w-full min-w-0 bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-3 sm:px-4 outline-none focus:border-[#0088CC] transition-colors placeholder:text-gray-500 text-base"
                 />
                 <button 
                   onClick={handleAddTgChannel}
@@ -239,13 +254,12 @@ export default function Onboarding() {
                   <Plus size={20} />
                 </button>
               </div>
+
               {tgChannels.length > 0 && (
                 <div className="space-y-2 max-h-32 sm:max-h-40 overflow-y-auto pr-1 custom-scrollbar">
                   {tgChannels.map((channel, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-gray-900/50 border border-gray-800 p-2.5 sm:p-3 rounded-xl animate-in fade-in slide-in-from-bottom-2">
                       <div className="flex items-center gap-3 sm:gap-4 overflow-hidden">
-                        
-                        {/* Аватарка канала */}
                         {channel.avatar ? (
                           <img src={channel.avatar} alt="avatar" className="w-8 h-8 rounded-full object-cover border border-gray-700 flex-shrink-0" />
                         ) : (
@@ -253,13 +267,10 @@ export default function Onboarding() {
                             <Send size={14} className="text-[#0088CC]" />
                           </div>
                         )}
-                        
-                        {/* Название и юзернейм */}
                         <div className="flex flex-col overflow-hidden">
                           <span className="text-gray-200 text-sm font-medium truncate">{channel.title}</span>
                           <span className="text-gray-500 text-xs truncate">{channel.username}</span>
                         </div>
-
                       </div>
                       <button onClick={() => handleRemoveTgChannel(channel)} className="text-gray-500 hover:text-red-400 transition-colors p-2 flex-shrink-0">
                         <Trash2 size={16} />
@@ -270,7 +281,7 @@ export default function Onboarding() {
               )}
             </div>
 
-            <button onClick={() => setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts')} className="mt-4 sm:mt-6 w-full bg-[#0088CC] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-sm sm:text-base">
+            <button onClick={() => setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts')} className="mt-4 sm:mt-6 w-full bg-[#0088CC] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-base">
               {tgChannels.length > 0 ? `Продолжить (${tgChannels.length})` : 'Пропустить'} <ArrowRight size={18} />
             </button>
           </div>
@@ -284,10 +295,10 @@ export default function Onboarding() {
             <h2 className="text-xl sm:text-2xl font-bold text-white">Отличное начало!</h2>
             <p className="text-gray-400 text-sm sm:text-base">Хотите сразу настроить сообщества для {firstChoice === 'vk' ? 'Telegram' : 'ВКонтакте'}?</p>
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2 sm:pt-4">
-              <button onClick={() => setStep(firstChoice === 'vk' ? 'tg_setup' : 'vk_setup')} className="flex-1 bg-blue-600 hover:bg-blue-500 transition-colors text-white font-bold py-3.5 sm:py-4 rounded-xl shadow-lg shadow-blue-500/20 text-sm sm:text-base">
+              <button onClick={() => setStep(firstChoice === 'vk' ? 'tg_setup' : 'vk_setup')} className="flex-1 bg-blue-600 hover:bg-blue-500 transition-colors text-white font-bold py-3.5 sm:py-4 rounded-xl shadow-lg shadow-blue-500/20 text-base">
                 Да, настроить
               </button>
-              <button onClick={() => setStep('contacts')} className="flex-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors text-white font-bold py-3.5 sm:py-4 rounded-xl text-sm sm:text-base">
+              <button onClick={() => setStep('contacts')} className="flex-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors text-white font-bold py-3.5 sm:py-4 rounded-xl text-base">
                 Сделаю позже
               </button>
             </div>
@@ -302,16 +313,29 @@ export default function Onboarding() {
             <form onSubmit={handleRequestCode} className="space-y-3 sm:space-y-4">
               <div className="relative">
                 <Mail className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Ваш реальный Email" required className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 sm:py-4 pl-10 sm:pl-12 pr-4 outline-none focus:border-blue-500 transition-colors text-sm" />
+                <input 
+                  type="email" 
+                  value={email} 
+                  onChange={(e) => setEmail(e.target.value)} 
+                  placeholder="Ваш реальный Email" 
+                  required 
+                  className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 sm:py-4 pl-10 sm:pl-12 pr-4 outline-none focus:border-blue-500 transition-colors text-base" 
+                />
               </div>
               <div className="relative">
                 <Phone className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Номер телефона (опционально)" className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 sm:py-4 pl-10 sm:pl-12 pr-4 outline-none focus:border-blue-500 transition-colors text-sm" />
+                <input 
+                  type="tel" 
+                  value={phone} 
+                  onChange={handlePhoneInput} 
+                  placeholder="+7 (999) 000-00-00" 
+                  className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 sm:py-4 pl-10 sm:pl-12 pr-4 outline-none focus:border-blue-500 transition-colors text-base" 
+                />
               </div>
               
               {error && <p className="text-red-400 bg-red-400/10 py-2 px-3 rounded-lg border border-red-400/20 text-xs sm:text-sm text-left">{error}</p>}
               
-              <button type="submit" disabled={loading} className="w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl mt-2 sm:mt-4 hover:bg-gray-200 transition-colors shadow-lg shadow-white/10 text-sm sm:text-base">
+              <button type="submit" disabled={loading} className="w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl mt-2 sm:mt-4 hover:bg-gray-200 transition-colors shadow-lg shadow-white/10 text-base">
                 {loading ? 'Отправка кода...' : 'Получить код подтверждения'}
               </button>
             </form>
@@ -325,11 +349,19 @@ export default function Onboarding() {
             <p className="text-gray-400 text-sm">Шестизначный код отправлен на <br/><span className="text-white font-medium">{email}</span></p>
             
             <form onSubmit={handleVerifyCode} className="space-y-3 sm:space-y-4 pt-1 sm:pt-2">
-              <input type="text" maxLength="6" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" required className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 sm:py-4 text-center text-2xl sm:text-3xl tracking-widest outline-none focus:border-blue-500 transition-colors" />
+              <input 
+                type="text" 
+                maxLength="6" 
+                value={code} 
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} 
+                placeholder="000000" 
+                required 
+                className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 sm:py-4 text-center text-2xl sm:text-3xl tracking-widest outline-none focus:border-blue-500 transition-colors text-base" 
+              />
               
               {error && <p className="text-red-400 bg-red-400/10 py-2 px-3 rounded-lg border border-red-400/20 text-xs sm:text-sm">{error}</p>}
               
-              <button type="submit" disabled={loading || code.length !== 6} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 sm:py-4 rounded-xl transition-colors disabled:opacity-50 shadow-lg shadow-blue-500/20 text-sm sm:text-base">
+              <button type="submit" disabled={loading || code.length !== 6} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 sm:py-4 rounded-xl transition-colors disabled:opacity-50 shadow-lg shadow-blue-500/20 text-base">
                 {loading ? 'Проверка...' : 'Завершить настройку'}
               </button>
             </form>
