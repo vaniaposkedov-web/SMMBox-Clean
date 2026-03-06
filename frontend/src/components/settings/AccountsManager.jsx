@@ -2,8 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useStore } from '../../store';
 import { 
   Send, Plus, Trash2, CheckCircle2, RefreshCw, ShieldAlert,
-  ChevronDown, ChevronUp, Copy, Check,
-  Settings2, Image as ImageIcon, Type, LayoutTemplate, X,
+  ChevronDown, ChevronUp, Copy, Check, LayoutTemplate,
+  Settings2, Image as ImageIcon, Type, X,
   Sliders, Type as TypeIcon, Eye, Upload, RotateCw, Palette,
   ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move
 } from 'lucide-react';
@@ -36,7 +36,6 @@ export default function AccountsManager() {
 
   const presetColors = ['#FFFFFF', '#000000', '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
 
-  // Координаты для сетки кнопок
   const posToCoords = {
     'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
     'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
@@ -87,6 +86,7 @@ export default function AccountsManager() {
   };
 
   const setGlobalWatermark = async (acc) => {
+    // Сохраняем null как водяной знак, чтобы включить общий шаблон
     await saveAccountDesign(acc.id, localSignatures[acc.id] || acc.signature, null);
   };
 
@@ -131,9 +131,7 @@ export default function AccountsManager() {
     let val = Number(e.target.value);
     const snapPoints = [-180, -90, 0, 90, 180];
     for (let snap of snapPoints) {
-      if (Math.abs(val - snap) <= 6) { // Магнитим, если ближе чем на 6 градусов
-        val = snap; break;
-      }
+      if (Math.abs(val - snap) <= 6) { val = snap; break; }
     }
     setLocalWatermark({...localWatermark, angle: val});
   };
@@ -172,7 +170,6 @@ export default function AccountsManager() {
     window.addEventListener('touchend', handlePointerUp);
   };
 
-  // Клик по фону для быстрого перемещения
   const handleBackgroundClick = (e) => {
     if (e.target !== previewRef.current) return;
     const rect = previewRef.current.getBoundingClientRect();
@@ -280,11 +277,11 @@ export default function AccountsManager() {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
 
-    // Зеленое свечение для валидных аккаунтов!
+    // Усиленное зеленое свечение для рабочих каналов
     const borderClasses = acc.isValid
       ? isExpanded
-        ? 'border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.1)] bg-emerald-500/5'
-        : 'border-emerald-500/20 hover:border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.05)] bg-emerald-500/5'
+        ? 'border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)] bg-emerald-500/10'
+        : 'border-emerald-500/30 hover:border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)] bg-emerald-500/10'
       : isExpanded
         ? 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.15)] bg-rose-500/5'
         : 'border-rose-500/30 hover:border-rose-500/50 shadow-lg bg-gray-900/60';
@@ -303,7 +300,7 @@ export default function AccountsManager() {
               <h3 className="font-bold text-gray-100 truncate text-sm sm:text-base">{acc.name}</h3>
               <div className="flex items-center mt-1">
                 {acc.isValid ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-emerald-400 bg-emerald-400/20 border border-emerald-500/20 px-2 py-0.5 rounded-full whitespace-nowrap shadow-[0_0_5px_rgba(16,185,129,0.3)]">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Подключено
                   </span>
                 ) : (
@@ -341,7 +338,6 @@ export default function AccountsManager() {
 
               {acc.isValid && (
                 <>
-                  {/* ИСПРАВЛЕНИЕ: Инпуты и кнопки теперь аккуратно складываются друг под друга в узких карточках */}
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><Type size={14}/> Подпись к постам</label>
                     <div className="flex flex-col gap-2">
@@ -352,13 +348,14 @@ export default function AccountsManager() {
                         className="w-full bg-black/40 border border-gray-700 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
                       />
                       <button onClick={() => saveSignatureOnly(acc)} className="w-full bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-700">
-                        Сохранить
+                        Сохранить подпись
                       </button>
                     </div>
                   </div>
 
-                  <div className="space-y-2.5">
+                  <div className="space-y-3 pt-2 border-t border-gray-800/50">
                     <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><ImageIcon size={14}/> Водяной знак</label>
+                    
                     <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
                       <button onClick={() => setGlobalWatermark(acc)} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all ${!hasCustomWatermark ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}>
                         Общий шаблон
@@ -368,20 +365,34 @@ export default function AccountsManager() {
                       </button>
                     </div>
 
+                    {/* Визуализация выбранного режима */}
                     {!hasCustomWatermark ? (
-                      <p className="text-[11px] sm:text-xs text-gray-500 flex items-center gap-1.5 mt-2 bg-gray-900/50 p-2.5 rounded-lg border border-gray-800/50">
-                        <LayoutTemplate size={14} className="shrink-0 text-gray-400"/> Применяются настройки из профиля проекта.
-                      </p>
+                      <div className="mt-2.5 bg-gray-900/50 p-3 rounded-lg border border-gray-800/50 flex items-center gap-3">
+                        <div className="p-2 bg-gray-800 rounded-md text-gray-400"><LayoutTemplate size={16}/></div>
+                        <p className="text-xs text-gray-400 leading-relaxed">
+                          Используется <span className="text-gray-300 font-semibold">Общий шаблон</span> проекта.
+                        </p>
+                      </div>
                     ) : (
-                      <button onClick={() => openDesignModal(acc)} className="w-full mt-1 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                        <Settings2 size={16} /> Настроить вид знака
-                      </button>
+                      <div className="mt-2.5 bg-blue-500/5 p-3 rounded-xl border border-blue-500/20 flex flex-col gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-500/10 rounded-md text-blue-400">
+                             {acc.watermark?.type === 'image' ? <ImageIcon size={16}/> : <Type size={16}/>}
+                          </div>
+                          <p className="text-xs text-blue-300 leading-relaxed flex-1">
+                            Для этой группы активен <span className="font-semibold text-blue-400">кастомный дизайн</span>.
+                          </p>
+                        </div>
+                        <button onClick={() => openDesignModal(acc)} className="w-full py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2">
+                          <Settings2 size={14} /> Настроить вид знака
+                        </button>
+                      </div>
                     )}
                   </div>
                 </>
               )}
 
-              <div className="pt-2 flex justify-end">
+              <div className="pt-3 border-t border-gray-800/50 flex justify-end">
                 <button onClick={() => removeAccount(acc.id)} className="flex items-center gap-1.5 text-xs font-medium text-rose-500 hover:text-rose-400 transition-colors p-2 bg-rose-500/5 hover:bg-rose-500/10 rounded-lg">
                   <Trash2 size={14} /> Отключить группу
                 </button>
@@ -395,75 +406,88 @@ export default function AccountsManager() {
   };
 
   return (
-    <div className="space-y-8 pb-10 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8 pb-10 max-w-7xl mx-auto px-2 sm:px-4">
+      <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Мои группы</h1>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
-        <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 blur-[50px] rounded-full pointer-events-none"></div>
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
-              <Send size={20} className="text-sky-400" /> Telegram
-            </h2>
-            <p className="text-xs sm:text-sm text-gray-400 mb-5">Добавьте бота <span className="text-gray-300 font-mono">@smmbox_auth_bot</span> в админы канала и вставьте ссылку.</p>
+      {/* НОВАЯ АРХИТЕКТУРА (2 Колонки: Блок Добавления + Карточки) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        
+        {/* --- ЛЕВАЯ КОЛОНКА (TELEGRAM) --- */}
+        <div className="space-y-6">
+          
+          {/* Telegram Add Block */}
+          <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 blur-[50px] rounded-full pointer-events-none"></div>
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
+                <Send size={20} className="text-sky-400" /> Telegram
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-400 mb-5">Добавьте бота <span className="text-gray-300 font-mono">@smmbox_auth_bot</span> в админы канала и вставьте ссылку.</p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input 
+                type="text" value={tgInput} onChange={(e) => setTgInput(e.target.value)}
+                placeholder="t.me/channel" 
+                className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-sky-500 transition-all placeholder:text-gray-600"
+              />
+              <button onClick={handleAddTg} disabled={isAddingTg} className="shrink-0 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap">
+                {isAddingTg ? <RefreshCw className="animate-spin" size={16} /> : <Plus size={16} />} Добавить
+              </button>
+            </div>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input 
-              type="text" value={tgInput} onChange={(e) => setTgInput(e.target.value)}
-              placeholder="t.me/channel" 
-              className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-sky-500 transition-all placeholder:text-gray-600"
-            />
-            <button onClick={handleAddTg} disabled={isAddingTg} className="shrink-0 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap">
-              {isAddingTg ? <RefreshCw className="animate-spin" size={16} /> : <Plus size={16} />} Добавить
+
+          {/* Telegram Заголовок списка */}
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1 pt-2">
+            <Send size={14} className="text-sky-500"/> Подключенные каналы
+          </h3>
+
+          {/* Telegram Карточки */}
+          <div className="flex flex-col gap-4">
+            {tgAccounts.map(acc => renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-sky-500', 'Telegram'))}
+            {tgAccounts.length === 0 && (
+              <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
+                <p className="text-gray-500 text-sm">Нет подключенных каналов</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* --- ПРАВАЯ КОЛОНКА (ВКОНТАКТЕ) --- */}
+        <div className="space-y-6">
+          
+          {/* VK Add Block */}
+          <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between opacity-80">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#0077FF]/10 blur-[50px] rounded-full pointer-events-none"></div>
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
+                <span className="w-5 h-5 bg-[#0077FF] rounded-md flex items-center justify-center font-bold text-[10px] text-white">K</span> ВКонтакте
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-400 mb-5">Подключение сообществ ВКонтакте находится в процессе глобального обновления.</p>
+            </div>
+            <button disabled className="w-full bg-gray-800/80 text-gray-500 border border-gray-700/80 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-sm cursor-not-allowed">
+              Подключить ВКонтакте <span className="text-[10px] uppercase tracking-wider bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded-full ml-1">Скоро</span>
             </button>
           </div>
+
+          {/* VK Заголовок списка */}
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1 pt-2">
+            <span className="w-4 h-4 rounded bg-[#0077FF] flex items-center justify-center text-[9px] text-white font-bold">K</span> 
+            Сообщества ВКонтакте
+          </h3>
+
+          {/* VK Карточки */}
+          <div className="flex flex-col gap-4">
+            {vkAccounts.map(acc => renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]', 'ВКонтакте'))}
+            {vkAccounts.length === 0 && (
+              <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
+                <p className="text-gray-500 text-sm">Нет подключенных сообществ</p>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between opacity-80">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-[#0077FF]/10 blur-[50px] rounded-full pointer-events-none"></div>
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 bg-[#0077FF] rounded-md flex items-center justify-center font-bold text-[10px] text-white">K</span> ВКонтакте
-            </h2>
-            <p className="text-xs sm:text-sm text-gray-400 mb-5">Подключение сообществ ВКонтакте находится в процессе глобального обновления.</p>
-          </div>
-          <button disabled className="w-full bg-gray-800/80 text-gray-500 border border-gray-700/80 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-sm cursor-not-allowed">
-            Подключить ВКонтакте <span className="text-[10px] uppercase tracking-wider bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded-full ml-1">Скоро</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="space-y-8">
-        {tgAccounts.length > 0 && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
-              <Send size={14} className="text-sky-500"/> Telegram
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-              {tgAccounts.map(acc => renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-sky-500', 'Telegram'))}
-            </div>
-          </div>
-        )}
-
-        {vkAccounts.length > 0 && (
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
-              <span className="text-[#0077FF] font-bold">K</span> ВКонтакте
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-              {vkAccounts.map(acc => renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]', 'ВКонтакте'))}
-            </div>
-          </div>
-        )}
-        
-        {accounts.length === 0 && (
-          <div className="text-center py-12 bg-gray-900/20 border border-gray-800/50 rounded-3xl border-dashed">
-            <div className="w-16 h-16 bg-gray-800/50 rounded-full flex items-center justify-center mx-auto mb-4"><LayoutTemplate size={24} className="text-gray-600"/></div>
-            <p className="text-gray-400 text-sm">У вас пока нет подключенных групп.</p>
-          </div>
-        )}
       </div>
 
       {/* --- МОДАЛЬНОЕ ОКНО ДИЗАЙНА --- */}
