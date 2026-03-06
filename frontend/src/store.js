@@ -113,6 +113,7 @@ export const useStore = create(
           const data = await res.json();
           if (res.ok) {
             set({ user: data.user, token: data.token });
+            localStorage.setItem('token', data.token); // <--- ДОБАВИЛИ ЭТУ СТРОКУ
             return { success: true };
           }
           return { success: false, error: data.error };
