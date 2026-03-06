@@ -210,3 +210,25 @@ exports.verifyTgAccountsStatus = async (req, res) => {
     res.status(500).json({ error: 'Ошибка сервера при проверке статусов' });
   }
 };
+
+// Получение списка аккаунтов пользователя
+exports.getAccounts = async (req, res) => {
+  const { userId } = req.query; // Берем ID из URL параметров
+  
+  try {
+    if (!userId) {
+      return res.status(400).json({ error: 'Не указан ID пользователя' });
+    }
+
+    const accounts = await prisma.account.findMany({
+      where: { userId: userId },
+      include: { watermark: true }, // Подтягиваем настройки дизайна
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json(accounts);
+  } catch (error) {
+    console.error('Ошибка получения аккаунтов:', error);
+    res.status(500).json({ error: 'Ошибка сервера при загрузке групп' });
+  }
+};
