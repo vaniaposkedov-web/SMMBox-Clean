@@ -9,5 +9,6 @@ router.post('/vk/save', authMiddleware, accountController.saveVkGroups);
 router.post('/tg/save', authMiddleware, accountController.saveTgAccounts);
 router.post('/tg/verify-status', authMiddleware, accountController.verifyTgAccountsStatus);
 router.get('/', accountController.getAccounts);
+router.delete('/:id', authMiddleware, accountController.deleteAccount);
 
 module.exports = router;

@@ -233,3 +233,68 @@ exports.getAccounts = async (req, res) => {
     res.status(500).json({ error: 'Ошибка сервера при загрузке групп' });
   }
 };
+
+// === УДАЛЕНИЕ АККАУНТА (Исправляет ошибку 404) ===
+exports.deleteAccount = async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    await prisma.account.delete({
+      where: { id: id }
+    });
+    res.json({ success: true, message: 'Аккаунт успешно удален' });
+  } catch (error) {
+    console.error('Ошибка при удалении аккаунта:', error);
+    res.status(500).json({ error: 'Ошибка сервера при удалении' });
+  }
+};
+
+// === ПРОВЕРКА СТАТУСОВ (Усиленная защита от 500 ошибки) ===
+exports.verifyTgAccountsStatus = async (req, res) => {
+  // Ищем ID либо в токене, либо в теле запроса
+  const userId = req.user?.userId || req.user?.id || req.body?.userId;
+
+  try {
+    if (!userId) return res.status(400).json({ error: 'Не указан userId' });
+
+    const tgAccounts = await prisma.account.findMany({
+      where: { userId: String(userId), provider: 'TELEGRAM' }
+    });
+
+    if (tgAccounts.length === 0) return res.json({ success: true, message: 'Нет ТГ аккаунтов' });
+
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken || !botToken.includes(':')) {
+      console.error('ОШИБКА: TELEGRAM_BOT_TOKEN не настроен в .env');
+      return res.status(500).json({ error: 'Бот не настроен на сервере' });
+    }
+    const botId = botToken.split(':')[0];
+
+    const updates = await Promise.all(tgAccounts.map(async (acc) => {
+      try {
+        const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChatMember`, {
+          params: { chat_id: acc.providerId, user_id: botId }
+        });
+
+        const member = tgRes.data.result;
+        const isWorking = member.status === 'administrator' && member.can_post_messages !== false;
+
+        return await prisma.account.update({
+          where: { id: acc.id },
+          data: { isValid: isWorking, errorMsg: isWorking ? null : 'Выдайте боту права админа' }
+        });
+      } catch (error) {
+        // Если Телеграм вернул ошибку, аккуратно сохраняем её текст, а не крашим сервер
+        return await prisma.account.update({
+          where: { id: acc.id },
+          data: { isValid: false, errorMsg: error.response?.data?.description || 'Бот удален из канала' }
+        });
+      }
+    }));
+
+    res.json({ success: true, updated: updates.length });
+  } catch (error) {
+    console.error('Критическая ошибка проверки ТГ:', error);
+    res.status(500).json({ error: 'Ошибка сервера при проверке статусов' });
+  }
+};
