@@ -31,28 +31,29 @@ export default function Onboarding() {
   const handlePhoneChange = (e) => {
     let input = e.target.value.replace(/\D/g, ''); // Оставляем только цифры
     
-    // Если стираем всё
-    if (input.length === 0) {
+    if (!input) {
       setPhone('');
       return;
     }
 
-    // Жесткий формат России (+7)
-    if (['7', '8', '9'].includes(input[0])) {
-      if (input[0] === '9') input = '7' + input;
-      if (input[0] === '8') input = '7' + input.substring(1);
-      
-      let formatted = '+7 ';
-      if (input.length > 1) formatted += '(' + input.substring(1, 4);
-      if (input.length >= 5) formatted += ') ' + input.substring(4, 7);
-      if (input.length >= 8) formatted += '-' + input.substring(7, 9);
-      if (input.length >= 10) formatted += '-' + input.substring(9, 11);
-      
-      setPhone(formatted);
-    } else {
-      // Для других стран просто добавляем +
-      setPhone('+' + input.substring(0, 15));
+    // Принудительно начинаем номер с 7
+    if (input[0] === '8' || input[0] === '9') {
+      input = '7' + (input[0] === '9' ? input : input.substring(1));
+    } else if (input[0] !== '7') {
+      input = '7' + input; 
     }
+
+    // Ограничиваем длину (1 цифра кода страны + 10 цифр номера)
+    input = input.substring(0, 11);
+
+    // Формируем красивую строку
+    let formatted = '+7 ';
+    if (input.length > 1) formatted += '(' + input.substring(1, 4);
+    if (input.length >= 5) formatted += ') ' + input.substring(4, 7);
+    if (input.length >= 8) formatted += '-' + input.substring(7, 9);
+    if (input.length >= 10) formatted += '-' + input.substring(9, 11);
+    
+    setPhone(formatted);
   };
 
   const handleAddTgChannel = async () => {
@@ -122,8 +123,17 @@ export default function Onboarding() {
 
   const handleRequestCode = async (e) => {
     e.preventDefault();
+    
+    // ДОБАВЛЯЕМ ВАЛИДАЦИЮ ТЕЛЕФОНА
+    // Длина идеального номера "+7 (999) 000-00-00" ровно 18 символов
+    if (phone && phone.length < 18) {
+      setError('Пожалуйста, введите номер телефона полностью');
+      return;
+    }
+
     setLoading(true);
     setError('');
+    
     try {
       const res = await fetch('/api/auth/request-link-email', {
         method: 'POST',
