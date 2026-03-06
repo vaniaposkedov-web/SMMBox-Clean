@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { useStore } from '../../store';
 import { 
-  Send, Plus, Trash2, CheckCircle2, RefreshCw, XCircle, 
-  ChevronDown, ChevronUp, Copy, ShieldAlert,
-  Settings2, Image as ImageIcon, Type, LayoutTemplate, X, Check,
+  Send, Plus, Trash2, CheckCircle2, RefreshCw, ShieldAlert,
+  ChevronDown, ChevronUp, Copy, Check,
+  Settings2, Image as ImageIcon, Type, LayoutTemplate, X,
   Sliders, Type as TypeIcon, Eye, Upload, RotateCw, Palette,
-  ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight
+  ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move
 } from 'lucide-react';
 
 export default function AccountsManager() {
@@ -26,14 +26,22 @@ export default function AccountsManager() {
 
   // Модалка водяного знака
   const [designModal, setDesignModal] = useState({ isOpen: false, account: null });
-  const [watermarkTab, setWatermarkTab] = useState('simple'); // 'simple' | 'advanced'
+  const [watermarkTab, setWatermarkTab] = useState('simple'); 
   const [localWatermark, setLocalWatermark] = useState({});
   const [localSignatures, setLocalSignatures] = useState({});
+  const [isDragging, setIsDragging] = useState(false);
   
   const fileInputRef = useRef(null);
+  const previewRef = useRef(null);
 
-  // Популярные цвета для быстрой палитры
   const presetColors = ['#FFFFFF', '#000000', '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
+
+  // Координаты для сетки кнопок
+  const posToCoords = {
+    'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
+    'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
+    'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
+  };
 
   useEffect(() => {
     if (user?.id) {
@@ -84,17 +92,17 @@ export default function AccountsManager() {
 
   // --- ЛОГИКА ВОДЯНОГО ЗНАКА ---
   const openDesignModal = (acc) => {
-    setLocalWatermark(acc.watermark || {
-      type: 'text', 
-      text: 'SMMBOX', 
-      image: null,
-      position: 'br', 
-      opacity: 90, 
-      size: 100, 
-      angle: 0,
-      textColor: '#FFFFFF', 
-      bgColor: '#000000', 
-      hasBackground: true
+    const initialPos = acc.watermark?.position || 'br';
+    const coords = (acc.watermark?.x !== undefined) ? {x: acc.watermark.x, y: acc.watermark.y} : posToCoords[initialPos];
+
+    setLocalWatermark({
+      type: 'text', text: 'SMMBOX', image: null,
+      opacity: 90, size: 100, angle: 0,
+      textColor: '#FFFFFF', bgColor: '#000000', hasBackground: true,
+      ...acc.watermark,
+      position: initialPos,
+      x: coords.x,
+      y: coords.y
     });
     setWatermarkTab('simple');
     setDesignModal({ isOpen: true, account: acc });
@@ -113,20 +121,64 @@ export default function AccountsManager() {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        setLocalWatermark({ ...localWatermark, image: event.target.result, type: 'image' });
-      };
+      reader.onload = (event) => setLocalWatermark({ ...localWatermark, image: event.target.result, type: 'image' });
       reader.readAsDataURL(file);
     }
   };
 
-  const getPositionClasses = (pos) => {
-    const map = {
-      'tl': 'top-3 left-3', 'tc': 'top-3 left-1/2 -translate-x-1/2', 'tr': 'top-3 right-3',
-      'cl': 'top-1/2 -translate-y-1/2 left-3', 'cc': 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2', 'cr': 'top-1/2 -translate-y-1/2 right-3',
-      'bl': 'bottom-3 left-3', 'bc': 'bottom-3 left-1/2 -translate-x-1/2', 'br': 'bottom-3 right-3'
+  // МАГНИТНЫЙ ПОВОРОТ
+  const handleAngleChange = (e) => {
+    let val = Number(e.target.value);
+    const snapPoints = [-180, -90, 0, 90, 180];
+    for (let snap of snapPoints) {
+      if (Math.abs(val - snap) <= 6) { // Магнитим, если ближе чем на 6 градусов
+        val = snap; break;
+      }
+    }
+    setLocalWatermark({...localWatermark, angle: val});
+  };
+
+  // DRAG AND DROP
+  const handlePointerDown = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+    const rect = previewRef.current.getBoundingClientRect();
+    const startMouseX = e.clientX || e.touches?.[0]?.clientX;
+    const startMouseY = e.clientY || e.touches?.[0]?.clientY;
+    const startWX = localWatermark.x ?? 50;
+    const startWY = localWatermark.y ?? 50;
+
+    const handlePointerMove = (moveEvent) => {
+      const clientX = moveEvent.clientX || moveEvent.touches?.[0]?.clientX;
+      const clientY = moveEvent.clientY || moveEvent.touches?.[0]?.clientY;
+      const percentDx = ((clientX - startMouseX) / rect.width) * 100;
+      const percentDy = ((clientY - startMouseY) / rect.height) * 100;
+      let newX = Math.max(0, Math.min(100, startWX + percentDx));
+      let newY = Math.max(0, Math.min(100, startWY + percentDy));
+      setLocalWatermark(prev => ({ ...prev, x: newX, y: newY, position: 'custom' }));
     };
-    return map[pos] || map['br'];
+
+    const handlePointerUp = () => {
+      setIsDragging(false);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('touchmove', handlePointerMove);
+      window.removeEventListener('touchend', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('touchmove', handlePointerMove, { passive: false });
+    window.addEventListener('touchend', handlePointerUp);
+  };
+
+  // Клик по фону для быстрого перемещения
+  const handleBackgroundClick = (e) => {
+    if (e.target !== previewRef.current) return;
+    const rect = previewRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+    setLocalWatermark(prev => ({ ...prev, x, y, position: 'custom' }));
   };
 
   const PositionGridButtons = () => {
@@ -136,6 +188,11 @@ export default function AccountsManager() {
       { id: 'bl', icon: ArrowDownLeft }, { id: 'bc', icon: ArrowDown }, { id: 'br', icon: ArrowDownRight }
     ];
 
+    const handleGridClick = (posId) => {
+      const coords = posToCoords[posId];
+      setLocalWatermark({...localWatermark, position: posId, x: coords.x, y: coords.y});
+    };
+
     return (
       <div className="grid grid-cols-3 gap-2 bg-black/30 p-2.5 rounded-xl border border-gray-800">
         {positions.map(pos => {
@@ -143,7 +200,7 @@ export default function AccountsManager() {
           const isActive = localWatermark.position === pos.id;
           return (
             <button 
-              key={pos.id} onClick={() => setLocalWatermark({...localWatermark, position: pos.id})}
+              key={pos.id} onClick={() => handleGridClick(pos.id)}
               className={`h-11 rounded-lg flex items-center justify-center transition-all ${isActive ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)] scale-95' : 'bg-gray-800/80 text-gray-500 hover:bg-gray-700 hover:text-gray-300 border border-gray-700/50'}`}
             >
               <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
@@ -161,8 +218,7 @@ export default function AccountsManager() {
           {label}
           {hasCheckbox && (
             <input 
-              type="checkbox" 
-              checked={localWatermark[checkboxKey] !== false} 
+              type="checkbox" checked={localWatermark[checkboxKey] !== false} 
               onChange={e => setLocalWatermark({...localWatermark, [checkboxKey]: e.target.checked})} 
               className="accent-blue-500 w-4 h-4 cursor-pointer" 
             />
@@ -174,13 +230,11 @@ export default function AccountsManager() {
             <span className="text-xs font-mono text-gray-300 uppercase flex-1">{localWatermark[colorKey] || '#FFFFFF'}</span>
             <Palette size={14} className="text-gray-500 shrink-0"/>
           </div>
-          {/* Быстрая палитра кружочков */}
           <div className="flex gap-1.5 justify-between">
             {presetColors.map(c => (
               <button 
                 key={c} onClick={() => setLocalWatermark({...localWatermark, [colorKey]: c})}
-                className="w-5 h-5 rounded-full border border-gray-600 transition-transform hover:scale-110 shadow-sm"
-                style={{ backgroundColor: c }}
+                className="w-5 h-5 rounded-full border border-gray-600 transition-transform hover:scale-110 shadow-sm" style={{ backgroundColor: c }}
               />
             ))}
           </div>
@@ -226,8 +280,17 @@ export default function AccountsManager() {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
 
+    // Зеленое свечение для валидных аккаунтов!
+    const borderClasses = acc.isValid
+      ? isExpanded
+        ? 'border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.1)] bg-emerald-500/5'
+        : 'border-emerald-500/20 hover:border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.05)] bg-emerald-500/5'
+      : isExpanded
+        ? 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.15)] bg-rose-500/5'
+        : 'border-rose-500/30 hover:border-rose-500/50 shadow-lg bg-gray-900/60';
+
     return (
-      <div key={acc.id} className={`flex flex-col bg-gray-900/60 border transition-all duration-300 rounded-2xl overflow-hidden ${isExpanded ? 'border-gray-600 shadow-2xl' : 'border-gray-800 hover:border-gray-600 shadow-lg'}`}>
+      <div key={acc.id} className={`flex flex-col transition-all duration-300 rounded-2xl overflow-hidden border ${borderClasses}`}>
         <div onClick={() => toggleExpand(acc)} className="p-4 flex items-center justify-between cursor-pointer group hover:bg-white/[0.03] transition-colors">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
@@ -258,7 +321,7 @@ export default function AccountsManager() {
 
         <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
           <div className="overflow-hidden">
-            <div className="p-4 border-t border-gray-800/50 bg-gray-950/40 space-y-5">
+            <div className="p-4 border-t border-gray-800/50 bg-gray-950/40 space-y-6">
               
               {!acc.isValid && acc.provider === 'TELEGRAM' && (
                 <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4">
@@ -278,16 +341,17 @@ export default function AccountsManager() {
 
               {acc.isValid && (
                 <>
+                  {/* ИСПРАВЛЕНИЕ: Инпуты и кнопки теперь аккуратно складываются друг под друга в узких карточках */}
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><Type size={14}/> Подпись к постам</label>
-                    <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex flex-col gap-2">
                       <input 
                         type="text" value={localSignatures[acc.id] !== undefined ? localSignatures[acc.id] : ''}
                         onChange={(e) => handleSignatureChange(acc.id, e.target.value)}
                         placeholder="Например: t.me/mychannel" 
-                        className="flex-1 min-w-0 bg-black/40 border border-gray-700 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                        className="w-full bg-black/40 border border-gray-700 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
                       />
-                      <button onClick={() => saveSignatureOnly(acc)} className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-700">
+                      <button onClick={() => saveSignatureOnly(acc)} className="w-full bg-gray-800 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-700">
                         Сохранить
                       </button>
                     </div>
@@ -336,10 +400,7 @@ export default function AccountsManager() {
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Мои группы</h1>
       </div>
 
-      {/* --- БЛОК ДОБАВЛЕНИЯ --- */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
-        
-        {/* Telegram */}
         <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
           <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 blur-[50px] rounded-full pointer-events-none"></div>
           <div>
@@ -360,7 +421,6 @@ export default function AccountsManager() {
           </div>
         </div>
 
-        {/* ВКонтакте */}
         <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col justify-between opacity-80">
           <div className="absolute top-0 right-0 w-32 h-32 bg-[#0077FF]/10 blur-[50px] rounded-full pointer-events-none"></div>
           <div>
@@ -375,7 +435,6 @@ export default function AccountsManager() {
         </div>
       </div>
 
-      {/* --- СПИСОК ГРУПП --- */}
       <div className="space-y-8">
         {tgAccounts.length > 0 && (
           <div className="space-y-4">
@@ -414,7 +473,6 @@ export default function AccountsManager() {
           
           <div className="relative w-full max-w-lg bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] sm:max-h-[85vh] animate-in zoom-in-95 duration-200">
             
-            {/* Header */}
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/50">
               <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <ImageIcon size={18} className="text-blue-400"/> Настройка дизайна
@@ -422,28 +480,39 @@ export default function AccountsManager() {
               <button onClick={closeDesignModal} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
             </div>
 
-            {/* LIVE PREVIEW BOX */}
+            {/* ПРЕВЬЮ С DRAG & DROP */}
             <div className="p-4 sm:p-5 bg-black/50 border-b border-gray-800">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs text-gray-500 uppercase flex items-center gap-1"><Move size={12}/> Можно перетаскивать мышью</span>
+              </div>
               <div 
-                className="relative w-full aspect-[16/9] rounded-xl shadow-inner border border-gray-800 overflow-hidden bg-cover bg-center"
+                ref={previewRef}
+                onPointerDown={handleBackgroundClick}
+                className="relative w-full aspect-[16/9] rounded-xl shadow-inner border border-gray-800 overflow-hidden bg-cover bg-center cursor-crosshair touch-none"
                 style={{ backgroundImage: "url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop')" }}
               >
+                {/* ВОДЯНОЙ ЗНАК (Идеальное центрирование) */}
                 <div 
-                  className={`absolute px-2.5 py-1 flex items-center justify-center whitespace-nowrap transition-all ${getPositionClasses(localWatermark.position)}`}
+                  onPointerDown={handlePointerDown}
+                  className={`absolute px-2.5 py-1 flex items-center justify-center whitespace-nowrap cursor-move select-none ${isDragging ? 'transition-none' : 'transition-all duration-200 ease-out'}`}
                   style={{
+                    left: `${localWatermark.x ?? 90}%`,
+                    top: `${localWatermark.y ?? 85}%`,
                     backgroundColor: (localWatermark.type === 'text' && localWatermark.hasBackground) ? localWatermark.bgColor : 'transparent',
                     color: localWatermark.textColor,
                     opacity: (localWatermark.opacity || 90) / 100,
-                    transform: `scale(${(localWatermark.size || 100) / 100}) rotate(${localWatermark.angle || 0}deg)`,
+                    // Главная фишка: смещение -50% для реального центрирования
+                    transform: `translate(-50%, -50%) scale(${(localWatermark.size || 100) / 100}) rotate(${localWatermark.angle || 0}deg)`,
                     transformOrigin: 'center',
                     borderRadius: '6px',
                     fontSize: '15px',
                     fontWeight: 'bold',
-                    boxShadow: (localWatermark.type === 'text' && localWatermark.hasBackground) ? '0 4px 6px rgba(0,0,0,0.3)' : 'none'
+                    boxShadow: (localWatermark.type === 'text' && localWatermark.hasBackground) ? '0 4px 6px rgba(0,0,0,0.3)' : 'none',
+                    zIndex: 10
                   }}
                 >
                   {localWatermark.type === 'image' && localWatermark.image ? (
-                    <img src={localWatermark.image} alt="watermark" className="max-h-12 object-contain drop-shadow-lg" />
+                    <img src={localWatermark.image} alt="watermark" draggable="false" className="max-h-12 object-contain drop-shadow-lg pointer-events-none" />
                   ) : (
                     localWatermark.text || 'SMMBOX'
                   )}
@@ -451,7 +520,6 @@ export default function AccountsManager() {
               </div>
             </div>
 
-            {/* Tabs */}
             <div className="flex border-b border-gray-800 bg-gray-900/30">
               <button 
                 onClick={() => setWatermarkTab('simple')} 
@@ -467,19 +535,17 @@ export default function AccountsManager() {
               </button>
             </div>
 
-            {/* Body */}
             <div className="p-4 sm:p-5 overflow-y-auto custom-scrollbar flex-1 bg-[#111318]">
               
               {watermarkTab === 'simple' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                   
-                  {/* Переключатель Текст / Картинка */}
                   <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
                     <button onClick={() => setLocalWatermark({...localWatermark, type: 'text'})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${localWatermark.type === 'text' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>
                       Текст
                     </button>
                     <button onClick={() => setLocalWatermark({...localWatermark, type: 'image'})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${localWatermark.type === 'image' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>
-                      Свое лого (Изображение)
+                      Свое лого
                     </button>
                   </div>
 
@@ -520,7 +586,7 @@ export default function AccountsManager() {
                   )}
 
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold text-gray-400 uppercase">Расположение на фото</label>
+                    <label className="text-xs font-semibold text-gray-400 uppercase">Сетка позиций</label>
                     <PositionGridButtons />
                   </div>
                 </div>
@@ -560,7 +626,7 @@ export default function AccountsManager() {
                     </div>
                     <input 
                       type="range" min="-180" max="180" value={localWatermark.angle || 0} 
-                      onChange={e => setLocalWatermark({...localWatermark, angle: Number(e.target.value)})}
+                      onChange={handleAngleChange}
                       className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
                     />
                     <div className="flex justify-between text-[10px] text-gray-500 font-mono px-1 pt-1">
@@ -573,11 +639,10 @@ export default function AccountsManager() {
 
             </div>
 
-            {/* Footer */}
             <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] flex gap-3">
               <button onClick={closeDesignModal} className="flex-1 py-3 text-sm font-bold text-gray-300 bg-gray-800 hover:bg-gray-700 rounded-xl transition-colors">Отмена</button>
               <button onClick={handleSaveModalDesign} className="flex-[2] py-3 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex justify-center items-center gap-2">
-                <Check size={18}/> Сохранить
+                <Check size={18}/> Сохранить настройки
               </button>
             </div>
           </div>
