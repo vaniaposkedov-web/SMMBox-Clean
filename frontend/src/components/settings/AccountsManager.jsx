@@ -82,19 +82,35 @@ export default function AccountsManager() {
     setLocalSignatures(prev => ({ ...prev, [id]: value }));
   };
 
+  // --- ЛОГИКА ПОДПИСИ ---
   const saveSignatureOnly = async (acc) => {
     setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
-    // Отправляем undefined вместо водяного знака, чтобы бэкенд его вообще не трогал
-    await saveAccountDesign(acc.id, localSignatures[acc.id], undefined);
+    // Сохраняем введенный текст (режим "Свой")
+    await saveAccountDesign(acc.id, localSignatures[acc.id] || "", undefined);
     setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
   };
 
+  const setGlobalSignature = async (acc) => {
+    setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
+    // Отправляем null, чтобы сервер понял: нужно использовать Общий Шаблон
+    await saveAccountDesign(acc.id, null, undefined);
+    setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
+  };
+
+  const enableCustomSignature = async (acc) => {
+    setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
+    // Активируем режим "Свой", сохраняя пустую строку (если до этого был шаблон)
+    await saveAccountDesign(acc.id, acc.signature || "", undefined);
+    setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
+  };
+
+  // --- ЛОГИКА ВОДЯНОГО ЗНАКА ---
   const setGlobalWatermark = async (acc) => {
     setSavingWatermark(prev => ({ ...prev, [acc.id]: true }));
-    // Отправляем undefined вместо подписи, чтобы не сбить её
     await saveAccountDesign(acc.id, undefined, null);
     setSavingWatermark(prev => ({ ...prev, [acc.id]: false }));
   };
+
 
   const openDesignModal = (acc) => {
     const initialPos = acc.watermark?.position || 'br';
@@ -272,6 +288,7 @@ export default function AccountsManager() {
   const renderAccountCard = (acc, providerIcon, providerColor, providerName) => {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
+    const hasCustomSignature = acc.signature !== null;
 
     const borderClasses = acc.isValid
       ? isExpanded
@@ -333,39 +350,88 @@ export default function AccountsManager() {
 
               {acc.isValid && (
                 <>
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><Type size={14}/> Подпись к постам</label>
-                    <div className="flex flex-col gap-2">
-                      <input 
-                        type="text" value={localSignatures[acc.id] !== undefined ? localSignatures[acc.id] : ''}
-                        onChange={(e) => handleSignatureChange(acc.id, e.target.value)}
-                        placeholder="Например: t.me/mychannel" 
-                        className="w-full bg-black/40 border border-gray-700 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
-                      />
-                      <button onClick={() => saveSignatureOnly(acc)} disabled={savingSignature[acc.id]} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-700">
-                        {savingSignature[acc.id] ? <Loader2 size={16} className="animate-spin" /> : <Check size={16}/>} <span>Сохранить подпись</span>
+                  {/* === БЛОК ПОДПИСИ === */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><Type size={14}/> Подпись к постам</label>
+                      {hasCustomSignature ? (
+                        <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">Своя</span>
+                      ) : (
+                        <span className="text-[10px] uppercase font-bold text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full border border-gray-700">Шаблон</span>
+                      )}
+                    </div>
+
+                    {/* Переключатель Подписи */}
+                    <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
+                      <button onClick={() => setGlobalSignature(acc)} disabled={savingSignature[acc.id]} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${!hasCustomSignature ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
+                        {savingSignature[acc.id] && !hasCustomSignature ? <Loader2 size={14} className="animate-spin"/> : <LayoutTemplate size={14}/>} <span>Шаблон</span>
+                      </button>
+                      <button onClick={() => enableCustomSignature(acc)} disabled={savingSignature[acc.id]} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${hasCustomSignature ? 'bg-blue-600/10 text-blue-400 border-blue-500/30' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
+                         <Settings2 size={14} /> <span>Своя</span>
                       </button>
                     </div>
+
+                    {/* Визуализация режима Подписи */}
+                    {!hasCustomSignature ? (
+                      <div className="mt-2.5 bg-gray-900/50 p-3 rounded-lg border border-gray-800/50 flex items-center gap-3">
+                        <div className="p-2 bg-gray-800 rounded-md text-gray-400"><LayoutTemplate size={16}/></div>
+                        <p className="text-xs text-gray-400 leading-relaxed">Используется <span className="text-gray-300 font-semibold">Шаблон</span> проекта.</p>
+                      </div>
+                    ) : (
+                      <div className="mt-2.5 flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-200">
+                        <input 
+                          type="text" value={localSignatures[acc.id] !== undefined ? localSignatures[acc.id] : ''}
+                          onChange={(e) => handleSignatureChange(acc.id, e.target.value)}
+                          placeholder="Например: t.me/mychannel" 
+                          className="w-full bg-black/40 border border-gray-700 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                        />
+                        <button onClick={() => saveSignatureOnly(acc)} disabled={savingSignature[acc.id]} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-700">
+                          {savingSignature[acc.id] ? <Loader2 size={16} className="animate-spin" /> : <Check size={16}/>} <span>Сохранить подпись</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-gray-800/50">
+                  {/* === БЛОК ВОДЯНОГО ЗНАКА === */}
+                  <div className="space-y-3 pt-5 border-t border-gray-800/50">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><ImageIcon size={14}/> Водяной знак</label>
                       {hasCustomWatermark ? (
-                        <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">Свой дизайн</span>
+                        <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">Свой</span>
                       ) : (
-                        <span className="text-[10px] uppercase font-bold text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full border border-gray-700">Общий шаблон</span>
+                        <span className="text-[10px] uppercase font-bold text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full border border-gray-700">Шаблон</span>
                       )}
                     </div>
                     
-                    <div className="flex gap-2">
-                      <button onClick={() => setGlobalWatermark(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all border flex items-center justify-center gap-2 ${!hasCustomWatermark ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 border-gray-800 hover:text-gray-300'}`}>
-                        {savingWatermark[acc.id] && !hasCustomWatermark ? <Loader2 size={14} className="animate-spin"/> : <LayoutTemplate size={14}/>} <span>Сбросить</span>
+                    {/* Переключатель Водяного знака */}
+                    <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
+                      <button onClick={() => setGlobalWatermark(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${!hasCustomWatermark ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
+                        {savingWatermark[acc.id] && !hasCustomWatermark ? <Loader2 size={14} className="animate-spin"/> : <LayoutTemplate size={14}/>} <span>Шаблон</span>
                       </button>
-                      <button onClick={() => openDesignModal(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all border flex items-center justify-center gap-2 ${hasCustomWatermark ? 'bg-blue-600/10 text-blue-400 border-blue-500/30' : 'bg-transparent text-gray-500 border-gray-800 hover:text-gray-300'}`}>
-                         <Settings2 size={14} /> <span>Настроить</span>
+                      <button onClick={() => openDesignModal(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${hasCustomWatermark ? 'bg-blue-600/10 text-blue-400 border-blue-500/30' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
+                         <Settings2 size={14} /> <span>Свой</span>
                       </button>
                     </div>
+
+                    {/* Визуализация режима Водяного знака */}
+                    {!hasCustomWatermark ? (
+                      <div className="mt-2.5 bg-gray-900/50 p-3 rounded-lg border border-gray-800/50 flex items-center gap-3">
+                        <div className="p-2 bg-gray-800 rounded-md text-gray-400"><LayoutTemplate size={16}/></div>
+                        <p className="text-xs text-gray-400 leading-relaxed">Используется <span className="text-gray-300 font-semibold">Шаблон</span> проекта.</p>
+                      </div>
+                    ) : (
+                      <div className="mt-2.5 bg-blue-500/5 p-3 rounded-xl border border-blue-500/20 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-blue-500/10 rounded-md text-blue-400">
+                             {acc.watermark?.type === 'image' ? <ImageIcon size={16}/> : <Type size={16}/>}
+                          </div>
+                          <p className="text-xs text-blue-300 leading-relaxed flex-1">Для этой группы активен <span className="font-semibold text-blue-400">свой дизайн</span>.</p>
+                        </div>
+                        <button onClick={() => openDesignModal(acc)} className="w-full py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2">
+                          <Settings2 size={14} /> Изменить настройки
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
