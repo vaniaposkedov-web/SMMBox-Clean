@@ -356,7 +356,12 @@ export const useStore = create(
       saveAccountDesign: async (accountId, signature, watermarkData) => {
         try {
           const res = await fetch(`/api/accounts/${accountId}/design`, {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature, watermark: watermarkData })
+            method: 'PUT', 
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${get().token}` // <--- Вот этот токен починил сохранение
+            }, 
+            body: JSON.stringify({ signature, watermark: watermarkData })
           });
           if (res.ok) {
             get().fetchAccounts(get().user.id);

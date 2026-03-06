@@ -226,3 +226,54 @@ exports.verifyTgAccountsStatus = async (req, res) => {
     res.status(500).json({ error: 'Ошибка сервера при проверке статусов' });
   }
 };
+
+// === СОХРАНЕНИЕ ДИЗАЙНА (Подпись и Водяной знак) ===
+exports.saveAccountDesign = async (req, res) => {
+  const { id } = req.params;
+  const { signature, watermark } = req.body;
+
+  try {
+    // 1. Обновляем подпись в любом случае
+    await prisma.account.update({
+      where: { id: id },
+      data: { signature: signature || '' }
+    });
+
+    // 2. Если watermark === null (пользователь выбрал "Общий шаблон") -> удаляем кастомный
+    if (watermark === null) {
+      try {
+        await prisma.watermark.delete({ where: { accountId: id } });
+      } catch(e) {} // Игнорируем, если его и так не было
+    } 
+    // 3. Если передан дизайн -> Создаем или Обновляем
+    else if (watermark) {
+      await prisma.watermark.upsert({
+        where: { accountId: id },
+        update: {
+          type: watermark.type, text: watermark.text, image: watermark.image,
+          position: watermark.position, opacity: Number(watermark.opacity),
+          size: Number(watermark.size), angle: Number(watermark.angle),
+          textColor: watermark.textColor, bgColor: watermark.bgColor,
+          hasBackground: watermark.hasBackground,
+          x: watermark.x !== undefined ? Number(watermark.x) : null,
+          y: watermark.y !== undefined ? Number(watermark.y) : null,
+        },
+        create: {
+          accountId: id,
+          type: watermark.type, text: watermark.text, image: watermark.image,
+          position: watermark.position, opacity: Number(watermark.opacity),
+          size: Number(watermark.size), angle: Number(watermark.angle),
+          textColor: watermark.textColor, bgColor: watermark.bgColor,
+          hasBackground: watermark.hasBackground,
+          x: watermark.x !== undefined ? Number(watermark.x) : null,
+          y: watermark.y !== undefined ? Number(watermark.y) : null,
+        }
+      });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Ошибка сохранения дизайна:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+};
