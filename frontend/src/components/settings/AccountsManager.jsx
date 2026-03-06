@@ -33,15 +33,14 @@ export default function AccountsManager() {
   };
 
   // === РЕАЛЬНОЕ ДОБАВЛЕНИЕ КАНАЛА TELEGRAM ===
+  // === РЕАЛЬНОЕ ДОБАВЛЕНИЕ КАНАЛА TELEGRAM ===
   const handleAddTg = async () => {
     if (!newGroupName.trim()) return alert('Введите ссылку или @username канала!');
     setIsAddingTg(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      
-      // 1. Ищем информацию о канале через Telegram API бота
-      const infoRes = await fetch(`${apiUrl}/api/auth/tg-chat-info`, {
+      // 1. Ищем информацию о канале через Telegram API бота (ОТНОСИТЕЛЬНЫЙ ПУТЬ)
+      const infoRes = await fetch(`/api/auth/tg-chat-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel: newGroupName })
@@ -54,8 +53,8 @@ export default function AccountsManager() {
         return;
       }
 
-      // 2. Сохраняем канал в базу данных к пользователю
-      const saveRes = await fetch(`${apiUrl}/api/accounts/tg/save`, {
+      // 2. Сохраняем канал в базу данных к пользователю (ОТНОСИТЕЛЬНЫЙ ПУТЬ)
+      const saveRes = await fetch(`/api/accounts/tg/save`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -86,7 +85,7 @@ export default function AccountsManager() {
     }
     setIsAddingTg(false);
   };
-
+  
   return (
     <div className="space-y-8">
       {/* --- БЛОК ДОБАВЛЕНИЯ СОЦСЕТЕЙ --- */}
