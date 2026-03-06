@@ -391,20 +391,14 @@ exports.linkEmailAndSendCode = async (req, res) => {
 
 exports.completeOnboarding = async (req, res) => {
   try {
-    // Ищем ID везде: и в токене (req.user), и в теле запроса (req.body)
+    // Теперь мидлвар гарантированно передает нам ID пользователя из токена
     const userId = req.user.userId;
 
-    if (!userId) {
-      return res.status(400).json({ error: 'Сессия устарела. Пожалуйста, перезайдите в аккаунт.' });
-    }
-
-    // Проверяем, существует ли вообще юзер в базе
     const existingUser = await prisma.user.findUnique({ where: { id: userId } });
     if (!existingUser) {
-      return res.status(404).json({ error: 'Пользователь не найден' });
+      return res.status(404).json({ error: 'Пользователь не найден в базе данных.' });
     }
 
-    // Сохраняем статус
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: { isOnboardingCompleted: true }
@@ -414,7 +408,7 @@ exports.completeOnboarding = async (req, res) => {
     res.json({ success: true, user: userWithoutPassword });
   } catch (error) {
     console.error('КРИТИЧЕСКАЯ ОШИБКА completeOnboarding:', error);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера: ' + error.message });
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 };
 
