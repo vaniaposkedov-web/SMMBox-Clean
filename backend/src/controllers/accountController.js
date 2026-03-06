@@ -61,8 +61,6 @@ exports.vkCallback = async (req, res) => {
   }
 };
 
-// Сохранение выбранных групп ВК
-// Сохранение выбранных групп ВК
 exports.saveVkGroups = async (req, res) => {
   const { userId, accessToken, groups } = req.body;
 
@@ -72,12 +70,13 @@ exports.saveVkGroups = async (req, res) => {
     }
 
     const savedAccounts = await Promise.all(groups.map(async (group) => {
-      // ИСПОЛЬЗУЕМ providerId ВМЕСТО providerAccountId
+      const safeProviderId = String(group.id); // ЗАЩИТА: приводим ID к строке
+
       const existing = await prisma.account.findFirst({
         where: { 
-          userId: userId,
+          userId: String(userId),
           provider: 'VK',
-          providerId: group.id.toString() 
+          providerId: safeProviderId 
         }
       });
 
@@ -85,21 +84,20 @@ exports.saveVkGroups = async (req, res) => {
         return prisma.account.update({
           where: { id: existing.id },
           data: { 
-            accessToken: accessToken,
+            accessToken: accessToken || '',
             avatarUrl: group.photo_50 || null,
-            name: group.name
+            name: group.name || 'Без названия'
           }
         });
       } else {
         return prisma.account.create({
           data: {
-            userId: userId,
+            userId: String(userId),
             provider: 'VK',
-            providerId: group.id.toString(), // Исправлено
-            name: group.name,
-            accessToken: accessToken,
+            providerId: safeProviderId,
+            name: group.name || 'Без названия',
+            accessToken: accessToken || '',
             avatarUrl: group.photo_50 || null
-            // Поле type удалено, так как его нет в базе
           }
         });
       }
@@ -107,8 +105,8 @@ exports.saveVkGroups = async (req, res) => {
 
     res.json({ success: true, count: savedAccounts.length });
   } catch (error) {
-    console.error('Ошибка сохранения групп ВК:', error);
-    res.status(500).json({ error: 'Ошибка сервера при сохранении аккаунтов' });
+    console.error('=== ОШИБКА СОХРАНЕНИЯ ВК ===', error);
+    res.status(500).json({ error: 'Ошибка сервера при сохранении ВК', details: error.message });
   }
 };
 
@@ -122,26 +120,29 @@ exports.saveTgAccounts = async (req, res) => {
     }
 
     const savedAccounts = await Promise.all(channels.map(async (channel) => {
-      // ИСПОЛЬЗУЕМ providerId ВМЕСТО providerAccountId
+      const safeProviderId = String(channel.chatId); // ЗАЩИТА: приводим числовой ID Телеграма к строке!
+
       const existing = await prisma.account.findFirst({
-        where: { userId: userId, provider: 'TELEGRAM', providerId: channel.chatId }
+        where: { userId: String(userId), provider: 'TELEGRAM', providerId: safeProviderId }
       });
 
       if (existing) {
         return prisma.account.update({
           where: { id: existing.id },
-          data: { avatarUrl: channel.avatar, name: channel.title }
+          data: { 
+            avatarUrl: channel.avatar || null, 
+            name: channel.title || 'Без названия' 
+          }
         });
       } else {
         return prisma.account.create({
           data: {
-            userId: userId,
+            userId: String(userId),
             provider: 'TELEGRAM',
-            providerId: channel.chatId, // Исправлено
-            name: channel.title,
-            avatarUrl: channel.avatar,
-            accessToken: '' // Обязательное поле в БД, для ТГ передаем пустоту
-            // Поле type удалено
+            providerId: safeProviderId,
+            name: channel.title || 'Без названия',
+            avatarUrl: channel.avatar || null,
+            accessToken: '' // Обязательное поле в БД
           }
         });
       }
@@ -149,8 +150,8 @@ exports.saveTgAccounts = async (req, res) => {
 
     res.json({ success: true, count: savedAccounts.length });
   } catch (error) {
-    console.error('Ошибка сохранения ТГ:', error);
-    res.status(500).json({ error: 'Ошибка сервера' });
+    console.error('=== ОШИБКА СОХРАНЕНИЯ ТГ ===', error);
+    res.status(500).json({ error: 'Ошибка сервера при сохранении ТГ', details: error.message });
   }
 };
 
