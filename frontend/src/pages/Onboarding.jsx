@@ -92,16 +92,26 @@ export default function Onboarding() {
   // ИСПРАВЛЕННЫЙ ЗАПРОС: Вернули передачу токена авторизации!
   const finishOnboarding = async () => {
     setLoading(true);
+    setError('');
     try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Сессия истекла. Пожалуйста, войдите заново.');
+        setLoading(false);
+        return;
+      }
+
       const res = await fetch('/api/auth/complete-onboarding', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` // <-- Токен вернулся
+          'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify({ userId: user?.id }) 
       });
+      
       const data = await res.json();
+      
       if (data.success) {
         useStore.setState({ user: data.user });
         navigate('/profile');
