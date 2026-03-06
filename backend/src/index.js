@@ -60,3 +60,4 @@ if (process.env.VERCEL) {
       console.log(`Сервер SMMBOX запущен локально на порту ${PORT}`);
   });
 }
+
