@@ -23,27 +23,29 @@ export default function Onboarding() {
   const [copied, setCopied] = useState(false);
   const [tgLoading, setTgLoading] = useState(false);
 
-  const handlePhoneChange = (e) => {
-    let input = e.target.value.replace(/\D/g, ''); 
-    if (!input) {
-      setPhone('');
-      return;
-    }
-    
-    if (input.length === 1 && input !== '7' && input !== '8') input = '7' + input;
-    if (input[0] === '8') input = '7' + input.substring(1);
-    if (input[0] !== '7') input = '7' + input;
+const handlePhoneChange = (e) => {
+  // Оставляем только цифры
+  const val = e.target.value.replace(/\D/g, '');
+  if (!val) {
+    setPhone('');
+    return;
+  }
+  
+  // Убираем 7 или 8 в начале, если юзер ввел их
+  let num = val;
+  if (val.startsWith('7') || val.startsWith('8')) {
+    num = val.slice(1);
+  }
 
-    input = input.substring(0, 11); 
+  // Строим маску жестко
+  let formatted = '+7';
+  if (num.length > 0) formatted += ' (' + num.substring(0, 3);
+  if (num.length >= 4) formatted += ') ' + num.substring(3, 6);
+  if (num.length >= 7) formatted += '-' + num.substring(6, 8);
+  if (num.length >= 9) formatted += '-' + num.substring(8, 10);
 
-    let formatted = '+7';
-    if (input.length > 1) formatted += ' (' + input.substring(1, 4);
-    if (input.length >= 5) formatted += ') ' + input.substring(4, 7);
-    if (input.length >= 8) formatted += '-' + input.substring(7, 9);
-    if (input.length >= 10) formatted += '-' + input.substring(9, 11);
-
-    setPhone(formatted);
-  };
+  setPhone(formatted);
+};
 
   const handleAddTgChannel = async () => {
     if (!tgInput.trim() || tgLoading) return;
@@ -240,16 +242,20 @@ export default function Onboarding() {
                 <li className="flex flex-wrap items-center gap-1 mt-1">
                   Добавьте бота: 
                   <button 
+                    key={copied ? 'copied' : 'not-copied'} 
                     onClick={handleCopyBot}
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md font-mono text-xs transition-all active:scale-95 ${copied ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gray-900 text-white border border-gray-700 hover:border-gray-500'}`}
-                  >
-                    <span className="flex items-center gap-1 pointer-events-none select-none">
-                      <Check size={12} className={copied ? 'block' : 'hidden'} />
-                      <Copy size={12} className={!copied ? 'block' : 'hidden'} />
-                      <span className={copied ? 'block' : 'hidden'}>Скопировано</span>
-                      <span className={!copied ? 'block' : 'hidden'}>@smmbox_auth_bot</span>
-                    </span>
-                  </button>
+                    >
+                    {copied ? (
+                        <>
+                        <Check size={12} /> <span>Скопировано</span>
+                        </>
+                    ) : (
+                        <>
+                        <Copy size={12} /> <span>@smmbox_auth_bot</span>
+                        </>
+                    )}
+                    </button>
                 </li>
                 <li>Выдайте права на <b>публикацию сообщений</b>.</li>
                 <li>Вставьте ссылку на канал ниже и нажмите «Добавить».</li>
