@@ -156,30 +156,34 @@ const axios = require('axios');
 
 // Функция проверки прав бота в подключенных ТГ-каналах
 exports.verifyTgAccountsStatus = async (req, res) => {
-  const userId = req.user.userId; // Берем из authMiddleware
+  const { userId } = req.body; // Теперь берем userId явно из тела запроса!
 
   try {
+    if (!userId) {
+      return res.status(400).json({ error: 'Не указан userId для проверки' });
+    }
+
     // 1. Ищем все ТГ-аккаунты пользователя
     const tgAccounts = await prisma.account.findMany({
-      where: { userId, provider: 'TELEGRAM' }
+      where: { userId: String(userId), provider: 'TELEGRAM' }
     });
 
     if (tgAccounts.length === 0) return res.json({ success: true, message: 'Нет ТГ аккаунтов' });
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const botId = botToken.split(':')[0]; // ID бота всегда идет до двоеточия в токене
+    if (!botToken) {
+      return res.status(500).json({ error: 'Не настроен токен бота на сервере' });
+    }
+    const botId = botToken.split(':')[0]; 
 
     // 2. Проверяем каждый аккаунт
     const updates = await Promise.all(tgAccounts.map(async (acc) => {
       try {
-        // Запрашиваем статус бота в конкретном чате
         const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChatMember`, {
           params: { chat_id: acc.providerId, user_id: botId }
         });
 
         const member = tgRes.data.result;
-
-        // Проверяем, админ ли он и может ли писать посты
         const isWorking = member.status === 'administrator' && member.can_post_messages !== false;
 
         return prisma.account.update({
@@ -191,7 +195,6 @@ exports.verifyTgAccountsStatus = async (req, res) => {
         });
 
       } catch (error) {
-        // Если API вернуло ошибку (например, бота удалили из канала)
         return prisma.account.update({
           where: { id: acc.id },
           data: { 
