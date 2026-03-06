@@ -49,11 +49,15 @@ export default function Onboarding() {
     setIsVkLoading(true);
     setError('');
 
-    const appId = import.meta.env.VITE_VK_APP_ID || 54471878;
-    const redirectUri = import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback';
-    // Запрашиваем мощные права: groups, wall, photos, video, docs, offline (бессрочный токен)
+    // 1. Жестко очищаем переменные от возможных кавычек (которые мог добавить Docker)
+    const cleanAppId = String(import.meta.env.VITE_VK_APP_ID || '54471878').replace(/['"]/g, '').trim();
+    const cleanRedirectUri = String(import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback').replace(/['"]/g, '').trim();
+
+    // Запрашиваем мощные права
     const scope = 'groups,wall,photos,video,docs,offline';
-    const url = `https://oauth.vk.com/authorize?client_id=${appId}&display=popup&redirect_uri=${redirectUri}&scope=${scope}&response_type=code&v=5.199`;
+    
+    // 2. Обязательно кодируем ссылку (encodeURIComponent), чтобы ВК принял её корректно
+    const url = `https://oauth.vk.com/authorize?client_id=${cleanAppId}&display=popup&redirect_uri=${encodeURIComponent(cleanRedirectUri)}&scope=${scope}&response_type=code&v=5.199`;
 
     // Открываем popup по центру экрана
     const width = 600;
@@ -61,7 +65,6 @@ export default function Onboarding() {
     const left = window.screen.width / 2 - width / 2;
     const top = window.screen.height / 2 - height / 2;
     const popup = window.open(url, 'vk_auth', `width=${width},height=${height},top=${top},left=${left},status=yes,scrollbars=yes`);
-
     // Слушатель сообщений от нашего бэкенда
     const messageListener = (event) => {
       if (event.data?.type === 'VK_GROUPS_LOADED') {
