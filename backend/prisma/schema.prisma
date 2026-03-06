@@ -73,9 +73,6 @@ model Account {
   avatarUrl   String?
 
   signature   String?  @default("")  // <--- ДОБАВИТЬ ЭТУ СТРОКУ
-  
-  // Уникальная подпись для этой группы (footer)
-  signature   String?  
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -98,21 +95,16 @@ model Watermark {
   fontFamily    String?  @default("font-sans")
   visualStyle   String?  @default("glass")
   hasBackground Boolean  @default(true)
-  textColor     String?  @default("#FFFFFF")
-  bgColor       String?  @default("#000000")
   imageUrl      String?  
   position      String   @default("br")
   size          Int      @default(100)
   opacity       Int      @default(90)
-  angle         Int      @default(0)
+  
 
   updatedAt     DateTime @updatedAt
 
-  type          String   @default("text")
-  text          String?
   image         String?  @db.Text
   angle         Float    @default(0)
-  hasBackground Boolean  @default(true)
   textColor     String   @default("#FFFFFF")
   bgColor       String   @default("#000000")
   x             Float?
