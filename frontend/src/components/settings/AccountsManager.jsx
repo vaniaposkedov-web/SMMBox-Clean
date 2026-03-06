@@ -594,10 +594,21 @@ export default function AccountsManager() {
               )}
             </div>
 
-            <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] flex gap-3">
-              <button onClick={closeDesignModal} disabled={isModalSaving} className="flex-1 py-3 text-sm font-bold text-gray-300 bg-gray-800 hover:bg-gray-700 rounded-xl transition-colors">Отмена</button>
-              <button onClick={handleSaveModalDesign} disabled={isModalSaving} className="...">
-                {isModalSaving ? <Loader2 size={18} className="animate-spin"/> : <Check size={18}/>} <span>Сохранить настройки</span>
+            <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] flex flex-row gap-3">
+              <button 
+                onClick={closeDesignModal} 
+                disabled={isModalSaving} 
+                className="flex-1 py-3 text-sm font-bold text-gray-300 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-xl transition-colors"
+              >
+                Отмена
+              </button>
+              <button 
+                onClick={handleSaveModalDesign} 
+                disabled={isModalSaving} 
+                className="flex-[2] py-3 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex flex-row justify-center items-center gap-2"
+              >
+                {isModalSaving ? <Loader2 size={18} className="animate-spin"/> : <Check size={18}/>} 
+                <span>Сохранить настройки</span>
               </button>
             </div>
           </div>
