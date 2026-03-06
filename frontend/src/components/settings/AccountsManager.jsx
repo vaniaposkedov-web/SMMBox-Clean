@@ -341,8 +341,8 @@ export default function AccountsManager() {
                         placeholder="Например: t.me/mychannel" 
                         className="w-full bg-black/40 border border-gray-700 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
                       />
-                      <button onClick={() => saveSignatureOnly(acc)} disabled={isLoading} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-700">
-                        {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16}/>} Сохранить подпись
+                      <button onClick={() => saveSignatureOnly(acc)} disabled={isLoading} className="...">
+                        {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16}/>} <span>Сохранить подпись</span>
                       </button>
                     </div>
                   </div>
@@ -541,8 +541,8 @@ export default function AccountsManager() {
 
             <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] flex gap-3">
               <button onClick={closeDesignModal} disabled={isModalSaving} className="flex-1 py-3 text-sm font-bold text-gray-300 bg-gray-800 hover:bg-gray-700 rounded-xl transition-colors">Отмена</button>
-              <button onClick={handleSaveModalDesign} disabled={isModalSaving} className="flex-[2] py-3 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex justify-center items-center gap-2">
-                {isModalSaving ? <Loader2 size={18} className="animate-spin"/> : <Check size={18}/>} Сохранить настройки
+              <button onClick={handleSaveModalDesign} disabled={isModalSaving} className="...">
+                {isModalSaving ? <Loader2 size={18} className="animate-spin"/> : <Check size={18}/>} <span>Сохранить настройки</span>
               </button>
             </div>
           </div>
