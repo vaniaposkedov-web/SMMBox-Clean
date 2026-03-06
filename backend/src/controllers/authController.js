@@ -26,12 +26,22 @@ const transporter = nodemailer.createTransport({
 exports.register = async (req, res) => {
   const { email, phone, password, name, pavilion } = req.body;
   try {
+    // Проверка Email
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
+    if (existingUser) {
+      if (existingUser.vkId) return res.status(400).json({ error: 'Этот Email привязан к аккаунту ВКонтакте. Войдите через VK.' });
+      if (existingUser.telegramId) return res.status(400).json({ error: 'Этот Email привязан к аккаунту Telegram. Войдите через Telegram.' });
+      return res.status(400).json({ error: 'Пользователь с таким email уже существует. Попробуйте войти.' });
+    }
 
+    // Проверка Телефона
     if (phone) {
       const existingPhone = await prisma.user.findUnique({ where: { phone } });
-      if (existingPhone) return res.status(400).json({ error: 'Этот номер телефона уже зарегистрирован' });
+      if (existingPhone) {
+        if (existingPhone.vkId) return res.status(400).json({ error: 'Этот номер привязан к аккаунту ВКонтакте. Войдите через VK.' });
+        if (existingPhone.telegramId) return res.status(400).json({ error: 'Этот номер привязан к аккаунту Telegram. Войдите через Telegram.' });
+        return res.status(400).json({ error: 'Этот номер телефона уже зарегистрирован.' });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -305,6 +315,8 @@ exports.requestLinkEmail = async (req, res) => {
 
     const existingEmail = await prisma.user.findUnique({ where: { email } });
     if (existingEmail && existingEmail.id !== userId) {
+      if (existingEmail.vkId) return res.status(400).json({ error: 'Этот Email принадлежит аккаунту ВКонтакте.' });
+      if (existingEmail.telegramId) return res.status(400).json({ error: 'Этот Email принадлежит аккаунту Telegram.' });
       return res.status(400).json({ error: 'Этот Email уже привязан к другому аккаунту' });
     }
 
@@ -352,7 +364,9 @@ exports.verifyLinkEmail = async (req, res) => {
     if (phone) {
       const existingPhone = await prisma.user.findUnique({ where: { phone } });
       if (existingPhone && existingPhone.id !== userId) {
-        return res.status(400).json({ error: 'Этот номер телефона уже зарегистрирован' });
+        if (existingPhone.vkId) return res.status(400).json({ error: 'Этот номер уже используется в профиле ВКонтакте. Укажите другой.' });
+        if (existingPhone.telegramId) return res.status(400).json({ error: 'Этот номер уже используется в профиле Telegram. Укажите другой.' });
+        return res.status(400).json({ error: 'Этот номер телефона уже привязан к другому аккаунту.' });
       }
     }
 
