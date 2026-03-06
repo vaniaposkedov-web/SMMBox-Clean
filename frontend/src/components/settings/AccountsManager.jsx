@@ -272,7 +272,6 @@ export default function AccountsManager() {
   const renderAccountCard = (acc, providerIcon, providerColor, providerName) => {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
-    const isLoading = savingStates[acc.id];
 
     const borderClasses = acc.isValid
       ? isExpanded
