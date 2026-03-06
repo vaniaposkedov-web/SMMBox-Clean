@@ -1,81 +1,51 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
+import * as VKID from '@vkid/sdk';
 
 export default function CustomVkButton({ onAuth }) {
-  const containerRef = useRef(null);
-  const isInitialized = useRef(false);
-  const onAuthRef = useRef(onAuth);
-
-  // Сохраняем ссылку на функцию авторизации, чтобы избежать лишних ре-рендеров
   useEffect(() => {
-    onAuthRef.current = onAuth;
-  }, [onAuth]);
+    // 1. Инициализируем SDK (если он не был инициализирован глобально).
+    // Важно: responseMode: Callback оставляет пользователя на странице,
+    // чтобы мы могли перехватить данные во всплывающем окне.
+    VKID.Config.init({
+      app: import.meta.env.VITE_VK_APP_ID || 54471878,
+      redirectUrl: import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback',
+      responseMode: VKID.ConfigResponseMode.Callback,
+    });
 
-  useEffect(() => {
-    // Блокируем двойной запуск виджета
-    if (isInitialized.current) return;
-
-    const loadAndInitVK = () => {
-      if (!window.VKIDSDK || !containerRef.current) return;
+    // 2. Функция, которая срабатывает после успешного входа в окне VK
+    const handleSuccess = (data) => {
+      // Формируем объект, который ждет твой authController.js
+      const vkData = {
+        access_token: data.token,
+        user_id: data.uuid,
+        email: data.email || null,
+      };
       
-      isInitialized.current = true;
-      const VKID = window.VKIDSDK;
-
-      // Инициализация строго по официальной документации Low-code
-      VKID.Config.init({
-        app: 54471878,
-        redirectUrl: 'https://smmdeck.ru/auth',
-        responseMode: VKID.ConfigResponseMode.Callback,
-        source: VKID.ConfigSource.LOWCODE,
-        scope: 'email',
-      });
-
-      const oAuth = new VKID.OAuthList();
-      
-      // Очищаем контейнер перед рендером
-      containerRef.current.innerHTML = '';
-
-      oAuth.render({
-        container: containerRef.current,
-        oauthList: ['vkid']
-      })
-      .on(VKID.WidgetEvents.ERROR, (error) => {
-        console.error('Ошибка виджета VK:', error);
-      })
-      .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, (payload) => {
-        VKID.Auth.exchangeCode(payload.code, payload.device_id)
-          .then((data) => {
-            if (onAuthRef.current) onAuthRef.current(data);
-          })
-          .catch((err) => console.error('Ошибка обмена кода VK:', err));
-      });
+      if (onAuth) {
+        onAuth(vkData);
+      }
     };
 
-    if (window.VKIDSDK) {
-      loadAndInitVK();
-    } else {
-      const scriptId = 'vkid-sdk-script';
-      if (!document.getElementById(scriptId)) {
-        const script = document.createElement('script');
-        script.id = scriptId;
-        // Используем latest, чтобы избежать ошибки загрузки несуществующей версии
-        script.src = 'https://unpkg.com/@vkid/sdk@latest/dist-sdk/umd/index.js';
-        script.async = true;
-        document.head.appendChild(script);
-        script.onload = loadAndInitVK;
-      }
-    }
-  }, []);
+    // 3. Подписываемся на глобальное событие успешной авторизации
+    VKID.Auth.on(VKID.AuthEvents.SUCCESS, handleSuccess);
+
+  }, [onAuth]);
+
+  const handleVkLogin = () => {
+    // Вызываем всплывающее окно авторизации ВКонтакте
+    VKID.Auth.login();
+  };
 
   return (
-    <div className="hover:scale-105 transition-transform duration-300">
-      {/* Контейнер имеет минимальные размеры. 
-        Даже до полной загрузки скрипта он будет держать место на экране, 
-        а затем ВК сам вставит сюда свою круглую кнопку.
-      */}
-      <div 
-        ref={containerRef} 
-        className="flex items-center justify-center min-w-[44px] min-h-[44px]"
-      ></div>
-    </div>
+    <button
+      type="button"
+      onClick={handleVkLogin}
+      title="Войти через ВКонтакте"
+      className="w-14 h-14 min-w-[56px] min-h-[56px] shrink-0 flex items-center justify-center rounded-full bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 transition-all duration-300 shadow-lg hover:scale-105"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" className="w-7 h-7 shrink-0" fill="currentColor">
+        <path fillRule="evenodd" clipRule="evenodd" d="M4.54648 3.53503C5.55011 2.45785 7.02641 2.05263 9.71182 2.0298C10.7027 2.02138 12.0151 2.01783 13.9926 2.01783C15.9702 2.01783 17.2825 2.02138 18.2735 2.0298C20.9589 2.05263 22.4352 2.45785 23.4388 3.53503C24.4424 4.61221 24.8181 6.19661 24.8393 9.07409C24.8472 10.1377 24.8504 11.5463 24.8504 13.6698C24.8504 15.7933 24.8472 17.2019 24.8393 18.2655C24.8181 21.143 24.4424 22.7274 23.4388 23.8046C22.4352 24.8818 20.9589 25.287 18.2735 25.3098C17.2825 25.3183 15.9702 25.3218 13.9926 25.3218C12.0151 25.3218 10.7027 25.3183 9.71182 25.3098C7.02641 25.287 5.55011 24.8818 4.54648 23.8046C3.54285 22.7274 3.16719 21.143 3.14605 18.2655C3.13813 17.2019 3.13488 15.7933 3.13488 13.6698C3.13488 11.5463 3.13813 10.1377 3.14605 9.07409C3.16719 6.19661 3.54285 4.61221 4.54648 3.53503ZM19.2982 10.4287C19.3905 10.1179 19.2982 9.88795 18.8351 9.88795H17.2605C16.8906 9.88795 16.7153 10.084 16.6229 10.2917C16.6229 10.2917 15.8218 12.2461 14.6817 13.5222C14.312 13.8953 14.1579 14.0145 13.973 14.0145C13.8806 14.0145 13.742 13.8953 13.742 13.5634V10.4287C13.742 10.0556 13.6341 9.88795 13.2952 9.88795H10.7634C10.5169 9.88795 10.3639 10.0718 10.3639 10.2452C10.3639 10.6229 10.9339 10.7111 11.0109 11.7681V14.1026C11.0109 14.5741 10.9262 14.6622 10.7413 14.6622C10.2483 14.6622 9.0536 12.6969 8.28328 10.4702C8.13444 10.053 7.98592 9.88795 7.61515 9.88795H6.04052C5.62456 9.88795 5.54753 10.084 5.54753 10.2917C5.54753 10.6544 6.00971 12.4472 7.70438 14.8255C8.83416 16.4473 10.4243 17.3696 11.8758 17.3696C12.7476 17.3696 12.8555 17.1736 12.8555 16.815V15.53C12.8555 15.1155 12.9427 15.0326 13.2508 15.0326C13.4767 15.0326 13.8665 15.1466 14.7289 15.9756C15.7149 16.9601 15.869 17.3696 16.4236 17.3696H17.9983C18.4142 17.3696 18.6245 17.1624 18.5042 16.753C18.3653 16.3489 17.8622 15.7271 17.2052 14.9756C16.8354 14.5403 16.2809 14.074 16.1114 13.8667C15.865 13.5558 15.9266 13.4211 16.1114 13.131C16.1114 13.131 18.0658 10.3769 19.2982 10.4287Z" />
+      </svg>
+    </button>
   );
 }
