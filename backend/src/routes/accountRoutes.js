@@ -7,5 +7,6 @@ const authMiddleware = require('../middleware/auth');
 router.get('/vk/callback', accountController.vkCallback);
 router.post('/vk/save', authMiddleware, accountController.saveVkGroups);
 router.post('/tg/save', authMiddleware, accountController.saveTgAccounts);
+router.post('/tg/verify-status', authMiddleware, accountController.verifyTgAccountsStatus);
 
 module.exports = router;
