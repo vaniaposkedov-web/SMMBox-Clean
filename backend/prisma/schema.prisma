@@ -27,6 +27,8 @@ model User {
   updatedAt                DateTime  @updatedAt
 
   isOnboardingCompleted    Boolean   @default(false)
+  isValid     Boolean  @default(true) // Работает ли аккаунт
+  errorMsg    String?  // Текст ошибки (например: "Бот удален из канала")
   
   // === ПРИВЯЗКА СОЦСЕТЕЙ ===
   vkId                     String?   @unique
@@ -69,6 +71,8 @@ model Account {
   accessToken String   // Токен для постинга
   name        String   // Название группы
   avatarUrl   String?
+
+  signature   String?  @default("")  // <--- ДОБАВИТЬ ЭТУ СТРОКУ
   
   // Уникальная подпись для этой группы (footer)
   signature   String?  
@@ -103,6 +107,16 @@ model Watermark {
   angle         Int      @default(0)
 
   updatedAt     DateTime @updatedAt
+
+  type          String   @default("text")
+  text          String?
+  image         String?  @db.Text
+  angle         Float    @default(0)
+  hasBackground Boolean  @default(true)
+  textColor     String   @default("#FFFFFF")
+  bgColor       String   @default("#000000")
+  x             Float?
+  y             Float?
 }
 
 // === 5. ПОСТЫ И ПЛАНИРОВЩИК ===

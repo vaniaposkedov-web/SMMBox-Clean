@@ -227,44 +227,46 @@ exports.verifyTgAccountsStatus = async (req, res) => {
   }
 };
 
-// === СОХРАНЕНИЕ ДИЗАЙНА (Подпись и Водяной знак) ===
+// === СОХРАНЕНИЕ ДИЗАЙНА (Точечное) ===
 exports.saveAccountDesign = async (req, res) => {
   const { id } = req.params;
   const { signature, watermark } = req.body;
 
   try {
-    // 1. Обновляем подпись в любом случае
-    await prisma.account.update({
-      where: { id: id },
-      data: { signature: signature || '' }
-    });
+    // 1. Сохраняем ТОЛЬКО подпись, если она пришла в запросе
+    if (signature !== undefined) {
+      await prisma.account.update({
+        where: { id: id },
+        data: { signature: signature }
+      });
+    }
 
-    // 2. Если watermark === null (пользователь выбрал "Общий шаблон") -> удаляем кастомный
+    // 2. Если пришел null -> удаляем кастомный водяной знак (сброс на общий)
     if (watermark === null) {
       try {
         await prisma.watermark.delete({ where: { accountId: id } });
-      } catch(e) {} // Игнорируем, если его и так не было
+      } catch(e) {} 
     } 
-    // 3. Если передан дизайн -> Создаем или Обновляем
-    else if (watermark) {
+    // 3. Если пришел объект дизайна -> Обновляем водяной знак
+    else if (watermark !== undefined) {
       await prisma.watermark.upsert({
         where: { accountId: id },
         update: {
-          type: watermark.type, text: watermark.text, image: watermark.image,
-          position: watermark.position, opacity: Number(watermark.opacity),
-          size: Number(watermark.size), angle: Number(watermark.angle),
-          textColor: watermark.textColor, bgColor: watermark.bgColor,
-          hasBackground: watermark.hasBackground,
+          type: watermark.type || 'text', text: watermark.text || '', image: watermark.image || null,
+          position: watermark.position || 'br', opacity: Number(watermark.opacity || 90), 
+          size: Number(watermark.size || 100), angle: Number(watermark.angle || 0),
+          textColor: watermark.textColor || '#FFFFFF', bgColor: watermark.bgColor || '#000000',
+          hasBackground: watermark.hasBackground !== false,
           x: watermark.x !== undefined ? Number(watermark.x) : null,
           y: watermark.y !== undefined ? Number(watermark.y) : null,
         },
         create: {
           accountId: id,
-          type: watermark.type, text: watermark.text, image: watermark.image,
-          position: watermark.position, opacity: Number(watermark.opacity),
-          size: Number(watermark.size), angle: Number(watermark.angle),
-          textColor: watermark.textColor, bgColor: watermark.bgColor,
-          hasBackground: watermark.hasBackground,
+          type: watermark.type || 'text', text: watermark.text || '', image: watermark.image || null,
+          position: watermark.position || 'br', opacity: Number(watermark.opacity || 90), 
+          size: Number(watermark.size || 100), angle: Number(watermark.angle || 0),
+          textColor: watermark.textColor || '#FFFFFF', bgColor: watermark.bgColor || '#000000',
+          hasBackground: watermark.hasBackground !== false,
           x: watermark.x !== undefined ? Number(watermark.x) : null,
           y: watermark.y !== undefined ? Number(watermark.y) : null,
         }

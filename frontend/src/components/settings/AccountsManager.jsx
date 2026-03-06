@@ -20,7 +20,8 @@ export default function AccountsManager() {
   const [tgInput, setTgInput] = useState('');
   const [isAddingTg, setIsAddingTg] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [savingStates, setSavingStates] = useState({});
+  const [savingSignature, setSavingSignature] = useState({});
+  const [savingWatermark, setSavingWatermark] = useState({});
   const [isModalSaving, setIsModalSaving] = useState(false);
   
   const [expandedId, setExpandedId] = useState(null);
@@ -82,16 +83,17 @@ export default function AccountsManager() {
   };
 
   const saveSignatureOnly = async (acc) => {
-    setSavingStates(prev => ({ ...prev, [acc.id]: true }));
-    const newSignature = localSignatures[acc.id];
-    await saveAccountDesign(acc.id, newSignature, acc.watermark);
-    setSavingStates(prev => ({ ...prev, [acc.id]: false }));
+    setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
+    // Отправляем undefined вместо водяного знака, чтобы бэкенд его вообще не трогал
+    await saveAccountDesign(acc.id, localSignatures[acc.id], undefined);
+    setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
   };
 
   const setGlobalWatermark = async (acc) => {
-    setSavingStates(prev => ({ ...prev, [acc.id]: true }));
-    await saveAccountDesign(acc.id, localSignatures[acc.id] || acc.signature, null);
-    setSavingStates(prev => ({ ...prev, [acc.id]: false }));
+    setSavingWatermark(prev => ({ ...prev, [acc.id]: true }));
+    // Отправляем undefined вместо подписи, чтобы не сбить её
+    await saveAccountDesign(acc.id, undefined, null);
+    setSavingWatermark(prev => ({ ...prev, [acc.id]: false }));
   };
 
   const openDesignModal = (acc) => {
@@ -341,42 +343,30 @@ export default function AccountsManager() {
                         placeholder="Например: t.me/mychannel" 
                         className="w-full bg-black/40 border border-gray-700 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
                       />
-                      <button onClick={() => saveSignatureOnly(acc)} disabled={isLoading} className="...">
-                        {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16}/>} <span>Сохранить подпись</span>
+                      <button onClick={() => saveSignatureOnly(acc)} disabled={savingSignature[acc.id]} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-700">
+                        {savingSignature[acc.id] ? <Loader2 size={16} className="animate-spin" /> : <Check size={16}/>} <span>Сохранить подпись</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-2 border-t border-gray-800/50">
-                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><ImageIcon size={14}/> Водяной знак</label>
+                  <div className="space-y-3 pt-4 border-t border-gray-800/50">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><ImageIcon size={14}/> Водяной знак</label>
+                      {hasCustomWatermark ? (
+                        <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">Свой дизайн</span>
+                      ) : (
+                        <span className="text-[10px] uppercase font-bold text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full border border-gray-700">Общий шаблон</span>
+                      )}
+                    </div>
                     
-                    <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
-                      <button onClick={() => setGlobalWatermark(acc)} disabled={isLoading} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all ${!hasCustomWatermark ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}>
-                        Общий шаблон
+                    <div className="flex gap-2">
+                      <button onClick={() => setGlobalWatermark(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all border flex items-center justify-center gap-2 ${!hasCustomWatermark ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 border-gray-800 hover:text-gray-300'}`}>
+                        {savingWatermark[acc.id] && !hasCustomWatermark ? <Loader2 size={14} className="animate-spin"/> : <LayoutTemplate size={14}/>} <span>Сбросить</span>
                       </button>
-                      <button onClick={() => openDesignModal(acc)} disabled={isLoading} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all ${hasCustomWatermark ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200'}`}>
-                        Кастомный
+                      <button onClick={() => openDesignModal(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all border flex items-center justify-center gap-2 ${hasCustomWatermark ? 'bg-blue-600/10 text-blue-400 border-blue-500/30' : 'bg-transparent text-gray-500 border-gray-800 hover:text-gray-300'}`}>
+                         <Settings2 size={14} /> <span>Настроить</span>
                       </button>
                     </div>
-
-                    {!hasCustomWatermark ? (
-                      <div className="mt-2.5 bg-gray-900/50 p-3 rounded-lg border border-gray-800/50 flex items-center gap-3">
-                        <div className="p-2 bg-gray-800 rounded-md text-gray-400"><LayoutTemplate size={16}/></div>
-                        <p className="text-xs text-gray-400 leading-relaxed">Используется <span className="text-gray-300 font-semibold">Общий шаблон</span> проекта.</p>
-                      </div>
-                    ) : (
-                      <div className="mt-2.5 bg-blue-500/5 p-3 rounded-xl border border-blue-500/20 flex flex-col gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-blue-500/10 rounded-md text-blue-400">
-                             {acc.watermark?.type === 'image' ? <ImageIcon size={16}/> : <Type size={16}/>}
-                          </div>
-                          <p className="text-xs text-blue-300 leading-relaxed flex-1">Для этой группы активен <span className="font-semibold text-blue-400">кастомный дизайн</span>.</p>
-                        </div>
-                        <button onClick={() => openDesignModal(acc)} className="w-full py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2">
-                          <Settings2 size={14} /> Изменить настройки
-                        </button>
-                      </div>
-                    )}
                   </div>
                 </>
               )}
