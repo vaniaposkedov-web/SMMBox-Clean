@@ -3,37 +3,33 @@ import * as VKID from '@vkid/sdk';
 
 export default function CustomVkButton({ onAuth }) {
   useEffect(() => {
-    // 1. Инициализируем SDK (если он не был инициализирован глобально).
-    // Важно: responseMode: Callback оставляет пользователя на странице,
-    // чтобы мы могли перехватить данные во всплывающем окне.
+    // 1. Инициализируем SDK один раз при загрузке компонента
     VKID.Config.init({
       app: import.meta.env.VITE_VK_APP_ID || 54471878,
       redirectUrl: import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback',
       responseMode: VKID.ConfigResponseMode.Callback,
     });
-
-    // 2. Функция, которая срабатывает после успешного входа в окне VK
-    const handleSuccess = (data) => {
-      // Формируем объект, который ждет твой authController.js
-      const vkData = {
-        access_token: data.token,
-        user_id: data.uuid,
-        email: data.email || null,
-      };
-      
-      if (onAuth) {
-        onAuth(vkData);
-      }
-    };
-
-    // 3. Подписываемся на глобальное событие успешной авторизации
-    VKID.Auth.on(VKID.AuthEvents.SUCCESS, handleSuccess);
-
-  }, [onAuth]);
+  }, []);
 
   const handleVkLogin = () => {
-    // Вызываем всплывающее окно авторизации ВКонтакте
-    VKID.Auth.login();
+    // 2. Метод login() теперь обрабатывается через .then()
+    VKID.Auth.login()
+      .then((data) => {
+        // Формируем объект, который ждет наш authController.js
+        const vkData = {
+          access_token: data.token || data.access_token, // SDK может возвращать токен в разных полях
+          user_id: data.uuid || data.user_id,
+          email: data.email || null,
+        };
+        
+        // Передаем данные родительскому компоненту (Auth.jsx)
+        if (onAuth) {
+          onAuth(vkData);
+        }
+      })
+      .catch((error) => {
+        console.error('Ошибка окна авторизации ВК:', error);
+      });
   };
 
   return (
