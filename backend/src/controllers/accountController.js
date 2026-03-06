@@ -1,4 +1,5 @@
-// Используем встроенный fetch (Node 18+)
+// Подключаем необходимые библиотеки
+const axios = require('axios'); // <-- ВОТ ОН, СПАСИТЕЛЬ ОТ 500 ОШИБКИ!
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
@@ -6,7 +7,6 @@ const prisma = new PrismaClient();
 exports.vkCallback = async (req, res) => {
   const { code, error, error_description } = req.query;
 
-  // Если пользователь нажал "Отмена"
   if (error) {
     return res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: '${error_description}' }, '*'); window.close();</script>`);
   }
@@ -14,9 +14,8 @@ exports.vkCallback = async (req, res) => {
   try {
     const clientId = process.env.VK_APP_ID;
     const clientSecret = process.env.VK_SECURE_KEY;
-    const redirectUri = process.env.VK_REDIRECT_URI; // "https://smmdeck.ru/api/accounts/vk/callback"
+    const redirectUri = process.env.VK_REDIRECT_URI;
 
-    // 1. Обмениваем временный код на бессрочный access_token
     const tokenRes = await fetch(`https://oauth.vk.com/access_token?client_id=${clientId}&client_secret=${clientSecret}&redirect_uri=${redirectUri}&code=${code}`);
     const tokenData = await tokenRes.json();
 
@@ -25,9 +24,6 @@ exports.vkCallback = async (req, res) => {
     }
 
     const access_token = tokenData.access_token;
-
-    // 2. Получаем список групп, где пользователь является админом или редактором
-    // filter=admin,editor гарантирует, что мы не получим группы, где он просто подписчик
     const groupsRes = await fetch(`https://api.vk.com/method/groups.get?extended=1&filter=admin,editor&access_token=${access_token}&v=5.199`);
     const groupsData = await groupsRes.json();
 
@@ -35,32 +31,24 @@ exports.vkCallback = async (req, res) => {
       return res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: '${groupsData.error.error_msg}' }, '*'); window.close();</script>`);
     }
 
-    // Это массив объектов с группами (id, name, photo_50 и т.д.)
     const groups = groupsData.response.items;
-
-    // 3. Формируем HTML, который отправит данные в родительское окно (на фронтенд) и закроет попап
     const html = `
       <script>
         window.opener.postMessage({
           type: 'VK_GROUPS_LOADED',
-          payload: {
-            accessToken: '${access_token}',
-            groups: ${JSON.stringify(groups)}
-          }
+          payload: { accessToken: '${access_token}', groups: ${JSON.stringify(groups)} }
         }, '*');
         window.close();
       </script>
     `;
-    
-    // Отдаем HTML-скрипт в браузер
     res.send(html);
-
   } catch (err) {
     console.error('Ошибка OAuth ВК:', err);
     res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: 'Internal Server Error' }, '*'); window.close();</script>`);
   }
 };
 
+// Сохранение групп ВК
 exports.saveVkGroups = async (req, res) => {
   const { userId, accessToken, groups } = req.body;
 
@@ -70,34 +58,22 @@ exports.saveVkGroups = async (req, res) => {
     }
 
     const savedAccounts = await Promise.all(groups.map(async (group) => {
-      const safeProviderId = String(group.id); // ЗАЩИТА: приводим ID к строке
+      const safeProviderId = String(group.id); 
 
       const existing = await prisma.account.findFirst({
-        where: { 
-          userId: String(userId),
-          provider: 'VK',
-          providerId: safeProviderId 
-        }
+        where: { userId: String(userId), provider: 'VK', providerId: safeProviderId }
       });
 
       if (existing) {
         return prisma.account.update({
           where: { id: existing.id },
-          data: { 
-            accessToken: accessToken || '',
-            avatarUrl: group.photo_50 || null,
-            name: group.name || 'Без названия'
-          }
+          data: { accessToken: accessToken || '', avatarUrl: group.photo_50 || null, name: group.name || 'Без названия' }
         });
       } else {
         return prisma.account.create({
           data: {
-            userId: String(userId),
-            provider: 'VK',
-            providerId: safeProviderId,
-            name: group.name || 'Без названия',
-            accessToken: accessToken || '',
-            avatarUrl: group.photo_50 || null
+            userId: String(userId), provider: 'VK', providerId: safeProviderId,
+            name: group.name || 'Без названия', accessToken: accessToken || '', avatarUrl: group.photo_50 || null
           }
         });
       }
@@ -110,9 +86,7 @@ exports.saveVkGroups = async (req, res) => {
   }
 };
 
-
-// Сохранение выбранных Telegram-каналов
-// Сохранение выбранных Telegram-каналов
+// Сохранение выбранных Telegram-каналов (С защитой от угона)
 exports.saveTgAccounts = async (req, res) => {
   const { userId, channels } = req.body;
 
@@ -121,22 +95,16 @@ exports.saveTgAccounts = async (req, res) => {
       return res.status(400).json({ error: 'Нет данных для сохранения' });
     }
 
-    // === УМНАЯ ЗАЩИТА ОТ УГОНА КАНАЛОВ ===
     for (const channel of channels) {
       const safeProviderId = String(channel.chatId);
-      
       const isTaken = await prisma.account.findFirst({
         where: { provider: 'TELEGRAM', providerId: safeProviderId }
       });
 
-      // Если канал найден в базе, но ID владельца не совпадает с твоим
       if (isTaken && isTaken.userId !== String(userId)) {
-        return res.status(400).json({ 
-          error: `Канал "${channel.title || 'Этот канал'}" уже привязан к другому пользователю платформы!` 
-        });
+        return res.status(400).json({ error: `Канал "${channel.title || 'Этот канал'}" уже привязан к другому пользователю платформы!` });
       }
     }
-    // =====================================
 
     const savedAccounts = await Promise.all(channels.map(async (channel) => {
       const safeProviderId = String(channel.chatId); 
@@ -153,12 +121,8 @@ exports.saveTgAccounts = async (req, res) => {
       } else {
         return prisma.account.create({
           data: {
-            userId: String(userId),
-            provider: 'TELEGRAM',
-            providerId: safeProviderId,
-            name: channel.title || 'Без названия',
-            avatarUrl: channel.avatar || null,
-            accessToken: '' 
+            userId: String(userId), provider: 'TELEGRAM', providerId: safeProviderId,
+            name: channel.title || 'Без названия', avatarUrl: channel.avatar || null, accessToken: '' 
           }
         });
       }
@@ -171,79 +135,15 @@ exports.saveTgAccounts = async (req, res) => {
   }
 };
 
-// Функция проверки прав бота в подключенных ТГ-каналах
-exports.verifyTgAccountsStatus = async (req, res) => {
-  const { userId } = req.body; // Теперь берем userId явно из тела запроса!
-
-  try {
-    if (!userId) {
-      return res.status(400).json({ error: 'Не указан userId для проверки' });
-    }
-
-    // 1. Ищем все ТГ-аккаунты пользователя
-    const tgAccounts = await prisma.account.findMany({
-      where: { userId: String(userId), provider: 'TELEGRAM' }
-    });
-
-    if (tgAccounts.length === 0) return res.json({ success: true, message: 'Нет ТГ аккаунтов' });
-
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (!botToken) {
-      return res.status(500).json({ error: 'Не настроен токен бота на сервере' });
-    }
-    const botId = botToken.split(':')[0]; 
-
-    // 2. Проверяем каждый аккаунт
-    const updates = await Promise.all(tgAccounts.map(async (acc) => {
-      try {
-        const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChatMember`, {
-          params: { chat_id: acc.providerId, user_id: botId }
-        });
-
-        const member = tgRes.data.result;
-        const isWorking = member.status === 'administrator' && member.can_post_messages !== false;
-
-        return prisma.account.update({
-          where: { id: acc.id },
-          data: { 
-            isValid: isWorking, 
-            errorMsg: isWorking ? null : 'Боту не выданы права на публикацию постов' 
-          }
-        });
-
-      } catch (error) {
-        // === ЛОВИМ НАСТОЯЩУЮ ОШИБКУ ОТ ТЕЛЕГРАМ ===
-        console.error('=== ОШИБКА ОТ TELEGRAM API ===');
-        console.error('ID Канала:', acc.providerId);
-        console.error('Ответ ТГ:', error.response?.data || error.message);
-        
-        // Если Телеграм вернул ошибку, аккуратно сохраняем её текст
-        return await prisma.account.update({
-          where: { id: acc.id },
-          data: { isValid: false, errorMsg: error.response?.data?.description || 'Бот удален из канала' }
-        });
-      }
-    }));
-
-    res.json({ success: true, updated: updates.length });
-  } catch (error) {
-    console.error('Ошибка проверки статусов ТГ:', error);
-    res.status(500).json({ error: 'Ошибка сервера при проверке статусов' });
-  }
-};
-
 // Получение списка аккаунтов пользователя
 exports.getAccounts = async (req, res) => {
-  const { userId } = req.query; // Берем ID из URL параметров
-  
+  const { userId } = req.query; 
   try {
-    if (!userId) {
-      return res.status(400).json({ error: 'Не указан ID пользователя' });
-    }
+    if (!userId) return res.status(400).json({ error: 'Не указан ID пользователя' });
 
     const accounts = await prisma.account.findMany({
       where: { userId: userId },
-      include: { watermark: true }, // Подтягиваем настройки дизайна
+      include: { watermark: true }, 
       orderBy: { createdAt: 'desc' }
     });
 
@@ -254,14 +154,11 @@ exports.getAccounts = async (req, res) => {
   }
 };
 
-// === УДАЛЕНИЕ АККАУНТА (Исправляет ошибку 404) ===
+// Удаление аккаунта
 exports.deleteAccount = async (req, res) => {
   const { id } = req.params;
-  
   try {
-    await prisma.account.delete({
-      where: { id: id }
-    });
+    await prisma.account.delete({ where: { id: id } });
     res.json({ success: true, message: 'Аккаунт успешно удален' });
   } catch (error) {
     console.error('Ошибка при удалении аккаунта:', error);
@@ -269,9 +166,8 @@ exports.deleteAccount = async (req, res) => {
   }
 };
 
-// === ПРОВЕРКА СТАТУСОВ (Усиленная защита от 500 ошибки) ===
+// === ПРОВЕРКА СТАТУСОВ (Единственная и бронебойная) ===
 exports.verifyTgAccountsStatus = async (req, res) => {
-  // Ищем ID либо в токене, либо в теле запроса
   const userId = req.user?.userId || req.user?.id || req.body?.userId;
 
   try {
@@ -283,7 +179,10 @@ exports.verifyTgAccountsStatus = async (req, res) => {
 
     if (tgAccounts.length === 0) return res.json({ success: true, message: 'Нет ТГ аккаунтов' });
 
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    // Жестко очищаем токен от кавычек на лету!
+    let botToken = process.env.TELEGRAM_BOT_TOKEN || '';
+    botToken = botToken.replace(/['"]/g, '').trim();
+
     if (!botToken || !botToken.includes(':')) {
       console.error('ОШИБКА: TELEGRAM_BOT_TOKEN не настроен в .env');
       return res.status(500).json({ error: 'Бот не настроен на сервере' });
@@ -292,22 +191,31 @@ exports.verifyTgAccountsStatus = async (req, res) => {
 
     const updates = await Promise.all(tgAccounts.map(async (acc) => {
       try {
+        if (!acc.providerId || acc.providerId === 'undefined') {
+           throw new Error('Фантомный аккаунт без ID');
+        }
+
         const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChatMember`, {
           params: { chat_id: acc.providerId, user_id: botId }
         });
 
         const member = tgRes.data.result;
-        const isWorking = member.status === 'administrator' && member.can_post_messages !== false;
+        // Для групп и каналов проверяем, является ли бот админом или создателем
+        const isWorking = member.status === 'administrator' || member.status === 'creator';
 
         return await prisma.account.update({
           where: { id: acc.id },
-          data: { isValid: isWorking, errorMsg: isWorking ? null : 'Выдайте боту права админа' }
+          data: { isValid: isWorking, errorMsg: isWorking ? null : 'Бот должен быть администратором' }
         });
       } catch (error) {
-        // Если Телеграм вернул ошибку, аккуратно сохраняем её текст, а не крашим сервер
+        console.error(`\n=== ОШИБКА TELEGRAM ДЛЯ КАНАЛА ${acc.name} ===`);
+        console.error(error.response?.data || error.message);
+
+        const errorText = error.response?.data?.description || 'Ошибка связи с Telegram (возможно, неверный ID или бот заблокирован)';
+
         return await prisma.account.update({
           where: { id: acc.id },
-          data: { isValid: false, errorMsg: error.response?.data?.description || 'Бот удален из канала' }
+          data: { isValid: false, errorMsg: errorText }
         });
       }
     }));
