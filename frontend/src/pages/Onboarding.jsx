@@ -89,7 +89,6 @@ export default function Onboarding() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ИСПРАВЛЕННЫЙ ЗАПРОС: Вернули передачу токена авторизации!
   const finishOnboarding = async () => {
     setLoading(true);
     setError('');
@@ -244,7 +243,6 @@ export default function Onboarding() {
                     onClick={handleCopyBot}
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md font-mono text-xs transition-all active:scale-95 ${copied ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gray-900 text-white border border-gray-700 hover:border-gray-500'}`}
                   >
-                    {/* ЗАЩИТА ОТ ПЕРЕВОДЧИКА БРАУЗЕРА (Скрываем текст через CSS, а не удаляем его) */}
                     <span className="flex items-center gap-1 pointer-events-none select-none">
                       <Check size={12} className={copied ? 'block' : 'hidden'} />
                       <Copy size={12} className={!copied ? 'block' : 'hidden'} />
@@ -304,7 +302,8 @@ export default function Onboarding() {
             </div>
 
             <button onClick={() => setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts')} className="mt-4 sm:mt-6 w-full bg-[#0088CC] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-base">
-              {tgChannels.length > 0 ? `Продолжить (${tgChannels.length})` : 'Пропустить'} <ArrowRight size={18} />
+              {/* Исправление 3: Обернули меняющийся текст в <span> */}
+              <span>{tgChannels.length > 0 ? `Продолжить (${tgChannels.length})` : 'Пропустить'}</span> <ArrowRight size={18} />
             </button>
           </div>
         )}
@@ -358,7 +357,8 @@ export default function Onboarding() {
               {error && <p className="text-red-400 bg-red-400/10 py-2 px-3 rounded-lg border border-red-400/20 text-xs sm:text-sm text-left">{error}</p>}
               
               <button type="submit" disabled={loading} className="w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl mt-2 sm:mt-4 hover:bg-gray-200 transition-colors shadow-lg shadow-white/10 text-base">
-                {loading ? 'Отправка кода...' : 'Получить код подтверждения'}
+                {/* Исправление 3: Обернули меняющийся текст в <span> */}
+                <span>{loading ? 'Отправка кода...' : 'Получить код подтверждения'}</span>
               </button>
             </form>
           </div>
@@ -384,7 +384,8 @@ export default function Onboarding() {
               {error && <p className="text-red-400 bg-red-400/10 py-2 px-3 rounded-lg border border-red-400/20 text-xs sm:text-sm">{error}</p>}
               
               <button type="submit" disabled={loading || code.length !== 6} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 sm:py-4 rounded-xl transition-colors disabled:opacity-50 shadow-lg shadow-blue-500/20 text-base">
-                {loading ? 'Проверка...' : 'Завершить настройку'}
+                {/* Исправление 3: Обернули меняющийся текст в <span> */}
+                <span>{loading ? 'Проверка...' : 'Завершить настройку'}</span>
               </button>
             </form>
           </div>

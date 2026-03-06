@@ -392,7 +392,7 @@ exports.linkEmailAndSendCode = async (req, res) => {
 exports.completeOnboarding = async (req, res) => {
   try {
     // Ищем ID везде: и в токене (req.user), и в теле запроса (req.body)
-    const userId = (req.user && req.user.userId) || req.body.userId;
+    const userId = req.user.userId;
 
     if (!userId) {
       return res.status(400).json({ error: 'Сессия устарела. Пожалуйста, перезайдите в аккаунт.' });
@@ -401,7 +401,7 @@ exports.completeOnboarding = async (req, res) => {
     // Проверяем, существует ли вообще юзер в базе
     const existingUser = await prisma.user.findUnique({ where: { id: userId } });
     if (!existingUser) {
-      return res.status(404).json({ error: 'Пользователь не найден в базе данных.' });
+      return res.status(404).json({ error: 'Пользователь не найден' });
     }
 
     // Сохраняем статус
