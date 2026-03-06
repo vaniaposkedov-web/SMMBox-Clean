@@ -242,10 +242,9 @@ const handlePhoneChange = (e) => {
                 <li className="flex flex-wrap items-center gap-1 mt-1">
                   Добавьте бота: 
                   <button 
-                    key={copied ? 'copied' : 'not-copied'} 
-                    onClick={handleCopyBot}
-                    className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md font-mono text-xs transition-all active:scale-95 ${copied ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gray-900 text-white border border-gray-700 hover:border-gray-500'}`}
-                    >
+                        onClick={handleCopyBot}
+                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md font-mono text-xs transition-all active:scale-95 ...`}
+                        >
                     {copied ? (
                         <>
                         <Check size={12} /> <span>Скопировано</span>

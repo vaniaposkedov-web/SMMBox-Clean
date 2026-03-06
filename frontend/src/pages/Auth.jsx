@@ -178,7 +178,7 @@ export default function Auth() {
             <CustomVkButton onAuth={handleVkAuth} />
             
             {/* СУЩЕСТВУЮЩИЙ КОМПОНЕНТ TELEGRAM */}
-            <CustomTelegramButton botId="8750764796" onAuth={handleTelegramAuth} />
+            <CustomTelegramButton botId={import.meta.env.VITE_TELEGRAM_BOT_ID} onAuth={handleTelegramAuth} />
 
           </div>
         </div>
