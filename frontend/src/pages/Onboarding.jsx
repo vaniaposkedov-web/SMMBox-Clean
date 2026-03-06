@@ -23,26 +23,18 @@ export default function Onboarding() {
   const [copied, setCopied] = useState(false);
   const [tgLoading, setTgLoading] = useState(false);
 
-  // --- ЖЕЛЕЗОБЕТОННАЯ МАСКА ТЕЛЕФОНА (Только +7) ---
   const handlePhoneChange = (e) => {
-    let input = e.target.value.replace(/\D/g, ''); // Оставляем только цифры
+    let input = e.target.value.replace(/\D/g, ''); 
     if (!input) {
       setPhone('');
       return;
     }
     
-    // Если пользователь печатает первую цифру, и это не 7 и не 8 (например 6)
-    if (input.length === 1 && input !== '7' && input !== '8') {
-      input = '7' + input;
-    }
-    
-    // Заменяем 8 на 7
+    if (input.length === 1 && input !== '7' && input !== '8') input = '7' + input;
     if (input[0] === '8') input = '7' + input.substring(1);
-    
-    // Жестко гарантируем первую семерку
     if (input[0] !== '7') input = '7' + input;
 
-    input = input.substring(0, 11); // Максимум 11 цифр
+    input = input.substring(0, 11); 
 
     let formatted = '+7';
     if (input.length > 1) formatted += ' (' + input.substring(1, 4);
@@ -97,15 +89,14 @@ export default function Onboarding() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // ИСПРАВЛЕННЫЙ ЗАПРОС: Передаем ID напрямую, без токенов
   const finishOnboarding = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/auth/complete-onboarding', {
         method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }) 
       });
       const data = await res.json();
       if (data.success) {
@@ -240,12 +231,12 @@ export default function Onboarding() {
                     onClick={handleCopyBot}
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md font-mono text-xs transition-all active:scale-95 ${copied ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gray-900 text-white border border-gray-700 hover:border-gray-500'}`}
                   >
-                    {/* ЗАЩИТА ОТ ПАДЕНИЯ REACT С ПОМОЩЬЮ KEY */}
-                    {copied ? (
-                      <span key="copied" className="flex items-center gap-1"><Check size={12}/> Скопировано</span>
-                    ) : (
-                      <span key="idle" className="flex items-center gap-1"><Copy size={12}/> @smmbox_auth_bot</span>
-                    )}
+                    {/* ИДЕАЛЬНАЯ ЗАЩИТА ОТ ЧЕРНОГО ЭКРАНА В REACT */}
+                    <span className="flex items-center gap-1 pointer-events-none select-none">
+                      <Check size={12} style={{ display: copied ? 'block' : 'none' }} />
+                      <Copy size={12} style={{ display: !copied ? 'block' : 'none' }} />
+                      <span>{copied ? 'Скопировано' : '@smmbox_auth_bot'}</span>
+                    </span>
                   </button>
                 </li>
                 <li>Выдайте права на <b>публикацию сообщений</b>.</li>

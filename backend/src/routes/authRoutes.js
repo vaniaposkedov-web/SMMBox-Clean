@@ -14,7 +14,7 @@ router.post('/telegram', authController.telegramAuth);
 router.post('/vk', authController.vkAuth);
 router.post('/link-email', authController.linkEmailAndSendCode);
 // ------------------------------------
-router.post('/complete-onboarding', protect, authController.completeOnboarding);
+router.post('/complete-onboarding', authController.completeOnboarding);
 router.post('/tg-chat-info', authController.getTgChatInfo); // <--- ДОБАВИТЬ ЭТО
 
 router.post('/request-link-email', authController.requestLinkEmail);

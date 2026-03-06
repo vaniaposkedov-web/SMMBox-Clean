@@ -391,26 +391,23 @@ exports.linkEmailAndSendCode = async (req, res) => {
 
 exports.completeOnboarding = async (req, res) => {
   try {
-    console.log("=== НАЧАЛО ЗАВЕРШЕНИЯ ОНБОРДИНГА ===");
-    console.log("Данные из токена (req.user):", req.user);
-
-    if (!req.user || !req.user.userId) {
-      return res.status(401).json({ error: 'Не удалось определить пользователя (ошибка токена)' });
+    // Теперь берем ID напрямую из запроса (железобетонно)
+    const { userId } = req.body; 
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'Не указан ID пользователя' });
     }
 
-    const userId = req.user.userId;
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: { isOnboardingCompleted: true }
     });
-
-    console.log("Онбординг успешно сохранен для:", updatedUser.email);
     
     const { password: _, ...userWithoutPassword } = updatedUser;
     res.json({ success: true, user: userWithoutPassword });
   } catch (error) {
-    console.error('ОШИБКА В completeOnboarding:', error);
-    res.status(500).json({ error: 'Ошибка сервера: ' + error.message });
+    console.error('Ошибка онбординга:', error);
+    res.status(500).json({ error: 'Ошибка при сохранении статуса' });
   }
 };
 
