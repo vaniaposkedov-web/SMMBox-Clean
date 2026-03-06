@@ -65,6 +65,7 @@ export default function Onboarding() {
     const left = window.screen.width / 2 - width / 2;
     const top = window.screen.height / 2 - height / 2;
     const popup = window.open(url, 'vk_auth', `width=${width},height=${height},top=${top},left=${left},status=yes,scrollbars=yes`);
+    
     // Слушатель сообщений от нашего бэкенда
     const messageListener = (event) => {
       if (event.data?.type === 'VK_GROUPS_LOADED') {
@@ -117,7 +118,7 @@ export default function Onboarding() {
     setIsVkSaving(false);
   };
 
-  // === ОСТАЛЬНАЯ ЛОГИКА (Телеграм, Почта и т.д.) ===
+  // === ДОБАВЛЕНО ИСПРАВЛЕНИЕ: ПЕРЕДАЧА chatId ===
   const handleAddTgChannel = async () => {
     if (!tgInput.trim() || tgLoading) return;
     if (tgChannels.some(c => c.originalInput === tgInput.trim())) { setTgInput(''); return; }
@@ -128,7 +129,13 @@ export default function Onboarding() {
       });
       const data = await res.json();
       if (data.success) {
-        setTgChannels([...tgChannels, { originalInput: tgInput.trim(), title: data.title, username: data.username, avatar: data.avatar }]);
+        setTgChannels([...tgChannels, { 
+          originalInput: tgInput.trim(), 
+          chatId: data.chatId || data.username, // <-- Исправление
+          title: data.title, 
+          username: data.username, 
+          avatar: data.avatar 
+        }]);
         setTgInput('');
       } else { setError(data.error); }
     } catch (err) { setError('Ошибка соединения с сервером'); }
@@ -136,13 +143,25 @@ export default function Onboarding() {
   };
 
   const handleRemoveTgChannel = (channelToRemove) => setTgChannels(tgChannels.filter(c => c !== channelToRemove));
-  const handleCopyBot = () => { navigator.clipboard.writeText('@smmbox_auth_bot'); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+  
+  const handleCopyBot = () => { 
+    navigator.clipboard.writeText('@smmbox_auth_bot'); 
+    setCopied(true); 
+    setTimeout(() => setCopied(false), 2000); 
+  };
 
+  // === ДОБАВЛЕНО ИСПРАВЛЕНИЕ: ПОДСТРАХОВОЧНОЕ СОХРАНЕНИЕ ===
   const finishOnboarding = async () => {
     setLoading(true); setError('');
     try {
       const token = localStorage.getItem('token');
       if (!token) { setError('Сессия истекла. Пожалуйста, войдите заново.'); setLoading(false); return; }
+      
+      // ПОДСТРАХОВКА: Сохраняем ТГ каналы перед завершением, если они не сохранились
+      if (tgChannels.length > 0) {
+        await useStore.getState().saveTgAccounts(user?.id, tgChannels);
+      }
+
       const res = await fetch('/api/auth/complete-onboarding', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ userId: user?.id }) 
       });
@@ -207,7 +226,6 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* === ОБНОВЛЕННЫЙ ШАГ ВКОНТАКТЕ === */}
         {step === 'vk_setup' && (
           <div className="space-y-5 sm:space-y-6 text-center animate-in fade-in slide-in-from-right-8 duration-500">
             <h2 className="text-xl sm:text-2xl font-bold text-white">Сообщества ВКонтакте</h2>
@@ -227,7 +245,6 @@ export default function Onboarding() {
               </div>
             )}
 
-            {/* СПИСОК ГРУПП ДЛЯ ВЫБОРА */}
             {vkGroupsFetched.length > 0 && !vkConnected && (
               <div className="bg-gray-900/50 border border-gray-700 rounded-2xl p-4 my-4 text-left">
                 <h3 className="text-white font-medium mb-3 flex justify-between items-center">
@@ -271,22 +288,18 @@ export default function Onboarding() {
               </div>
             )}
 
+            {/* === ДОБАВЛЕНО ИСПРАВЛЕНИЕ: КНОПКА ШАГА ВК === */}
             <button 
-              onClick={async () => {
-                if (tgChannels.length > 0) {
-                  // Вызываем сохранение в базу перед тем, как переключить шаг
-                  await useStore.getState().saveTgAccounts(user.id, tgChannels);
-                }
+              onClick={() => {
                 setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts');
               }} 
               className="mt-4 sm:mt-6 w-full bg-[#0088CC] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-base"
             >
-              <span>{tgChannels.length > 0 ? `Сохранить и продолжить (${tgChannels.length})` : 'Пропустить'}</span> <ArrowRight size={18} />
+              <span>Пропустить / Продолжить</span> <ArrowRight size={18} />
             </button>
           </div>
         )}
 
-        {/* ... (остальные шаги tg_setup, offer_second, contacts, verify остаются без изменений) ... */}
         {step === 'tg_setup' && (
           <div className="space-y-5 sm:space-y-6 text-left animate-in fade-in slide-in-from-right-8 duration-500">
             <div className="text-center mb-4 sm:mb-6">
@@ -340,8 +353,17 @@ export default function Onboarding() {
                 </div>
               )}
             </div>
-
-            <button onClick={() => setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts')} className="mt-4 sm:mt-6 w-full bg-[#0088CC] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-base">
+            
+            {/* === ДОБАВЛЕНО ИСПРАВЛЕНИЕ: КНОПКА ШАГА ТГ === */}
+            <button 
+              onClick={async () => {
+                if (tgChannels.length > 0) {
+                  await useStore.getState().saveTgAccounts(user?.id, tgChannels);
+                }
+                setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts');
+              }} 
+              className="mt-4 sm:mt-6 w-full bg-[#0088CC] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-base"
+            >
               <span>{tgChannels.length > 0 ? `Продолжить (${tgChannels.length})` : 'Пропустить'}</span> <ArrowRight size={18} />
             </button>
           </div>
