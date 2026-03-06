@@ -112,6 +112,7 @@ exports.saveVkGroups = async (req, res) => {
 
 
 // Сохранение выбранных Telegram-каналов
+// Сохранение выбранных Telegram-каналов
 exports.saveTgAccounts = async (req, res) => {
   const { userId, channels } = req.body;
 
@@ -120,8 +121,25 @@ exports.saveTgAccounts = async (req, res) => {
       return res.status(400).json({ error: 'Нет данных для сохранения' });
     }
 
+    // === УМНАЯ ЗАЩИТА ОТ УГОНА КАНАЛОВ ===
+    for (const channel of channels) {
+      const safeProviderId = String(channel.chatId);
+      
+      const isTaken = await prisma.account.findFirst({
+        where: { provider: 'TELEGRAM', providerId: safeProviderId }
+      });
+
+      // Если канал найден в базе, но ID владельца не совпадает с твоим
+      if (isTaken && isTaken.userId !== String(userId)) {
+        return res.status(400).json({ 
+          error: `Канал "${channel.title || 'Этот канал'}" уже привязан к другому пользователю платформы!` 
+        });
+      }
+    }
+    // =====================================
+
     const savedAccounts = await Promise.all(channels.map(async (channel) => {
-      const safeProviderId = String(channel.chatId); // ЗАЩИТА
+      const safeProviderId = String(channel.chatId); 
 
       const existing = await prisma.account.findFirst({
         where: { userId: String(userId), provider: 'TELEGRAM', providerId: safeProviderId }
@@ -149,10 +167,9 @@ exports.saveTgAccounts = async (req, res) => {
     res.json({ success: true, count: savedAccounts.length });
   } catch (error) {
     console.error('=== ОШИБКА СОХРАНЕНИЯ ТГ ===', error);
-    res.status(500).json({ error: 'Ошибка сервера при сохранении ТГ', details: error.message });
+    res.status(500).json({ error: 'Ошибка сервера при сохранении ТГ' });
   }
 };
-const axios = require('axios');
 
 // Функция проверки прав бота в подключенных ТГ-каналах
 exports.verifyTgAccountsStatus = async (req, res) => {
