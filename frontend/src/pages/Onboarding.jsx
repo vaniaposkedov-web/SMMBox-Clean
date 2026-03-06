@@ -89,14 +89,17 @@ export default function Onboarding() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ИСПРАВЛЕННЫЙ ЗАПРОС: Передаем ID напрямую, без токенов
+  // ИСПРАВЛЕННЫЙ ЗАПРОС: Вернули передачу токена авторизации!
   const finishOnboarding = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/auth/complete-onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }) 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}` // <-- Токен вернулся
+        },
+        body: JSON.stringify({ userId: user?.id }) 
       });
       const data = await res.json();
       if (data.success) {
@@ -231,11 +234,12 @@ export default function Onboarding() {
                     onClick={handleCopyBot}
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md font-mono text-xs transition-all active:scale-95 ${copied ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gray-900 text-white border border-gray-700 hover:border-gray-500'}`}
                   >
-                    {/* ИДЕАЛЬНАЯ ЗАЩИТА ОТ ЧЕРНОГО ЭКРАНА В REACT */}
+                    {/* ЗАЩИТА ОТ ПЕРЕВОДЧИКА БРАУЗЕРА (Скрываем текст через CSS, а не удаляем его) */}
                     <span className="flex items-center gap-1 pointer-events-none select-none">
-                      <Check size={12} style={{ display: copied ? 'block' : 'none' }} />
-                      <Copy size={12} style={{ display: !copied ? 'block' : 'none' }} />
-                      <span>{copied ? 'Скопировано' : '@smmbox_auth_bot'}</span>
+                      <Check size={12} className={copied ? 'block' : 'hidden'} />
+                      <Copy size={12} className={!copied ? 'block' : 'hidden'} />
+                      <span className={copied ? 'block' : 'hidden'}>Скопировано</span>
+                      <span className={!copied ? 'block' : 'hidden'}>@smmbox_auth_bot</span>
                     </span>
                   </button>
                 </li>
