@@ -18,6 +18,15 @@ export default function AccountsManager() {
   // Состояние для раскрытия карточки
   const [expandedId, setExpandedId] = useState(null);
 
+  const [copied, setCopied] = useState(false);
+
+  const copyBotName = (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText('@smmbox_auth_bot');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   useEffect(() => {
     if (user?.id) {
       fetchAccounts(user.id).then(() => {
@@ -163,19 +172,29 @@ export default function AccountsManager() {
               <div className="p-5 border-t border-gray-800/50 bg-gray-950/50 space-y-4 animate-in slide-in-from-top-2 duration-200">
                 
                 {/* Инструкция, если бот не работает */}
+                {/* Инструкция, если бот не работает */}
                 {!acc.isValid && (
                   <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-sm">
-                    <p className="font-bold text-red-400 flex items-center gap-2 mb-2">
+                    <p className="font-bold text-red-400 flex items-center gap-2 mb-3">
                       <XCircle size={16} /> Требуется настройка!
                     </p>
-                    <p className="text-gray-300">
+                    <p className="text-gray-300 mb-3">
                       {acc.errorMsg || 'Боту не хватает прав для публикации постов.'}
                     </p>
-                    <ol className="list-decimal list-inside text-gray-400 mt-3 space-y-1 text-xs">
+                    <ol className="list-decimal list-inside text-gray-400 mt-3 space-y-2 text-xs">
                       <li>Откройте настройки канала в Telegram</li>
                       <li>Раздел "Администраторы" -&gt; "Добавить администратора"</li>
-                      <li>Найдите вашего бота и выдайте права на отправку сообщений</li>
-                      <li>Нажмите кнопку «Обновить статусы» ниже</li>
+                      <li className="flex items-center gap-2 flex-wrap mt-1 mb-1">
+                        Найдите и добавьте бота: 
+                        <span className="bg-gray-900 border border-gray-700 text-white px-2 py-1 rounded-md font-mono flex items-center gap-2">
+                          @smmbox_auth_bot
+                          <button onClick={copyBotName} className="text-gray-400 hover:text-white transition-colors">
+                            {copied ? <CheckCircle2 size={14} className="text-green-500" /> : <Copy size={14} />}
+                          </button>
+                        </span>
+                      </li>
+                      <li>Выдайте права на публикацию сообщений</li>
+                      <li>Нажмите кнопку «Обновить статус» ниже</li>
                     </ol>
                   </div>
                 )}
