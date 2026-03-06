@@ -283,7 +283,10 @@ exports.vkAuth = async (req, res) => {
 exports.telegramAuth = async (req, res) => {
   try {
     const { hash, ...userData } = req.body;
-    const secretKey = crypto.createHash('sha256').update(process.env.TELEGRAM_BOT_TOKEN).digest();
+    
+    // Надежно очищаем токен от случайных пробелов и кавычек
+    const rawToken = (process.env.TELEGRAM_BOT_TOKEN || '').trim().replace(/['"]/g, '');
+    const secretKey = crypto.createHash('sha256').update(rawToken).digest();
     
     const dataCheckString = Object.keys(userData).sort().map(key => `${key}=${userData[key]}`).join('\n');
     const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
@@ -298,7 +301,9 @@ exports.telegramAuth = async (req, res) => {
     const avatarUrl = userData.photo_url || null;
 
     const result = await handleSocialLogin(userData.id.toString(), 'telegram', name, null, avatarUrl);
-    res.status(200).json({ token: result.token, user: result.user });
+    
+    // ИСПРАВЛЕНИЕ: Теперь мы возвращаем result целиком (с success: true), как в функции ВК
+    res.status(200).json(result);
   } catch (error) {
     console.error('Ошибка Telegram:', error);
     res.status(500).json({ error: 'Ошибка сервера Telegram' });
