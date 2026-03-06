@@ -340,9 +340,17 @@ export const useStore = create(
 
       removeAccount: async (accountId) => {
         try {
-          await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
-          get().fetchAccounts(get().user.id);
-        } catch (error) {}
+          const res = await fetch(`/api/accounts/${accountId}`, { 
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${get().token}` } // Обязательно передаем токен!
+          });
+          
+          if (res.ok) {
+            get().fetchAccounts(get().user.id); // Обновляем список после удаления
+          }
+        } catch (error) {
+          console.error('Ошибка при удалении аккаунта', error);
+        }
       },
 
       saveAccountDesign: async (accountId, signature, watermarkData) => {
