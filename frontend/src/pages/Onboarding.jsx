@@ -22,13 +22,46 @@ export default function Onboarding() {
   
   // Состояние для копирования
   const [copied, setCopied] = useState(false);
+  const [tgLoading, setTgLoading] = useState(false); // Добавьте это состояние рядом с остальными
 
-  const handleAddTgChannel = () => {
-    if (!tgInput.trim()) return;
-    if (!tgChannels.includes(tgInput.trim())) {
-      setTgChannels([...tgChannels, tgInput.trim()]);
+  // Умное добавление канала с подгрузкой аватарки
+  const handleAddTgChannel = async () => {
+    if (!tgInput.trim() || tgLoading) return;
+    
+    // Проверяем, нет ли уже такого канала в списке (по username)
+    if (tgChannels.some(c => c.originalInput === tgInput.trim())) {
+      setTgInput('');
+      return;
     }
-    setTgInput('');
+
+    setTgLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/auth/tg-chat-info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: tgInput })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        // Добавляем в список объект с картинкой и названием
+        setTgChannels([...tgChannels, { 
+          originalInput: tgInput.trim(),
+          title: data.title,
+          username: data.username,
+          avatar: data.avatar 
+        }]);
+        setTgInput(''); // Очищаем поле
+      } else {
+        setError(data.error); // Выводим ошибку (например, бот не админ)
+      }
+    } catch (err) {
+      setError('Ошибка соединения с сервером');
+    }
+    
+    setTgLoading(false);
   };
 
   const handleRemoveTgChannel = (channelToRemove) => {
@@ -209,17 +242,36 @@ export default function Onboarding() {
 
               {tgChannels.length > 0 && (
                 <div className="space-y-2 max-h-32 sm:max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                  {/* Список добавленных каналов */}
+              {tgChannels.length > 0 && (
+                <div className="space-y-2 max-h-32 sm:max-h-40 overflow-y-auto pr-1 custom-scrollbar">
                   {tgChannels.map((channel, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-gray-900/50 border border-gray-800 p-2.5 sm:p-3 rounded-xl animate-in fade-in slide-in-from-bottom-2">
-                      <div className="flex items-center gap-2 sm:gap-3 overflow-hidden">
-                        <Send size={14} className="text-[#0088CC] flex-shrink-0" />
-                        <span className="text-gray-200 text-xs sm:text-sm truncate">{channel}</span>
+                      <div className="flex items-center gap-3 sm:gap-4 overflow-hidden">
+                        
+                        {/* Аватарка канала */}
+                        {channel.avatar ? (
+                          <img src={channel.avatar} alt="avatar" className="w-8 h-8 rounded-full object-cover border border-gray-700 flex-shrink-0" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-[#0088CC]/20 flex items-center justify-center flex-shrink-0">
+                            <Send size={14} className="text-[#0088CC]" />
+                          </div>
+                        )}
+                        
+                        {/* Название и юзернейм */}
+                        <div className="flex flex-col overflow-hidden">
+                          <span className="text-gray-200 text-sm font-medium truncate">{channel.title}</span>
+                          <span className="text-gray-500 text-xs truncate">{channel.username}</span>
+                        </div>
+
                       </div>
-                      <button onClick={() => handleRemoveTgChannel(channel)} className="text-gray-500 hover:text-red-400 transition-colors p-1 flex-shrink-0">
+                      <button onClick={() => handleRemoveTgChannel(channel)} className="text-gray-500 hover:text-red-400 transition-colors p-2 flex-shrink-0">
                         <Trash2 size={16} />
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
                 </div>
               )}
             </div>
