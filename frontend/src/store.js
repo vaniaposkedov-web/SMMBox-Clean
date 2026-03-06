@@ -159,22 +159,26 @@ export const useStore = create(
       },
 
       verifyAccountsStatus: async () => {
-    try {
-      const res = await fetch('/api/accounts/tg/verify-status', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${get().token}` // Не забываем токен!
+        try {
+          const user = get().user;
+          if (!user?.id) return; // Защита от пустого стейта
+
+          const res = await fetch('/api/accounts/tg/verify-status', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${get().token}`
+            },
+            body: JSON.stringify({ userId: user.id }) // Явно передаем ID!
+          });
+          
+          if (res.ok) {
+            get().fetchAccounts(user.id); 
+          }
+        } catch (error) {
+          console.error('Ошибка верификации аккаунтов:', error);
         }
-      });
-      if (res.ok) {
-        // После проверки заново скачиваем список аккаунтов, чтобы обновить UI
-        get().fetchAccounts(get().user.id); 
-      }
-    } catch (error) {
-      console.error('Ошибка верификации аккаунтов:', error);
-    }
-  },
+      },
 
       verifyEmailLink: async (userId, email, code, phone) => { // <-- Добавили phone сюда
         try {

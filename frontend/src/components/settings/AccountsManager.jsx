@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../../store';
-import { Share2, Plus, Trash2, AlertTriangle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
+import { Share2, Plus, Trash2, CheckCircle2, RefreshCw, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function AccountsManager() {
   const user = useStore((state) => state.user);
@@ -8,38 +8,40 @@ export default function AccountsManager() {
   const fetchAccounts = useStore((state) => state.fetchAccounts);
   const verifyAccountsStatus = useStore((state) => state.verifyAccountsStatus);
   const removeAccount = useStore((state) => state.removeAccount);
-  const token = useStore((state) => state.token); // Нам нужен токен для POST запросов
+  const token = useStore((state) => state.token);
 
   // Состояния
   const [newGroupName, setNewGroupName] = useState(''); 
   const [isAddingTg, setIsAddingTg] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  
+  // Состояние для раскрытия карточки
+  const [expandedId, setExpandedId] = useState(null);
 
-  // Загружаем аккаунты при открытии страницы
   useEffect(() => {
     if (user?.id) {
       fetchAccounts(user.id).then(() => {
-        // Запускаем проверку прав после загрузки
         if (verifyAccountsStatus) verifyAccountsStatus();
       });
     }
   }, [user]);
 
-  // Ручная проверка статусов
-  const handleManualVerify = async () => {
+  const handleManualVerify = async (e) => {
+    if (e) e.stopPropagation();
     setIsVerifying(true);
     if (verifyAccountsStatus) await verifyAccountsStatus();
     setIsVerifying(false);
   };
 
-  // === РЕАЛЬНОЕ ДОБАВЛЕНИЕ КАНАЛА TELEGRAM ===
-  // === РЕАЛЬНОЕ ДОБАВЛЕНИЕ КАНАЛА TELEGRAM ===
+  const toggleExpand = (id) => {
+    setExpandedId(expandedId === id ? null : id);
+  };
+
   const handleAddTg = async () => {
     if (!newGroupName.trim()) return alert('Введите ссылку или @username канала!');
     setIsAddingTg(true);
 
     try {
-      // 1. Ищем информацию о канале через Telegram API бота (ОТНОСИТЕЛЬНЫЙ ПУТЬ)
       const infoRes = await fetch(`/api/auth/tg-chat-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -53,7 +55,6 @@ export default function AccountsManager() {
         return;
       }
 
-      // 2. Сохраняем канал в базу данных к пользователю (ОТНОСИТЕЛЬНЫЙ ПУТЬ)
       const saveRes = await fetch(`/api/accounts/tg/save`, {
         method: 'POST',
         headers: { 
@@ -73,9 +74,8 @@ export default function AccountsManager() {
 
       if (saveData.success) {
         setNewGroupName('');
-        await fetchAccounts(user.id); // Сразу обновляем список на экране
-        if (verifyAccountsStatus) verifyAccountsStatus(); // Сразу проверяем права
-        alert('Группа успешно добавлена!');
+        await fetchAccounts(user.id); 
+        if (verifyAccountsStatus) verifyAccountsStatus(); 
       } else {
         alert(saveData.error || 'Ошибка сохранения аккаунта');
       }
@@ -85,7 +85,7 @@ export default function AccountsManager() {
     }
     setIsAddingTg(false);
   };
-  
+
   return (
     <div className="space-y-8">
       {/* --- БЛОК ДОБАВЛЕНИЯ СОЦСЕТЕЙ --- */}
@@ -94,7 +94,6 @@ export default function AccountsManager() {
           <Share2 className="text-admin-accent" /> Подключить соцсети
         </h2>
         
-        {/* Блок: Telegram */}
         <div className="bg-gray-900 p-6 rounded-2xl border border-gray-800 space-y-4 shadow-inner">
           <h3 className="text-white font-bold flex items-center gap-2">Подключение Telegram канала</h3>
           <p className="text-sm text-gray-400">Сначала добавьте вашего бота в администраторы канала, затем введите ссылку на канал ниже.</p>
@@ -111,70 +110,106 @@ export default function AccountsManager() {
               disabled={isAddingTg}
               className="bg-sky-500 hover:bg-sky-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
             >
-              {isAddingTg ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />} 
-              {isAddingTg ? 'Добавление...' : 'Добавить ТГ'}
+              <span className="flex items-center justify-center">
+                {isAddingTg ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />} 
+              </span>
+              <span>{isAddingTg ? 'Поиск...' : 'Добавить ТГ'}</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* --- СПИСОК ГРУПП --- */}
+      {/* --- СПИСОК ГРУПП (АККОРДЕОН) --- */}
       <div className="flex items-center justify-between">
-         <h2 className="text-xl font-bold text-white">Мои группы</h2>
-         <button 
-           onClick={handleManualVerify} 
-           disabled={isVerifying}
-           className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
-         >
-           <RefreshCw size={16} className={isVerifying ? 'animate-spin text-blue-500' : ''} />
-           {isVerifying ? 'Проверка...' : 'Обновить статусы'}
-         </button>
+         <h2 className="text-xl font-bold text-white">Мои каналы и группы</h2>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {accounts.map(acc => (
-          <div key={acc.id} className={`bg-admin-card border ${acc.isValid ? 'border-gray-800' : 'border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.1)]'} rounded-3xl p-6 shadow-xl relative overflow-hidden group`}>
-            
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-3">
-                <img src={acc.avatarUrl || 'https://via.placeholder.com/150'} alt="avatar" className="w-12 h-12 rounded-full border-2 border-gray-700 object-cover" />
+          <div 
+            key={acc.id} 
+            className={`border rounded-3xl overflow-hidden shadow-xl transition-all duration-300 ${
+              acc.isValid 
+                ? 'border-green-500/30 bg-green-500/5 hover:border-green-500/50' 
+                : 'border-red-500/40 bg-red-500/5 hover:border-red-500/60'
+            }`}
+          >
+            {/* ШАПКА КАРТОЧКИ (ВСЕГДА ВИДНА) */}
+            <div 
+              onClick={() => toggleExpand(acc.id)}
+              className="p-5 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <img src={acc.avatarUrl || 'https://via.placeholder.com/150'} alt="avatar" className="w-12 h-12 rounded-full border-2 border-gray-800 object-cover" />
                 <div>
                   <h3 className="font-bold text-white line-clamp-1">{acc.name}</h3>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">{acc.provider}</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-gray-400 uppercase tracking-wider bg-gray-900 px-2 py-0.5 rounded-full border border-gray-800">{acc.provider}</span>
+                    {acc.isValid ? (
+                      <span className="text-[10px] text-green-400 flex items-center gap-1"><CheckCircle2 size={12} /> Подключено</span>
+                    ) : (
+                      <span className="text-[10px] text-red-400 flex items-center gap-1"><XCircle size={12} /> Нет доступа</span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <button onClick={() => removeAccount(acc.id)} className="text-gray-500 hover:text-red-500 transition-colors p-2">
-                <Trash2 size={18} />
-              </button>
+              <div className="text-gray-500 shrink-0 ml-2">
+                {expandedId === acc.id ? <ChevronUp size={22} /> : <ChevronDown size={22} />}
+              </div>
             </div>
 
-            {/* Индикаторы статуса */}
-            {acc.isValid ? (
-               <div className="mt-4 bg-green-500/10 border border-green-500/30 rounded-xl p-3 flex items-center gap-3">
-                 <CheckCircle2 className="text-green-500 shrink-0" size={18} />
-                 <p className="text-sm font-medium text-green-500">Бот подключен и имеет права</p>
-               </div>
-            ) : (
-               <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-start gap-3">
-                 <XCircle className="text-red-400 shrink-0 mt-0.5" size={18} />
-                 <div>
-                   <p className="text-sm font-bold text-red-400">Ошибка подключения!</p>
-                   <p className="text-xs text-red-400/80 mt-1">{acc.errorMsg || 'Выдайте боту права администратора'}</p>
-                 </div>
-               </div>
-            )}
+            {/* РАСКРЫВАЮЩЕЕСЯ ТЕЛО КАРТОЧКИ */}
+            {expandedId === acc.id && (
+              <div className="p-5 border-t border-gray-800/50 bg-gray-950/50 space-y-4 animate-in slide-in-from-top-2 duration-200">
+                
+                {/* Инструкция, если бот не работает */}
+                {!acc.isValid && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-sm">
+                    <p className="font-bold text-red-400 flex items-center gap-2 mb-2">
+                      <XCircle size={16} /> Требуется настройка!
+                    </p>
+                    <p className="text-gray-300">
+                      {acc.errorMsg || 'Боту не хватает прав для публикации постов.'}
+                    </p>
+                    <ol className="list-decimal list-inside text-gray-400 mt-3 space-y-1 text-xs">
+                      <li>Откройте настройки канала в Telegram</li>
+                      <li>Раздел "Администраторы" -&gt; "Добавить администратора"</li>
+                      <li>Найдите вашего бота и выдайте права на отправку сообщений</li>
+                      <li>Нажмите кнопку «Обновить статусы» ниже</li>
+                    </ol>
+                  </div>
+                )}
 
-            {/* Проверка на водяной знак */}
-            {!acc.watermark && acc.isValid && (
-              <div className="mt-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 flex items-start gap-3">
-                <AlertTriangle className="text-yellow-500 shrink-0 mt-0.5" size={16} />
-                <p className="text-xs text-yellow-500/90">Водяной знак не настроен. Посты будут без защиты.</p>
+                {/* Кнопки управления */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button 
+                    onClick={handleManualVerify}
+                    disabled={isVerifying}
+                    className="flex-1 flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white py-2.5 rounded-xl text-sm transition-colors"
+                  >
+                    <span className="flex items-center justify-center">
+                      <RefreshCw size={16} className={isVerifying ? 'animate-spin text-blue-400' : ''} />
+                    </span>
+                    <span>{isVerifying ? 'Проверка...' : 'Обновить статус'}</span>
+                  </button>
+
+                  <button 
+                    onClick={() => removeAccount(acc.id)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 py-2.5 rounded-xl text-sm transition-colors border border-red-500/20"
+                  >
+                    <span className="flex items-center justify-center"><Trash2 size={16} /></span>
+                    <span>Удалить канал</span>
+                  </button>
+                </div>
+
+                {/* Настройка дизайна */}
+                {acc.isValid && (
+                  <button className="w-full mt-2 bg-admin-accent hover:bg-blue-600 text-white py-3 rounded-xl text-sm font-bold transition-colors shadow-lg shadow-blue-500/20">
+                    Настроить водяной знак
+                  </button>
+                )}
               </div>
             )}
-            
-            <button className="w-full mt-4 bg-gray-900 hover:bg-gray-800 border border-gray-800 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
-              Настроить дизайн
-            </button>
           </div>
         ))}
       </div>
