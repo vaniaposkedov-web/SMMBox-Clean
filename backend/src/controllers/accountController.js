@@ -110,6 +110,7 @@ exports.saveVkGroups = async (req, res) => {
   }
 };
 
+
 // Сохранение выбранных Telegram-каналов
 exports.saveTgAccounts = async (req, res) => {
   const { userId, channels } = req.body;
@@ -120,7 +121,7 @@ exports.saveTgAccounts = async (req, res) => {
     }
 
     const savedAccounts = await Promise.all(channels.map(async (channel) => {
-      const safeProviderId = String(channel.chatId); // ЗАЩИТА: приводим числовой ID Телеграма к строке!
+      const safeProviderId = String(channel.chatId); // ЗАЩИТА
 
       const existing = await prisma.account.findFirst({
         where: { userId: String(userId), provider: 'TELEGRAM', providerId: safeProviderId }
@@ -129,10 +130,7 @@ exports.saveTgAccounts = async (req, res) => {
       if (existing) {
         return prisma.account.update({
           where: { id: existing.id },
-          data: { 
-            avatarUrl: channel.avatar || null, 
-            name: channel.title || 'Без названия' 
-          }
+          data: { avatarUrl: channel.avatar || null, name: channel.title || 'Без названия' }
         });
       } else {
         return prisma.account.create({
@@ -142,7 +140,7 @@ exports.saveTgAccounts = async (req, res) => {
             providerId: safeProviderId,
             name: channel.title || 'Без названия',
             avatarUrl: channel.avatar || null,
-            accessToken: '' // Обязательное поле в БД
+            accessToken: '' 
           }
         });
       }
@@ -154,47 +152,6 @@ exports.saveTgAccounts = async (req, res) => {
     res.status(500).json({ error: 'Ошибка сервера при сохранении ТГ', details: error.message });
   }
 };
-
-// Сохранение выбранных Telegram-каналов
-exports.saveTgAccounts = async (req, res) => {
-  const { userId, channels } = req.body;
-
-  try {
-    if (!userId || !channels || channels.length === 0) {
-      return res.status(400).json({ error: 'Нет данных для сохранения' });
-    }
-
-    const savedAccounts = await Promise.all(channels.map(async (channel) => {
-      const existing = await prisma.account.findFirst({
-        where: { userId: userId, provider: 'TELEGRAM', providerAccountId: channel.chatId }
-      });
-
-      if (existing) {
-        return prisma.account.update({
-          where: { id: existing.id },
-          data: { avatarUrl: channel.avatar, name: channel.title }
-        });
-      } else {
-        return prisma.account.create({
-          data: {
-            userId: userId,
-            provider: 'TELEGRAM',
-            providerAccountId: channel.chatId,
-            name: channel.title,
-            avatarUrl: channel.avatar,
-            type: 'CHANNEL'
-          }
-        });
-      }
-    }));
-
-    res.json({ success: true, count: savedAccounts.length });
-  } catch (error) {
-    console.error('Ошибка сохранения ТГ:', error);
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
-};
-
 const axios = require('axios');
 
 // Функция проверки прав бота в подключенных ТГ-каналах
