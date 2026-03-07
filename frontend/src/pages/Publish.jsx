@@ -307,7 +307,7 @@ export default function Publish() {
 
   // === ЗАМЕНИ ЭТУ ФУНКЦИЮ ЦЕЛИКОМ ===
   // === 2. ЗАМЕНИ ЭТУ ФУНКЦИЮ ЦЕЛИКОМ ===
-  const handlePublish = async () => {
+ const handlePublish = async () => {
     if (selectedAccounts.length === 0) return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
     if (publishMode === 'schedule' && (!selectedCalendarDate || !scheduleTime)) return setTimeout(() => alert('Укажите дату и время для отложенного поста!'), 10);
     
@@ -316,11 +316,20 @@ export default function Publish() {
     try {
         const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
 
-        const accountsData = selectedAccounts.map(id => ({
-          accountId: id,
-          applyWatermark: getEffectiveSetting(id, 'watermark'),
-          applySignature: getEffectiveSetting(id, 'signature')
-        }));
+        // ИСПРАВЛЕНИЕ: Передаем конкретный текст и настройки знака на бэкенд
+        const accountsData = selectedAccounts.map(id => {
+          const acc = accounts.find(a => a.id === id);
+          const isCustom = accountOverrides[id]?.mode === 'custom';
+          
+          return {
+            accountId: id,
+            applyWatermark: getEffectiveSetting(id, 'watermark'),
+            applySignature: getEffectiveSetting(id, 'signature'),
+            // Если "свои" - берем из аккаунта, если "шаблон" - из глобальных настроек
+            signatureText: isCustom ? acc?.signature : globalSettings?.signature,
+            watermarkConfig: isCustom ? acc?.watermark : globalSettings?.watermark
+          };
+        });
 
         const publishAt = publishMode === 'schedule' ? `${selectedCalendarDate}T${scheduleTime}:00` : null;
 
