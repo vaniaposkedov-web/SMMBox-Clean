@@ -101,7 +101,7 @@ export default function Publish() {
     }
   };
 
-  // === ЛОГИКА ИНДИВИДУАЛЬНЫХ НАСТРОЕК ===
+  // === ИСПРАВЛЕННАЯ ЛОГИКА ИНДИВИДУАЛЬНЫХ НАСТРОЕК (БЕЗ МУТАЦИЙ) ===
   const getEffectiveSetting = (accountId, settingType) => {
     if (accountOverrides[accountId] && accountOverrides[accountId][settingType] !== undefined) {
       return accountOverrides[accountId][settingType];
@@ -111,7 +111,14 @@ export default function Publish() {
 
   const handleOverride = (accountId, settingType) => {
     setAccountOverrides(prev => {
-      const currentVal = getEffectiveSetting(accountId, settingType);
+      // Надежно вычисляем текущее состояние на основе свежего prev
+      let currentVal;
+      if (prev[accountId] && prev[accountId][settingType] !== undefined) {
+        currentVal = prev[accountId][settingType];
+      } else {
+        currentVal = settingType === 'watermark' ? applyWatermark : applySignature;
+      }
+
       return {
         ...prev,
         [accountId]: {
@@ -126,15 +133,22 @@ export default function Publish() {
     if (type === 'watermark') {
       setApplyWatermark(!applyWatermark);
       setAccountOverrides(prev => {
-        const next = { ...prev };
-        Object.keys(next).forEach(k => delete next[k].watermark);
+        // Глубокое копирование, чтобы избежать ошибки removeChild в React
+        const next = {};
+        Object.keys(prev).forEach(k => {
+          next[k] = { ...prev[k] };
+          delete next[k].watermark;
+        });
         return next;
       });
     } else {
       setApplySignature(!applySignature);
       setAccountOverrides(prev => {
-        const next = { ...prev };
-        Object.keys(next).forEach(k => delete next[k].signature);
+        const next = {};
+        Object.keys(prev).forEach(k => {
+          next[k] = { ...prev[k] };
+          delete next[k].signature;
+        });
         return next;
       });
     }
@@ -244,7 +258,6 @@ export default function Publish() {
       return alert('Укажите дату и время для отложенного поста!');
     }
     
-    // Формируем финальные данные для каждого аккаунта с учетом переопределений
     const accountsData = selectedAccounts.map(id => ({
       accountId: id,
       applyWatermark: getEffectiveSetting(id, 'watermark'),
@@ -627,8 +640,13 @@ export default function Publish() {
                                   <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
                                   {isSelected && (
                                     <div className="flex gap-2 mt-0.5">
-                                      {isWatermarkActive ? <span className="text-[10px] text-blue-400 flex items-center gap-1"><Check size={10}/> Знак</span> : <span className="text-[10px] text-gray-500 line-through">Знак</span>}
-                                      {isSignatureActive ? <span className="text-[10px] text-purple-400 flex items-center gap-1"><Check size={10}/> Подпись</span> : <span className="text-[10px] text-gray-500 line-through">Подпись</span>}
+                                      {/* ИСПРАВЛЕНО: Безопасный рендеринг без удаления узлов React */}
+                                      <span className={`text-[10px] flex items-center gap-1 ${isWatermarkActive ? 'text-blue-400' : 'text-gray-500 line-through'}`}>
+                                        {isWatermarkActive && <Check size={10}/>} Знак
+                                      </span>
+                                      <span className={`text-[10px] flex items-center gap-1 ${isSignatureActive ? 'text-purple-400' : 'text-gray-500 line-through'}`}>
+                                        {isSignatureActive && <Check size={10}/>} Подпись
+                                      </span>
                                     </div>
                                   )}
                                 </div>
@@ -705,11 +723,13 @@ export default function Publish() {
                   </div>
 
                </div>
-               {(!globalSettings?.watermark && applyWatermark) && (
+               
+               {/* ИСПРАВЛЕНО: Безопасный рендеринг текста */}
+               {(!globalSettings?.watermark && applyWatermark) ? (
                   <p className="text-xs text-yellow-500 mt-3 flex items-center gap-1">
                     ⚠️ В глобальных настройках не задан водяной знак. Он не будет применен.
                   </p>
-               )}
+               ) : null}
             </div>
 
             {/* БЛОК 3: НАСТРОЙКИ ВРЕМЕНИ */}
