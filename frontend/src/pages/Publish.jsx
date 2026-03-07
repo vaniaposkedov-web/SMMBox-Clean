@@ -1,11 +1,24 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, 
   Send, CheckCircle2, Share2, Users, LayoutTemplate,
-  Search, CalendarClock, Clock, MessageSquare, Plus, Loader2
+  Search, CalendarClock, Clock, MessageSquare, Plus, Loader2,
+  Settings, PenTool
 } from 'lucide-react';
+import { useStore } from '../store';
 
 export default function Publish() {
+  // === ДАННЫЕ ИЗ STORE ===
+  const { user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings } = useStore();
+
+  // === ЗАГРУЗКА ДАННЫХ ПРИ СТАРТЕ ===
+  useEffect(() => {
+    if (user?.id) {
+      fetchAccounts(user.id);
+      fetchGlobalSettings();
+    }
+  }, [user?.id, fetchAccounts, fetchGlobalSettings]);
+
   // === ГЛАВНЫЕ ЭКРАНЫ: 'start' (Выбор) | 'calendar' (Календарь) | 'wizard' (Создание поста) ===
   const [view, setView] = useState('start'); 
   
@@ -17,6 +30,10 @@ export default function Publish() {
   const [text, setText] = useState('');
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   
+  // === ЛОКАЛЬНЫЕ НАСТРОЙКИ ПОСТА ===
+  const [applyWatermark, setApplyWatermark] = useState(true);
+  const [applySignature, setApplySignature] = useState(true);
+
   // === СОСТОЯНИЯ РАСПИСАНИЯ ===
   const [publishMode, setPublishMode] = useState('now'); // 'now' | 'schedule'
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -24,7 +41,7 @@ export default function Publish() {
 
   // === UI СОСТОЯНИЯ ИИ ===
   const [isImprovingAI, setIsImprovingAI] = useState(false);
-  const [aiProgress, setAiProgress] = useState(0); // Состояние прогресс-бара
+  const [aiProgress, setAiProgress] = useState(0);
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
 
@@ -36,14 +53,6 @@ export default function Publish() {
 
   const MAX_PHOTOS = 10;
   const MAX_CHARS = 1000;
-
-  // === МОКОВЫЕ ДАННЫЕ (Подключенные аккаунты) ===
-  const connectedAccounts = [
-    { id: 'vk_1', network: 'VK', name: 'Магазин Кроссовок', type: 'Группа', color: 'bg-blue-600' },
-    { id: 'vk_2', network: 'VK', name: 'Иван Иванов', type: 'Личная страница', color: 'bg-blue-600' },
-    { id: 'tg_1', network: 'TG', name: 'Скидки и Акции', type: 'Канал', color: 'bg-sky-500' },
-    { id: 'inst_1', network: 'IG', name: 'krossovki_top', type: 'Бизнес', color: 'bg-pink-600' },
-  ];
 
   // === МОКОВЫЕ ДАННЫЕ (Запланированные посты для календаря) ===
   const mockScheduledPosts = [
@@ -60,13 +69,21 @@ export default function Publish() {
     });
   }, []);
 
-  // === ФИЛЬТРАЦИЯ АККАУНТОВ ===
-  const filteredAccounts = useMemo(() => {
-    return connectedAccounts.filter(acc => 
+  // === ФИЛЬТРАЦИЯ И ГРУППИРОВКА АККАУНТОВ ===
+  const groupedAccounts = useMemo(() => {
+    // 1. Фильтруем по поиску
+    const filtered = accounts.filter(acc => 
       acc.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      acc.network.toLowerCase().includes(searchQuery.toLowerCase())
+      acc.provider.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [searchQuery]);
+    
+    // 2. Группируем по провайдеру (vk, tg и т.д.)
+    return filtered.reduce((acc, curr) => {
+      if (!acc[curr.provider]) acc[curr.provider] = [];
+      acc[curr.provider].push(curr);
+      return acc;
+    }, {});
+  }, [searchQuery, accounts]);
 
   const toggleAccount = (id) => {
     setSelectedAccounts(prev => 
@@ -75,10 +92,10 @@ export default function Publish() {
   };
 
   const toggleAllAccounts = () => {
-    if (selectedAccounts.length === filteredAccounts.length) {
+    if (selectedAccounts.length === accounts.length && accounts.length > 0) {
       setSelectedAccounts([]); 
     } else {
-      setSelectedAccounts(filteredAccounts.map(a => a.id)); 
+      setSelectedAccounts(accounts.map(a => a.id)); 
     }
   };
 
@@ -122,22 +139,19 @@ export default function Publish() {
     if (!textToProcess) return;
 
     setIsImprovingAI(true);
-    setShowAiModal(false); // Закрываем модалку
-    setAiPrompt(''); // Очищаем поле ввода
-    setAiProgress(0); // Сбрасываем прогресс
+    setShowAiModal(false);
+    setAiPrompt('');
+    setAiProgress(0);
 
-    // Имитация загрузки для крутого визуального отклика
-    // === НОВЫЙ ЖЕЛЕЗОБЕТОННЫЙ ТАЙМЕР ===
     let currentProgress = 0;
     const progressInterval = setInterval(() => {
         currentProgress += Math.floor(Math.random() * 12) + 4;
-        if (currentProgress > 95) currentProgress = 95; // Тормозим на 95%, пока ждем ответа
+        if (currentProgress > 95) currentProgress = 95;
         setAiProgress(currentProgress);
     }, 400);
 
     try {
         let base64Images = [];
-        // Берем до 2 фото для анализа Гуглом
         if (photos.length > 0) {
             const photosToProcess = photos.slice(0, 2);
             base64Images = await Promise.all(photosToProcess.map(p => fileToBase64(p.file)));
@@ -161,9 +175,8 @@ export default function Publish() {
         const data = await response.json();
         
         clearInterval(progressInterval);
-        setAiProgress(100); // Резко заполняем до 100% при успехе
+        setAiProgress(100);
         
-        // Небольшая задержка, чтобы пользователь насладился 100% загрузкой
         setTimeout(() => {
             if (data.success) {
                 setText(data.text);
@@ -190,6 +203,15 @@ export default function Publish() {
       return alert('Укажите дату и время для отложенного поста!');
     }
     
+    // Подготовка данных для отправки на бэкенд в будущем
+    console.log("Публикуем:", {
+      text,
+      photos,
+      accounts: selectedAccounts,
+      applyWatermark,
+      applySignature
+    });
+
     setIsPublishing(true);
     setTimeout(() => {
       setIsPublishing(false);
@@ -424,7 +446,6 @@ export default function Publish() {
                 <h2 className="text-xl font-bold text-white mb-1">Описание поста</h2>
                 <p className="text-sm text-gray-400">Напишите текст или поручите это ИИ</p>
               </div>
-              {/* === УМНЫЙ СЧЕТЧИК СИМВОЛОВ === */}
               <div className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors border ${
                 (text || '').length >= MAX_CHARS 
                   ? 'bg-red-500/10 text-red-500 border-red-500/20' 
@@ -438,7 +459,6 @@ export default function Publish() {
 
             <div className={`relative border border-gray-800 rounded-2xl overflow-hidden bg-gray-900 transition-all ${publishMode === 'schedule' ? 'focus-within:border-purple-500' : 'focus-within:border-blue-500'}`}>
               
-              {/* === КРАСИВЫЙ PROGRESS BAR OVERLAY === */}
               {isImprovingAI && (
                 <div className="absolute inset-0 z-20 bg-gray-900/80 backdrop-blur-[2px] flex flex-col items-center justify-center animate-fade-in rounded-2xl">
                   <div className="relative mb-4 flex items-center justify-center">
@@ -448,7 +468,6 @@ export default function Publish() {
                   <h3 className="text-white font-bold mb-1 text-lg">Нейросеть пишет текст...</h3>
                   <p className="text-gray-400 text-xs mb-4">Анализируем фото и подбираем слова</p>
                   
-                  {/* Шкала загрузки */}
                   <div className="w-48 h-2 bg-gray-800 rounded-full overflow-hidden shadow-inner relative">
                     <div 
                       className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300 ease-out"
@@ -469,7 +488,6 @@ export default function Publish() {
               <div className="bg-gray-800/50 p-3 border-t border-gray-800 flex flex-wrap gap-2 justify-between items-center">
                 <span className="text-xs text-gray-500 hidden sm:block">Поддерживаются эмодзи 🚀</span>
                 
-                {/* === АДАПТИВНЫЕ КНОПКИ === */}
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-3 sm:mt-0">
                   <button 
                     onClick={() => setShowAiModal(true)} 
@@ -496,11 +514,12 @@ export default function Publish() {
         {step === 3 && (
           <div className="space-y-6 animate-fade-in">
             
+            {/* БЛОК 1: ВЫБОР АККАУНТОВ С ГРУППИРОВКОЙ */}
             <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 <div>
                   <h2 className="text-xl font-bold text-white mb-1">Куда опубликовать?</h2>
-                  <p className="text-sm text-gray-400">Выберите аккаунты для отправки</p>
+                  <p className="text-sm text-gray-400">Выберите аккаунты для отправки ({selectedAccounts.length} выбрано)</p>
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -515,41 +534,101 @@ export default function Publish() {
                     />
                   </div>
                   <button onClick={toggleAllAccounts} className={`text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap transition-colors ${publishMode === 'schedule' ? 'text-purple-500 bg-purple-500/10 hover:bg-purple-500/20' : 'text-blue-500 bg-blue-500/10 hover:bg-blue-500/20'}`}>
-                    {selectedAccounts.length === filteredAccounts.length && filteredAccounts.length > 0 ? 'Снять все' : 'Выбрать все'}
+                    {selectedAccounts.length === accounts.length && accounts.length > 0 ? 'Снять все' : 'Выбрать все'}
                   </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                {filteredAccounts.length === 0 ? (
-                  <p className="text-gray-500 text-sm py-4 col-span-full text-center">Ничего не найдено</p>
+              <div className="max-h-[300px] overflow-y-auto pr-2 custom-scrollbar space-y-4">
+                {Object.keys(groupedAccounts).length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 text-sm mb-2">Аккаунты не найдены</p>
+                    {accounts.length === 0 && <p className="text-xs text-gray-600">Подключите соцсети в разделе "Аккаунты"</p>}
+                  </div>
                 ) : (
-                  filteredAccounts.map(acc => {
-                    const isSelected = selectedAccounts.includes(acc.id);
-                    return (
-                      <button
-                        key={acc.id}
-                        onClick={() => toggleAccount(acc.id)}
-                        className={`flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group
-                          ${isSelected ? (publishMode === 'schedule' ? 'bg-gray-800 border-purple-500/50 shadow-md shadow-purple-500/10' : 'bg-gray-800 border-blue-500/50 shadow-md shadow-blue-500/10') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700 hover:bg-gray-800'}`}
-                      >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shrink-0 ${acc.color}`}>
-                          {acc.network}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
-                          <p className="text-xs text-gray-500 truncate">{acc.type}</p>
-                        </div>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? (publishMode === 'schedule' ? 'border-purple-500 bg-purple-500' : 'border-blue-500 bg-blue-500') : 'border-gray-600 group-hover:border-gray-500'}`}>
-                          {isSelected && <span className="flex items-center justify-center"><CheckCircle2 size={12} className="text-white" /></span>}
-                        </div>
-                      </button>
-                    );
-                  })
+                  Object.entries(groupedAccounts).map(([provider, providerAccounts]) => (
+                    <div key={provider} className="mb-4 last:mb-0">
+                      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 pl-1 flex items-center gap-2">
+                        {provider === 'vk' ? 'ВКонтакте' : provider === 'tg' ? 'Telegram' : provider}
+                        <span className="bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full text-[10px] ml-2">{providerAccounts.length}</span>
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {providerAccounts.map(acc => {
+                          const isSelected = selectedAccounts.includes(acc.id);
+                          const colorClass = provider === 'vk' ? 'bg-blue-600' : provider === 'tg' ? 'bg-sky-500' : 'bg-pink-600';
+                          
+                          return (
+                            <button
+                              key={acc.id}
+                              onClick={() => toggleAccount(acc.id)}
+                              className={`flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group
+                                ${isSelected ? (publishMode === 'schedule' ? 'bg-gray-800 border-purple-500/50 shadow-md shadow-purple-500/10' : 'bg-gray-800 border-blue-500/50 shadow-md shadow-blue-500/10') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700 hover:bg-gray-800'}`}
+                            >
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shrink-0 ${colorClass}`}>
+                                {provider.toUpperCase()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
+                              </div>
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? (publishMode === 'schedule' ? 'border-purple-500 bg-purple-500' : 'border-blue-500 bg-blue-500') : 'border-gray-600 group-hover:border-gray-500'}`}>
+                                {isSelected && <span className="flex items-center justify-center"><CheckCircle2 size={12} className="text-white" /></span>}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
 
+            {/* БЛОК 2: НАСТРОЙКИ КОНТЕНТА */}
+            <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
+               <h2 className="text-xl font-bold text-white mb-4">Настройки контента</h2>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  
+                  {/* Переключатель Водяного знака */}
+                  <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${applyWatermark ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => setApplyWatermark(!applyWatermark)}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${applyWatermark ? 'bg-blue-500/20 text-blue-500' : 'bg-gray-800 text-gray-500'}`}>
+                        <Settings size={20} />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold text-sm">Водяной знак</p>
+                        <p className="text-xs text-gray-400">Наложить на фото</p>
+                      </div>
+                    </div>
+                    <div className={`w-12 h-6 rounded-full transition-colors relative ${applyWatermark ? 'bg-blue-500' : 'bg-gray-700'}`}>
+                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${applyWatermark ? 'left-7' : 'left-1'}`}></div>
+                    </div>
+                  </div>
+
+                  {/* Переключатель Подписи */}
+                  <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${applySignature ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => setApplySignature(!applySignature)}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${applySignature ? 'bg-purple-500/20 text-purple-500' : 'bg-gray-800 text-gray-500'}`}>
+                        <PenTool size={20} />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold text-sm">Подпись (Текст)</p>
+                        <p className="text-xs text-gray-400">Добавить в конец поста</p>
+                      </div>
+                    </div>
+                    <div className={`w-12 h-6 rounded-full transition-colors relative ${applySignature ? 'bg-purple-500' : 'bg-gray-700'}`}>
+                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${applySignature ? 'left-7' : 'left-1'}`}></div>
+                    </div>
+                  </div>
+
+               </div>
+               {(!globalSettings?.watermark && applyWatermark) && (
+                  <p className="text-xs text-yellow-500 mt-3 flex items-center gap-1">
+                    ⚠️ В глобальных настройках не задан водяной знак. Он не будет применен.
+                  </p>
+               )}
+            </div>
+
+            {/* БЛОК 3: НАСТРОЙКИ ВРЕМЕНИ */}
             <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
               {publishMode === 'schedule' ? (
                 <>
