@@ -295,22 +295,32 @@ exports.createPost = async (req, res) => {
 };
 
 // === ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ (НОВЫЙ ФУНКЦИОНАЛ) ===
+// === ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ (УМНАЯ ВЕРСИЯ С ОТЛАДКОЙ) ===
 exports.shareWithPartners = async (req, res) => {
     try {
         const { text, mediaUrls = [], partnerIds = [] } = req.body;
-        const senderId = req.user?.id; // Теперь берется безопасно благодаря authMiddleware!
+        
+        // 1. Пытаемся достать ID пользователя всеми возможными способами из разных стандартов авторизации
+        const senderId = req.user?.id || req.userId || (typeof req.user === 'string' ? req.user : null); 
 
         if (!senderId) {
-            return res.status(401).json({ success: false, error: 'Необходима авторизация' });
+            return res.status(401).json({ success: false, error: 'Сервер не смог определить ваш ID (ошибка авторизации)' });
         }
 
         if (!partnerIds || partnerIds.length === 0) {
             return res.status(400).json({ success: false, error: 'Выберите хотя бы одного партнера' });
         }
 
+        // 2. Ищем отправителя в базе
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
+        
+        // Защита: если пользователь удален или ID не совпал, чтобы код не упал
+        const senderName = sender?.name || 'Без имени';
+        const senderPavilion = sender?.pavilion || '?';
+
         const mediaString = JSON.stringify(mediaUrls);
 
+        // 3. Создаем записи
         for (const receiverId of partnerIds) {
             await prisma.sharedPost.create({
                 data: {
@@ -324,15 +334,16 @@ exports.shareWithPartners = async (req, res) => {
             await prisma.notification.create({
                 data: {
                     userId: receiverId,
-                    text: `Партнер ${sender.name || 'Без имени'} (Павильон: ${sender.pavilion || '?'}) поделился с вами новой публикацией.`
+                    text: `Партнер ${senderName} (Павильон: ${senderPavilion}) поделился с вами новой публикацией.`
                 }
             });
         }
 
         res.json({ success: true });
     } catch (error) {
-        console.error('Ошибка при шаринге:', error);
-        res.status(500).json({ success: false, error: 'Ошибка сервера' });
+        // 4. ВЫВОДИМ ТОЧНУЮ ОШИБКУ ПРЯМО В БРАУЗЕР!
+        console.error('КРИТИЧЕСКАЯ ОШИБКА ПРИ ШАРИНГЕ:', error);
+        res.status(500).json({ success: false, error: `Системная ошибка: ${error.message}` });
     }
 };
 
