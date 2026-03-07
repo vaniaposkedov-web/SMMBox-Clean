@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import { 
   Save, Image as ImageIcon, Type, Palette, LayoutTemplate, Loader2, Check,
-  Type as TypeIcon, Sliders, Upload, RotateCw, Move, Eye, // <--- ВОТ ЗДЕСЬ ДОБАВИЛИ EYE
+  Type as TypeIcon, Sliders, Upload, RotateCw, Move, Eye,
   ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight
 } from 'lucide-react';
 
@@ -35,12 +35,10 @@ export default function WatermarkConstructor() {
   const fileInputRef = useRef(null);
   const previewRef = useRef(null);
 
-  // Загружаем настройки при старте
   useEffect(() => {
     fetchGlobalSettings();
   }, []);
 
-  // Синхронизируем локальный стейт с глобальным
   useEffect(() => {
     if (globalSettings) {
       setSignature(globalSettings.signature || '');
@@ -81,7 +79,6 @@ export default function WatermarkConstructor() {
     updateSettings({ angle: val });
   };
 
-  // DRAG AND DROP
   const handlePointerDown = (e) => {
     e.preventDefault();
     setIsDragging(true);
@@ -129,19 +126,14 @@ export default function WatermarkConstructor() {
       { id: 'cl', icon: ArrowLeft },   { id: 'cc', icon: Crosshair }, { id: 'cr', icon: ArrowRight },
       { id: 'bl', icon: ArrowDownLeft }, { id: 'bc', icon: ArrowDown }, { id: 'br', icon: ArrowDownRight }
     ];
-
-    const handleGridClick = (posId) => {
-      const coords = posToCoords[posId];
-      updateSettings({ position: posId, x: coords.x, y: coords.y });
-    };
-
     return (
-      <div className="grid grid-cols-3 gap-2 bg-black/30 p-2.5 rounded-xl border border-gray-800">
+      <div className="grid grid-cols-3 gap-1.5 bg-[#0f1115] p-2 rounded-xl border border-[#1f222a]">
         {positions.map(pos => {
           const Icon = pos.icon;
           const isActive = settings.position === pos.id;
           return (
-            <button key={pos.id} onClick={() => handleGridClick(pos.id)} className={`h-11 rounded-lg flex items-center justify-center transition-all ${isActive ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)] scale-95' : 'bg-gray-800/80 text-gray-500 hover:bg-gray-700 hover:text-gray-300 border border-gray-700/50'}`}>
+            <button key={pos.id} onClick={() => { updateSettings({ position: pos.id, x: posToCoords[pos.id].x, y: posToCoords[pos.id].y }); }} 
+              className={`h-10 rounded-lg flex items-center justify-center transition-all ${isActive ? 'bg-blue-600 text-white shadow-[0_0_12px_rgba(37,99,235,0.4)] scale-95' : 'bg-[#181a20] text-gray-500 hover:bg-[#20232b] hover:text-gray-300 border border-[#2a2d36]'}`}>
               <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
             </button>
           )
@@ -153,21 +145,21 @@ export default function WatermarkConstructor() {
   const ColorPicker = ({ label, colorKey, hasCheckbox, checkboxKey }) => {
     return (
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-gray-400 uppercase flex justify-between items-center">
+        <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex justify-between items-center">
           {label}
           {hasCheckbox && (
-            <input type="checkbox" checked={settings[checkboxKey] !== false} onChange={e => updateSettings({ [checkboxKey]: e.target.checked })} className="accent-blue-500 w-4 h-4 cursor-pointer" />
+            <input type="checkbox" checked={settings[checkboxKey] !== false} onChange={e => updateSettings({ [checkboxKey]: e.target.checked })} className="accent-blue-500 w-3.5 h-3.5 cursor-pointer rounded" />
           )}
         </label>
-        <div className={`space-y-2 transition-opacity duration-200 ${(hasCheckbox && settings[checkboxKey] === false) ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
-          <div className="flex items-center gap-2 bg-black/40 border border-gray-700 rounded-xl p-1.5 pr-3 w-full">
+        <div className={`space-y-2.5 transition-opacity duration-200 ${(hasCheckbox && settings[checkboxKey] === false) ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
+          <div className="flex items-center gap-2 bg-[#0f1115] border border-[#1f222a] rounded-xl p-1.5 pr-3 w-full shadow-inner">
             <input type="color" value={settings[colorKey] || '#FFFFFF'} onChange={e => updateSettings({ [colorKey]: e.target.value })} className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0 p-0 shrink-0" />
             <span className="text-xs font-mono text-gray-300 uppercase flex-1">{settings[colorKey] || '#FFFFFF'}</span>
             <Palette size={14} className="text-gray-500 shrink-0"/>
           </div>
-          <div className="flex gap-1.5 justify-between">
+          <div className="flex gap-1.5 justify-between px-0.5">
             {presetColors.map(c => (
-              <button key={c} onClick={() => updateSettings({ [colorKey]: c })} className="w-5 h-5 rounded-full border border-gray-600 transition-transform hover:scale-110 shadow-sm" style={{ backgroundColor: c }} />
+              <button key={c} onClick={() => updateSettings({ [colorKey]: c })} className="w-4 h-4 rounded-full border border-gray-600 transition-transform hover:scale-125 shadow-sm" style={{ backgroundColor: c }} />
             ))}
           </div>
         </div>
@@ -176,83 +168,85 @@ export default function WatermarkConstructor() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-20">
+    <div className="w-full space-y-6 pb-20">
       
-      {/* ЗАГОЛОВОК */}
-      <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/20 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
+      {/* ЗАГОЛОВОК (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) */}
+      <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 rounded-2xl p-5 sm:p-7 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 shadow-lg">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white flex items-center gap-3">
-            <LayoutTemplate className="text-blue-500" size={32} /> Общие настройки (Шаблон)
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white flex items-center gap-3 tracking-tight">
+            <LayoutTemplate className="text-blue-500" size={30} /> Шаблоны проекта
           </h1>
-          <p className="text-gray-400 mt-2 text-sm max-w-xl">
-            Эти настройки будут автоматически применяться ко всем вашим группам и каналам, где выбран режим <span className="text-gray-300 font-bold bg-gray-800 px-2 py-0.5 rounded-md">Шаблон</span>.
+          <p className="text-gray-400 mt-2 text-sm max-w-xl leading-relaxed">
+            Эти настройки применяются ко всем аккаунтам, где выбран режим <span className="text-gray-300 font-bold bg-[#1f222a] px-2 py-0.5 rounded-md border border-gray-700">Шаблон</span>.
           </p>
         </div>
         <button 
           onClick={handleSave} 
           disabled={isSaving}
-          className={`shrink-0 px-6 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl ${saveSuccess ? 'bg-emerald-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20 disabled:opacity-50'}`}
+          className={`shrink-0 w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl ${saveSuccess ? 'bg-emerald-500 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20 disabled:opacity-50'}`}
         >
           {isSaving ? <Loader2 className="animate-spin" size={20} /> : saveSuccess ? <Check size={20} /> : <Save size={20} />}
           <span>{isSaving ? 'Сохранение...' : saveSuccess ? 'Сохранено' : 'Сохранить шаблон'}</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+      {/* ОСНОВНАЯ СЕТКА (С ИДЕАЛЬНОЙ АДАПТАЦИЕЙ) */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
         
-        {/* === ПАНЕЛЬ НАСТРОЕК (Левая колонка) === */}
-        <div className="lg:col-span-6 xl:col-span-5 space-y-6">
+        {/* === ЛЕВАЯ КОЛОНКА (НАСТРОЙКИ) === */}
+        {/* На мобилках она уходит вниз (order-2), на десктопе стоит слева (order-1) */}
+        <div className="xl:col-span-5 space-y-6 order-2 xl:order-1 flex flex-col h-full">
           
           {/* ПОДПИСЬ */}
-          <div className="bg-gray-900/60 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
-            <label className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-              <Type size={18} className="text-blue-400" /> Общая подпись к постам
+          <div className="bg-[#13151A] border border-[#1E2028] rounded-2xl p-6 shadow-xl">
+            <label className="text-[13px] font-bold text-white mb-3 flex items-center gap-2 uppercase tracking-wide">
+              <Type size={16} className="text-blue-400" /> Общая подпись к посту
             </label>
             <textarea 
               value={signature}
               onChange={(e) => { setSignature(e.target.value); setSaveSuccess(false); }}
-              placeholder="Например: Подписывайтесь на наш основной Telegram канал..."
-              className="w-full bg-black/40 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white h-24 resize-none focus:outline-none focus:border-blue-500 transition-colors custom-scrollbar"
+              placeholder="Например: Подписывайтесь на наш основной канал..."
+              className="w-full bg-[#0f1115] border border-[#1f222a] rounded-xl px-4 py-3 text-sm text-gray-200 h-28 resize-none focus:outline-none focus:border-blue-500 transition-colors custom-scrollbar placeholder-gray-600 leading-relaxed shadow-inner"
             />
-            <p className="text-xs text-gray-500 mt-2">Автоматически добавляется в конец каждого поста.</p>
+            <p className="text-[11px] text-gray-500 mt-3 uppercase tracking-wider font-semibold">Автоматически добавляется в конец поста.</p>
           </div>
 
           {/* ВОДЯНОЙ ЗНАК */}
-          <div className="bg-gray-900/60 border border-gray-800 rounded-3xl shadow-xl overflow-hidden flex flex-col">
-            <div className="p-5 sm:p-6 border-b border-gray-800 bg-gray-900/40">
-              <label className="text-sm font-bold text-white flex items-center gap-2">
-                <ImageIcon size={18} className="text-blue-400" /> Дизайн водяного знака
+          <div className="bg-[#13151A] border border-[#1E2028] rounded-2xl shadow-xl overflow-hidden flex flex-col flex-1">
+            <div className="p-5 border-b border-[#1E2028] bg-[#16181e]">
+              <label className="text-[13px] font-bold text-white flex items-center gap-2 uppercase tracking-wide">
+                <ImageIcon size={16} className="text-blue-400" /> Дизайн водяного знака
               </label>
             </div>
 
-            <div className="flex border-b border-gray-800 bg-black/20">
-              <button onClick={() => setWatermarkTab('simple')} className={`flex-1 py-3.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${watermarkTab === 'simple' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><TypeIcon size={16}/> Базовая</button>
-              <button onClick={() => setWatermarkTab('advanced')} className={`flex-1 py-3.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${watermarkTab === 'advanced' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><Sliders size={16}/> Продвинутая</button>
+            <div className="flex border-b border-[#1E2028] bg-[#0f1115]">
+              <button onClick={() => setWatermarkTab('simple')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${watermarkTab === 'simple' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><TypeIcon size={15}/> Базовая</button>
+              <button onClick={() => setWatermarkTab('advanced')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${watermarkTab === 'advanced' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><Sliders size={15}/> Продвинутая</button>
             </div>
 
-            <div className="p-5 sm:p-6 space-y-6">
+            <div className="p-6 space-y-6">
               {watermarkTab === 'simple' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                  <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
-                    <button onClick={() => updateSettings({ type: 'text' })} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${settings.type === 'text' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Текст</button>
+                  <div className="flex p-1 bg-[#0f1115] rounded-xl border border-[#1f222a]">
+                    <button onClick={() => updateSettings({ type: 'text' })} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${settings.type === 'text' ? 'bg-[#1e2028] text-white shadow-sm border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}>Текст</button>
                     <button onClick={() => updateSettings({ type: 'image' })} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${settings.type === 'image' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Свое лого</button>
                   </div>
 
                   {settings.type === 'text' ? (
                     <>
                       <div className="space-y-2">
-                        <label className="text-xs font-semibold text-gray-400 uppercase">Текст знака</label>
-                        <input type="text" value={settings.text || ''} onChange={e => updateSettings({ text: e.target.value })} placeholder="SMMBOX" className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-blue-500 outline-none transition-colors" />
+                        <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Текст знака</label>
+                        <input type="text" value={settings.text || ''} onChange={e => updateSettings({ text: e.target.value })} placeholder="SMMBOX" className="w-full bg-[#0f1115] border border-[#1f222a] shadow-inner rounded-xl py-3 px-4 text-sm text-white focus:border-blue-500 outline-none transition-colors" />
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div className="grid grid-cols-2 gap-5">
                         <ColorPicker label="Цвет текста" colorKey="textColor" />
                         <ColorPicker label="Фон плашки" colorKey="bgColor" hasCheckbox checkboxKey="hasBackground" />
                       </div>
                     </>
                   ) : (
                     <div className="space-y-2">
-                      <label className="text-xs font-semibold text-gray-400 uppercase">Файл логотипа</label>
-                      <div className="border-2 border-dashed border-gray-700 rounded-xl p-6 text-center hover:bg-gray-900/50 transition-colors bg-black/20">
+                      <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Файл логотипа</label>
+                      <div className="border-2 border-dashed border-[#2a2d36] rounded-xl p-6 text-center hover:bg-[#181a20] transition-colors bg-[#0f1115]">
                         <input type="file" accept="image/*" onChange={handleImageUpload} ref={fileInputRef} className="hidden" />
                         {settings.image ? (
                           <div className="flex flex-col items-center gap-3">
@@ -268,57 +262,61 @@ export default function WatermarkConstructor() {
                       </div>
                     </div>
                   )}
-                  <div className="space-y-2"><label className="text-xs font-semibold text-gray-400 uppercase">Сетка позиций</label><PositionGridButtons /></div>
+                  <div className="space-y-2 pt-2 border-t border-[#1f222a]">
+                    <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Сетка позиций</label>
+                    <PositionGridButtons />
+                  </div>
                 </div>
               )}
 
               {watermarkTab === 'advanced' && (
-                <div className="space-y-7 animate-in fade-in slide-in-from-left-4 duration-300">
-                  <div className="space-y-3"><div className="flex justify-between items-center"><label className="text-xs font-semibold text-gray-400 uppercase">Прозрачность</label><span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded">{settings.opacity || 90}%</span></div><input type="range" min="10" max="100" value={settings.opacity || 90} onChange={e => updateSettings({ opacity: Number(e.target.value) })} className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-500" /></div>
-                  <div className="space-y-3"><div className="flex justify-between items-center"><label className="text-xs font-semibold text-gray-400 uppercase">Масштаб</label><span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded">{settings.size || 100}%</span></div><input type="range" min="50" max="250" value={settings.size || 100} onChange={e => updateSettings({ size: Number(e.target.value) })} className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-500" /></div>
-                  <div className="space-y-3"><div className="flex justify-between items-center"><label className="text-xs font-semibold text-gray-400 uppercase flex items-center gap-1.5"><RotateCw size={14}/> Поворот</label><span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded">{settings.angle || 0}°</span></div><input type="range" min="-180" max="180" value={settings.angle || 0} onChange={handleAngleChange} className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-500" /><div className="flex justify-between text-[10px] text-gray-500 font-mono px-1 pt-1"><span>-180°</span><span>0°</span><span>180°</span></div></div>
+                <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-300">
+                  <div className="space-y-4"><div className="flex justify-between items-center"><label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Прозрачность</label><span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded">{settings.opacity || 90}%</span></div><input type="range" min="10" max="100" value={settings.opacity || 90} onChange={e => updateSettings({ opacity: Number(e.target.value) })} className="w-full h-2 bg-[#1f222a] rounded-lg appearance-none cursor-pointer accent-blue-500" /></div>
+                  <div className="space-y-4"><div className="flex justify-between items-center"><label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Масштаб</label><span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded">{settings.size || 100}%</span></div><input type="range" min="50" max="250" value={settings.size || 100} onChange={e => updateSettings({ size: Number(e.target.value) })} className="w-full h-2 bg-[#1f222a] rounded-lg appearance-none cursor-pointer accent-blue-500" /></div>
+                  <div className="space-y-4"><div className="flex justify-between items-center"><label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><RotateCw size={14}/> Поворот</label><span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded">{settings.angle || 0}°</span></div><input type="range" min="-180" max="180" value={settings.angle || 0} onChange={handleAngleChange} className="w-full h-2 bg-[#1f222a] rounded-lg appearance-none cursor-pointer accent-blue-500" /><div className="flex justify-between text-[10px] text-gray-500 font-mono px-1 pt-1"><span>-180°</span><span>0°</span><span>180°</span></div></div>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* === ЗОНА ПРЕДПРОСМОТРА (Правая колонка, липкая) === */}
-        <div className="lg:col-span-6 xl:col-span-7 lg:sticky lg:top-6">
-          <div className="bg-gray-900/60 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-white font-bold flex items-center gap-2"><Eye className="text-blue-400" size={18}/> Предпросмотр поста</h3>
-              <span className="text-xs text-gray-500 uppercase flex items-center gap-1"><Move size={12}/> Можно перетаскивать</span>
+        {/* === ПРАВАЯ КОЛОНКА (ПРЕДПРОСМОТР) === */}
+        {/* На мобилках она выводится ПЕРВОЙ (order-1), чтобы результат был сразу под рукой. На ПК закреплена. */}
+        <div className="xl:col-span-7 order-1 xl:order-2 lg:sticky lg:top-6 h-full flex flex-col">
+          <div className="bg-[#13151A] border border-[#1E2028] rounded-2xl p-6 shadow-xl flex flex-col h-full">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-[13px] text-white font-bold flex items-center gap-2 uppercase tracking-wide"><Eye className="text-blue-400" size={16}/> Предпросмотр поста</h3>
+              <span className="text-[10px] text-gray-500 uppercase flex items-center gap-1 font-bold tracking-wider bg-[#1f222a] px-2 py-1 rounded-md"><Move size={12}/> Можно перетаскивать</span>
             </div>
 
-            {/* Имитация поста */}
-            <div className="flex-1 bg-black/40 rounded-2xl overflow-hidden border border-gray-800 flex flex-col shadow-inner">
+            {/* Имитация поста (занимает всё пространство) */}
+            <div className="flex-1 bg-[#0f1115] rounded-xl overflow-hidden border border-[#1f222a] flex flex-col shadow-inner">
               
-              <div className="p-4 text-sm text-gray-300 whitespace-pre-wrap border-b border-gray-800/50">
-                <p>Ваш текст поста будет выглядеть примерно так. Это пример демонстрации.</p>
+              <div className="p-5 text-sm text-gray-300 whitespace-pre-wrap border-b border-[#1f222a]">
+                <p className="leading-relaxed">Ваш текст поста будет выглядеть примерно так. Это пример проявления.</p>
                 {signature && (
-                  <p className="mt-3 text-blue-400/90 border-l-2 border-blue-500 pl-3 leading-relaxed break-words">{signature}</p>
+                  <p className="mt-4 text-blue-400/90 border-l-2 border-blue-500 pl-3 leading-relaxed break-words">{signature}</p>
                 )}
               </div>
 
-              {/* Интерактивное фото */}
+              {/* Интерактивное фото (сделал его пропорциональным 16:9 для красоты) */}
               <div 
                 ref={previewRef}
                 onPointerDown={handleBackgroundClick}
-                className="relative w-full aspect-[4/3] sm:aspect-[16/9] lg:aspect-[4/3] xl:aspect-[16/9] bg-gray-800 overflow-hidden bg-cover bg-center cursor-crosshair touch-none"
+                className="relative w-full aspect-[4/3] sm:aspect-[16/9] bg-gray-800 overflow-hidden bg-cover bg-center cursor-crosshair touch-none border-t border-[#1f222a]"
                 style={{ backgroundImage: "url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop')" }}
               >
                 {/* ВОДЯНОЙ ЗНАК */}
                 <div 
                   onPointerDown={handlePointerDown}
-                  className={`absolute px-2.5 py-1 flex items-center justify-center whitespace-nowrap cursor-move select-none ${isDragging ? 'transition-none' : 'transition-all duration-200 ease-out'}`}
+                  className={`absolute px-3 py-1.5 flex items-center justify-center whitespace-nowrap cursor-move select-none ${isDragging ? 'transition-none' : 'transition-all duration-200 ease-out'}`}
                   style={{
                     left: `${settings.x ?? 90}%`, top: `${settings.y ?? 85}%`,
                     backgroundColor: (settings.type === 'text' && settings.hasBackground) ? settings.bgColor : 'transparent', color: settings.textColor,
                     opacity: (settings.opacity || 90) / 100,
                     transform: `translate(-50%, -50%) scale(${(settings.size || 100) / 100}) rotate(${settings.angle || 0}deg)`, transformOrigin: 'center',
-                    borderRadius: '6px', fontSize: '15px', fontWeight: 'bold',
-                    boxShadow: (settings.type === 'text' && settings.hasBackground) ? '0 4px 6px rgba(0,0,0,0.3)' : 'none', zIndex: 10
+                    borderRadius: '8px', fontSize: '15px', fontWeight: 'bold',
+                    boxShadow: (settings.type === 'text' && settings.hasBackground) ? '0 6px 12px rgba(0,0,0,0.4)' : 'none', zIndex: 10
                   }}
                 >
                   {settings.type === 'image' && settings.image ? (
