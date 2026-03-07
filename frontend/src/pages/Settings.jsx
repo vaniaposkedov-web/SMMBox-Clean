@@ -27,7 +27,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-4 md:p-8 flex flex-col md:flex-row gap-6 md:gap-8 max-w-7xl mx-auto">
+    <div className="max-w-[1600px] w-full mx-auto flex flex-col md:flex-row gap-6 p-4...">
       
       {/* Боковое меню */}
       <div className="w-full md:w-64 shrink-0">
