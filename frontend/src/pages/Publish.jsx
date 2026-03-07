@@ -21,14 +21,8 @@ const IconTG = () => (
 );
 
 export default function Publish() {
-  const { user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings } = useStore();
-
-  useEffect(() => {
-    if (user?.id) {
-      fetchAccounts(user.id);
-      fetchGlobalSettings();
-    }
-  }, [user?.id, fetchAccounts, fetchGlobalSettings]);
+  const { user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings, tempDraft, saveTempDraft } = useStore();
+  const isRestored = useRef(false); // Флаг, чтобы восстановить данные только 1 раз при загрузке
 
   const [view, setView] = useState('start'); 
   const [step, setStep] = useState(1);
@@ -87,6 +81,41 @@ export default function Publish() {
     }, {});
   }, [searchQuery, accounts]);
 
+  // === ЗАГРУЗКА ДАННЫХ И ВОССТАНОВЛЕНИЕ ЧЕРНОВИКА ===
+  useEffect(() => {
+    if (user?.id) {
+      fetchAccounts(user.id);
+      fetchGlobalSettings();
+    }
+  }, [user?.id, fetchAccounts, fetchGlobalSettings]);
+
+  useEffect(() => {
+    if (tempDraft && !isRestored.current) {
+      if (tempDraft.text) setText(tempDraft.text);
+      if (tempDraft.selectedAccounts) setSelectedAccounts(tempDraft.selectedAccounts);
+      if (tempDraft.accountOverrides) setAccountOverrides(tempDraft.accountOverrides);
+      if (tempDraft.applyWatermark !== undefined) setApplyWatermark(tempDraft.applyWatermark);
+      if (tempDraft.applySignature !== undefined) setApplySignature(tempDraft.applySignature);
+    }
+    isRestored.current = true;
+  }, [tempDraft]);
+
+  // === АВТОСОХРАНЕНИЕ ПРОГРЕССА В ПАМЯТЬ ===
+  useEffect(() => {
+    if (!isRestored.current || !saveTempDraft) return;
+    const timer = setTimeout(() => {
+      saveTempDraft({ 
+        text, 
+        selectedAccounts, 
+        accountOverrides, 
+        applyWatermark, 
+        applySignature 
+      });
+    }, 1000); // Сохраняем спустя секунду после последних изменений
+    return () => clearTimeout(timer);
+  }, [text, selectedAccounts, accountOverrides, applyWatermark, applySignature, saveTempDraft]);
+
+  // === ОБРАБОТЧИКИ АККАУНТОВ ===
   const toggleAccount = (id) => {
     setSelectedAccounts(prev => 
       prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
@@ -103,17 +132,34 @@ export default function Publish() {
 
   // === ЖЕЛЕЗОБЕТОННАЯ ЛОГИКА ИНДИВИДУАЛЬНЫХ НАСТРОЕК ===
   const getEffectiveSetting = (accountId, settingType) => {
-    if (accountOverrides[accountId] && accountOverrides[accountId][settingType] !== undefined) {
+    if (accountOverrides[accountId] && accountOverrides[accountId].mode === 'custom') {
       return accountOverrides[accountId][settingType];
     }
     return settingType === 'watermark' ? applyWatermark : applySignature;
   };
 
+  const handleModeChange = (accountId, newMode) => {
+    setAccountOverrides(prev => {
+      if (newMode === 'template') {
+        const next = { ...prev };
+        delete next[accountId];
+        return next;
+      } else {
+        return {
+          ...prev,
+          [accountId]: {
+            mode: 'custom',
+            watermark: applyWatermark,
+            signature: applySignature
+          }
+        };
+      }
+    });
+  };
+
   const handleOverride = (accountId, settingType) => {
     setAccountOverrides(prev => {
       let currentVal = getEffectiveSetting(accountId, settingType);
-      // Если мы уже переопределили значение ранее, берем его из стейта напрямую,
-      // чтобы избежать зацикливания при быстрых кликах
       if (prev[accountId] && prev[accountId][settingType] !== undefined) {
         currentVal = prev[accountId][settingType];
       }
@@ -121,7 +167,7 @@ export default function Publish() {
       return {
         ...prev,
         [accountId]: {
-          ...(prev[accountId] || {}),
+          ...(prev[accountId] || { mode: 'custom' }),
           [settingType]: !currentVal
         }
       };
@@ -131,24 +177,8 @@ export default function Publish() {
   const handleGlobalToggle = (type) => {
     if (type === 'watermark') {
       setApplyWatermark(prev => !prev);
-      setAccountOverrides(prev => {
-        const next = { ...prev };
-        Object.keys(next).forEach(k => {
-          next[k] = { ...next[k] };
-          delete next[k].watermark;
-        });
-        return next;
-      });
     } else {
       setApplySignature(prev => !prev);
-      setAccountOverrides(prev => {
-        const next = { ...prev };
-        Object.keys(next).forEach(k => {
-          next[k] = { ...next[k] };
-          delete next[k].signature;
-        });
-        return next;
-      });
     }
   };
 
@@ -292,6 +322,7 @@ export default function Publish() {
     setShowPartnerModal(false);
     setPartnerStatus('idle');
     setView('start'); 
+    if (saveTempDraft) saveTempDraft(null); // Очищаем память после успешной публикации
   };
 
   // ==========================================
@@ -590,7 +621,7 @@ export default function Publish() {
                 </div>
               </div>
 
-              <div className="max-h-[350px] overflow-y-auto pr-2 custom-scrollbar space-y-4">
+              <div className="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar space-y-4">
                 {Object.keys(groupedAccounts).length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500 text-sm mb-2">Аккаунты не найдены</p>
@@ -608,6 +639,7 @@ export default function Publish() {
                           const isSelected = selectedAccounts.includes(acc.id);
                           const isWatermarkActive = getEffectiveSetting(acc.id, 'watermark');
                           const isSignatureActive = getEffectiveSetting(acc.id, 'signature');
+                          const overrideMode = accountOverrides[acc.id]?.mode || 'template';
                           const avatarSrc = acc.avatarUrl || acc.photo_url || acc.avatar;
                           const iconColor = provider === 'vk' ? 'text-blue-500' : 'text-sky-400';
                           
@@ -617,7 +649,6 @@ export default function Publish() {
                               className={`flex flex-col rounded-2xl border transition-all overflow-hidden group
                                 ${isSelected ? (publishMode === 'schedule' ? 'bg-gray-800 border-purple-500/50 shadow-md shadow-purple-500/10' : 'bg-gray-800 border-blue-500/50 shadow-md shadow-blue-500/10') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700 hover:bg-gray-800'}`}
                             >
-                              {/* ИСПРАВЛЕНИЕ ОШИБКИ: Заменили тег <button> на <div>, чтобы можно было вкладывать другие кнопки */}
                               <div 
                                 onClick={() => toggleAccount(acc.id)}
                                 className="flex items-center gap-3 p-3 w-full text-left cursor-pointer"
@@ -628,7 +659,6 @@ export default function Publish() {
                                   ) : (
                                     <span className="text-sm">{acc.name.substring(0, 2).toUpperCase()}</span>
                                   )}
-                                  {/* Мини-иконка соцсети */}
                                   <div className={`absolute -bottom-1 -right-1 w-5 h-5 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
                                     {provider === 'vk' ? <IconVK /> : <IconTG />}
                                   </div>
@@ -638,7 +668,6 @@ export default function Publish() {
                                   <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
                                   {isSelected && (
                                     <div className="flex gap-2 mt-0.5">
-                                      {/* ИСПРАВЛЕНИЕ ОШИБКИ: Иконки <Check> больше не удаляются, а просто скрываются */}
                                       <span className={`text-[10px] flex items-center gap-1 ${isWatermarkActive ? 'text-blue-400' : 'text-gray-500'}`}>
                                         <Check size={10} className={isWatermarkActive ? 'block' : 'hidden'} />
                                         <span className={!isWatermarkActive ? 'line-through' : ''}>Знак</span>
@@ -656,24 +685,43 @@ export default function Publish() {
                                 </div>
                               </div>
 
-                              {/* Индивидуальные настройки (появляются при выборе) */}
                               {isSelected && (
-                                <div className="bg-gray-900/50 border-t border-gray-700/50 px-3 py-2 flex items-center justify-between">
-                                  <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Для этой группы:</span>
-                                  <div className="flex gap-2">
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); handleOverride(acc.id, 'watermark'); }}
-                                      className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors ${isWatermarkActive ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}
+                                <div className="bg-gray-900/50 border-t border-gray-700/50 px-3 py-2 flex flex-col gap-2 cursor-default">
+                                  
+                                  {/* ВЫБОР РЕЖИМА */}
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold">Настройки:</label>
+                                    <select
+                                      className={`bg-gray-950 text-white text-[11px] p-1 rounded border border-gray-700 outline-none transition-all ${publishMode === 'schedule' ? 'focus:border-purple-500' : 'focus:border-blue-500'}`}
+                                      value={overrideMode}
+                                      onChange={(e) => handleModeChange(acc.id, e.target.value)}
                                     >
-                                      <Settings size={12}/> Знак
-                                    </button>
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); handleOverride(acc.id, 'signature'); }}
-                                      className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors ${isSignatureActive ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30' : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}
-                                    >
-                                      <PenTool size={12}/> Подпись
-                                    </button>
+                                      <option value="template">По шаблону</option>
+                                      <option value="custom">Свои</option>
+                                    </select>
                                   </div>
+
+                                  {/* ИНДИВИДУАЛЬНЫЕ ПЕРЕКЛЮЧАТЕЛИ */}
+                                  {overrideMode === 'custom' && (
+                                    <div className="flex items-center justify-between pt-1 border-t border-gray-800/50">
+                                      <span className="text-[10px] text-gray-400">Только для этой группы:</span>
+                                      <div className="flex gap-2">
+                                        <button 
+                                          onClick={() => handleOverride(acc.id, 'watermark')}
+                                          className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors ${isWatermarkActive ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}
+                                        >
+                                          <Settings size={12}/> Знак
+                                        </button>
+                                        <button 
+                                          onClick={() => handleOverride(acc.id, 'signature')}
+                                          className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors ${isSignatureActive ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30' : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}
+                                        >
+                                          <PenTool size={12}/> Подпись
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
                                 </div>
                               )}
                             </div>
@@ -688,8 +736,8 @@ export default function Publish() {
 
             {/* БЛОК 2: ГЛОБАЛЬНЫЕ НАСТРОЙКИ КОНТЕНТА */}
             <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
-               <h2 className="text-xl font-bold text-white mb-1">Глобальные настройки</h2>
-               <p className="text-sm text-gray-400 mb-4">Применить по умолчанию для всех выбранных групп</p>
+               <h2 className="text-xl font-bold text-white mb-1">Глобальный шаблон</h2>
+               <p className="text-sm text-gray-400 mb-4">Применить по умолчанию ко всем группам</p>
                
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${applyWatermark ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => handleGlobalToggle('watermark')}>
@@ -724,11 +772,11 @@ export default function Publish() {
 
                </div>
                
-               {(!globalSettings?.watermark && applyWatermark) && (
+               {(!globalSettings?.watermark && applyWatermark) ? (
                   <p className="text-xs text-yellow-500 mt-3 flex items-center gap-1">
                     ⚠️ В глобальных настройках не задан водяной знак. Он не будет применен.
                   </p>
-               )}
+               ) : null}
             </div>
 
             {/* БЛОК 3: НАСТРОЙКИ ВРЕМЕНИ */}

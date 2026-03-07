@@ -37,6 +37,14 @@ export const useStore = create(
         publishDate: ''
       },
 
+      tempDraft: null,
+      saveTempDraft: (data) => set({ tempDraft: data }),
+
+      presets: [
+        { id: 'default', name: 'Стандартный', watermark: true, signature: true },
+        { id: 'minimal', name: 'Минимализм', watermark: false, signature: false }
+      ],
+
       updatePublishDraft: (data) => set((state) => ({
         publishDraft: { ...state.publishDraft, ...data }
       })),
