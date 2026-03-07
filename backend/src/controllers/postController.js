@@ -302,3 +302,71 @@ exports.createPost = async (req, res) => {
         res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера при отправке' });
     }
 };
+
+// === ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ ===
+exports.shareWithPartners = async (req, res) => {
+    try {
+        const { text, mediaUrls = [], partnerIds = [] } = req.body;
+        const senderId = req.user.id; // Берем ID отправителя из токена
+
+        if (!partnerIds || partnerIds.length === 0) {
+            return res.status(400).json({ success: false, error: 'Выберите хотя бы одного партнера' });
+        }
+
+        const sender = await prisma.user.findUnique({ where: { id: senderId } });
+        const mediaString = JSON.stringify(mediaUrls); // Сохраняем сырые фото
+
+        for (const receiverId of partnerIds) {
+            // Создаем пост для партнера
+            await prisma.sharedPost.create({
+                data: {
+                    senderId,
+                    receiverId,
+                    text: text || '',
+                    mediaUrls: mediaString
+                }
+            });
+
+            // Отправляем ему уведомление в колокольчик
+            await prisma.notification.create({
+                data: {
+                    userId: receiverId,
+                    text: `Партнер ${sender.name || 'Без имени'} (Павильон: ${sender.pavilion || '?'}) поделился с вами новой публикацией.`
+                }
+            });
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Ошибка при шаринге:', error);
+        res.status(500).json({ success: false, error: 'Ошибка сервера' });
+    }
+};
+
+exports.getSharedPosts = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const incoming = await prisma.sharedPost.findMany({
+            where: { receiverId: userId },
+            include: { sender: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
+            orderBy: { createdAt: 'desc' }
+        });
+        const outgoing = await prisma.sharedPost.findMany({
+            where: { senderId: userId },
+            include: { receiver: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json({ success: true, incoming, outgoing });
+    } catch (error) {
+        res.status(500).json({ success: false });
+    }
+};
+
+exports.deleteSharedPost = async (req, res) => {
+    try {
+        await prisma.sharedPost.delete({ where: { id: req.params.id } });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false });
+    }
+};
