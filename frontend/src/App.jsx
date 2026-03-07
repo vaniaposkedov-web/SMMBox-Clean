@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
-import { PlusSquare, Inbox, Settings as SettingsIcon, User, Crown, Box, LogOut, ShieldAlert } from 'lucide-react'; // Добавил ShieldAlert
+import { PlusSquare, Inbox, Settings as SettingsIcon, User, Crown, Box, LogOut, ShieldAlert } from 'lucide-react';
 import { useStore } from './store'; 
 
 // --- СТРАНИЦЫ ДЛЯ АВТОРИЗОВАННЫХ ---
@@ -9,7 +10,7 @@ import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import Subscription from './pages/Subscription';
 import PrivacyPolicy from './pages/PrivacyPolicy';
-import Onboarding from './pages/Onboarding'; // <--- ИМПОРТИРУЕМ НАШ ПУТЕВОДИТЕЛЬ
+import Onboarding from './pages/Onboarding'; 
 
 // --- СТРАНИЦЫ АВТОРИЗАЦИИ И ВОССТАНОВЛЕНИЯ ---
 import Auth from './pages/Auth'; 
@@ -26,6 +27,11 @@ function Sidebar() {
   const logout = useStore((state) => state.logout);
   const user = useStore((state) => state.user);
 
+  // Достаем заявки и уведомления для счетчика
+  const incomingRequests = useStore((state) => state.incomingRequests) || [];
+  const notifications = useStore((state) => state.notifications) || [];
+  const badgeCount = incomingRequests.length + notifications.length;
+
   const linkClass = ({isActive}) => 
     `flex items-center gap-3 p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`;
 
@@ -41,7 +47,23 @@ function Sidebar() {
       <nav className="flex-1 p-4 space-y-2">
         <NavLink to="/profile" className={linkClass}><User size={20} /> Профиль</NavLink>
         <NavLink to="/publish" className={linkClass}><PlusSquare size={20} /> Опубликовать</NavLink>
-        <NavLink to="/requests" className={linkClass}><Inbox size={20} /> Заявки</NavLink>
+        
+        {/* === ОБНОВЛЕННАЯ КНОПКА "ЗАЯВКИ" С ИНДИКАТОРОМ === */}
+        <NavLink to="/requests" className={({isActive}) => `flex items-center justify-between p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Inbox size={20} />
+              {/* Пульсирующая точка, если есть уведомления */}
+              {badgeCount > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse border-2 border-admin-card" />}
+            </div>
+            <span>Заявки</span>
+          </div>
+          {/* Цифра с количеством уведомлений */}
+          {badgeCount > 0 && (
+            <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{badgeCount}</span>
+          )}
+        </NavLink>
+
         <NavLink to="/settings" className={linkClass}><SettingsIcon size={20} /> Настройки</NavLink>
         <NavLink to="/subscription" className={linkClass}><Crown size={20} /> Подписка</NavLink>
       </nav>
@@ -62,6 +84,11 @@ function Sidebar() {
 
 // --- НИЖНЕЕ МЕНЮ ДЛЯ ТЕЛЕФОНОВ (ОБЫЧНЫЙ ЮЗЕР) ---
 function BottomNav() {
+  // Достаем заявки и уведомления для счетчика на мобилке
+  const incomingRequests = useStore((state) => state.incomingRequests) || [];
+  const notifications = useStore((state) => state.notifications) || [];
+  const badgeCount = incomingRequests.length + notifications.length;
+
   const linkClass = ({isActive}) => 
     `flex flex-col items-center flex-1 p-2 rounded-xl transition-colors ${isActive ? 'text-admin-accent' : 'text-gray-500 hover:text-gray-300'}`;
 
@@ -69,7 +96,16 @@ function BottomNav() {
     <nav className="md:hidden fixed bottom-0 left-0 w-full bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 flex justify-between px-2 py-2 pb-safe z-40">
       <NavLink to="/profile" className={linkClass}><User size={22} /><span className="text-[10px] mt-1 font-medium">Профиль</span></NavLink>
       <NavLink to="/publish" className={linkClass}><PlusSquare size={22} /><span className="text-[10px] mt-1 font-medium">Пост</span></NavLink>
-      <NavLink to="/requests" className={linkClass}><Inbox size={22} /><span className="text-[10px] mt-1 font-medium">Заявки</span></NavLink>
+      
+      {/* === ОБНОВЛЕННАЯ КНОПКА "ЗАЯВКИ" ДЛЯ ТЕЛЕФОНА === */}
+      <NavLink to="/requests" className={linkClass}>
+        <div className="relative">
+          <Inbox size={22} />
+          {badgeCount > 0 && <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-admin-card" />}
+        </div>
+        <span className="text-[10px] mt-1 font-medium">Заявки</span>
+      </NavLink>
+
       <NavLink to="/settings" className={linkClass}><SettingsIcon size={22} /><span className="text-[10px] mt-1 font-medium">Настройки</span></NavLink>
       <NavLink to="/subscription" className={linkClass}><Crown size={22} /><span className="text-[10px] mt-1 font-medium">Тариф</span></NavLink>
     </nav>
@@ -78,6 +114,16 @@ function BottomNav() {
 
 // --- КАРКАС ОБЫЧНОГО ПОЛЬЗОВАТЕЛЯ ---
 function UserLayout() {
+  const user = useStore((state) => state.user);
+  const fetchPartnerData = useStore((state) => state.fetchPartnerData);
+
+  // === ГЛОБАЛЬНАЯ ПОДГРУЗКА ДАННЫХ ПАРТНЕРОВ И УВЕДОМЛЕНИЙ ===
+  useEffect(() => {
+    if (user?.id) {
+      fetchPartnerData(user.id);
+    }
+  }, [user?.id, fetchPartnerData]);
+
   return (
     <div className="min-h-screen bg-admin-bg text-admin-text flex font-sans">
       <Sidebar />
@@ -92,15 +138,12 @@ function UserLayout() {
 }
 
 // --- ГЛАВНЫЙ КОМПОНЕНТ ---
-// --- ГЛАВНЫЙ КОМПОНЕНТ ---
-import { useEffect } from 'react';
 function App() {
   const user = useStore((state) => state.user);
-  const logout = useStore((state) => state.logout); // Достаем функцию выхода
-  const token = localStorage.getItem('token'); // Проверяем реальный токен
+  const logout = useStore((state) => state.logout);
+  const token = localStorage.getItem('token'); 
 
   // === ЖЕСТКАЯ ПРОВЕРКА СЕССИИ ===
-  // Если есть юзер, но кто-то удалил токен - принудительно очищаем кэш
   useEffect(() => {
     if (user && !token) {
       logout();
@@ -108,7 +151,7 @@ function App() {
   }, [user, token, logout]);
 
   if (user && !token) {
-    return null; // Просто ждем, пока useEffect очистит хранилище
+    return null; 
   }
 
   // === ВЕТКА 1: ЕСЛИ ПОЛЬЗОВАТЕЛЬ НЕ АВТОРИЗОВАН ===
@@ -125,8 +168,6 @@ function App() {
       </BrowserRouter>
     );
   }
-
-  // ... дальше ваш код ВЕТКИ 2 И 3 без изменений ...
 
   // === ВЕТКИ 2 И 3: АВТОРИЗОВАН ===
   return (

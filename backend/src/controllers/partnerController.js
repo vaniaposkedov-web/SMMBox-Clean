@@ -11,12 +11,12 @@ exports.getPartnerData = async (req, res) => {
       include: { requester: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } }
     });
 
-    // Исходящие заявки (чтобы понимать, кому мы уже отправили)
+    // Исходящие заявки
     const outgoingRequests = await prisma.partnership.findMany({
       where: { requesterId: userId, status: 'PENDING' }
     });
 
-    // Подтвержденные партнеры
+    // Подтвержденные партнеры (ОТОБРАЖАЮТСЯ И У ОТПРАВИТЕЛЯ, И У ПОЛУЧАТЕЛЯ)
     const acceptedPartnerships = await prisma.partnership.findMany({
       where: {
         OR: [{ requesterId: userId }, { receiverId: userId }],
@@ -28,12 +28,12 @@ exports.getPartnerData = async (req, res) => {
       }
     });
 
-    // Извлекаем людей
+    // Извлекаем самих людей из связей
     const partners = acceptedPartnerships.map(p => 
       p.requesterId === userId ? p.receiver : p.requester
     );
 
-    // Уведомления (о разрыве партнерства и т.д.)
+    // Уведомления
     const notifications = await prisma.notification.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' }
@@ -53,7 +53,6 @@ exports.searchPartners = async (req, res) => {
     if (!query) return res.json([]);
     const lowerQuery = query.toLowerCase().trim();
 
-    // Запрашиваем всех пользователей и фильтруем мощным JS (чтобы 100% находило UUID и русский текст)
     const allUsers = await prisma.user.findMany({
       where: { id: { not: userId } },
       select: { id: true, name: true, pavilion: true, phone: true }
@@ -68,7 +67,6 @@ exports.searchPartners = async (req, res) => {
       return matchId || matchName || matchPavilion || matchPhone;
     });
 
-    // Отдаем первые 20 результатов, чтобы не перегружать мобильный интерфейс
     res.json(filteredUsers.slice(0, 20));
   } catch (error) {
     console.error('Search error:', error);
@@ -89,14 +87,28 @@ exports.sendRequest = async (req, res) => {
   }
 };
 
-// 4. Принять заявку
+// 4. Принять заявку (ОБНОВЛЕНО: ТЕПЕРЬ СОЗДАЕТ УВЕДОМЛЕНИЕ)
 exports.acceptRequest = async (req, res) => {
   const { partnershipId } = req.body;
   try {
+    // Обновляем статус и получаем данные обоих юзеров
     const updated = await prisma.partnership.update({
       where: { id: partnershipId },
-      data: { status: 'ACCEPTED' }
+      data: { status: 'ACCEPTED' },
+      include: {
+        requester: true,
+        receiver: true
+      }
     });
+
+    // СОЗДАЕМ УВЕДОМЛЕНИЕ ДЛЯ ОТПРАВИТЕЛЯ (чтобы у него загорелся индикатор)
+    await prisma.notification.create({
+      data: {
+        userId: updated.requesterId,
+        text: `Пользователь ${updated.receiver.name || 'Без имени'} (Павильон: ${updated.receiver.pavilion || 'Не указан'}) принял вашу заявку! Теперь вы партнеры.`
+      }
+    });
+
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: 'Ошибка при принятии заявки' });
@@ -129,7 +141,6 @@ exports.removePartner = async (req, res) => {
       }
     });
 
-    // Создаем уведомление для удаленного партнера
     await prisma.notification.create({
       data: {
         userId: partnerId,
