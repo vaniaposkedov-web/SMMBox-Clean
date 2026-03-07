@@ -3,15 +3,26 @@ import {
   ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, 
   Send, CheckCircle2, Share2, Users, LayoutTemplate,
   Search, CalendarClock, Clock, MessageSquare, Plus, Loader2,
-  Settings, PenTool
+  Settings, PenTool, Check
 } from 'lucide-react';
 import { useStore } from '../store';
 
+// === ИКОНКИ СОЦСЕТЕЙ (SVG) ===
+const IconVK = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
+    <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2zm3.3 14.53h-1.55c-.52 0-.67-.41-1.58-1.33-.77-.79-1.07-.88-1.26-.88-.26 0-.34.08-.34.5v1.2c0 .32-.1.51-1.5.51-2.2 0-4.6-1.5-6.23-3.86C4.16 9.88 3.5 6.92 3.5 6.57c0-.28.1-.5.62-.5h1.56c.46 0 .61.22.8.72 1.25 3.5 2.92 5.51 3.73 5.51.21 0 .31-.1.31-.63V8.65c-.06-1.14-.34-1.25-1.08-1.25-.33 0-.15-.46.12-.64.41-.27 1.15-.29 1.76-.29.83 0 1.05.07 1.25.13.34.11.31.39.31 1.09v3.08c0 .41.18.51.3.51.25 0 .65-.18 1.48-1.02 1.22-1.34 2.1-3.64 2.4-4.57.14-.39.3-.57.77-.57h1.55c.61 0 .73.3.62.72-.25.86-1.74 3.12-2.51 4.14-.36.47-.46.61-.17 1 .23.33 1.05 1.02 1.5 1.58 1.01 1.23 1.3 1.77 1.48 2.05.21.31.06.63-.4.63z"/>
+  </svg>
+);
+
+const IconTG = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+  </svg>
+);
+
 export default function Publish() {
-  // === ДАННЫЕ ИЗ STORE ===
   const { user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings } = useStore();
 
-  // === ЗАГРУЗКА ДАННЫХ ПРИ СТАРТЕ ===
   useEffect(() => {
     if (user?.id) {
       fetchAccounts(user.id);
@@ -19,27 +30,24 @@ export default function Publish() {
     }
   }, [user?.id, fetchAccounts, fetchGlobalSettings]);
 
-  // === ГЛАВНЫЕ ЭКРАНЫ: 'start' (Выбор) | 'calendar' (Календарь) | 'wizard' (Создание поста) ===
   const [view, setView] = useState('start'); 
+  const [step, setStep] = useState(1);
   
-  // === СОСТОЯНИЯ ШАГОВ ВНУТРИ ВИЗАРДА ===
-  const [step, setStep] = useState(1); // 1: Фото, 2: Текст, 3: Настройки публикации, 4: Успех
-  
-  // === ДАННЫЕ ПОСТА ===
   const [photos, setPhotos] = useState([]);
   const [text, setText] = useState('');
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   
-  // === ЛОКАЛЬНЫЕ НАСТРОЙКИ ПОСТА ===
+  // === ГЛОБАЛЬНЫЕ НАСТРОЙКИ ПОСТА ===
   const [applyWatermark, setApplyWatermark] = useState(true);
   const [applySignature, setApplySignature] = useState(true);
 
-  // === СОСТОЯНИЯ РАСПИСАНИЯ ===
-  const [publishMode, setPublishMode] = useState('now'); // 'now' | 'schedule'
+  // === ИНДИВИДУАЛЬНЫЕ НАСТРОЙКИ (ПЕРЕОПРЕДЕЛЕНИЯ ДЛЯ ГРУПП) ===
+  const [accountOverrides, setAccountOverrides] = useState({});
+
+  const [publishMode, setPublishMode] = useState('now');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [scheduleTime, setScheduleTime] = useState('');
 
-  // === UI СОСТОЯНИЯ ИИ ===
   const [isImprovingAI, setIsImprovingAI] = useState(false);
   const [aiProgress, setAiProgress] = useState(0);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -54,13 +62,10 @@ export default function Publish() {
   const MAX_PHOTOS = 10;
   const MAX_CHARS = 1000;
 
-  // === МОКОВЫЕ ДАННЫЕ (Запланированные посты для календаря) ===
   const mockScheduledPosts = [
     { id: 1, date: new Date().toISOString().split('T')[0], time: '14:30', text: 'Поступление новых кроссовок...', network: 'VK', color: 'bg-blue-600' },
-    { id: 2, date: new Date().toISOString().split('T')[0], time: '18:00', text: 'Вечерняя распродажа -50%...', network: 'TG', color: 'bg-sky-500' },
   ];
 
-  // === ГЕНЕРАЦИЯ ДНЕЙ ДЛЯ КАЛЕНДАРЯ (На 14 дней вперед) ===
   const calendarDays = useMemo(() => {
     return Array.from({length: 14}).map((_, i) => {
       const d = new Date();
@@ -69,15 +74,12 @@ export default function Publish() {
     });
   }, []);
 
-  // === ФИЛЬТРАЦИЯ И ГРУППИРОВКА АККАУНТОВ ===
   const groupedAccounts = useMemo(() => {
-    // 1. Фильтруем по поиску
     const filtered = accounts.filter(acc => 
       acc.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
       acc.provider.toLowerCase().includes(searchQuery.toLowerCase())
     );
     
-    // 2. Группируем по провайдеру (vk, tg и т.д.)
     return filtered.reduce((acc, curr) => {
       if (!acc[curr.provider]) acc[curr.provider] = [];
       acc[curr.provider].push(curr);
@@ -96,6 +98,45 @@ export default function Publish() {
       setSelectedAccounts([]); 
     } else {
       setSelectedAccounts(accounts.map(a => a.id)); 
+    }
+  };
+
+  // === ЛОГИКА ИНДИВИДУАЛЬНЫХ НАСТРОЕК ===
+  const getEffectiveSetting = (accountId, settingType) => {
+    if (accountOverrides[accountId] && accountOverrides[accountId][settingType] !== undefined) {
+      return accountOverrides[accountId][settingType];
+    }
+    return settingType === 'watermark' ? applyWatermark : applySignature;
+  };
+
+  const handleOverride = (accountId, settingType) => {
+    setAccountOverrides(prev => {
+      const currentVal = getEffectiveSetting(accountId, settingType);
+      return {
+        ...prev,
+        [accountId]: {
+          ...(prev[accountId] || {}),
+          [settingType]: !currentVal
+        }
+      };
+    });
+  };
+
+  const handleGlobalToggle = (type) => {
+    if (type === 'watermark') {
+      setApplyWatermark(!applyWatermark);
+      setAccountOverrides(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(k => delete next[k].watermark);
+        return next;
+      });
+    } else {
+      setApplySignature(!applySignature);
+      setAccountOverrides(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(k => delete next[k].signature);
+        return next;
+      });
     }
   };
 
@@ -133,7 +174,7 @@ export default function Publish() {
     });
   };
 
-  // === ИНТЕГРАЦИЯ НЕЙРОСЕТИ С ПРОГРЕСС-БАРОМ ===
+  // === ИНТЕГРАЦИЯ НЕЙРОСЕТИ ===
   const handleAiAction = async (actionType, customPrompt = '') => {
     const textToProcess = actionType === 'rewrite' ? text : customPrompt;
     if (!textToProcess) return;
@@ -203,13 +244,17 @@ export default function Publish() {
       return alert('Укажите дату и время для отложенного поста!');
     }
     
-    // Подготовка данных для отправки на бэкенд в будущем
+    // Формируем финальные данные для каждого аккаунта с учетом переопределений
+    const accountsData = selectedAccounts.map(id => ({
+      accountId: id,
+      applyWatermark: getEffectiveSetting(id, 'watermark'),
+      applySignature: getEffectiveSetting(id, 'signature')
+    }));
+
     console.log("Публикуем:", {
       text,
       photos,
-      accounts: selectedAccounts,
-      applyWatermark,
-      applySignature
+      accounts: accountsData
     });
 
     setIsPublishing(true);
@@ -230,6 +275,7 @@ export default function Publish() {
     setPhotos([]);
     setText('');
     setSelectedAccounts([]);
+    setAccountOverrides({});
     setScheduleTime('');
     setStep(1);
     setShowPartnerModal(false);
@@ -293,23 +339,18 @@ export default function Publish() {
     return (
       <div className="min-h-[100dvh] bg-admin-bg p-4 sm:p-8 pb-32 md:pb-8 animate-fade-in">
         <div className="max-w-3xl mx-auto">
-          
           <button onClick={() => setView('start')} className="flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors p-2 -ml-2 rounded-lg active:bg-gray-800">
             <span className="flex items-center justify-center"><ChevronLeft size={24} className="sm:w-5 sm:h-5" /></span>
             <span className="font-medium">Назад к выбору</span>
           </button>
-
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6">Контент-план</h2>
-
           <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 mb-4">
             {calendarDays.map((d) => {
               const isoDate = d.toISOString().split('T')[0];
               const isSelected = isoDate === selectedCalendarDate;
               const dayName = d.toLocaleDateString('ru-RU', { weekday: 'short' });
               const dayNum = d.getDate();
-              
               const hasPosts = mockScheduledPosts.some(p => p.date === isoDate);
-
               return (
                 <button 
                   key={isoDate}
@@ -330,7 +371,6 @@ export default function Publish() {
               <Clock size={20} className="text-purple-500" />
               Запланировано на {selectedDateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
             </h3>
-            
             <div className="space-y-3">
               {postsForSelectedDate.length > 0 ? (
                 postsForSelectedDate.map(post => (
@@ -519,7 +559,7 @@ export default function Publish() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 <div>
                   <h2 className="text-xl font-bold text-white mb-1">Куда опубликовать?</h2>
-                  <p className="text-sm text-gray-400">Выберите аккаунты для отправки ({selectedAccounts.length} выбрано)</p>
+                  <p className="text-sm text-gray-400">Выберите аккаунты для отправки (выбрано {selectedAccounts.length})</p>
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -539,7 +579,7 @@ export default function Publish() {
                 </div>
               </div>
 
-              <div className="max-h-[300px] overflow-y-auto pr-2 custom-scrollbar space-y-4">
+              <div className="max-h-[350px] overflow-y-auto pr-2 custom-scrollbar space-y-4">
                 {Object.keys(groupedAccounts).length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500 text-sm mb-2">Аккаунты не найдены</p>
@@ -555,25 +595,70 @@ export default function Publish() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {providerAccounts.map(acc => {
                           const isSelected = selectedAccounts.includes(acc.id);
-                          const colorClass = provider === 'vk' ? 'bg-blue-600' : provider === 'tg' ? 'bg-sky-500' : 'bg-pink-600';
+                          const isWatermarkActive = getEffectiveSetting(acc.id, 'watermark');
+                          const isSignatureActive = getEffectiveSetting(acc.id, 'signature');
+                          const avatarSrc = acc.avatarUrl || acc.photo_url || acc.avatar;
+                          const iconColor = provider === 'vk' ? 'text-blue-500' : 'text-sky-400';
                           
                           return (
-                            <button
+                            <div 
                               key={acc.id}
-                              onClick={() => toggleAccount(acc.id)}
-                              className={`flex items-center gap-3 p-3 rounded-2xl border transition-all text-left group
+                              className={`flex flex-col rounded-2xl border transition-all overflow-hidden group
                                 ${isSelected ? (publishMode === 'schedule' ? 'bg-gray-800 border-purple-500/50 shadow-md shadow-purple-500/10' : 'bg-gray-800 border-blue-500/50 shadow-md shadow-blue-500/10') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700 hover:bg-gray-800'}`}
                             >
-                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shrink-0 ${colorClass}`}>
-                                {provider.toUpperCase()}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
-                              </div>
-                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? (publishMode === 'schedule' ? 'border-purple-500 bg-purple-500' : 'border-blue-500 bg-blue-500') : 'border-gray-600 group-hover:border-gray-500'}`}>
-                                {isSelected && <span className="flex items-center justify-center"><CheckCircle2 size={12} className="text-white" /></span>}
-                              </div>
-                            </button>
+                              {/* Основная карточка (Кликабельная) */}
+                              <button 
+                                onClick={() => toggleAccount(acc.id)}
+                                className="flex items-center gap-3 p-3 w-full text-left"
+                              >
+                                <div className="relative w-10 h-10 rounded-xl shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
+                                  {avatarSrc ? (
+                                    <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-xl" />
+                                  ) : (
+                                    <span className="text-sm">{acc.name.substring(0, 2).toUpperCase()}</span>
+                                  )}
+                                  {/* Мини-иконка соцсети */}
+                                  <div className={`absolute -bottom-1 -right-1 w-5 h-5 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
+                                    {provider === 'vk' ? <IconVK /> : <IconTG />}
+                                  </div>
+                                </div>
+                                
+                                <div className="flex-1 min-w-0 pr-2">
+                                  <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
+                                  {isSelected && (
+                                    <div className="flex gap-2 mt-0.5">
+                                      {isWatermarkActive ? <span className="text-[10px] text-blue-400 flex items-center gap-1"><Check size={10}/> Знак</span> : <span className="text-[10px] text-gray-500 line-through">Знак</span>}
+                                      {isSignatureActive ? <span className="text-[10px] text-purple-400 flex items-center gap-1"><Check size={10}/> Подпись</span> : <span className="text-[10px] text-gray-500 line-through">Подпись</span>}
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? (publishMode === 'schedule' ? 'border-purple-500 bg-purple-500' : 'border-blue-500 bg-blue-500') : 'border-gray-600 group-hover:border-gray-500'}`}>
+                                  {isSelected && <CheckCircle2 size={12} className="text-white" />}
+                                </div>
+                              </button>
+
+                              {/* Индивидуальные настройки (появляются при выборе) */}
+                              {isSelected && (
+                                <div className="bg-gray-900/50 border-t border-gray-700/50 px-3 py-2 flex items-center justify-between">
+                                  <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Для этой группы:</span>
+                                  <div className="flex gap-2">
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); handleOverride(acc.id, 'watermark'); }}
+                                      className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors ${isWatermarkActive ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}
+                                    >
+                                      <Settings size={12}/> Знак
+                                    </button>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); handleOverride(acc.id, 'signature'); }}
+                                      className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors ${isSignatureActive ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30' : 'bg-gray-800 text-gray-500 hover:bg-gray-700'}`}
+                                    >
+                                      <PenTool size={12}/> Подпись
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
@@ -583,13 +668,13 @@ export default function Publish() {
               </div>
             </div>
 
-            {/* БЛОК 2: НАСТРОЙКИ КОНТЕНТА */}
+            {/* БЛОК 2: ГЛОБАЛЬНЫЕ НАСТРОЙКИ КОНТЕНТА */}
             <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
-               <h2 className="text-xl font-bold text-white mb-4">Настройки контента</h2>
+               <h2 className="text-xl font-bold text-white mb-1">Глобальные настройки</h2>
+               <p className="text-sm text-gray-400 mb-4">Применить по умолчанию для всех выбранных групп</p>
+               
                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  
-                  {/* Переключатель Водяного знака */}
-                  <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${applyWatermark ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => setApplyWatermark(!applyWatermark)}>
+                  <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${applyWatermark ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => handleGlobalToggle('watermark')}>
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${applyWatermark ? 'bg-blue-500/20 text-blue-500' : 'bg-gray-800 text-gray-500'}`}>
                         <Settings size={20} />
@@ -604,15 +689,14 @@ export default function Publish() {
                     </div>
                   </div>
 
-                  {/* Переключатель Подписи */}
-                  <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${applySignature ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => setApplySignature(!applySignature)}>
+                  <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${applySignature ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => handleGlobalToggle('signature')}>
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${applySignature ? 'bg-purple-500/20 text-purple-500' : 'bg-gray-800 text-gray-500'}`}>
                         <PenTool size={20} />
                       </div>
                       <div>
                         <p className="text-white font-bold text-sm">Подпись (Текст)</p>
-                        <p className="text-xs text-gray-400">Добавить в конец поста</p>
+                        <p className="text-xs text-gray-400">В конец сообщения</p>
                       </div>
                     </div>
                     <div className={`w-12 h-6 rounded-full transition-colors relative ${applySignature ? 'bg-purple-500' : 'bg-gray-700'}`}>
