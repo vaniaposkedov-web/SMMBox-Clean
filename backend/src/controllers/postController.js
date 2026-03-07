@@ -85,7 +85,7 @@ async function sendToVK(token, groupId, text, imageBuffers) {
     if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
 }
 
-// === ОСНОВНОЙ КОНТРОЛЛЕР ===
+// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ (С водяными знаками) ===
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
@@ -140,11 +140,9 @@ exports.createPost = async (req, res) => {
                             const scaleFactor = (wm.size || 100) / 100;
                             const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
                             
-                            // Королевские отступы
                             const paddingX = Math.floor(fontSize * 1.5); 
                             const paddingY = Math.floor(fontSize * 1); 
                             
-                            // === ИСПРАВЛЕНИЕ 1: ПОДДЕРЖКА ПЕРЕНОСА СТРОК (\n) ===
                             const lines = wmText.split('\n');
                             let maxTextWidthRaw = 0;
                             
@@ -152,9 +150,9 @@ exports.createPost = async (req, res) => {
                                 let currentLineWidth = 0;
                                 for (let i = 0; i < line.length; i++) {
                                     if (line.charCodeAt(i) > 1000) {
-                                        currentLineWidth += fontSize * 0.95; // Широкий коэффициент для кириллицы
+                                        currentLineWidth += fontSize * 0.95; 
                                     } else {
-                                        currentLineWidth += fontSize * 0.75; // Для латиницы и цифр
+                                        currentLineWidth += fontSize * 0.75; 
                                     }
                                 }
                                 if (currentLineWidth > maxTextWidthRaw) {
@@ -172,12 +170,10 @@ exports.createPost = async (req, res) => {
                             const hasBg = wm.hasBackground !== false;
                             const borderRadius = Math.floor(fontSize * 0.35); 
 
-                            // Вычисляем старт для центрирования всех строк по вертикали
                             const centerY = wmPixelHeight / 2;
                             const totalTextHeight = (lines.length - 1) * lineHeight;
                             const startY = centerY - (totalTextHeight / 2);
 
-                            // Безопасный эскейп спецсимволов для SVG (например, амперсандов)
                             const escapeXml = (unsafe) => unsafe.replace(/[<>&'"]/g, (c) => {
                                 switch (c) {
                                     case '<': return '&lt;'; case '>': return '&gt;';
@@ -186,7 +182,6 @@ exports.createPost = async (req, res) => {
                                 }
                             });
 
-                            // Генерируем несколько <tspan> для каждой строки
                             const tspans = lines.map((line, index) => {
                                 const yPos = startY + (index * lineHeight);
                                 return `<tspan x="50%" y="${yPos}" text-anchor="middle" dominant-baseline="central">${escapeXml(line)}</tspan>`;
@@ -254,10 +249,6 @@ exports.createPost = async (req, res) => {
                             topPos = centerY - Math.floor(wmPixelHeight / 2);
                         }
 
-                        // === ИСПРАВЛЕНИЕ 2: СНЯЛИ ОГРАНИЧЕНИЯ ДЛЯ МАСШТАБА 250% ===
-                        // Убраны Math.max(0). Теперь огромный знак не будет насильно прижиматься 
-                        // к верхнему левому углу. Sharp отлично понимает отрицательные координаты
-                        // и просто позволит знаку красиво "вылезать" за края, сохраняя его центр там, где вы указали!
                         leftPos = Math.round(leftPos);
                         topPos = Math.round(topPos);
 
@@ -303,21 +294,24 @@ exports.createPost = async (req, res) => {
     }
 };
 
-// === ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ ===
+// === ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ (НОВЫЙ ФУНКЦИОНАЛ) ===
 exports.shareWithPartners = async (req, res) => {
     try {
         const { text, mediaUrls = [], partnerIds = [] } = req.body;
-        const senderId = req.user.id; // Берем ID отправителя из токена
+        const senderId = req.user?.id; // Теперь берется безопасно благодаря authMiddleware!
+
+        if (!senderId) {
+            return res.status(401).json({ success: false, error: 'Необходима авторизация' });
+        }
 
         if (!partnerIds || partnerIds.length === 0) {
             return res.status(400).json({ success: false, error: 'Выберите хотя бы одного партнера' });
         }
 
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
-        const mediaString = JSON.stringify(mediaUrls); // Сохраняем сырые фото
+        const mediaString = JSON.stringify(mediaUrls);
 
         for (const receiverId of partnerIds) {
-            // Создаем пост для партнера
             await prisma.sharedPost.create({
                 data: {
                     senderId,
@@ -327,7 +321,6 @@ exports.shareWithPartners = async (req, res) => {
                 }
             });
 
-            // Отправляем ему уведомление в колокольчик
             await prisma.notification.create({
                 data: {
                     userId: receiverId,
@@ -345,7 +338,9 @@ exports.shareWithPartners = async (req, res) => {
 
 exports.getSharedPosts = async (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ success: false, error: 'Необходима авторизация' });
+
         const incoming = await prisma.sharedPost.findMany({
             where: { receiverId: userId },
             include: { sender: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
@@ -358,6 +353,7 @@ exports.getSharedPosts = async (req, res) => {
         });
         res.json({ success: true, incoming, outgoing });
     } catch (error) {
+        console.error('Ошибка получения общих постов:', error);
         res.status(500).json({ success: false });
     }
 };
@@ -367,6 +363,7 @@ exports.deleteSharedPost = async (req, res) => {
         await prisma.sharedPost.delete({ where: { id: req.params.id } });
         res.json({ success: true });
     } catch (error) {
+        console.error('Ошибка удаления поста:', error);
         res.status(500).json({ success: false });
     }
 };
