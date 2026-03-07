@@ -204,13 +204,41 @@ export default function Publish() {
   const removePhoto = (idToRemove) => {
     setPhotos(prev => prev.filter(p => p.id !== idToRemove));
   };
-
+// === 1. ЗАМЕНИТЬ ФУНКЦИЮ fileToBase64 НА СЖАТИЕ ===
   const fileToBase64 = (file) => {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          // Ограничиваем размер для соцсетей
+          const MAX_WIDTH = 1200;
+          const MAX_HEIGHT = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height && width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          } else if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Сжимаем в JPEG с качеством 80% (весить будет копейки)
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.onerror = error => reject(error);
+      };
+      reader.onerror = error => reject(error);
     });
   };
 
@@ -300,20 +328,16 @@ export default function Publish() {
 
         if (result.success) {
             setIsPublishing(false);
-            // Задержка 50мс спасает React от конфликта удаления кнопки и перерисовки шагов
-            setTimeout(() => {
-                if (saveTempDraft) saveTempDraft(null); 
-                setStep(4); 
-            }, 50);
+            if (saveTempDraft) saveTempDraft(null); 
+            setStep(4); 
         } else {
             setIsPublishing(false);
-            // Если вылезет 400 ошибка, мы увидим этот текст, а не черный экран
-            setTimeout(() => alert(result.error || 'Ошибка 400: Файлы слишком большие или сервер отверг запрос'), 50);
+            setTimeout(() => alert(result.error || 'Ошибка сервера при попытке публикации'), 50);
         }
     } catch (error) {
         console.error('Критическая ошибка публикации:', error);
         setIsPublishing(false);
-        setTimeout(() => alert('Произошла ошибка. Бэкенд не отвечает.'), 50);
+        setTimeout(() => alert('Произошла ошибка соединения с сервером.'), 50);
     }
   };
 
@@ -924,7 +948,7 @@ export default function Publish() {
               <span className="flex items-center justify-center"><ChevronLeft size={24} /></span>
             </button>
 
-            {/* === 3. ЗАМЕНИ ВЕСЬ ТЕГ <button> НА ЭТОТ === */}
+            {/* === 3. ЗАМЕНИТЬ ВЕСЬ ТЕГ <button> НА ЭТОТ === */}
             <button 
               onClick={() => {
                 if (step === 1 && photos.length === 0) return setTimeout(() => alert('Добавьте хотя бы 1 фото!'), 10);
@@ -936,25 +960,24 @@ export default function Publish() {
               className={`flex-1 flex items-center justify-center gap-2 h-14 rounded-2xl font-bold text-base transition-all active:scale-95
                 ${step === 3 ? (publishMode === 'schedule' ? 'bg-purple-600 text-white hover:bg-purple-500 shadow-lg shadow-purple-500/25' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-500/25') : 'bg-white text-black hover:bg-gray-200'}`}
             >
-              {/* СТАБИЛЬНЫЙ УЗЕЛ ЗАЩИЩАЕТ ОТ ОШИБКИ REMOVECHILD */}
-              <span className="flex items-center gap-2 pointer-events-none">
-                {isPublishing ? (
-                  <>
-                    <Loader2 size={20} className="animate-spin" /> Обработка...
-                  </>
-                ) : step === 3 ? (
-                  publishMode === 'schedule' ? (
-                    <><CalendarClock size={20}/> Запланировать</>
-                  ) : (
-                    <><Send size={20}/> Опубликовать</>
-                  )
-                ) : (
-                  <>
-                    <span className="hidden sm:inline">Продолжить</span>
-                    <span className="sm:hidden">Далее</span> 
-                    <ChevronRight size={20}/>
-                  </>
-                )}
+              {/* НИКАКИХ УСЛОВНЫХ РЕНДЕРОВ! Только скрытие через CSS (защита от краша) */}
+              
+              <span className={`pointer-events-none items-center gap-2 ${isPublishing ? 'flex' : 'hidden'}`}>
+                <Loader2 size={20} className="animate-spin" /> Обработка...
+              </span>
+
+              <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step === 3 && publishMode === 'schedule') ? 'flex' : 'hidden'}`}>
+                <CalendarClock size={20}/> Запланировать
+              </span>
+
+              <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step === 3 && publishMode === 'now') ? 'flex' : 'hidden'}`}>
+                <Send size={20}/> Опубликовать
+              </span>
+
+              <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step < 3) ? 'flex' : 'hidden'}`}>
+                <span className="hidden sm:inline">Продолжить</span>
+                <span className="sm:hidden">Далее</span> 
+                <ChevronRight size={20}/>
               </span>
             </button>
           </div>
