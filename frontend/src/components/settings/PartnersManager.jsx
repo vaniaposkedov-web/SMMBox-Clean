@@ -1,20 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../../store';
-import { Search, UserPlus, UserCheck, Loader2, Check, X, Trash2, Users, Inbox } from 'lucide-react';
+import { Search, UserPlus, UserCheck, Loader2, Check, Trash2, Users } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; // Добавлено для перехода на страницу заявок
 
 export default function PartnersManager() {
   const user = useStore((state) => state.user);
+  const navigate = useNavigate();
   
-  // Данные из стора (только то, что касается партнерства)
+  // Данные из стора (только для партнерства)
   const myPartners = useStore((state) => state.myPartners) || [];
   const incomingRequests = useStore((state) => state.incomingRequests) || [];
   const outgoingRequests = useStore((state) => state.outgoingRequests) || [];
   
-  // Методы из стора
   const searchUsersFromApi = useStore((state) => state.searchUsersFromApi);
   const sendRequest = useStore((state) => state.sendPartnershipRequest);
-  const acceptPartnership = useStore((state) => state.acceptPartnership);
-  const declinePartnership = useStore((state) => state.declinePartnership);
   const removePartner = useStore((state) => state.removePartnerAction);
 
   const [activeTab, setActiveTab] = useState('partners'); 
@@ -37,7 +36,6 @@ export default function PartnersManager() {
     return () => clearTimeout(searchTimer);
   }, [searchQuery, user.id, searchUsersFromApi]);
 
-  // Проверка статуса в результатах поиска
   const getStatus = (targetId) => {
     if (myPartners.some(p => p.id === targetId)) return 'PARTNER';
     if (outgoingRequests.some(r => r.receiverId === targetId)) return 'SENT';
@@ -49,25 +47,30 @@ export default function PartnersManager() {
     <div className="w-full space-y-6 pb-20 translate-no" translate="no">
       
       {/* === ШАПКА === */}
-      <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 rounded-2xl p-6 sm:p-8 shadow-lg">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white flex items-center gap-3">
-          <Users className="text-blue-500" size={30} /> Управление партнерами
-        </h1>
-        <p className="text-gray-400 mt-2 text-sm max-w-xl leading-relaxed">
-          Находите поставщиков, отправляйте заявки и делитесь контентом в один клик. Уведомления о новых заявках отображаются слева в меню.
-        </p>
+      <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 rounded-2xl p-6 sm:p-8 shadow-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white flex items-center gap-3">
+            <Users className="text-blue-500" size={30} /> Партнеры
+          </h1>
+          <p className="text-gray-400 mt-2 text-sm max-w-xl leading-relaxed">
+            Находите поставщиков и делитесь контентом.
+          </p>
+        </div>
+        {/* Кнопка быстрого перехода к заявкам */}
+        {incomingRequests.length > 0 && (
+          <button onClick={() => navigate('/requests')} className="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-600 hover:text-white transition-colors shadow-sm">
+            Есть новые заявки ({incomingRequests.length})
+          </button>
+        )}
       </div>
 
       {/* === НАВИГАЦИЯ (ТАБЫ) === */}
-      <div className="flex bg-[#0f1115] rounded-xl border border-[#1f222a] p-1.5 overflow-x-auto custom-scrollbar shadow-inner">
-        <button onClick={() => setActiveTab('partners')} className={`flex-1 min-w-[140px] py-3.5 text-[13px] uppercase tracking-wider font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'partners' ? 'bg-[#1e2028] text-white shadow-md' : 'text-gray-500 hover:text-gray-300'}`}>
-          <UserCheck size={16}/> Мои партнеры <span className="bg-[#13151A] text-gray-400 px-2 py-0.5 rounded-full text-[10px] border border-[#1f222a]">{myPartners.length}</span>
+      <div className="flex bg-[#0f1115] rounded-xl border border-[#1f222a] p-1.5 overflow-x-auto custom-scrollbar shadow-inner max-w-md">
+        <button onClick={() => setActiveTab('partners')} className={`flex-1 py-3 text-[13px] uppercase tracking-wider font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'partners' ? 'bg-[#1e2028] text-white shadow-md' : 'text-gray-500 hover:text-gray-300'}`}>
+          <UserCheck size={16}/> Мои партнеры
         </button>
-        <button onClick={() => setActiveTab('search')} className={`flex-1 min-w-[140px] py-3.5 text-[13px] uppercase tracking-wider font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'search' ? 'bg-[#1e2028] text-white shadow-md' : 'text-gray-500 hover:text-gray-300'}`}>
+        <button onClick={() => setActiveTab('search')} className={`flex-1 py-3 text-[13px] uppercase tracking-wider font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'search' ? 'bg-[#1e2028] text-white shadow-md' : 'text-gray-500 hover:text-gray-300'}`}>
           <Search size={16}/> Поиск
-        </button>
-        <button onClick={() => setActiveTab('requests')} className={`flex-1 min-w-[140px] py-3.5 text-[13px] uppercase tracking-wider font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${activeTab === 'requests' ? 'bg-[#1e2028] text-white shadow-md' : 'text-gray-500 hover:text-gray-300'}`}>
-          <Inbox size={16}/> Заявки {incomingRequests.length > 0 && <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px] animate-pulse">{incomingRequests.length}</span>}
         </button>
       </div>
 
@@ -143,7 +146,7 @@ export default function PartnersManager() {
                       <span className="flex items-center justify-center gap-2 text-emerald-500 text-sm font-bold bg-emerald-500/10 border border-emerald-500/20 px-6 py-3.5 rounded-xl w-full sm:w-auto shadow-sm"><UserCheck size={18} /> Ваш Партнер</span>
                     )}
                     {status === 'INCOMING' && (
-                      <button onClick={() => setActiveTab('requests')} className="flex items-center justify-center gap-2 bg-purple-600 text-white px-6 py-3.5 rounded-xl text-sm font-bold shadow-lg shadow-purple-500/20 w-full sm:w-auto hover:bg-purple-500 transition-colors">Посмотреть заявку</button>
+                      <button onClick={() => navigate('/requests')} className="flex items-center justify-center gap-2 bg-purple-600 text-white px-6 py-3.5 rounded-xl text-sm font-bold shadow-lg shadow-purple-500/20 w-full sm:w-auto hover:bg-purple-500 transition-colors">Перейти в Заявки</button>
                     )}
                   </div>
                 )
@@ -155,37 +158,6 @@ export default function PartnersManager() {
                 </div>
               )}
             </div>
-          </div>
-        )}
-
-        {/* --- ВЛАДКА 3: ВХОДЯЩИЕ ЗАЯВКИ --- */}
-        {activeTab === 'requests' && (
-          <div className="p-6 sm:p-8 animate-in fade-in duration-300">
-            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-6 flex items-center gap-2">
-              Новые заявки <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px]">{incomingRequests.length}</span>
-            </h2>
-            
-            {incomingRequests.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-gray-500 space-y-4 bg-[#0f1115] border border-dashed border-[#1f222a] rounded-2xl">
-                <Inbox size={56} className="opacity-20" />
-                <p className="text-[15px]">Входящих заявок пока нет.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {incomingRequests.map(req => (
-                  <div key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-[#0f1115] border border-blue-500/30 p-5 rounded-2xl gap-5 shadow-[0_0_15px_rgba(37,99,235,0.05)]">
-                    <div>
-                       <h3 className="font-bold text-white text-lg">{req.requester.name}</h3>
-                       <p className="text-sm text-gray-400 mt-1">Хочет стать вашим партнером. Павильон: <span className="text-blue-400 font-bold bg-blue-500/10 px-2 py-0.5 rounded">{req.requester.pavilion}</span></p>
-                    </div>
-                    <div className="flex gap-3 w-full sm:w-auto">
-                       <button onClick={() => declinePartnership(req.id)} className="flex-1 sm:flex-none w-12 h-12 flex items-center justify-center bg-[#1a1d24] hover:bg-red-500/20 border border-[#2a2d36] hover:border-red-500/30 text-gray-400 hover:text-red-400 rounded-xl transition-all shadow-sm"><X size={20}/></button>
-                       <button onClick={() => acceptPartnership(req.id)} className="flex-1 sm:flex-none px-6 h-12 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20 transition-all"><Check size={18}/> Принять</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
