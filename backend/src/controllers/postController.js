@@ -27,7 +27,9 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         }));
         
         form.append('media', JSON.stringify(media));
-        imageBuffers.forEach((buf, i) => form.append(`photo${i}`, buf, `photo${i}.jpg`));
+        imageBuffers.forEach((buf, i) => {
+            form.append(`photo${i}`, buf, `photo${i}.jpg`);
+        });
         
         await axios.post(`${baseUrl}/sendMediaGroup`, form, { headers: form.getHeaders() });
     }
@@ -48,13 +50,17 @@ async function sendToVK(token, groupId, text, imageBuffers) {
         for (let i = 0; i < imageBuffers.length; i++) {
             const form = new FormData();
             form.append('file1', imageBuffers[i], `image${i}.jpg`);
+            
             const uploadRes = await axios.post(uploadUrl, form, { headers: form.getHeaders() });
 
             const saveRes = await axios.get(`https://api.vk.com/method/photos.saveWallPhoto`, {
                 params: {
-                    group_id: cleanGroupId, photo: uploadRes.data.photo,
-                    server: uploadRes.data.server, hash: uploadRes.data.hash,
-                    access_token: token, v
+                    group_id: cleanGroupId,
+                    photo: uploadRes.data.photo,
+                    server: uploadRes.data.server,
+                    hash: uploadRes.data.hash,
+                    access_token: token,
+                    v
                 }
             });
 
@@ -64,10 +70,16 @@ async function sendToVK(token, groupId, text, imageBuffers) {
     }
 
     const postParams = new URLSearchParams({
-        owner_id: `-${cleanGroupId}`, from_group: 1, message: text || '', access_token: token, v
+        owner_id: `-${cleanGroupId}`, 
+        from_group: 1,
+        message: text || '',
+        access_token: token,
+        v
     });
 
-    if (attachments.length > 0) postParams.append('attachments', attachments.join(','));
+    if (attachments.length > 0) {
+        postParams.append('attachments', attachments.join(','));
+    }
 
     const postRes = await axios.post(`https://api.vk.com/method/wall.post`, postParams);
     if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
@@ -92,7 +104,10 @@ exports.createPost = async (req, res) => {
         });
 
         for (const accData of accounts) {
-            const account = await prisma.account.findUnique({ where: { id: accData.accountId } });
+            const account = await prisma.account.findUnique({
+                where: { id: accData.accountId }
+            });
+
             if (!account) continue;
 
             let finalText = text || '';
@@ -100,13 +115,16 @@ exports.createPost = async (req, res) => {
                 finalText += `\n\n${accData.signatureText}`;
             }
 
-            // 2. ИДЕАЛЬНАЯ ЛОГИКА ВОДЯНЫХ ЗНАКОВ SHARP (Синхронизировано с фронтендом)
+            // === ИДЕАЛЬНАЯ ЛОГИКА ВОДЯНЫХ ЗНАКОВ ===
             let processedBuffers = rawImageBuffers;
             
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
                 const wm = accData.watermarkConfig;
+                const wmType = wm.type || 'text'; 
                 const wmText = wm.text || 'SMMBOX';
-
+                const opacity = wm.opacity !== undefined ? wm.opacity / 100 : 0.9;
+                const angle = wm.angle || 0;
+                
                 processedBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
                     try {
                         const image = sharp(buf);
@@ -115,60 +133,103 @@ exports.createPost = async (req, res) => {
                         const width = metadata.width || 1000;
                         const height = metadata.height || 1000;
                         
-                        // ИСПРАВЛЕНИЕ 1: Золотая середина размера (5% от ширины фото)
-                        const fontSize = Math.max(18, Math.floor(width * 0.05 * ((wm.size || 100) / 100)));
-                        
-                        // ИСПРАВЛЕНИЕ 2: Просторные отступы (padding), чтобы текст "дышал" в плашке
-                        const paddingX = Math.floor(fontSize * 0.8); // Отступы по бокам
-                        const paddingY = Math.floor(fontSize * 0.6); // Отступы сверху и снизу
-                        
-                        // ИСПРАВЛЕНИЕ 3: Коэффициент 0.65, так как шрифт DejaVu Sans Bold очень широкий
-                        const textWidth = Math.floor(wmText.length * fontSize * 0.65) + (paddingX * 2);
-                        const textHeight = Math.floor(fontSize * 1.1) + (paddingY * 2);
-                        
-                        const bgColor = wm.bgColor || '#000000';
-                        const textColor = wm.textColor || '#ffffff';
-                        const opacity = wm.opacity !== undefined ? wm.opacity / 100 : 0.9;
-                        const hasBg = wm.hasBackground !== false;
+                        let watermarkBuffer;
+                        let wmPixelWidth = 0;
+                        let wmPixelHeight = 0;
 
-                        // Слегка скругляем углы плашки (rx)
-                        const borderRadius = Math.floor(fontSize * 0.3);
+                        if (wmType === 'text') {
+                            // 1. Адаптация размера 1-в-1 как в React (4% базовый + scale)
+                            const scaleFactor = (wm.size || 100) / 100;
+                            const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
+                            
+                            // 2. Отступы (эквивалент Tailwind px-3 py-1.5)
+                            const paddingX = Math.floor(fontSize * 0.8);
+                            const paddingY = Math.floor(fontSize * 0.4);
+                            
+                            // 3. Расчет ширины блока с текстом
+                            const textWidthRaw = Math.floor(wmText.length * fontSize * 0.6);
+                            wmPixelWidth = textWidthRaw + (paddingX * 2);
+                            wmPixelHeight = Math.floor(fontSize * 1.2) + (paddingY * 2);
+                            
+                            const bgColor = wm.bgColor || '#000000';
+                            const textColor = wm.textColor || '#ffffff';
+                            const hasBg = wm.hasBackground !== false;
+                            const borderRadius = Math.floor(fontSize * 0.25);
 
-                        const svgText = `
-                        <svg width="${textWidth}" height="${textHeight}" xmlns="http://www.w3.org/2000/svg">
-                            <g opacity="${opacity}">
-                                ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
-                                <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}px" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="${textColor}">${wmText}</text>
-                            </g>
-                        </svg>`;
+                            // 4. Генерация SVG с идеальным выравниванием текста
+                            const svgText = `
+                            <svg width="${wmPixelWidth}" height="${wmPixelHeight}" xmlns="http://www.w3.org/2000/svg">
+                                <g opacity="${opacity}">
+                                    ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
+                                    <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}px" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="${textColor}">${wmText}</text>
+                                </g>
+                            </svg>`;
+                            
+                            watermarkBuffer = Buffer.from(svgText);
+                            
+                        } else if (wmType === 'image' && wm.image) {
+                            // 5. ПОДДЕРЖКА ЛОГОТИПОВ (PNG/JPG)
+                            const imgBase64 = wm.image.replace(/^data:image\/\w+;base64,/, "");
+                            const scaleFactor = (wm.size || 100) / 100;
+                            const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
 
-                        // Вычисляем точные пиксельные координаты X и Y из процентов
+                            watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
+                                .resize({ width: targetWidth })
+                                .ensureAlpha()
+                                .composite([{
+                                    input: Buffer.from([255, 255, 255, Math.floor(opacity * 255)]),
+                                    raw: { width: 1, height: 1, channels: 4 },
+                                    tile: true,
+                                    blend: 'dest-in'
+                                }])
+                                .toBuffer();
+                        }
+
+                        if (!watermarkBuffer) return buf;
+
+                        // 6. ПОВОРОТ
+                        if (angle !== 0) {
+                            watermarkBuffer = await sharp(watermarkBuffer)
+                                .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                                .toBuffer();
+                        }
+
+                        // Получаем точные размеры плашки после возможного поворота
+                        const wmMeta = await sharp(watermarkBuffer).metadata();
+                        wmPixelWidth = wmMeta.width;
+                        wmPixelHeight = wmMeta.height;
+
+                        // 7. СИНХРОНИЗАЦИЯ КООРДИНАТ С REACT (Translate -50%, -50%)
                         let leftPos = 0;
                         let topPos = 0;
 
-                        if (wm.x !== null && wm.y !== null && wm.x !== undefined && wm.y !== undefined) {
-                            leftPos = Math.floor((width - textWidth) * (wm.x / 100));
-                            topPos = Math.floor((height - textHeight) * (wm.y / 100));
+                        if (wm.position === 'custom' || (wm.x !== undefined && wm.y !== undefined)) {
+                            // Фронтенд передает координаты ЦЕНТРА в процентах
+                            const centerX = Math.floor(width * (wm.x / 100));
+                            const centerY = Math.floor(height * (wm.y / 100));
+                            leftPos = centerX - Math.floor(wmPixelWidth / 2);
+                            topPos = centerY - Math.floor(wmPixelHeight / 2);
                         } else {
-                            const marginX = Math.floor(width * 0.05);
-                            const marginY = Math.floor(height * 0.05);
-                            
-                            if (wm.position?.includes('l')) leftPos = marginX;
-                            else if (wm.position?.includes('r')) leftPos = width - textWidth - marginX;
-                            else leftPos = Math.floor((width - textWidth) / 2);
-
-                            if (wm.position?.includes('t')) topPos = marginY;
-                            else if (wm.position?.includes('b')) topPos = height - textHeight - marginY;
-                            else topPos = Math.floor((height - textHeight) / 2);
+                            // Резерв по старой сетке из React-компонента
+                            const posToCoords = {
+                                'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
+                                'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
+                                'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
+                            };
+                            const fallbackCoord = posToCoords[wm.position] || posToCoords['br'];
+                            const centerX = Math.floor(width * (fallbackCoord.x / 100));
+                            const centerY = Math.floor(height * (fallbackCoord.y / 100));
+                            leftPos = centerX - Math.floor(wmPixelWidth / 2);
+                            topPos = centerY - Math.floor(wmPixelHeight / 2);
                         }
 
-                        // Защита от выхода за границы
-                        leftPos = Math.max(0, Math.min(leftPos, width - textWidth));
-                        topPos = Math.max(0, Math.min(topPos, height - textHeight));
+                        // 8. Жесткая защита границ (чтобы знак не вылез за фото и не выдал ошибку)
+                        leftPos = Math.max(0, Math.min(leftPos, width - wmPixelWidth));
+                        topPos = Math.max(0, Math.min(topPos, height - wmPixelHeight));
 
                         return await image
                             .composite([{ 
-                                input: Buffer.from(svgText), 
+                                input: watermarkBuffer, 
                                 top: topPos, 
                                 left: leftPos 
                             }])
@@ -183,6 +244,7 @@ exports.createPost = async (req, res) => {
 
             try {
                 const providerType = account.provider.toLowerCase(); 
+
                 if (providerType === 'telegram') {
                     const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                     await sendToTelegram(botToken, account.providerId, finalText, processedBuffers);
@@ -192,6 +254,7 @@ exports.createPost = async (req, res) => {
                 
                 results.push({ accountId: account.id, success: true });
                 hasSuccess = true; 
+                console.log(`[УСПЕХ] Пост отправлен в ${account.provider} (${account.name})`);
             } catch (err) {
                 console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.response?.data || err.message);
                 results.push({ accountId: account.id, success: false, error: err.message });
@@ -199,8 +262,9 @@ exports.createPost = async (req, res) => {
         }
 
         res.json({ success: hasSuccess, results });
+
     } catch (error) {
         console.error('Критическая ошибка в createPost:', error);
-        res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
+        res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера при отправке' });
     }
 };
