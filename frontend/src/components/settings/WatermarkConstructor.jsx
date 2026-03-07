@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import { 
   Save, Image as ImageIcon, Type, Palette, LayoutTemplate, Loader2, Check,
-  Type as TypeIcon, Sliders, Upload, RotateCw, Move,
+  Type as TypeIcon, Sliders, Upload, RotateCw, Move, Eye, // <--- ВОТ ЗДЕСЬ ДОБАВИЛИ EYE
   ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight
 } from 'lucide-react';
 
