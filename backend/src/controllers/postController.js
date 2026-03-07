@@ -294,38 +294,37 @@ exports.createPost = async (req, res) => {
     }
 };
 
-// === ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ (НОВЫЙ ФУНКЦИОНАЛ) ===
-// === ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ (УМНАЯ ВЕРСИЯ С ОТЛАДКОЙ) ===
+// === ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ ===
 exports.shareWithPartners = async (req, res) => {
     try {
         const { text, mediaUrls = [], partnerIds = [] } = req.body;
         
-        // 1. Пытаемся достать ID пользователя всеми возможными способами из разных стандартов авторизации
-        const senderId = req.user?.id || req.userId || (typeof req.user === 'string' ? req.user : null); 
+        // 1. ИЗВЛЕКАЕМ ID "ВСЕЯДНЫМ" СПОСОБОМ (Поддержка любых форматов токена)
+        const senderId = req.user?.id || req.user?.userId || req.userId || (typeof req.user === 'string' ? req.user : null);
 
         if (!senderId) {
-            return res.status(401).json({ success: false, error: 'Сервер не смог определить ваш ID (ошибка авторизации)' });
+            return res.status(401).json({ success: false, error: 'Ошибка авторизации: сервер не видит ваш ID' });
         }
 
         if (!partnerIds || partnerIds.length === 0) {
             return res.status(400).json({ success: false, error: 'Выберите хотя бы одного партнера' });
         }
 
-        // 2. Ищем отправителя в базе
+        // 2. Ищем пользователя
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
         
-        // Защита: если пользователь удален или ID не совпал, чтобы код не упал
-        const senderName = sender?.name || 'Без имени';
-        const senderPavilion = sender?.pavilion || '?';
+        if (!sender) {
+             return res.status(404).json({ success: false, error: 'Ваш аккаунт не найден в базе' });
+        }
 
         const mediaString = JSON.stringify(mediaUrls);
 
-        // 3. Создаем записи
+        // 3. Создаем посты и рассылаем уведомления
         for (const receiverId of partnerIds) {
             await prisma.sharedPost.create({
                 data: {
-                    senderId,
-                    receiverId,
+                    senderId: sender.id,
+                    receiverId: receiverId,
                     text: text || '',
                     mediaUrls: mediaString
                 }
@@ -334,34 +333,40 @@ exports.shareWithPartners = async (req, res) => {
             await prisma.notification.create({
                 data: {
                     userId: receiverId,
-                    text: `Партнер ${senderName} (Павильон: ${senderPavilion}) поделился с вами новой публикацией.`
+                    text: `Партнер ${sender.name || 'Без имени'} (Павильон: ${sender.pavilion || '?'}) поделился с вами новой публикацией.`
                 }
             });
         }
 
         res.json({ success: true });
     } catch (error) {
-        // 4. ВЫВОДИМ ТОЧНУЮ ОШИБКУ ПРЯМО В БРАУЗЕР!
-        console.error('КРИТИЧЕСКАЯ ОШИБКА ПРИ ШАРИНГЕ:', error);
-        res.status(500).json({ success: false, error: `Системная ошибка: ${error.message}` });
+        console.error('Ошибка при шаринге:', error);
+        res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
     }
 };
 
+// === ПОЛУЧИТЬ ОБЩИЕ ПОСТЫ ===
 exports.getSharedPosts = async (req, res) => {
     try {
-        const userId = req.user?.id;
-        if (!userId) return res.status(401).json({ success: false, error: 'Необходима авторизация' });
+        // ИЗВЛЕКАЕМ ID ТАКИМ ЖЕ УМНЫМ СПОСОБОМ
+        const userId = req.user?.id || req.user?.userId || req.userId || (typeof req.user === 'string' ? req.user : null);
+        
+        if (!userId) {
+            return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
+        }
 
         const incoming = await prisma.sharedPost.findMany({
             where: { receiverId: userId },
             include: { sender: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
             orderBy: { createdAt: 'desc' }
         });
+        
         const outgoing = await prisma.sharedPost.findMany({
             where: { senderId: userId },
             include: { receiver: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
             orderBy: { createdAt: 'desc' }
         });
+        
         res.json({ success: true, incoming, outgoing });
     } catch (error) {
         console.error('Ошибка получения общих постов:', error);
