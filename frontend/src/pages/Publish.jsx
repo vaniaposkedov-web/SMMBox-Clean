@@ -61,9 +61,34 @@ export default function Publish() {
   const MAX_PHOTOS = 10;
   const MAX_CHARS = 1000;
 
-  const mockScheduledPosts = [
-    { id: 1, date: new Date().toISOString().split('T')[0], time: '14:30', text: 'Поступление новых кроссовок...', network: 'VK', color: 'bg-blue-600' },
-  ];
+  const scheduledPostsRaw = useStore(state => state.scheduledPosts) || [];
+  const fetchScheduledPosts = useStore(state => state.fetchScheduledPosts);
+  const deleteScheduledPostAction = useStore(state => state.deleteScheduledPostAction);
+
+  // Подгружаем посты при входе
+  useEffect(() => {
+    if (user?.id) fetchScheduledPosts();
+  }, [user?.id, fetchScheduledPosts, view]); // Обновляем, когда переключаемся на календарь
+
+  // Превращаем сырые данные из базы в удобный формат для календаря
+  const realScheduledPosts = useMemo(() => {
+    return scheduledPostsRaw.map(p => {
+      const d = new Date(p.publishAt);
+      // Защита от часовых поясов: получаем локальную дату в формате YYYY-MM-DD
+      const offset = d.getTimezoneOffset() * 60000;
+      const localISODate = (new Date(d - offset)).toISOString().split('T')[0];
+      
+      return {
+        id: p.id,
+        date: localISODate,
+        time: d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        text: p.text || 'Без текста',
+        network: p.account.provider === 'vk' ? 'VK' : 'TG',
+        color: p.account.provider === 'vk' ? 'bg-blue-600' : 'bg-sky-500',
+        accountName: p.account.name
+      };
+    });
+  }, [scheduledPostsRaw]);
 
   const calendarDays = useMemo(() => {
     return Array.from({length: 14}).map((_, i) => {
@@ -396,7 +421,9 @@ export default function Publish() {
   // ==========================================
   if (view === 'calendar') {
     const selectedDateObj = new Date(selectedCalendarDate);
-    const postsForSelectedDate = mockScheduledPosts.filter(p => p.date === selectedCalendarDate);
+    
+    // ИСПРАВЛЕНИЕ 1: Теперь используем реальные посты из базы данных!
+    const postsForSelectedDate = realScheduledPosts.filter(p => p.date === selectedCalendarDate);
 
     return (
       <div className="min-h-[100dvh] bg-admin-bg p-4 sm:p-8 pb-32 md:pb-8 animate-fade-in">
@@ -412,7 +439,10 @@ export default function Publish() {
               const isSelected = isoDate === selectedCalendarDate;
               const dayName = d.toLocaleDateString('ru-RU', { weekday: 'short' });
               const dayNum = d.getDate();
-              const hasPosts = mockScheduledPosts.some(p => p.date === isoDate);
+              
+              // ИСПРАВЛЕНИЕ 2: Точки в календаре теперь тоже работают от реальных постов
+              const hasPosts = realScheduledPosts.some(p => p.date === isoDate);
+              
               return (
                 <button 
                   key={isoDate} onClick={() => setSelectedCalendarDate(isoDate)}
@@ -439,9 +469,20 @@ export default function Publish() {
                       <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-white shrink-0 ${post.color}`}>{post.network}</div>
                       <div className="min-w-0">
                         <p className="text-white font-medium text-sm truncate">{post.text}</p>
-                        <p className="text-purple-400 text-xs mt-1 font-bold">{post.time}</p>
+                        <p className="text-gray-400 text-xs mt-1">
+                          {post.accountName} <span className="text-purple-400 font-bold ml-2">{post.time}</span>
+                        </p>
                       </div>
                     </div>
+                    
+                    {/* ИСПРАВЛЕНИЕ 3: Добавлена кнопка отмены (удаления) отложенного поста */}
+                    <button 
+                      onClick={() => deleteScheduledPostAction(post.id)} 
+                      className="w-10 h-10 rounded-xl bg-gray-900 hover:bg-red-500/20 text-gray-500 hover:text-red-500 flex items-center justify-center transition-colors shrink-0 border border-gray-800 hover:border-red-500/30"
+                      title="Отменить публикацию"
+                    >
+                      <Trash2 size={18} />
+                    </button>
                   </div>
                 ))
               ) : (

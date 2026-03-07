@@ -61,6 +61,28 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
+      // === ДЛЯ КАЛЕНДАРЯ ===
+      scheduledPosts: [],
+
+      fetchScheduledPosts: async () => {
+        try {
+          const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${get().token}` } });
+          if (res.ok) {
+            const data = await res.json();
+            set({ scheduledPosts: data.posts });
+          }
+        } catch (error) {}
+      },
+
+      deleteScheduledPostAction: async (id) => {
+        try {
+          const res = await fetch(`/api/posts/scheduled/${id}`, {
+            method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` }
+          });
+          if (res.ok) get().fetchScheduledPosts();
+        } catch (error) {}
+      },
+
       scanTelegramChannels: async (botToken) => {
         try {
           const res = await fetch('/api/accounts/tg/scan', {
