@@ -54,6 +54,31 @@ export default function Publish() {
   const MAX_PHOTOS = 10;
   const MAX_CHARS = 1000;
 
+  const myPartners = useStore((state) => state.myPartners) || [];
+  const sharePostAction = useStore((state) => state.sharePostAction);
+  const [selectedPartners, setSelectedPartners] = useState([]);
+  const [isSharing, setIsSharing] = useState(false);
+
+  const handleShareWithPartners = async () => {
+    if (selectedPartners.length === 0) return alert('Выберите кому отправить!');
+    setIsSharing(true);
+    try {
+      // Превращаем фото в сырой base64 (БЕЗ ВОДЯНЫХ ЗНАКОВ)
+      const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
+      
+      const result = await sharePostAction(text, base64Images, selectedPartners);
+      if (result.success) {
+         alert('Успешно отправлено партнерам!');
+         setSelectedPartners([]); // Очищаем выбор
+      } else {
+         alert(result.error || 'Ошибка');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setIsSharing(false);
+  };
+
   const mockScheduledPosts = [
     { id: 1, date: new Date().toISOString().split('T')[0], time: '14:30', text: 'Поступление новых кроссовок...', network: 'VK', color: 'bg-blue-600' },
   ];

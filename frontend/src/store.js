@@ -57,6 +57,43 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
+
+      sharedIncoming: [],
+      sharedOutgoing: [],
+
+      fetchSharedPosts: async () => {
+        try {
+          const res = await fetch('/api/posts/shared', { headers: { 'Authorization': `Bearer ${get().token}` } });
+          const data = await res.json();
+          if (res.ok) set({ sharedIncoming: data.incoming, sharedOutgoing: data.outgoing });
+        } catch (error) { console.error(error); }
+      },
+
+      sharePostAction: async (text, mediaUrls, partnerIds) => {
+        try {
+          const res = await fetch('/api/posts/share', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
+            body: JSON.stringify({ text, mediaUrls, partnerIds })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            get().fetchSharedPosts();
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
+      },
+
+      deleteSharedPostAction: async (id) => {
+        try {
+          const res = await fetch(`/api/posts/shared/${id}`, {
+            method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` }
+          });
+          if (res.ok) get().fetchSharedPosts();
+        } catch (error) { console.error(error); }
+      },
+
       // === ДОБАВИТЬ ЭТУ ФУНКЦИЮ В useStore ===
       scanTelegramChannels: async (botToken) => {
         try {
