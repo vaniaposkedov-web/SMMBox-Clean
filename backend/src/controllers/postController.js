@@ -103,7 +103,7 @@ async function sendToVK(token, groupId, text, imageBuffers) {
 // === ОСНОВНОЙ КОНТРОЛЛЕР ===
 exports.createPost = async (req, res) => {
     try {
-        // ИСПРАВЛЕНИЕ 2: Принимаем mediaUrls (как шлет фронт), но используем как images
+        // 1. ИСПРАВЛЕНИЕ: Принимаем mediaUrls (как шлет фронтенд)
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
         const images = mediaUrls; 
         
@@ -112,13 +112,14 @@ exports.createPost = async (req, res) => {
         }
 
         const results = [];
-        let hasSuccess = false; // ИСПРАВЛЕНИЕ 1: Флаг реального успеха
+        let hasSuccess = false;
 
         const rawImageBuffers = images.map(img => {
             const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
             return Buffer.from(base64Data, 'base64');
         });
 
+        // Проходимся по каждому выбранному профилю
         for (const accData of accounts) {
             const account = await prisma.account.findUnique({
                 where: { id: accData.accountId }
@@ -126,17 +127,60 @@ exports.createPost = async (req, res) => {
 
             if (!account) continue;
 
+            // 1. Формируем финальный текст с подписью (ТЕПЕРЬ БЕРЕМ ИЗ accData)
             let finalText = text || '';
-            if (accData.applySignature && account.signature) {
-                finalText += `\n\n${account.signature}`;
+            if (accData.applySignature && accData.signatureText) {
+                finalText += `\n\n${accData.signatureText}`;
             }
 
+            // 2. РЕАЛЬНАЯ ЛОГИКА ВОДЯНЫХ ЗНАКОВ SHARP
             let processedBuffers = rawImageBuffers;
-            // Здесь скоро будет логика Sharp для водяных знаков
+            
+            if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
+                const wm = accData.watermarkConfig;
+                const wmText = wm.text || 'SMMBOX';
+                
+                // Карта позиций фронтенда -> гравитация Sharp
+                const gravityMap = {
+                    'tl': 'northwest', 'tc': 'north', 'tr': 'northeast',
+                    'cl': 'west', 'cc': 'center', 'cr': 'east',
+                    'bl': 'southwest', 'bc': 'south', 'br': 'southeast'
+                };
+                const gravity = gravityMap[wm.position] || 'southeast';
+
+                processedBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
+                    try {
+                        const image = sharp(buf);
+                        const metadata = await image.metadata();
+                        
+                        // Вычисляем адаптивный размер шрифта
+                        const width = metadata.width || 1000;
+                        const fontSize = Math.max(20, Math.floor(width * 0.05 * ((wm.size || 100) / 100)));
+                        
+                        // Размеры бокса для текста
+                        const textWidth = Math.floor(wmText.length * fontSize * 0.65);
+                        const textHeight = Math.floor(fontSize * 1.5);
+
+                        // Генерируем текст в виде SVG
+                        const svgText = `
+                        <svg width="${textWidth}" height="${textHeight}">
+                            <text x="50%" y="80%" text-anchor="middle" font-size="${fontSize}px" font-family="sans-serif" font-weight="bold" fill="${wm.textColor || '#ffffff'}" opacity="${(wm.opacity || 90) / 100}">${wmText}</text>
+                        </svg>`;
+
+                        // Накладываем SVG на картинку
+                        return await image
+                            .composite([{ input: Buffer.from(svgText), gravity: gravity }])
+                            .jpeg({ quality: 90 }) // Сжимаем результат для быстрой загрузки
+                            .toBuffer();
+                    } catch (e) {
+                        console.error('Ошибка наложения водяного знака:', e);
+                        return buf; // В случае ошибки просто возвращаем фото без знака
+                    }
+                }));
+            }
 
             // 3. Отправляем в нужную соцсеть
             try {
-                // ПРИВОДИМ К НИЖНЕМУ РЕГИСТРУ ДЛЯ ПРОВЕРКИ
                 const providerType = account.provider.toLowerCase(); 
 
                 if (providerType === 'telegram') {
@@ -148,14 +192,13 @@ exports.createPost = async (req, res) => {
                 
                 results.push({ accountId: account.id, success: true });
                 hasSuccess = true; 
-                console.log(`[УСПЕХ] Пост отправлен в ${account.provider}`);
+                console.log(`[УСПЕХ] Пост отправлен в ${account.provider} (${account.name})`);
             } catch (err) {
                 console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.response?.data || err.message);
                 results.push({ accountId: account.id, success: false, error: err.message });
             }
         }
 
-        // ИСПРАВЛЕНИЕ 1: Возвращаем success: true только если хотя бы один пост ушел
         res.json({ success: hasSuccess, results });
 
     } catch (error) {
