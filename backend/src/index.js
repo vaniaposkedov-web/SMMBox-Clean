@@ -3,12 +3,15 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
+// Запускаем планировщик постов
+require('./controllers/postController').initCron();
 
 const authRoutes = require('./routes/authRoutes');
 const partnerRoutes = require('./routes/partnerRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const postRoutes = require('./routes/postRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+
 const path = require('path');
 
 const allowedOrigins = [

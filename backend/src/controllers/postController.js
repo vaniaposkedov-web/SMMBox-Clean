@@ -3,6 +3,7 @@ const prisma = new PrismaClient();
 const axios = require('axios');
 const FormData = require('form-data');
 const sharp = require('sharp'); 
+const cron = require('node-cron'); // Подключаем таймер
 
 // === ЛОГИКА ОТПРАВКИ В TELEGRAM ===
 async function sendToTelegram(token, chatId, text, imageBuffers) {
@@ -85,7 +86,7 @@ async function sendToVK(token, groupId, text, imageBuffers) {
     if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
 }
 
-// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ (С водяными знаками) ===
+// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ ===
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
@@ -117,6 +118,7 @@ exports.createPost = async (req, res) => {
 
             let processedBuffers = rawImageBuffers;
             
+            // Накладываем водяной знак (Логика сохранена)
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
                 const wm = accData.watermarkConfig;
                 const wmType = wm.type || 'text'; 
@@ -149,19 +151,13 @@ exports.createPost = async (req, res) => {
                             for (const line of lines) {
                                 let currentLineWidth = 0;
                                 for (let i = 0; i < line.length; i++) {
-                                    if (line.charCodeAt(i) > 1000) {
-                                        currentLineWidth += fontSize * 0.95; 
-                                    } else {
-                                        currentLineWidth += fontSize * 0.75; 
-                                    }
+                                    if (line.charCodeAt(i) > 1000) currentLineWidth += fontSize * 0.95; 
+                                    else currentLineWidth += fontSize * 0.75; 
                                 }
-                                if (currentLineWidth > maxTextWidthRaw) {
-                                    maxTextWidthRaw = currentLineWidth;
-                                }
+                                if (currentLineWidth > maxTextWidthRaw) maxTextWidthRaw = currentLineWidth;
                             }
                             
                             wmPixelWidth = Math.floor(maxTextWidthRaw) + (paddingX * 2);
-                            
                             const lineHeight = Math.floor(fontSize * 1.25);
                             wmPixelHeight = (lines.length * lineHeight) + (paddingY * 2);
                             
@@ -196,9 +192,7 @@ exports.createPost = async (req, res) => {
                                     </text>
                                 </g>
                             </svg>`;
-                            
                             watermarkBuffer = Buffer.from(svgText);
-                            
                         } else if (wmType === 'image' && wm.image) {
                             const imgBase64 = wm.image.replace(/^data:image\/\w+;base64,/, "");
                             const scaleFactor = (wm.size || 100) / 100;
@@ -210,8 +204,7 @@ exports.createPost = async (req, res) => {
                                 .composite([{
                                     input: Buffer.from([255, 255, 255, Math.floor(opacity * 255)]),
                                     raw: { width: 1, height: 1, channels: 4 },
-                                    tile: true,
-                                    blend: 'dest-in'
+                                    tile: true, blend: 'dest-in'
                                 }])
                                 .toBuffer();
                         }
@@ -249,40 +242,59 @@ exports.createPost = async (req, res) => {
                             topPos = centerY - Math.floor(wmPixelHeight / 2);
                         }
 
-                        leftPos = Math.round(leftPos);
-                        topPos = Math.round(topPos);
-
                         return await image
-                            .composite([{ 
-                                input: watermarkBuffer, 
-                                top: topPos, 
-                                left: leftPos 
-                            }])
+                            .composite([{ input: watermarkBuffer, top: Math.round(topPos), left: Math.round(leftPos) }])
                             .jpeg({ quality: 90 }) 
                             .toBuffer();
                     } catch (e) {
-                        console.error('Ошибка наложения водяного знака:', e.message);
                         return buf; 
                     }
                 }));
             }
 
-            try {
-                const providerType = account.provider.toLowerCase(); 
+            // === ВАЖНО: ПРОВЕРКА НА ОТЛОЖЕННЫЙ ПОСТ ===
+            const isScheduled = publishAt && new Date(publishAt) > new Date();
 
-                if (providerType === 'telegram') {
-                    const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
-                    await sendToTelegram(botToken, account.providerId, finalText, processedBuffers);
-                } else if (providerType === 'vk') {
-                    await sendToVK(account.accessToken, account.providerId, finalText, processedBuffers);
-                }
+            if (isScheduled) {
+                // Превращаем обработанные картинки обратно в base64, чтобы сохранить в БД
+                const base64ImagesToSave = processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
                 
-                results.push({ accountId: account.id, success: true });
-                hasSuccess = true; 
-                console.log(`[УСПЕХ] Пост отправлен в ${account.provider} (${account.name})`);
-            } catch (err) {
-                console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.response?.data || err.message);
-                results.push({ accountId: account.id, success: false, error: err.message });
+                await prisma.post.create({
+                    data: {
+                        accountId: account.id,
+                        text: finalText,
+                        mediaUrls: JSON.stringify(base64ImagesToSave),
+                        publishAt: new Date(publishAt),
+                        status: 'SCHEDULED'
+                    }
+                });
+                
+                results.push({ accountId: account.id, success: true, scheduled: true });
+                hasSuccess = true;
+                console.log(`[ПЛАН] Пост запланирован в ${account.name} на ${publishAt}`);
+            } else {
+                // Отправляем СЕЙЧАС
+                try {
+                    const providerType = account.provider.toLowerCase(); 
+                    if (providerType === 'telegram') {
+                        const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
+                        await sendToTelegram(botToken, account.providerId, finalText, processedBuffers);
+                    } else if (providerType === 'vk') {
+                        await sendToVK(account.accessToken, account.providerId, finalText, processedBuffers);
+                    }
+                    
+                    // Сохраняем в историю
+                    await prisma.post.create({
+                        data: { accountId: account.id, text: finalText, mediaUrls: JSON.stringify([]), status: 'PUBLISHED' }
+                    });
+
+                    results.push({ accountId: account.id, success: true });
+                    hasSuccess = true; 
+                    console.log(`[УСПЕХ] Пост отправлен в ${account.provider} (${account.name})`);
+                } catch (err) {
+                    console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.response?.data || err.message);
+                    results.push({ accountId: account.id, success: false, error: err.message });
+                }
             }
         }
 
@@ -294,82 +306,115 @@ exports.createPost = async (req, res) => {
     }
 };
 
-// === ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ ===
-exports.shareWithPartners = async (req, res) => {
+// === ТАЙМЕР (CRON): АВТОМАТИЧЕСКАЯ ОТПРАВКА ОТЛОЖЕННЫХ ПОСТОВ ===
+exports.initCron = () => {
+    // Запускается каждую минуту
+    cron.schedule('* * * * *', async () => {
+        try {
+            const now = new Date();
+            // Ищем все посты, время которых уже настало
+            const postsToPublish = await prisma.post.findMany({
+                where: { status: 'SCHEDULED', publishAt: { lte: now } },
+                include: { account: true }
+            });
+
+            for (const post of postsToPublish) {
+                try {
+                    const account = post.account;
+                    const mediaUrls = JSON.parse(post.mediaUrls || '[]');
+                    
+                    // Превращаем base64 из базы обратно в буферы для отправки
+                    const imageBuffers = mediaUrls.map(img => {
+                        const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
+                        return Buffer.from(base64Data, 'base64');
+                    });
+
+                    const providerType = account.provider.toLowerCase();
+                    if (providerType === 'telegram') {
+                        const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
+                        await sendToTelegram(botToken, account.providerId, post.text, imageBuffers);
+                    } else if (providerType === 'vk') {
+                        await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
+                    }
+
+                    // Обновляем статус на Опубликовано и очищаем тяжелые фото из базы для экономии места
+                    await prisma.post.update({
+                        where: { id: post.id },
+                        data: { status: 'PUBLISHED', mediaUrls: JSON.stringify([]) }
+                    });
+                    console.log(`[CRON] Отложенный пост ${post.id} успешно отправлен в ${account.name}`);
+                } catch (err) {
+                    console.error(`[CRON ОШИБКА] Пост ${post.id}:`, err.message);
+                    await prisma.post.update({ where: { id: post.id }, data: { status: 'FAILED' } });
+                }
+            }
+        } catch (e) {
+            console.error('Ошибка в работе CRON:', e);
+        }
+    });
+    console.log('[CRON] Планировщик отложенных постов запущен!');
+};
+
+// === ПОЛУЧИТЬ ОТЛОЖЕННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
+exports.getScheduledPosts = async (req, res) => {
     try {
-        const { text, mediaUrls = [], partnerIds = [] } = req.body;
-        
-        // 1. ИЗВЛЕКАЕМ ID "ВСЕЯДНЫМ" СПОСОБОМ (Поддержка любых форматов токена)
-        const senderId = req.user?.id || req.user?.userId || req.userId || (typeof req.user === 'string' ? req.user : null);
+        const userId = req.user?.id || req.userId || (typeof req.user === 'string' ? req.user : null);
+        if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
-        if (!senderId) {
-            return res.status(401).json({ success: false, error: 'Ошибка авторизации: сервер не видит ваш ID' });
-        }
-
-        if (!partnerIds || partnerIds.length === 0) {
-            return res.status(400).json({ success: false, error: 'Выберите хотя бы одного партнера' });
-        }
-
-        // 2. Ищем пользователя
-        const sender = await prisma.user.findUnique({ where: { id: senderId } });
-        
-        if (!sender) {
-             return res.status(404).json({ success: false, error: 'Ваш аккаунт не найден в базе' });
-        }
-
-        const mediaString = JSON.stringify(mediaUrls);
-
-        // 3. Создаем посты и рассылаем уведомления
-        for (const receiverId of partnerIds) {
-            await prisma.sharedPost.create({
-                data: {
-                    senderId: sender.id,
-                    receiverId: receiverId,
-                    text: text || '',
-                    mediaUrls: mediaString
-                }
-            });
-
-            await prisma.notification.create({
-                data: {
-                    userId: receiverId,
-                    text: `Партнер ${sender.name || 'Без имени'} (Павильон: ${sender.pavilion || '?'}) поделился с вами новой публикацией.`
-                }
-            });
-        }
-
-        res.json({ success: true });
+        const posts = await prisma.post.findMany({
+            where: { account: { userId: userId }, status: 'SCHEDULED' },
+            include: { account: { select: { name: true, provider: true } } },
+            orderBy: { publishAt: 'asc' }
+        });
+        res.json({ success: true, posts });
     } catch (error) {
-        console.error('Ошибка при шаринге:', error);
-        res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
+        res.status(500).json({ success: false });
     }
 };
 
-// === ПОЛУЧИТЬ ОБЩИЕ ПОСТЫ ===
+// === ОСТАЛЬНЫЕ ФУНКЦИИ ПАРТНЕРОВ ===
+exports.shareWithPartners = async (req, res) => {
+    try {
+        const { text, mediaUrls = [], partnerIds = [] } = req.body;
+        const senderId = req.user?.id || req.userId || (typeof req.user === 'string' ? req.user : null);
+
+        if (!senderId) return res.status(401).json({ success: false, error: 'Ошибка авторизации: сервер не видит ваш ID' });
+        if (!partnerIds || partnerIds.length === 0) return res.status(400).json({ success: false, error: 'Выберите партнера' });
+
+        const sender = await prisma.user.findUnique({ where: { id: senderId } });
+        const mediaString = JSON.stringify(mediaUrls);
+
+        for (const receiverId of partnerIds) {
+            await prisma.sharedPost.create({
+                data: { senderId: sender.id, receiverId, text: text || '', mediaUrls: mediaString }
+            });
+            await prisma.notification.create({
+                data: { userId: receiverId, text: `Партнер ${sender?.name || 'Без имени'} поделился с вами публикацией.` }
+            });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: `Ошибка: ${error.message}` });
+    }
+};
+
 exports.getSharedPosts = async (req, res) => {
     try {
-        // ИЗВЛЕКАЕМ ID ТАКИМ ЖЕ УМНЫМ СПОСОБОМ
-        const userId = req.user?.id || req.user?.userId || req.userId || (typeof req.user === 'string' ? req.user : null);
-        
-        if (!userId) {
-            return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
-        }
+        const userId = req.user?.id || req.userId || (typeof req.user === 'string' ? req.user : null);
+        if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
         const incoming = await prisma.sharedPost.findMany({
             where: { receiverId: userId },
             include: { sender: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
             orderBy: { createdAt: 'desc' }
         });
-        
         const outgoing = await prisma.sharedPost.findMany({
             where: { senderId: userId },
             include: { receiver: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
             orderBy: { createdAt: 'desc' }
         });
-        
         res.json({ success: true, incoming, outgoing });
     } catch (error) {
-        console.error('Ошибка получения общих постов:', error);
         res.status(500).json({ success: false });
     }
 };
@@ -379,7 +424,15 @@ exports.deleteSharedPost = async (req, res) => {
         await prisma.sharedPost.delete({ where: { id: req.params.id } });
         res.json({ success: true });
     } catch (error) {
-        console.error('Ошибка удаления поста:', error);
+        res.status(500).json({ success: false });
+    }
+};
+
+exports.deleteScheduledPost = async (req, res) => {
+    try {
+        await prisma.post.delete({ where: { id: req.params.id } });
+        res.json({ success: true });
+    } catch (error) {
         res.status(500).json({ success: false });
     }
 };
