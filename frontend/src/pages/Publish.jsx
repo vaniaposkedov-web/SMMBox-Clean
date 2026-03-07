@@ -105,18 +105,20 @@ export default function Publish() {
   }, [tempDraft]);
 
   // === АВТОСОХРАНЕНИЕ В ПАМЯТЬ ===
+  // === 1. ЗАМЕНИ ЭТОТ БЛОК ЦЕЛИКОМ ===
   useEffect(() => {
-    if (!isRestored.current || !saveTempDraft) return;
+    // ВАЖНО: Добавили step === 4, чтобы он не пытался воскресить удаленный черновик
+    if (!isRestored.current || !saveTempDraft || step === 4) return; 
     const timer = setTimeout(() => {
       saveTempDraft({ 
         text, selectedAccounts, accountOverrides, applyWatermark, applySignature,
         step, view, publishMode, scheduleTime, selectedCalendarDate
       });
-    }, 500); // Сохраняем спустя полсекунды после любых изменений
+    }, 500); 
     return () => clearTimeout(timer);
   }, [text, selectedAccounts, accountOverrides, applyWatermark, applySignature, step, view, publishMode, scheduleTime, selectedCalendarDate, saveTempDraft]);
+  
 
-  // === ОБРАБОТЧИКИ АККАУНТОВ И НАСТРОЕК ===
   const toggleAccount = (id) => {
     setSelectedAccounts(prev => 
       prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
@@ -276,15 +278,10 @@ export default function Publish() {
   };
 
   // === ЗАМЕНИ ЭТУ ФУНКЦИЮ ЦЕЛИКОМ ===
+  // === 2. ЗАМЕНИ ЭТУ ФУНКЦИЮ ЦЕЛИКОМ ===
   const handlePublish = async () => {
-    if (selectedAccounts.length === 0) {
-      setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
-      return;
-    }
-    if (publishMode === 'schedule' && (!selectedCalendarDate || !scheduleTime)) {
-      setTimeout(() => alert('Укажите дату и время для отложенного поста!'), 10);
-      return;
-    }
+    if (selectedAccounts.length === 0) return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
+    if (publishMode === 'schedule' && (!selectedCalendarDate || !scheduleTime)) return setTimeout(() => alert('Укажите дату и время для отложенного поста!'), 10);
     
     setIsPublishing(true);
 
@@ -302,18 +299,21 @@ export default function Publish() {
         const result = await createPostAction(text, base64Images, selectedAccounts, accountsData, publishAt);
 
         if (result.success) {
-            // ВАЖНО: Мы НЕ вызываем setIsPublishing(false) при успехе, 
-            // чтобы React не пытался обновить кнопку перед удалением панели!
-            setStep(4); 
-            if (saveTempDraft) saveTempDraft(null); 
+            setIsPublishing(false);
+            // Задержка 50мс спасает React от конфликта удаления кнопки и перерисовки шагов
+            setTimeout(() => {
+                if (saveTempDraft) saveTempDraft(null); 
+                setStep(4); 
+            }, 50);
         } else {
-            setIsPublishing(false); // Снимаем загрузку только при ошибке
-            setTimeout(() => alert(result.error || 'Ошибка сервера при попытке публикации'), 10);
+            setIsPublishing(false);
+            // Если вылезет 400 ошибка, мы увидим этот текст, а не черный экран
+            setTimeout(() => alert(result.error || 'Ошибка 400: Файлы слишком большие или сервер отверг запрос'), 50);
         }
     } catch (error) {
         console.error('Критическая ошибка публикации:', error);
-        setIsPublishing(false); // Снимаем загрузку только при ошибке
-        setTimeout(() => alert('Произошла ошибка. Бэкенд не отвечает.'), 10);
+        setIsPublishing(false);
+        setTimeout(() => alert('Произошла ошибка. Бэкенд не отвечает.'), 50);
     }
   };
 
@@ -924,7 +924,7 @@ export default function Publish() {
               <span className="flex items-center justify-center"><ChevronLeft size={24} /></span>
             </button>
 
-            {/* === ЗАМЕНИТЬ БЛОК onClick У ГЛАВНОЙ КНОПКИ === */}
+            {/* === 3. ЗАМЕНИ ВЕСЬ ТЕГ <button> НА ЭТОТ === */}
             <button 
               onClick={() => {
                 if (step === 1 && photos.length === 0) return setTimeout(() => alert('Добавьте хотя бы 1 фото!'), 10);
@@ -933,25 +933,29 @@ export default function Publish() {
                 setStep(step + 1);
               }}
               disabled={isPublishing}
-              // ... классы кнопки оставляем без изменений
               className={`flex-1 flex items-center justify-center gap-2 h-14 rounded-2xl font-bold text-base transition-all active:scale-95
                 ${step === 3 ? (publishMode === 'schedule' ? 'bg-purple-600 text-white hover:bg-purple-500 shadow-lg shadow-purple-500/25' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-500/25') : 'bg-white text-black hover:bg-gray-200'}`}
             >
-              {isPublishing ? (
-                <span className="flex items-center gap-2">Обработка...</span>
-              ) : step === 3 ? (
-                publishMode === 'schedule' ? (
-                  <span className="flex items-center gap-2"><CalendarClock size={20}/> Запланировать</span>
+              {/* СТАБИЛЬНЫЙ УЗЕЛ ЗАЩИЩАЕТ ОТ ОШИБКИ REMOVECHILD */}
+              <span className="flex items-center gap-2 pointer-events-none">
+                {isPublishing ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" /> Обработка...
+                  </>
+                ) : step === 3 ? (
+                  publishMode === 'schedule' ? (
+                    <><CalendarClock size={20}/> Запланировать</>
+                  ) : (
+                    <><Send size={20}/> Опубликовать</>
+                  )
                 ) : (
-                  <span className="flex items-center gap-2"><Send size={20}/> Опубликовать</span>
-                )
-              ) : (
-                <span className="flex items-center gap-2">
-                  <span className="hidden sm:inline">Продолжить</span>
-                  <span className="sm:hidden">Далее</span> 
-                  <ChevronRight size={20}/>
-                </span>
-              )}
+                  <>
+                    <span className="hidden sm:inline">Продолжить</span>
+                    <span className="sm:hidden">Далее</span> 
+                    <ChevronRight size={20}/>
+                  </>
+                )}
+              </span>
             </button>
           </div>
         </div>
