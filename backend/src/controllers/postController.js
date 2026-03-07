@@ -134,13 +134,15 @@ exports.createPost = async (req, res) => {
             let processedBuffers = rawImageBuffers;
             // Здесь скоро будет логика Sharp для водяных знаков
 
+            // 3. Отправляем в нужную соцсеть
             try {
-                if (account.provider === 'telegram') {
-                    // ИСПРАВЛЕНИЕ 3: Используем глобальный токен бота для ТГ
+                // ПРИВОДИМ К НИЖНЕМУ РЕГИСТРУ ДЛЯ ПРОВЕРКИ
+                const providerType = account.provider.toLowerCase(); 
+
+                if (providerType === 'telegram') {
                     const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                     await sendToTelegram(botToken, account.providerId, finalText, processedBuffers);
-                } else if (account.provider === 'vk') {
-                    // Для ВК оставляем пользовательский токен
+                } else if (providerType === 'vk') {
                     await sendToVK(account.accessToken, account.providerId, finalText, processedBuffers);
                 }
                 
@@ -148,7 +150,7 @@ exports.createPost = async (req, res) => {
                 hasSuccess = true; 
                 console.log(`[УСПЕХ] Пост отправлен в ${account.provider}`);
             } catch (err) {
-                console.error(`[ОШИБКА] ${account.provider}:`, err.response?.data || err.message);
+                console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.response?.data || err.message);
                 results.push({ accountId: account.id, success: false, error: err.message });
             }
         }
