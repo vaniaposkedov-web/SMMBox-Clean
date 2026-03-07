@@ -91,7 +91,6 @@ export const useStore = create(
         }
       },
 
-      // === МЕТОД ВК ПРИНИМАЕТ ГОТОВЫЙ ТОКЕН ===
       vkLogin: async (vkData) => {
         try {
           const res = await fetch('/api/auth/vk', {
@@ -122,7 +121,7 @@ export const useStore = create(
           const data = await res.json();
           if (res.ok) {
             set({ user: data.user, token: data.token });
-            localStorage.setItem('token', data.token); // <--- ДОБАВИЛИ ЭТУ СТРОКУ
+            localStorage.setItem('token', data.token);
             return { success: true };
           }
           return { success: false, error: data.error };
@@ -170,7 +169,7 @@ export const useStore = create(
       verifyAccountsStatus: async () => {
         try {
           const user = get().user;
-          if (!user?.id) return; // Защита от пустого стейта
+          if (!user?.id) return;
 
           const res = await fetch('/api/accounts/tg/verify-status', {
             method: 'POST',
@@ -178,7 +177,7 @@ export const useStore = create(
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${get().token}`
             },
-            body: JSON.stringify({ userId: user.id }) // Явно передаем ID!
+            body: JSON.stringify({ userId: user.id })
           });
           
           if (res.ok) {
@@ -189,12 +188,12 @@ export const useStore = create(
         }
       },
 
-      verifyEmailLink: async (userId, email, code, phone) => { // <-- Добавили phone сюда
+      verifyEmailLink: async (userId, email, code, phone) => { 
         try {
           const res = await fetch('/api/auth/verify-link-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, email, code, phone }), // <-- Отправляем phone на сервер
+            body: JSON.stringify({ userId, email, code, phone }), 
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
@@ -268,7 +267,7 @@ export const useStore = create(
             set({ 
               myPartners: data.partners, 
               incomingRequests: data.incomingRequests, 
-              outgoingRequests: data.outgoingRequests, // <--- Сохраняем
+              outgoingRequests: data.outgoingRequests,
               notifications: data.notifications 
             });
           }
@@ -283,7 +282,6 @@ export const useStore = create(
         } catch (error) { return []; }
       },
 
-      // ДОБАВИТЬ В store.js
       saveVkAccounts: async (userId, accessToken, selectedGroups) => {
         try {
           const res = await fetch('/api/accounts/vk/save', {
@@ -309,7 +307,7 @@ export const useStore = create(
         await fetch('/api/partners/request', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId, receiverId })
         });
-        get().fetchPartnerData(requesterId); // Обновляем данные
+        get().fetchPartnerData(requesterId);
       },
 
       acceptPartnership: async (partnershipId) => {
@@ -319,7 +317,6 @@ export const useStore = create(
         get().fetchPartnerData(get().user.id);
       },
 
-      // НОВЫЙ МЕТОД: Отклонить заявку
       declinePartnership: async (partnershipId) => {
         await fetch('/api/partners/decline', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId })
@@ -338,7 +335,7 @@ export const useStore = create(
         await fetch('/api/partners/notifications/clear', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId })
         });
-        get().fetchPartnerData(userId); // Перезапрашиваем данные
+        get().fetchPartnerData(userId);
       },
 
       fetchAccounts: async (userId) => {
@@ -351,7 +348,6 @@ export const useStore = create(
         } catch (error) {}
       },
 
-      // Глобальные настройки
       globalSettings: { signature: '', watermark: null },
       
       fetchGlobalSettings: async () => {
@@ -394,11 +390,11 @@ export const useStore = create(
         try {
           const res = await fetch(`/api/accounts/${accountId}`, { 
             method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${get().token}` } // Обязательно передаем токен!
+            headers: { 'Authorization': `Bearer ${get().token}` }
           });
           
           if (res.ok) {
-            get().fetchAccounts(get().user.id); // Обновляем список после удаления
+            get().fetchAccounts(get().user.id);
           }
         } catch (error) {
           console.error('Ошибка при удалении аккаунта', error);
@@ -411,7 +407,7 @@ export const useStore = create(
             method: 'PUT', 
             headers: { 
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${get().token}` // <--- Вот этот токен починил сохранение
+              'Authorization': `Bearer ${get().token}` 
             }, 
             body: JSON.stringify({ signature, watermark: watermarkData })
           });
@@ -423,14 +419,24 @@ export const useStore = create(
         } catch (error) { return { success: false }; }
       },
 
-      createPostAction: async (text, mediaUrls, accountIds, publishAt) => {
+      // === НОВАЯ РЕАЛЬНАЯ ЛОГИКА ОТПРАВКИ ПОСТА НА БЭКЕНД ===
+      createPostAction: async (text, images, accountsData, publishAt) => {
         try {
           const res = await fetch('/api/posts/create', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, mediaUrls, accountIds, publishAt })
+            method: 'POST', 
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${get().token}` // Обязательный токен авторизации
+            }, 
+            // Отправляем все индивидуальные настройки и картинки
+            body: JSON.stringify({ text, images, accounts: accountsData, publishAt })
           });
-          if (res.ok) return { success: true };
-          return { success: false, error: 'Ошибка при публикации' };
-        } catch (error) { return { success: false, error: 'Ошибка соединения с сервером' }; }
+          const data = await res.json();
+          if (res.ok && data.success) return { success: true };
+          return { success: false, error: data.error || 'Ошибка при обработке сервером' };
+        } catch (error) { 
+          return { success: false, error: 'Ошибка соединения с сервером. Бэкенд не отвечает.' }; 
+        }
       }
 
     }),
