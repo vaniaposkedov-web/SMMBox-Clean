@@ -103,7 +103,7 @@ async function sendToVK(token, groupId, text, imageBuffers) {
 // === ОСНОВНОЙ КОНТРОЛЛЕР ===
 exports.createPost = async (req, res) => {
     try {
-        // 1. ИСПРАВЛЕНИЕ: Принимаем mediaUrls (как шлет фронтенд)
+        // Принимаем mediaUrls (как шлет фронтенд)
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
         const images = mediaUrls; 
         
@@ -127,25 +127,18 @@ exports.createPost = async (req, res) => {
 
             if (!account) continue;
 
-            // 1. Формируем финальный текст с подписью (ТЕПЕРЬ БЕРЕМ ИЗ accData)
+            // 1. Формируем финальный текст с подписью
             let finalText = text || '';
             if (accData.applySignature && accData.signatureText) {
                 finalText += `\n\n${accData.signatureText}`;
             }
 
-            // 2. РЕАЛЬНАЯ ЛОГИКА ВОДЯНЫХ ЗНАКОВ SHARP
+            // 2. ИДЕАЛЬНАЯ ЛОГИКА ВОДЯНЫХ ЗНАКОВ SHARP (Синхронизировано с фронтендом)
             let processedBuffers = rawImageBuffers;
             
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
                 const wm = accData.watermarkConfig;
                 const wmText = wm.text || 'SMMBOX';
-                
-                const gravityMap = {
-                    'tl': 'northwest', 'tc': 'north', 'tr': 'northeast',
-                    'cl': 'west', 'cc': 'center', 'cr': 'east',
-                    'bl': 'southwest', 'bc': 'south', 'br': 'southeast'
-                };
-                const gravity = gravityMap[wm.position] || 'southeast';
 
                 processedBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
                     try {
@@ -153,10 +146,13 @@ exports.createPost = async (req, res) => {
                         const metadata = await image.metadata();
                         
                         const width = metadata.width || 1000;
-                        const fontSize = Math.max(20, Math.floor(width * 0.05 * ((wm.size || 100) / 100)));
+                        const height = metadata.height || 1000;
                         
-                        // Добавляем отступы для фона
-                        const padding = Math.floor(fontSize * 0.5);
+                        // Адаптивный размер шрифта (соответствует фронтенду)
+                        const fontSize = Math.max(16, Math.floor(width * 0.04 * ((wm.size || 100) / 100)));
+                        
+                        // Вычисляем размеры плашки
+                        const padding = Math.floor(fontSize * 0.6);
                         const textWidth = Math.floor(wmText.length * fontSize * 0.6) + (padding * 2);
                         const textHeight = Math.floor(fontSize * 1.5);
                         
@@ -165,17 +161,48 @@ exports.createPost = async (req, res) => {
                         const opacity = wm.opacity !== undefined ? wm.opacity / 100 : 0.9;
                         const hasBg = wm.hasBackground !== false;
 
-                        // ВАЖНО: Добавлен атрибут xmlns и правильный рендер прямоугольника фона
+                        // Идеальное центрирование текста внутри прямоугольника
                         const svgText = `
                         <svg width="${textWidth}" height="${textHeight}" xmlns="http://www.w3.org/2000/svg">
                             <g opacity="${opacity}">
                                 ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${padding / 2}" />` : ''}
-                                <text x="50%" y="70%" text-anchor="middle" dominant-baseline="middle" font-size="${fontSize}px" font-family="Arial, sans-serif" font-weight="bold" fill="${textColor}">${wmText}</text>
+                                <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}px" font-family="Arial, sans-serif" font-weight="bold" fill="${textColor}">${wmText}</text>
                             </g>
                         </svg>`;
 
+                        // Вычисляем точные пиксельные координаты X и Y из процентов
+                        let leftPos = 0;
+                        let topPos = 0;
+
+                        if (wm.x !== null && wm.y !== null && wm.x !== undefined && wm.y !== undefined) {
+                            // Если пользователь двигал ползунки
+                            leftPos = Math.floor((width - textWidth) * (wm.x / 100));
+                            topPos = Math.floor((height - textHeight) * (wm.y / 100));
+                        } else {
+                            // Резервный вариант, если координаты не сохранились (с отступом 5%)
+                            const marginX = Math.floor(width * 0.05);
+                            const marginY = Math.floor(height * 0.05);
+                            
+                            if (wm.position?.includes('l')) leftPos = marginX;
+                            else if (wm.position?.includes('r')) leftPos = width - textWidth - marginX;
+                            else leftPos = Math.floor((width - textWidth) / 2);
+
+                            if (wm.position?.includes('t')) topPos = marginY;
+                            else if (wm.position?.includes('b')) topPos = height - textHeight - marginY;
+                            else topPos = Math.floor((height - textHeight) / 2);
+                        }
+
+                        // Защита от выхода за границы картинки при экстремальных значениях
+                        leftPos = Math.max(0, Math.min(leftPos, width - textWidth));
+                        topPos = Math.max(0, Math.min(topPos, height - textHeight));
+
+                        // Накладываем по точным координатам
                         return await image
-                            .composite([{ input: Buffer.from(svgText), gravity: gravity }])
+                            .composite([{ 
+                                input: Buffer.from(svgText), 
+                                top: topPos, 
+                                left: leftPos 
+                            }])
                             .jpeg({ quality: 90 }) 
                             .toBuffer();
                     } catch (e) {
@@ -187,6 +214,7 @@ exports.createPost = async (req, res) => {
 
             // 3. Отправляем в нужную соцсеть
             try {
+                // Приводим к нижнему регистру для безопасности проверки
                 const providerType = account.provider.toLowerCase(); 
 
                 if (providerType === 'telegram') {
