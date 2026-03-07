@@ -103,21 +103,22 @@ async function sendToVK(token, groupId, text, imageBuffers) {
 // === ОСНОВНОЙ КОНТРОЛЛЕР ===
 exports.createPost = async (req, res) => {
     try {
-        const { text, images = [], accounts = [], publishAt } = req.body;
+        // ИСПРАВЛЕНИЕ 2: Принимаем mediaUrls (как шлет фронт), но используем как images
+        const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
+        const images = mediaUrls; 
         
         if (!accounts || accounts.length === 0) {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
         const results = [];
+        let hasSuccess = false; // ИСПРАВЛЕНИЕ 1: Флаг реального успеха
 
-        // Декодируем все картинки из Base64 обратно в бинарные файлы (Buffer)
         const rawImageBuffers = images.map(img => {
             const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
             return Buffer.from(base64Data, 'base64');
         });
 
-        // Проходимся по каждому выбранному профилю
         for (const accData of accounts) {
             const account = await prisma.account.findUnique({
                 where: { id: accData.accountId }
@@ -125,36 +126,35 @@ exports.createPost = async (req, res) => {
 
             if (!account) continue;
 
-            // 1. Формируем финальный текст с подписью
             let finalText = text || '';
             if (accData.applySignature && account.signature) {
                 finalText += `\n\n${account.signature}`;
             }
 
-            // 2. Блок обработки водяного знака (подготовлен к внедрению логики Sharp)
             let processedBuffers = rawImageBuffers;
-            if (accData.applyWatermark && processedBuffers.length > 0) {
-                // В будущем здесь будет логика:
-                // processedBuffers = await Promise.all(rawImageBuffers.map(buf => sharp(buf).composite(...).toBuffer()));
-            }
+            // Здесь скоро будет логика Sharp для водяных знаков
 
-            // 3. Отправляем в нужную соцсеть
             try {
                 if (account.provider === 'telegram') {
-                    await sendToTelegram(account.accessToken, account.providerId, finalText, processedBuffers);
+                    // ИСПРАВЛЕНИЕ 3: Используем глобальный токен бота для ТГ
+                    const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
+                    await sendToTelegram(botToken, account.providerId, finalText, processedBuffers);
                 } else if (account.provider === 'vk') {
+                    // Для ВК оставляем пользовательский токен
                     await sendToVK(account.accessToken, account.providerId, finalText, processedBuffers);
                 }
                 
                 results.push({ accountId: account.id, success: true });
-                console.log(`[УСПЕХ] Пост отправлен в ${account.provider} (${account.name})`);
+                hasSuccess = true; 
+                console.log(`[УСПЕХ] Пост отправлен в ${account.provider}`);
             } catch (err) {
-                console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.response?.data || err.message);
+                console.error(`[ОШИБКА] ${account.provider}:`, err.response?.data || err.message);
                 results.push({ accountId: account.id, success: false, error: err.message });
             }
         }
 
-        res.json({ success: true, results });
+        // ИСПРАВЛЕНИЕ 1: Возвращаем success: true только если хотя бы один пост ушел
+        res.json({ success: hasSuccess, results });
 
     } catch (error) {
         console.error('Критическая ошибка в createPost:', error);
