@@ -279,3 +279,64 @@ exports.saveAccountDesign = async (req, res) => {
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
+
+// === ПОЛУЧЕНИЕ ГЛОБАЛЬНЫХ НАСТРОЕК ===
+exports.getGlobalSettings = async (req, res) => {
+  const userId = req.user?.userId || req.user?.id;
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: String(userId) },
+      include: { globalWatermark: true }
+    });
+    res.json({ success: true, signature: user?.globalSignature || '', watermark: user?.globalWatermark || null });
+  } catch (error) {
+    console.error('Ошибка получения глобальных настроек:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+};
+
+// === СОХРАНЕНИЕ ГЛОБАЛЬНЫХ НАСТРОЕК ===
+exports.saveGlobalSettings = async (req, res) => {
+  const userId = req.user?.userId || req.user?.id;
+  const { signature, watermark } = req.body;
+
+  try {
+    if (signature !== undefined) {
+      await prisma.user.update({
+        where: { id: String(userId) },
+        data: { globalSignature: signature }
+      });
+    }
+
+    if (watermark === null) {
+      try { await prisma.globalWatermark.delete({ where: { userId: String(userId) } }); } catch(e) {} 
+    } else if (watermark !== undefined) {
+      await prisma.globalWatermark.upsert({
+        where: { userId: String(userId) },
+        update: {
+          type: watermark.type || 'text', text: watermark.text || '', image: watermark.image || null,
+          position: watermark.position || 'br', opacity: Number(watermark.opacity || 90), 
+          size: Number(watermark.size || 100), angle: Number(watermark.angle || 0),
+          textColor: watermark.textColor || '#FFFFFF', bgColor: watermark.bgColor || '#000000',
+          hasBackground: watermark.hasBackground !== false,
+          x: watermark.x !== undefined ? Number(watermark.x) : null,
+          y: watermark.y !== undefined ? Number(watermark.y) : null,
+        },
+        create: {
+          userId: String(userId),
+          type: watermark.type || 'text', text: watermark.text || '', image: watermark.image || null,
+          position: watermark.position || 'br', opacity: Number(watermark.opacity || 90), 
+          size: Number(watermark.size || 100), angle: Number(watermark.angle || 0),
+          textColor: watermark.textColor || '#FFFFFF', bgColor: watermark.bgColor || '#000000',
+          hasBackground: watermark.hasBackground !== false,
+          x: watermark.x !== undefined ? Number(watermark.x) : null,
+          y: watermark.y !== undefined ? Number(watermark.y) : null,
+        }
+      });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Ошибка сохранения глобальных настроек:', error);
+    res.status(500).json({ error: 'Ошибка сохранения' });
+  }
+};

@@ -27,8 +27,10 @@ model User {
   updatedAt                DateTime  @updatedAt
 
   isOnboardingCompleted    Boolean   @default(false)
-  isValid     Boolean  @default(true) // Работает ли аккаунт
-  errorMsg    String?  // Текст ошибки (например: "Бот удален из канала")
+
+  globalSignature   String?          @default("")
+  globalWatermark   GlobalWatermark?
+  
   
   // === ПРИВЯЗКА СОЦСЕТЕЙ ===
   vkId                     String?   @unique
@@ -76,6 +78,8 @@ model Account {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  isValid     Boolean  @default(true) // Работает ли аккаунт
+  errorMsg    String?
   
   posts       Post[]
   watermark   Watermark? // ВОДЯНОЙ ЗНАК ТЕПЕРЬ ПРИВЯЗАН СЮДА!
@@ -148,4 +152,26 @@ model Notification {
   text      String   
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+// === 4.1 ГЛОБАЛЬНЫЙ ВОДЯНОЙ ЗНАК (ШАБЛОН) ===
+model GlobalWatermark {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type          String   @default("text")
+  text          String?
+  image         String?  @db.Text
+  angle         Float    @default(0)
+  hasBackground Boolean  @default(true)
+  textColor     String   @default("#FFFFFF")
+  bgColor       String   @default("#000000")
+  x             Float?
+  y             Float?
+  position      String   @default("br")
+  size          Int      @default(100)
+  opacity       Int      @default(90)
+  
+  updatedAt     DateTime @updatedAt
 }
