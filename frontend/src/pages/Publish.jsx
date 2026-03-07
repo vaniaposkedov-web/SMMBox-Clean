@@ -21,8 +21,9 @@ const IconTG = () => (
 );
 
 export default function Publish() {
-  const { user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings, tempDraft, saveTempDraft } = useStore();
-  const isRestored = useRef(false); // Флаг, чтобы восстановить данные только 1 раз при загрузке
+  // ИЗМЕНЕНО: Достаем createPostAction из стора!
+  const { user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings, tempDraft, saveTempDraft, createPostAction } = useStore();
+  const isRestored = useRef(false);
 
   const [view, setView] = useState('start'); 
   const [step, setStep] = useState(1);
@@ -31,11 +32,8 @@ export default function Publish() {
   const [text, setText] = useState('');
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   
-  // === ГЛОБАЛЬНЫЕ НАСТРОЙКИ ПОСТА ===
   const [applyWatermark, setApplyWatermark] = useState(true);
   const [applySignature, setApplySignature] = useState(true);
-
-  // === ИНДИВИДУАЛЬНЫЕ НАСТРОЙКИ (ПЕРЕОПРЕДЕЛЕНИЯ ДЛЯ ГРУПП) ===
   const [accountOverrides, setAccountOverrides] = useState({});
 
   const [publishMode, setPublishMode] = useState('now');
@@ -73,7 +71,6 @@ export default function Publish() {
       acc.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
       acc.provider.toLowerCase().includes(searchQuery.toLowerCase())
     );
-    
     return filtered.reduce((acc, curr) => {
       if (!acc[curr.provider]) acc[curr.provider] = [];
       acc[curr.provider].push(curr);
@@ -81,7 +78,7 @@ export default function Publish() {
     }, {});
   }, [searchQuery, accounts]);
 
-  // === ЗАГРУЗКА ДАННЫХ И ВОССТАНОВЛЕНИЕ ЧЕРНОВИКА ===
+  // === ЗАГРУЗКА И ВОССТАНОВЛЕНИЕ (С СОХРАНЕНИЕМ ШАГА) ===
   useEffect(() => {
     if (user?.id) {
       fetchAccounts(user.id);
@@ -96,26 +93,30 @@ export default function Publish() {
       if (tempDraft.accountOverrides) setAccountOverrides(tempDraft.accountOverrides);
       if (tempDraft.applyWatermark !== undefined) setApplyWatermark(tempDraft.applyWatermark);
       if (tempDraft.applySignature !== undefined) setApplySignature(tempDraft.applySignature);
+      
+      // ВОТ ЭТО ПОЧИНИТ ПРОБЛЕМУ СО СБРОСОМ: восстанавливаем экран, на котором был пользователь!
+      if (tempDraft.step) setStep(tempDraft.step);
+      if (tempDraft.view) setView(tempDraft.view);
+      if (tempDraft.publishMode) setPublishMode(tempDraft.publishMode);
+      if (tempDraft.scheduleTime) setScheduleTime(tempDraft.scheduleTime);
+      if (tempDraft.selectedCalendarDate) setSelectedCalendarDate(tempDraft.selectedCalendarDate);
     }
     isRestored.current = true;
   }, [tempDraft]);
 
-  // === АВТОСОХРАНЕНИЕ ПРОГРЕССА В ПАМЯТЬ ===
+  // === АВТОСОХРАНЕНИЕ В ПАМЯТЬ ===
   useEffect(() => {
     if (!isRestored.current || !saveTempDraft) return;
     const timer = setTimeout(() => {
       saveTempDraft({ 
-        text, 
-        selectedAccounts, 
-        accountOverrides, 
-        applyWatermark, 
-        applySignature 
+        text, selectedAccounts, accountOverrides, applyWatermark, applySignature,
+        step, view, publishMode, scheduleTime, selectedCalendarDate
       });
-    }, 1000); // Сохраняем спустя секунду после последних изменений
+    }, 500); // Сохраняем спустя полсекунды после любых изменений
     return () => clearTimeout(timer);
-  }, [text, selectedAccounts, accountOverrides, applyWatermark, applySignature, saveTempDraft]);
+  }, [text, selectedAccounts, accountOverrides, applyWatermark, applySignature, step, view, publishMode, scheduleTime, selectedCalendarDate, saveTempDraft]);
 
-  // === ОБРАБОТЧИКИ АККАУНТОВ ===
+  // === ОБРАБОТЧИКИ АККАУНТОВ И НАСТРОЕК ===
   const toggleAccount = (id) => {
     setSelectedAccounts(prev => 
       prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
@@ -130,7 +131,6 @@ export default function Publish() {
     }
   };
 
-  // === ЖЕЛЕЗОБЕТОННАЯ ЛОГИКА ИНДИВИДУАЛЬНЫХ НАСТРОЕК ===
   const getEffectiveSetting = (accountId, settingType) => {
     if (accountOverrides[accountId] && accountOverrides[accountId].mode === 'custom') {
       return accountOverrides[accountId][settingType];
@@ -163,7 +163,6 @@ export default function Publish() {
       if (prev[accountId] && prev[accountId][settingType] !== undefined) {
         currentVal = prev[accountId][settingType];
       }
-
       return {
         ...prev,
         [accountId]: {
@@ -175,11 +174,8 @@ export default function Publish() {
   };
 
   const handleGlobalToggle = (type) => {
-    if (type === 'watermark') {
-      setApplyWatermark(prev => !prev);
-    } else {
-      setApplySignature(prev => !prev);
-    }
+    if (type === 'watermark') setApplyWatermark(prev => !prev);
+    else setApplySignature(prev => !prev);
   };
 
   // === ОБРАБОТЧИКИ ФОТО ===
@@ -279,30 +275,43 @@ export default function Publish() {
     }
   };
 
-  // === ОБРАБОТЧИКИ ПУБЛИКАЦИИ ===
-  const handlePublish = () => {
+  // === НОВАЯ, РЕАЛЬНАЯ ЛОГИКА ОТПРАВКИ ПОСТА НА СЕРВЕР ===
+  const handlePublish = async () => {
     if (selectedAccounts.length === 0) return alert('Выберите хотя бы один аккаунт!');
     if (publishMode === 'schedule' && (!selectedCalendarDate || !scheduleTime)) {
       return alert('Укажите дату и время для отложенного поста!');
     }
     
-    const accountsData = selectedAccounts.map(id => ({
-      accountId: id,
-      applyWatermark: getEffectiveSetting(id, 'watermark'),
-      applySignature: getEffectiveSetting(id, 'signature')
-    }));
-
-    console.log("Публикуем:", {
-      text,
-      photos,
-      accounts: accountsData
-    });
-
     setIsPublishing(true);
-    setTimeout(() => {
-      setIsPublishing(false);
-      setStep(4);
-    }, 1500);
+
+    try {
+        // 1. Подготавливаем картинки (превращаем в текст для отправки по сети)
+        const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
+
+        // 2. Сборка массива с уникальными настройками для каждой выбранной группы
+        const accountsData = selectedAccounts.map(id => ({
+          accountId: id,
+          applyWatermark: getEffectiveSetting(id, 'watermark'),
+          applySignature: getEffectiveSetting(id, 'signature')
+        }));
+
+        const publishAt = publishMode === 'schedule' ? `${selectedCalendarDate}T${scheduleTime}:00` : null;
+
+        // 3. Отправляем запрос на наш бэкенд через метод из store.js
+        const result = await createPostAction(text, base64Images, accountsData, publishAt);
+
+        if (result.success) {
+            setStep(4); // Показываем экран успешной отправки
+            if (saveTempDraft) saveTempDraft(null); // Сбрасываем черновик, так как всё опубликовано
+        } else {
+            alert(result.error || 'Ошибка сервера при попытке публикации');
+        }
+    } catch (error) {
+        console.error('Критическая ошибка публикации:', error);
+        alert('Произошла ошибка. Бэкенд не отвечает.');
+    } finally {
+        setIsPublishing(false);
+    }
   };
 
   const handleSendToPartners = () => {
@@ -322,7 +331,7 @@ export default function Publish() {
     setShowPartnerModal(false);
     setPartnerStatus('idle');
     setView('start'); 
-    if (saveTempDraft) saveTempDraft(null); // Очищаем память после успешной публикации
+    if (saveTempDraft) saveTempDraft(null);
   };
 
   // ==========================================
