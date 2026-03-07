@@ -40,7 +40,7 @@ exports.generateText = async (req, res) => {
     }
 
     const model = genAI.getGenerativeModel({ 
-        model: "gemini-pro", // <--- Ставим самую базовую и стабильную версию
+        model: "gemini-1.5-flash", // Обязательно эту, чтобы работали фото!
         systemInstruction: systemInstruction 
     });
 
