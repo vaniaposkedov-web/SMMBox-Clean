@@ -329,6 +329,36 @@ export const useStore = create(
         } catch (error) {}
       },
 
+      // Глобальные настройки
+      globalSettings: { signature: '', watermark: null },
+      
+      fetchGlobalSettings: async () => {
+        try {
+          const res = await fetch('/api/accounts/global/settings', {
+            headers: { 'Authorization': `Bearer ${get().token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            set({ globalSettings: { signature: data.signature, watermark: data.watermark } });
+          }
+        } catch (error) { console.error('Ошибка загрузки настроек', error); }
+      },
+
+      saveGlobalSettings: async (signature, watermarkData) => {
+        try {
+          const res = await fetch('/api/accounts/global/settings', {
+            method: 'PUT', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
+            body: JSON.stringify({ signature, watermark: watermarkData })
+          });
+          if (res.ok) {
+            get().fetchGlobalSettings();
+            return { success: true };
+          }
+          return { success: false };
+        } catch (error) { return { success: false }; }
+      },
+
       addMockAccount: async (userId, name, provider) => {
         try {
           const res = await fetch('/api/accounts/mock-add', {
