@@ -276,19 +276,22 @@ export default function Publish() {
   };
 
   // === НОВАЯ, РЕАЛЬНАЯ ЛОГИКА ОТПРАВКИ ПОСТА НА СЕРВЕР ===
+  // === ЗАМЕНИТЬ ФУНКЦИЮ В Publish.jsx ===
   const handlePublish = async () => {
-    if (selectedAccounts.length === 0) return alert('Выберите хотя бы один аккаунт!');
+    if (selectedAccounts.length === 0) {
+      setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
+      return;
+    }
     if (publishMode === 'schedule' && (!selectedCalendarDate || !scheduleTime)) {
-      return alert('Укажите дату и время для отложенного поста!');
+      setTimeout(() => alert('Укажите дату и время для отложенного поста!'), 10);
+      return;
     }
     
     setIsPublishing(true);
 
     try {
-        // 1. Подготавливаем картинки (превращаем в текст для отправки по сети)
         const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
 
-        // 2. Сборка массива с уникальными настройками для каждой выбранной группы
         const accountsData = selectedAccounts.map(id => ({
           accountId: id,
           applyWatermark: getEffectiveSetting(id, 'watermark'),
@@ -297,18 +300,19 @@ export default function Publish() {
 
         const publishAt = publishMode === 'schedule' ? `${selectedCalendarDate}T${scheduleTime}:00` : null;
 
-        // 3. Отправляем запрос на наш бэкенд через метод из store.js
-        const result = await createPostAction(text, base64Images, accountsData, publishAt);
+        // Передаем и selectedAccounts (как accountIds) и accountsData
+        const result = await createPostAction(text, base64Images, selectedAccounts, accountsData, publishAt);
 
         if (result.success) {
-            setStep(4); // Показываем экран успешной отправки
-            if (saveTempDraft) saveTempDraft(null); // Сбрасываем черновик, так как всё опубликовано
+            setStep(4); 
+            if (saveTempDraft) saveTempDraft(null); 
         } else {
-            alert(result.error || 'Ошибка сервера при попытке публикации');
+            // Обертка setTimeout спасает от краша "removeChild"
+            setTimeout(() => alert(result.error || 'Ошибка сервера при попытке публикации'), 10);
         }
     } catch (error) {
         console.error('Критическая ошибка публикации:', error);
-        alert('Произошла ошибка. Бэкенд не отвечает.');
+        setTimeout(() => alert('Произошла ошибка. Бэкенд не отвечает.'), 10);
     } finally {
         setIsPublishing(false);
     }
@@ -919,14 +923,16 @@ export default function Publish() {
               <span className="flex items-center justify-center"><ChevronLeft size={24} /></span>
             </button>
 
+            {/* === ЗАМЕНИТЬ БЛОК onClick У ГЛАВНОЙ КНОПКИ === */}
             <button 
               onClick={() => {
-                if (step === 1 && photos.length === 0) return alert('Добавьте хотя бы 1 фото!');
-                if (step === 2 && !text.trim() && !isImprovingAI) return alert('Напишите текст поста!');
+                if (step === 1 && photos.length === 0) return setTimeout(() => alert('Добавьте хотя бы 1 фото!'), 10);
+                if (step === 2 && !text.trim() && !isImprovingAI) return setTimeout(() => alert('Напишите текст поста!'), 10);
                 if (step === 3) return handlePublish();
                 setStep(step + 1);
               }}
               disabled={isPublishing}
+              // ... классы кнопки оставляем без изменений
               className={`flex-1 flex items-center justify-center gap-2 h-14 rounded-2xl font-bold text-base transition-all active:scale-95
                 ${step === 3 ? (publishMode === 'schedule' ? 'bg-purple-600 text-white hover:bg-purple-500 shadow-lg shadow-purple-500/25' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-500/25') : 'bg-white text-black hover:bg-gray-200'}`}
             >

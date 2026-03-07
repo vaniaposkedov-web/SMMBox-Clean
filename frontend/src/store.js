@@ -420,16 +420,23 @@ export const useStore = create(
       },
 
       // === НОВАЯ РЕАЛЬНАЯ ЛОГИКА ОТПРАВКИ ПОСТА НА БЭКЕНД ===
-      createPostAction: async (text, images, accountsData, publishAt) => {
+      // === ЗАМЕНИТЬ ФУНКЦИЮ В store.js ===
+      createPostAction: async (text, mediaUrls, accountIds, accountsData, publishAt) => {
         try {
           const res = await fetch('/api/posts/create', {
             method: 'POST', 
             headers: { 
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${get().token}` // Обязательный токен авторизации
+              'Authorization': `Bearer ${get().token}` 
             }, 
-            // Отправляем все индивидуальные настройки и картинки
-            body: JSON.stringify({ text, images, accounts: accountsData, publishAt })
+            // Отправляем и старые поля (чтобы не было 400 ошибки), и новые
+            body: JSON.stringify({ 
+              text, 
+              mediaUrls: mediaUrls, 
+              accountIds: accountIds, 
+              accounts: accountsData, 
+              publishAt 
+            })
           });
           const data = await res.json();
           if (res.ok && data.success) return { success: true };
