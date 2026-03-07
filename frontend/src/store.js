@@ -13,6 +13,10 @@ export const useStore = create(
       outgoingRequests: [],
       notifications: [],
       
+      // === НОВЫЕ ДАННЫЕ ДЛЯ ПАРТНЕРОВ ===
+      sharedIncoming: [],
+      sharedOutgoing: [],
+
       watermarkSettings: {
         type: 'text',
         text: 'SMMBOX © 2024',
@@ -57,44 +61,6 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
-
-      sharedIncoming: [],
-      sharedOutgoing: [],
-
-      fetchSharedPosts: async () => {
-        try {
-          const res = await fetch('/api/posts/shared', { headers: { 'Authorization': `Bearer ${get().token}` } });
-          const data = await res.json();
-          if (res.ok) set({ sharedIncoming: data.incoming, sharedOutgoing: data.outgoing });
-        } catch (error) { console.error(error); }
-      },
-
-      sharePostAction: async (text, mediaUrls, partnerIds) => {
-        try {
-          const res = await fetch('/api/posts/share', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
-            body: JSON.stringify({ text, mediaUrls, partnerIds })
-          });
-          const data = await res.json();
-          if (res.ok && data.success) {
-            get().fetchSharedPosts();
-            return { success: true };
-          }
-          return { success: false, error: data.error };
-        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
-      },
-
-      deleteSharedPostAction: async (id) => {
-        try {
-          const res = await fetch(`/api/posts/shared/${id}`, {
-            method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` }
-          });
-          if (res.ok) get().fetchSharedPosts();
-        } catch (error) { console.error(error); }
-      },
-
-      // === ДОБАВИТЬ ЭТУ ФУНКЦИЮ В useStore ===
       scanTelegramChannels: async (botToken) => {
         try {
           const res = await fetch('/api/accounts/tg/scan', {
@@ -239,9 +205,7 @@ export const useStore = create(
           if (res.ok) {
             get().fetchAccounts(user.id); 
           }
-        } catch (error) {
-          console.error('Ошибка верификации аккаунтов:', error);
-        }
+        } catch (error) {}
       },
 
       verifyEmailLink: async (userId, email, code, phone) => { 
@@ -311,6 +275,7 @@ export const useStore = create(
         localStorage.removeItem('token');
         set({ 
           user: null, token: null, myPartners: [], incomingRequests: [], notifications: [],
+          sharedIncoming: [], sharedOutgoing: [],
           publishDraft: { step: 1, photos: [], text: '', accountIds: [], isScheduled: false, publishDate: '' }
         });
       },
@@ -415,7 +380,7 @@ export const useStore = create(
             const data = await res.json();
             set({ globalSettings: { signature: data.signature, watermark: data.watermark } });
           }
-        } catch (error) { console.error('Ошибка загрузки настроек', error); }
+        } catch (error) {}
       },
 
       saveGlobalSettings: async (signature, watermarkData) => {
@@ -433,28 +398,14 @@ export const useStore = create(
         } catch (error) { return { success: false }; }
       },
 
-      addMockAccount: async (userId, name, provider) => {
-        try {
-          const res = await fetch('/api/accounts/mock-add', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, name, provider })
-          });
-          if (res.ok) get().fetchAccounts(userId);
-        } catch (error) {}
-      },
-
       removeAccount: async (accountId) => {
         try {
           const res = await fetch(`/api/accounts/${accountId}`, { 
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${get().token}` }
           });
-          
-          if (res.ok) {
-            get().fetchAccounts(get().user.id);
-          }
-        } catch (error) {
-          console.error('Ошибка при удалении аккаунта', error);
-        }
+          if (res.ok) get().fetchAccounts(get().user.id);
+        } catch (error) {}
       },
 
       saveAccountDesign: async (accountId, signature, watermarkData) => {
@@ -475,8 +426,6 @@ export const useStore = create(
         } catch (error) { return { success: false }; }
       },
 
-      // === НОВАЯ РЕАЛЬНАЯ ЛОГИКА ОТПРАВКИ ПОСТА НА БЭКЕНД ===
-      // === ЗАМЕНИТЬ ФУНКЦИЮ В store.js ===
       createPostAction: async (text, mediaUrls, accountIds, accountsData, publishAt) => {
         try {
           const res = await fetch('/api/posts/create', {
@@ -485,21 +434,55 @@ export const useStore = create(
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${get().token}` 
             }, 
-            // Отправляем и старые поля (чтобы не было 400 ошибки), и новые
             body: JSON.stringify({ 
-              text, 
-              mediaUrls: mediaUrls, 
-              accountIds: accountIds, 
-              accounts: accountsData, 
-              publishAt 
+              text, mediaUrls: mediaUrls, accountIds: accountIds, 
+              accounts: accountsData, publishAt 
             })
           });
           const data = await res.json();
           if (res.ok && data.success) return { success: true };
           return { success: false, error: data.error || 'Ошибка при обработке сервером' };
         } catch (error) { 
-          return { success: false, error: 'Ошибка соединения с сервером. Бэкенд не отвечает.' }; 
+          return { success: false, error: 'Ошибка соединения с сервером.' }; 
         }
+      },
+
+      // === НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ СО ВХОДЯЩИМИ/ИСХОДЯЩИМИ ПОСТАМИ ===
+      fetchSharedPosts: async () => {
+        try {
+          const res = await fetch('/api/posts/shared', { 
+            headers: { 'Authorization': `Bearer ${get().token}` } 
+          });
+          if (res.ok) {
+            const data = await res.json();
+            set({ sharedIncoming: data.incoming, sharedOutgoing: data.outgoing });
+          }
+        } catch (error) {}
+      },
+
+      sharePostAction: async (text, mediaUrls, partnerIds) => {
+        try {
+          const res = await fetch('/api/posts/share', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
+            body: JSON.stringify({ text, mediaUrls, partnerIds })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            get().fetchSharedPosts();
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
+      },
+
+      deleteSharedPostAction: async (id) => {
+        try {
+          const res = await fetch(`/api/posts/shared/${id}`, {
+            method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` }
+          });
+          if (res.ok) get().fetchSharedPosts();
+        } catch (error) {}
       }
 
     }),
