@@ -27,10 +27,12 @@ export default function Settings() {
   };
 
   return (
-    <div className="max-w-[1600px] w-full mx-auto flex flex-col md:flex-row gap-6 p-4...">
+    // БЫЛО: <div className="max-w-[1600px] w-full mx-auto flex flex-col md:flex-row gap-6 p-4...">
+    // СТАЛО:
+    <div className="w-full max-w-[98%] 2xl:max-w-[1800px] mx-auto flex flex-col md:flex-row gap-8 px-4 md:px-8 pt-10 lg:pt-14 pb-12">
       
       {/* Боковое меню */}
-      <div className="w-full md:w-64 shrink-0">
+      <div className="w-full md:w-64 xl:w-72 shrink-0">
         <h1 className="text-2xl font-bold mb-4 md:mb-6 hidden md:flex items-center gap-2">
           <SettingsIcon className="text-admin-accent" /> Настройки
         </h1>
