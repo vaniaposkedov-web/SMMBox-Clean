@@ -10,6 +10,7 @@ export const useStore = create(
       posts: [],
       myPartners: [],
       incomingRequests: [],
+      outgoingRequests: [],
       notifications: [],
       
       watermarkSettings: {
@@ -256,7 +257,12 @@ export const useStore = create(
           const res = await fetch(`/api/partners/data?userId=${userId}`);
           if (res.ok) {
             const data = await res.json();
-            set({ myPartners: data.partners, incomingRequests: data.incomingRequests, notifications: data.notifications });
+            set({ 
+              myPartners: data.partners, 
+              incomingRequests: data.incomingRequests, 
+              outgoingRequests: data.outgoingRequests, // <--- Сохраняем
+              notifications: data.notifications 
+            });
           }
         } catch (error) {}
       },
@@ -295,11 +301,19 @@ export const useStore = create(
         await fetch('/api/partners/request', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId, receiverId })
         });
-        get().fetchPartnerData(requesterId);
+        get().fetchPartnerData(requesterId); // Обновляем данные
       },
 
       acceptPartnership: async (partnershipId) => {
         await fetch('/api/partners/accept', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId })
+        });
+        get().fetchPartnerData(get().user.id);
+      },
+
+      // НОВЫЙ МЕТОД: Отклонить заявку
+      declinePartnership: async (partnershipId) => {
+        await fetch('/api/partners/decline', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId })
         });
         get().fetchPartnerData(get().user.id);
@@ -316,7 +330,7 @@ export const useStore = create(
         await fetch('/api/partners/notifications/clear', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId })
         });
-        set({ notifications: [] });
+        get().fetchPartnerData(userId); // Перезапрашиваем данные
       },
 
       fetchAccounts: async (userId) => {

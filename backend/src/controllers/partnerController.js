@@ -1,72 +1,77 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// 1. Получить все данные (Партнеры, Заявки, Уведомления) для конкретного юзера
+// 1. Получить все данные (Партнеры, Заявки, Уведомления)
 exports.getPartnerData = async (req, res) => {
   const { userId } = req.query;
   try {
     // Входящие заявки
     const incomingRequests = await prisma.partnership.findMany({
       where: { receiverId: userId, status: 'PENDING' },
-      include: { requester: { select: { id: true, name: true, pavilion: true } } }
+      include: { requester: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } }
     });
 
-    // Подтвержденные партнеры (где юзер либо отправитель, либо получатель)
+    // Исходящие заявки (чтобы понимать, кому мы уже отправили)
+    const outgoingRequests = await prisma.partnership.findMany({
+      where: { requesterId: userId, status: 'PENDING' }
+    });
+
+    // Подтвержденные партнеры
     const acceptedPartnerships = await prisma.partnership.findMany({
       where: {
         OR: [{ requesterId: userId }, { receiverId: userId }],
         status: 'ACCEPTED'
       },
       include: {
-        requester: { select: { id: true, name: true, pavilion: true } },
-        receiver: { select: { id: true, name: true, pavilion: true } }
+        requester: { select: { id: true, name: true, pavilion: true, phone: true } },
+        receiver: { select: { id: true, name: true, pavilion: true, phone: true } }
       }
     });
 
-    // Извлекаем самих людей из связей
+    // Извлекаем людей
     const partners = acceptedPartnerships.map(p => 
       p.requesterId === userId ? p.receiver : p.requester
     );
 
-    // Уведомления
+    // Уведомления (о разрыве партнерства и т.д.)
     const notifications = await prisma.notification.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' }
     });
 
-    res.json({ incomingRequests, partners, notifications });
+    res.json({ incomingRequests, outgoingRequests, partners, notifications });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка загрузки данных' });
   }
 };
 
-// 2. Поиск новых поставщиков
-// 2. Поиск новых поставщиков (с поддержкой русского языка)
+// 2. МУЛЬТИ-ПОИСК (Имя, ID, Павильон, Телефон)
 exports.searchPartners = async (req, res) => {
   const { query, userId } = req.query;
   
   try {
     if (!query) return res.json([]);
 
-    // Получаем всех пользователей, кроме текущего
+    // Достаем поля, включая телефон
     const allUsers = await prisma.user.findMany({
       where: { id: { not: userId } },
-      select: { id: true, name: true, pavilion: true }
+      select: { id: true, name: true, pavilion: true, phone: true }
     });
 
-    // Переводим запрос в нижний регистр для независимого от регистра поиска
-    const lowerQuery = query.toLowerCase();
+    const lowerQuery = query.toLowerCase().trim();
 
-    // Фильтруем через JavaScript (идеально для кириллицы)
+    // Фильтруем по 4 параметрам
     const filteredUsers = allUsers.filter(u => {
       const matchName = u.name && u.name.toLowerCase().includes(lowerQuery);
       const matchPavilion = u.pavilion && u.pavilion.toLowerCase().includes(lowerQuery);
-      return matchName || matchPavilion;
+      const matchPhone = u.phone && u.phone.includes(lowerQuery);
+      const matchId = u.id.toLowerCase().includes(lowerQuery);
+      
+      return matchName || matchPavilion || matchPhone || matchId;
     });
 
     res.json(filteredUsers);
   } catch (error) {
-    console.error('Ошибка поиска:', error);
     res.status(500).json({ error: 'Ошибка поиска' });
   }
 };
@@ -98,7 +103,18 @@ exports.acceptRequest = async (req, res) => {
   }
 };
 
-// 5. Прекратить сотрудничество (Удаление + Уведомление)
+// 4.1 Отклонить/Отозвать заявку
+exports.declineRequest = async (req, res) => {
+  const { partnershipId } = req.body;
+  try {
+    await prisma.partnership.delete({ where: { id: partnershipId } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка отмены' });
+  }
+};
+
+// 5. Прекратить сотрудничество (Создает уведомление)
 exports.removePartner = async (req, res) => {
   const { currentUserId, partnerId } = req.body;
   try {
@@ -113,10 +129,11 @@ exports.removePartner = async (req, res) => {
       }
     });
 
+    // Создаем уведомление для удаленного партнера
     await prisma.notification.create({
       data: {
         userId: partnerId,
-        text: `Поставщик ${currentUser.name} (${currentUser.pavilion}) прекратил с вами сотрудничество.`
+        text: `Пользователь ${currentUser.name || 'Без имени'} (Павильон: ${currentUser.pavilion || 'Не указан'}) прекратил с вами сотрудничество.`
       }
     });
 
