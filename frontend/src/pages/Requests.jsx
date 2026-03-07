@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { UserCheck, Trash2, Bell, Inbox, X, UserMinus } from 'lucide-react';
 
