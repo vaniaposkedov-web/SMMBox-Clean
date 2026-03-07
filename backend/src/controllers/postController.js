@@ -100,6 +100,7 @@ exports.createPost = async (req, res) => {
                 finalText += `\n\n${accData.signatureText}`;
             }
 
+            // 2. ИДЕАЛЬНАЯ ЛОГИКА ВОДЯНЫХ ЗНАКОВ SHARP (Синхронизировано с фронтендом)
             let processedBuffers = rawImageBuffers;
             
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
@@ -114,28 +115,34 @@ exports.createPost = async (req, res) => {
                         const width = metadata.width || 1000;
                         const height = metadata.height || 1000;
                         
-                        // ИСПРАВЛЕНИЕ: Увеличен базовый размер (теперь 7.5% от ширины вместо 4%)
-                        const fontSize = Math.max(24, Math.floor(width * 0.075 * ((wm.size || 100) / 100)));
+                        // ИСПРАВЛЕНИЕ 1: Золотая середина размера (5% от ширины фото)
+                        const fontSize = Math.max(18, Math.floor(width * 0.05 * ((wm.size || 100) / 100)));
                         
-                        const padding = Math.floor(fontSize * 0.6);
-                        // ИСПРАВЛЕНИЕ: Коэффициент ширины текста для шрифта DejaVu (0.55)
-                        const textWidth = Math.floor(wmText.length * fontSize * 0.55) + (padding * 2);
-                        const textHeight = Math.floor(fontSize * 1.5);
+                        // ИСПРАВЛЕНИЕ 2: Просторные отступы (padding), чтобы текст "дышал" в плашке
+                        const paddingX = Math.floor(fontSize * 0.8); // Отступы по бокам
+                        const paddingY = Math.floor(fontSize * 0.6); // Отступы сверху и снизу
+                        
+                        // ИСПРАВЛЕНИЕ 3: Коэффициент 0.65, так как шрифт DejaVu Sans Bold очень широкий
+                        const textWidth = Math.floor(wmText.length * fontSize * 0.65) + (paddingX * 2);
+                        const textHeight = Math.floor(fontSize * 1.1) + (paddingY * 2);
                         
                         const bgColor = wm.bgColor || '#000000';
                         const textColor = wm.textColor || '#ffffff';
                         const opacity = wm.opacity !== undefined ? wm.opacity / 100 : 0.9;
                         const hasBg = wm.hasBackground !== false;
 
-                        // ИСПРАВЛЕНИЕ: Указан шрифт DejaVu Sans, который мы установим в Docker
+                        // Слегка скругляем углы плашки (rx)
+                        const borderRadius = Math.floor(fontSize * 0.3);
+
                         const svgText = `
                         <svg width="${textWidth}" height="${textHeight}" xmlns="http://www.w3.org/2000/svg">
                             <g opacity="${opacity}">
-                                ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${padding / 2}" />` : ''}
+                                ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
                                 <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}px" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="${textColor}">${wmText}</text>
                             </g>
                         </svg>`;
 
+                        // Вычисляем точные пиксельные координаты X и Y из процентов
                         let leftPos = 0;
                         let topPos = 0;
 
@@ -155,11 +162,16 @@ exports.createPost = async (req, res) => {
                             else topPos = Math.floor((height - textHeight) / 2);
                         }
 
+                        // Защита от выхода за границы
                         leftPos = Math.max(0, Math.min(leftPos, width - textWidth));
                         topPos = Math.max(0, Math.min(topPos, height - textHeight));
 
                         return await image
-                            .composite([{ input: Buffer.from(svgText), top: topPos, left: leftPos }])
+                            .composite([{ 
+                                input: Buffer.from(svgText), 
+                                top: topPos, 
+                                left: leftPos 
+                            }])
                             .jpeg({ quality: 90 }) 
                             .toBuffer();
                     } catch (e) {
