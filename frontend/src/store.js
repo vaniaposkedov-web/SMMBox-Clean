@@ -57,6 +57,25 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
+      // === ДОБАВИТЬ ЭТУ ФУНКЦИЮ В useStore ===
+      scanTelegramChannels: async (botToken) => {
+        try {
+          const res = await fetch('/api/accounts/tg/scan', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${get().token}` 
+            },
+            body: JSON.stringify({ botToken })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) return { success: true, channels: data.channels };
+          return { success: false, error: data.error || 'Ошибка сканирования' };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения с сервером' };
+        }
+      },
+
       login: async (email, password) => {
         try {
           const res = await fetch('/api/auth/login', {

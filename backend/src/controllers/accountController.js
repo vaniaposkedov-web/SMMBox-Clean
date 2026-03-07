@@ -340,3 +340,79 @@ exports.saveGlobalSettings = async (req, res) => {
     res.status(500).json({ error: 'Ошибка сохранения' });
   }
 };
+
+// === УМНЫЙ РАДАР TELEGRAM-КАНАЛОВ ===
+exports.scanTgChannels = async (req, res) => {
+  const { botToken } = req.body;
+  const userId = req.user?.userId || req.user?.id;
+
+  try {
+    if (!botToken) return res.status(400).json({ error: 'Укажите токен бота' });
+    const token = botToken.replace(/['"]/g, '').trim();
+
+    // 1. Получаем уже привязанные аккаунты, чтобы не предлагать их дубликаты
+    const existingAccounts = await prisma.account.findMany({
+      where: { userId: String(userId), provider: 'TELEGRAM' },
+      select: { providerId: true }
+    });
+    const existingIds = new Set(existingAccounts.map(a => a.providerId));
+
+    // 2. Удаляем вебхук, иначе Телеграм не отдаст историю обновлений
+    await axios.get(`https://api.telegram.org/bot${token}/deleteWebhook`);
+
+    // 3. Получаем историю событий бота за последние 24 часа
+    const updatesRes = await axios.get(`https://api.telegram.org/bot${token}/getUpdates`);
+    const updates = updatesRes.data.result;
+
+    if (!updates || updates.length === 0) {
+        return res.json({ success: true, channels: [] }); 
+    }
+
+    // 4. Фильтруем уникальные чаты (каналы и группы)
+    const uniqueChats = new Map();
+
+    for (const update of updates) {
+      let chat = null;
+      if (update.my_chat_member) chat = update.my_chat_member.chat;
+      if (update.message) chat = update.message.chat;
+      if (update.channel_post) chat = update.channel_post.chat;
+
+      if (chat && (chat.type === 'channel' || chat.type === 'group' || chat.type === 'supergroup')) {
+          const chatIdStr = String(chat.id);
+          if (!existingIds.has(chatIdStr)) {
+              uniqueChats.set(chatIdStr, chat);
+          }
+      }
+    }
+
+    // 5. Получаем красивые аватарки для найденных чатов
+    const channels = [];
+    for (const [chatId, chatObj] of uniqueChats.entries()) {
+        try {
+            const chatRes = await axios.get(`https://api.telegram.org/bot${token}/getChat?chat_id=${chatId}`);
+            const fullChat = chatRes.data.result;
+
+            let avatarUrl = null;
+            if (fullChat.photo?.small_file_id) {
+                const fileRes = await axios.get(`https://api.telegram.org/bot${token}/getFile?file_id=${fullChat.photo.small_file_id}`);
+                avatarUrl = `https://api.telegram.org/file/bot${token}/${fileRes.data.result.file_path}`;
+            }
+
+            channels.push({
+                chatId: chatId,
+                title: fullChat.title || fullChat.username || 'Без названия',
+                username: fullChat.username ? `@${fullChat.username}` : '',
+                avatar: avatarUrl
+            });
+        } catch (e) {
+            console.log(`Пропуск чата ${chatId}: бот был удален или нет прав`);
+        }
+    }
+
+    res.json({ success: true, channels });
+
+  } catch (error) {
+    console.error('Ошибка сканирования ТГ:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Не удалось просканировать Telegram. Проверьте токен бота.' });
+  }
+};
