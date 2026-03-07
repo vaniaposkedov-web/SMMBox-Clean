@@ -51,27 +51,27 @@ exports.searchPartners = async (req, res) => {
   
   try {
     if (!query) return res.json([]);
+    const lowerQuery = query.toLowerCase().trim();
 
-    // Достаем поля, включая телефон
+    // Запрашиваем всех пользователей и фильтруем мощным JS (чтобы 100% находило UUID и русский текст)
     const allUsers = await prisma.user.findMany({
       where: { id: { not: userId } },
       select: { id: true, name: true, pavilion: true, phone: true }
     });
 
-    const lowerQuery = query.toLowerCase().trim();
-
-    // Фильтруем по 4 параметрам
     const filteredUsers = allUsers.filter(u => {
+      const matchId = u.id && u.id.toLowerCase().includes(lowerQuery);
       const matchName = u.name && u.name.toLowerCase().includes(lowerQuery);
       const matchPavilion = u.pavilion && u.pavilion.toLowerCase().includes(lowerQuery);
-      const matchPhone = u.phone && u.phone.includes(lowerQuery);
-      const matchId = u.id.toLowerCase().includes(lowerQuery);
+      const matchPhone = u.phone && u.phone.toLowerCase().includes(lowerQuery);
       
-      return matchName || matchPavilion || matchPhone || matchId;
+      return matchId || matchName || matchPavilion || matchPhone;
     });
 
-    res.json(filteredUsers);
+    // Отдаем первые 20 результатов, чтобы не перегружать мобильный интерфейс
+    res.json(filteredUsers.slice(0, 20));
   } catch (error) {
+    console.error('Search error:', error);
     res.status(500).json({ error: 'Ошибка поиска' });
   }
 };

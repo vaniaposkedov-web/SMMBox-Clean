@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../../store';
 import { Search, UserPlus, UserCheck, Loader2, Check, Trash2, Users } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // Добавлено для перехода на страницу заявок
+import { useNavigate } from 'react-router-dom';
 
 export default function PartnersManager() {
   const user = useStore((state) => state.user);
   const navigate = useNavigate();
   
-  // Данные из стора (только для партнерства)
+  // Данные из стора
   const myPartners = useStore((state) => state.myPartners) || [];
   const incomingRequests = useStore((state) => state.incomingRequests) || [];
   const outgoingRequests = useStore((state) => state.outgoingRequests) || [];
@@ -58,7 +58,7 @@ export default function PartnersManager() {
         </div>
         {/* Кнопка быстрого перехода к заявкам */}
         {incomingRequests.length > 0 && (
-          <button onClick={() => navigate('/requests')} className="bg-blue-600/20 text-blue-400 border border-blue-500/30 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-600 hover:text-white transition-colors shadow-sm">
+          <button onClick={() => navigate('/requests')} className="w-full sm:w-auto bg-blue-600/20 text-blue-400 border border-blue-500/30 px-5 py-3 sm:py-2 rounded-xl text-sm font-bold flex justify-center items-center gap-2 hover:bg-blue-600 hover:text-white transition-colors shadow-sm">
             Есть новые заявки ({incomingRequests.length})
           </button>
         )}
@@ -79,28 +79,30 @@ export default function PartnersManager() {
         
         {/* --- ВЛАДКА 1: МОИ ПАРТНЕРЫ --- */}
         {activeTab === 'partners' && (
-          <div className="p-6 sm:p-8 animate-in fade-in duration-300">
+          <div className="p-4 sm:p-8 animate-in fade-in duration-300">
             {myPartners.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-500 space-y-4 bg-[#0f1115] border border-dashed border-[#1f222a] rounded-2xl">
                 <Users size={56} className="opacity-20" />
-                <p className="text-[15px]">У вас пока нет партнеров.</p>
-                <button onClick={() => setActiveTab('search')} className="text-blue-400 font-bold hover:underline text-sm uppercase tracking-wider">Найти поставщиков</button>
+                <p className="text-[15px] text-center px-4">У вас пока нет активных партнеров.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
                 {myPartners.map(partner => (
-                  <div key={partner.id} className="bg-[#0f1115] border border-[#1f222a] p-5 rounded-2xl flex items-center justify-between transition-all hover:border-gray-700 shadow-inner group">
-                    <div>
-                      <h3 className="font-bold text-white text-lg">{partner.name || 'Без имени'}</h3>
+                  <div key={partner.id} className="bg-[#0f1115] border border-[#1f222a] p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-all hover:border-gray-700 shadow-inner group">
+                    <div className="overflow-hidden">
+                      <h3 className="font-bold text-white text-lg truncate">{partner.name || 'Без имени'}</h3>
                       <div className="flex flex-wrap items-center gap-2 mt-2">
-                        <span className="text-[10px] bg-[#1a1d24] text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-md uppercase font-bold tracking-wider">
+                        <span className="text-[10px] bg-[#1a1d24] text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-md uppercase font-bold tracking-wider shrink-0">
                           Павильон: {partner.pavilion || '?'}
                         </span>
-                        {partner.phone && <span className="text-[11px] text-gray-500 font-medium bg-[#13151A] px-2 py-1 rounded-md border border-[#1f222a]">{partner.phone}</span>}
+                        {partner.phone && <span className="text-[11px] text-gray-500 font-medium bg-[#13151A] px-2 py-1 rounded-md border border-[#1f222a] shrink-0">{partner.phone}</span>}
                       </div>
+                      {/* Вывод ID партнера */}
+                      <p className="text-[10px] text-gray-600 font-mono mt-2.5 truncate">ID: {partner.id}</p>
                     </div>
-                    <button onClick={() => { if(window.confirm(`Прекратить сотрудничество с ${partner.name}?`)) removePartner(user.id, partner.id); }} className="w-12 h-12 flex items-center justify-center text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-xl transition-colors shrink-0 shadow-sm" title="Удалить партнера">
-                      <Trash2 size={20} />
+                    <button onClick={() => { if(window.confirm(`Прекратить сотрудничество с ${partner.name}?`)) removePartner(user.id, partner.id); }} className="w-full sm:w-12 h-10 sm:h-12 flex items-center justify-center text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-xl transition-colors shrink-0 shadow-sm" title="Удалить партнера">
+                      <span className="sm:hidden font-bold flex items-center gap-2 text-sm"><Trash2 size={16} /> Удалить партнера</span>
+                      <Trash2 size={20} className="hidden sm:block" />
                     </button>
                   </div>
                 ))}
@@ -111,13 +113,13 @@ export default function PartnersManager() {
 
         {/* --- ВЛАДКА 2: ПОИСК --- */}
         {activeTab === 'search' && (
-          <div className="p-6 sm:p-8 animate-in fade-in duration-300">
-            <div className="relative mb-8">
-              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+          <div className="p-4 sm:p-8 animate-in fade-in duration-300">
+            <div className="relative mb-6 sm:mb-8">
+              <Search className="absolute left-4 sm:left-5 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
               <input 
                 type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Поиск по Имени, Павильону (СТ7-43), ID или Телефону..."
-                className="w-full bg-[#0f1115] border border-[#1f222a] shadow-inner rounded-2xl py-4 pl-14 pr-12 text-[15px] text-white focus:outline-none focus:border-blue-500 transition-colors"
+                placeholder="Поиск по ID, Павильону (СТ7-43) или Имени..."
+                className="w-full bg-[#0f1115] border border-[#1f222a] shadow-inner rounded-2xl py-4 pl-12 sm:pl-14 pr-12 text-[15px] text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
               {isSearching && <Loader2 className="absolute right-5 top-1/2 -translate-y-1/2 text-blue-500 animate-spin" size={20} />}
             </div>
@@ -126,34 +128,39 @@ export default function PartnersManager() {
               {searchResults.map(foundUser => {
                 const status = getStatus(foundUser.id);
                 return (
-                  <div key={foundUser.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-[#0f1115] border border-[#1f222a] p-5 rounded-2xl gap-5 hover:border-gray-700 transition-colors shadow-inner">
-                    <div>
-                      <h3 className="font-bold text-white text-lg">{foundUser.name || 'Без имени'}</h3>
+                  <div key={foundUser.id} className="flex flex-col md:flex-row md:items-center justify-between bg-[#0f1115] border border-[#1f222a] p-4 sm:p-5 rounded-2xl gap-5 hover:border-gray-700 transition-colors shadow-inner overflow-hidden">
+                    <div className="overflow-hidden">
+                      <h3 className="font-bold text-white text-lg truncate">{foundUser.name || 'Без имени'}</h3>
                       <div className="flex flex-wrap items-center gap-2 mt-2">
                         <span className="text-[11px] text-gray-400">Павильон: <span className="text-blue-400 font-bold uppercase tracking-wider bg-blue-500/10 px-2 py-0.5 rounded ml-1">{foundUser.pavilion || 'Не указан'}</span></span>
+                        {foundUser.phone && <span className="text-[11px] text-gray-500 bg-[#13151A] px-2 py-0.5 rounded border border-[#1f222a]">{foundUser.phone}</span>}
                       </div>
+                      {/* Вывод ID в поиске */}
+                      <p className="text-[10px] text-gray-600 font-mono mt-2.5 truncate">ID: {foundUser.id}</p>
                     </div>
 
-                    {status === 'NONE' && (
-                      <button onClick={() => sendRequest(user.id, foundUser.id)} className="flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3.5 rounded-xl text-sm font-bold hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20 w-full sm:w-auto">
-                        <UserPlus size={18} /> Пригласить
-                      </button>
-                    )}
-                    {status === 'SENT' && (
-                       <span className="flex items-center justify-center gap-2 text-yellow-500 text-sm font-bold bg-yellow-500/10 border border-yellow-500/20 px-6 py-3.5 rounded-xl w-full sm:w-auto shadow-sm"><Check size={18}/> Заявка отправлена</span>
-                    )}
-                    {status === 'PARTNER' && (
-                      <span className="flex items-center justify-center gap-2 text-emerald-500 text-sm font-bold bg-emerald-500/10 border border-emerald-500/20 px-6 py-3.5 rounded-xl w-full sm:w-auto shadow-sm"><UserCheck size={18} /> Ваш Партнер</span>
-                    )}
-                    {status === 'INCOMING' && (
-                      <button onClick={() => navigate('/requests')} className="flex items-center justify-center gap-2 bg-purple-600 text-white px-6 py-3.5 rounded-xl text-sm font-bold shadow-lg shadow-purple-500/20 w-full sm:w-auto hover:bg-purple-500 transition-colors">Перейти в Заявки</button>
-                    )}
+                    <div className="shrink-0 w-full md:w-auto">
+                      {status === 'NONE' && (
+                        <button onClick={() => sendRequest(user.id, foundUser.id)} className="w-full md:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-3.5 rounded-xl text-sm font-bold hover:bg-blue-500 transition-colors shadow-lg shadow-blue-500/20">
+                          <UserPlus size={18} /> Пригласить
+                        </button>
+                      )}
+                      {status === 'SENT' && (
+                         <span className="w-full md:w-auto flex items-center justify-center gap-2 text-yellow-500 text-sm font-bold bg-yellow-500/10 border border-yellow-500/20 px-6 py-3.5 rounded-xl shadow-sm"><Check size={18}/> Заявка отправлена</span>
+                      )}
+                      {status === 'PARTNER' && (
+                        <span className="w-full md:w-auto flex items-center justify-center gap-2 text-emerald-500 text-sm font-bold bg-emerald-500/10 border border-emerald-500/20 px-6 py-3.5 rounded-xl shadow-sm"><UserCheck size={18} /> Партнер</span>
+                      )}
+                      {status === 'INCOMING' && (
+                        <button onClick={() => navigate('/requests')} className="w-full md:w-auto flex items-center justify-center gap-2 bg-purple-600 text-white px-6 py-3.5 rounded-xl text-sm font-bold shadow-lg shadow-purple-500/20 hover:bg-purple-500 transition-colors">Посмотреть заявку</button>
+                      )}
+                    </div>
                   </div>
                 )
               })}
               
               {searchQuery.length > 1 && !isSearching && searchResults.length === 0 && (
-                <div className="text-center text-gray-500 py-12 bg-[#0f1115] rounded-2xl border border-[#1f222a] border-dashed">
+                <div className="text-center text-gray-500 py-12 bg-[#0f1115] rounded-2xl border border-[#1f222a] border-dashed px-4">
                   По вашему запросу ничего не найдено.
                 </div>
               )}
