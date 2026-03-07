@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const axios = require('axios');
 const FormData = require('form-data');
-const sharp = require('sharp'); // Для водяных знаков
+const sharp = require('sharp'); 
 
 // === ЛОГИКА ОТПРАВКИ В TELEGRAM ===
 async function sendToTelegram(token, chatId, text, imageBuffers) {
@@ -115,7 +115,6 @@ exports.createPost = async (req, res) => {
                 finalText += `\n\n${accData.signatureText}`;
             }
 
-            // === ИДЕАЛЬНАЯ ЛОГИКА ВОДЯНЫХ ЗНАКОВ ===
             let processedBuffers = rawImageBuffers;
             
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
@@ -138,47 +137,74 @@ exports.createPost = async (req, res) => {
                         let wmPixelHeight = 0;
 
                         if (wmType === 'text') {
-                            // 1. Адаптация размера
                             const scaleFactor = (wm.size || 100) / 100;
                             const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
                             
-                            // 2. ИСПРАВЛЕНИЕ: Королевские отступы
-                            const paddingX = Math.floor(fontSize * 1.5); // Еще больше пространства по бокам
-                            const paddingY = Math.floor(fontSize * 0.8); // Комфортные отступы сверху и снизу
+                            // Королевские отступы
+                            const paddingX = Math.floor(fontSize * 1.5); 
+                            const paddingY = Math.floor(fontSize * 1); 
                             
-                            // 3. УМНЫЙ ПРОСЧЕТ ШИРИНЫ (Спец. для русского языка)
-                            let textWidthRaw = 0;
-                            for (let i = 0; i < wmText.length; i++) {
-                                // Если код символа > 1000 — это кириллица (русские буквы)
-                                if (wmText.charCodeAt(i) > 1000) {
-                                    textWidthRaw += fontSize * 0.85; // Даем много места широким русским буквам
-                                } else {
-                                    textWidthRaw += fontSize * 0.65; // Стандартное место для английских букв и цифр
+                            // === ИСПРАВЛЕНИЕ 1: ПОДДЕРЖКА ПЕРЕНОСА СТРОК (\n) ===
+                            const lines = wmText.split('\n');
+                            let maxTextWidthRaw = 0;
+                            
+                            for (const line of lines) {
+                                let currentLineWidth = 0;
+                                for (let i = 0; i < line.length; i++) {
+                                    if (line.charCodeAt(i) > 1000) {
+                                        currentLineWidth += fontSize * 0.95; // Широкий коэффициент для кириллицы
+                                    } else {
+                                        currentLineWidth += fontSize * 0.75; // Для латиницы и цифр
+                                    }
+                                }
+                                if (currentLineWidth > maxTextWidthRaw) {
+                                    maxTextWidthRaw = currentLineWidth;
                                 }
                             }
-                            textWidthRaw = Math.floor(textWidthRaw);
                             
-                            wmPixelWidth = textWidthRaw + (paddingX * 2);
-                            wmPixelHeight = Math.floor(fontSize * 1.3) + (paddingY * 2);
+                            wmPixelWidth = Math.floor(maxTextWidthRaw) + (paddingX * 2);
+                            
+                            const lineHeight = Math.floor(fontSize * 1.25);
+                            wmPixelHeight = (lines.length * lineHeight) + (paddingY * 2);
                             
                             const bgColor = wm.bgColor || '#000000';
                             const textColor = wm.textColor || '#ffffff';
                             const hasBg = wm.hasBackground !== false;
                             const borderRadius = Math.floor(fontSize * 0.35); 
 
-                            // 4. Генерация SVG
+                            // Вычисляем старт для центрирования всех строк по вертикали
+                            const centerY = wmPixelHeight / 2;
+                            const totalTextHeight = (lines.length - 1) * lineHeight;
+                            const startY = centerY - (totalTextHeight / 2);
+
+                            // Безопасный эскейп спецсимволов для SVG (например, амперсандов)
+                            const escapeXml = (unsafe) => unsafe.replace(/[<>&'"]/g, (c) => {
+                                switch (c) {
+                                    case '<': return '&lt;'; case '>': return '&gt;';
+                                    case '&': return '&amp;'; case '\'': return '&apos;';
+                                    case '"': return '&quot;'; default: return c;
+                                }
+                            });
+
+                            // Генерируем несколько <tspan> для каждой строки
+                            const tspans = lines.map((line, index) => {
+                                const yPos = startY + (index * lineHeight);
+                                return `<tspan x="50%" y="${yPos}" text-anchor="middle" dominant-baseline="central">${escapeXml(line)}</tspan>`;
+                            }).join('');
+
                             const svgText = `
                             <svg width="${wmPixelWidth}" height="${wmPixelHeight}" xmlns="http://www.w3.org/2000/svg">
                                 <g opacity="${opacity}">
                                     ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
-                                    <text x="50%" y="52%" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}px" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="${textColor}">${wmText}</text>
+                                    <text font-size="${fontSize}px" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="${textColor}">
+                                        ${tspans}
+                                    </text>
                                 </g>
                             </svg>`;
                             
                             watermarkBuffer = Buffer.from(svgText);
                             
                         } else if (wmType === 'image' && wm.image) {
-                            // 5. ПОДДЕРЖКА ЛОГОТИПОВ (PNG/JPG)
                             const imgBase64 = wm.image.replace(/^data:image\/\w+;base64,/, "");
                             const scaleFactor = (wm.size || 100) / 100;
                             const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
@@ -197,30 +223,25 @@ exports.createPost = async (req, res) => {
 
                         if (!watermarkBuffer) return buf;
 
-                        // 6. ПОВОРОТ
                         if (angle !== 0) {
                             watermarkBuffer = await sharp(watermarkBuffer)
                                 .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
                                 .toBuffer();
                         }
 
-                        // Получаем точные размеры плашки после возможного поворота
                         const wmMeta = await sharp(watermarkBuffer).metadata();
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
-                        // 7. СИНХРОНИЗАЦИЯ КООРДИНАТ С REACT (Translate -50%, -50%)
                         let leftPos = 0;
                         let topPos = 0;
 
                         if (wm.position === 'custom' || (wm.x !== undefined && wm.y !== undefined)) {
-                            // Фронтенд передает координаты ЦЕНТРА в процентах
                             const centerX = Math.floor(width * (wm.x / 100));
                             const centerY = Math.floor(height * (wm.y / 100));
                             leftPos = centerX - Math.floor(wmPixelWidth / 2);
                             topPos = centerY - Math.floor(wmPixelHeight / 2);
                         } else {
-                            // Резерв по старой сетке из React-компонента
                             const posToCoords = {
                                 'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
                                 'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
@@ -233,9 +254,12 @@ exports.createPost = async (req, res) => {
                             topPos = centerY - Math.floor(wmPixelHeight / 2);
                         }
 
-                        // 8. Жесткая защита границ (чтобы знак не вылез за фото и не выдал ошибку)
-                        leftPos = Math.max(0, Math.min(leftPos, width - wmPixelWidth));
-                        topPos = Math.max(0, Math.min(topPos, height - wmPixelHeight));
+                        // === ИСПРАВЛЕНИЕ 2: СНЯЛИ ОГРАНИЧЕНИЯ ДЛЯ МАСШТАБА 250% ===
+                        // Убраны Math.max(0). Теперь огромный знак не будет насильно прижиматься 
+                        // к верхнему левому углу. Sharp отлично понимает отрицательные координаты
+                        // и просто позволит знаку красиво "вылезать" за края, сохраняя его центр там, где вы указали!
+                        leftPos = Math.round(leftPos);
+                        topPos = Math.round(topPos);
 
                         return await image
                             .composite([{ 
