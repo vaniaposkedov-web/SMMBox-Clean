@@ -138,27 +138,35 @@ exports.createPost = async (req, res) => {
                         let wmPixelHeight = 0;
 
                         if (wmType === 'text') {
-                            // 1. Адаптация размера (4% базовый + scale)
+                            // 1. Адаптация размера
                             const scaleFactor = (wm.size || 100) / 100;
                             const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
                             
-                            // 2. ИСПРАВЛЕНИЕ: Делаем отступы более просторными (как px-3 py-1.5 в Tailwind)
-                            const paddingX = Math.floor(fontSize * 1.2); // Увеличили боковые отступы
-                            const paddingY = Math.floor(fontSize * 0.7); // Увеличили отступы сверху/снизу
+                            // 2. ИСПРАВЛЕНИЕ: Королевские отступы
+                            const paddingX = Math.floor(fontSize * 1.5); // Еще больше пространства по бокам
+                            const paddingY = Math.floor(fontSize * 0.8); // Комфортные отступы сверху и снизу
                             
-                            // 3. ИСПРАВЛЕНИЕ: Коэффициент ширины текста 0.75 (так как DejaVu Sans очень широкий шрифт)
-                            const textWidthRaw = Math.floor(wmText.length * fontSize * 0.75);
+                            // 3. УМНЫЙ ПРОСЧЕТ ШИРИНЫ (Спец. для русского языка)
+                            let textWidthRaw = 0;
+                            for (let i = 0; i < wmText.length; i++) {
+                                // Если код символа > 1000 — это кириллица (русские буквы)
+                                if (wmText.charCodeAt(i) > 1000) {
+                                    textWidthRaw += fontSize * 0.85; // Даем много места широким русским буквам
+                                } else {
+                                    textWidthRaw += fontSize * 0.65; // Стандартное место для английских букв и цифр
+                                }
+                            }
+                            textWidthRaw = Math.floor(textWidthRaw);
+                            
                             wmPixelWidth = textWidthRaw + (paddingX * 2);
-                            wmPixelHeight = Math.floor(fontSize * 1.4) + (paddingY * 2);
+                            wmPixelHeight = Math.floor(fontSize * 1.3) + (paddingY * 2);
                             
                             const bgColor = wm.bgColor || '#000000';
                             const textColor = wm.textColor || '#ffffff';
                             const hasBg = wm.hasBackground !== false;
-                            
-                            // Чуть более мягкое скругление углов (как в React)
                             const borderRadius = Math.floor(fontSize * 0.35); 
 
-                            // 4. Генерация SVG с текстом
+                            // 4. Генерация SVG
                             const svgText = `
                             <svg width="${wmPixelWidth}" height="${wmPixelHeight}" xmlns="http://www.w3.org/2000/svg">
                                 <g opacity="${opacity}">
