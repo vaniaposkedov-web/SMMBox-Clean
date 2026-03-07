@@ -10,15 +10,15 @@ datasource db {
 // === 1. ПОЛЬЗОВАТЕЛИ И РОЛИ ===
 model User {
   id                       String    @id @default(uuid())
-  email                    String?   @unique // ИЗМЕНЕНО: теперь опционально
+  email                    String?   @unique
   phone                    String?   @unique 
-  password                 String?           
+  password                 String?
   name                     String?
   
   // === НОВЫЕ ПОЛЯ ДЛЯ TELEGRAM ===
   firstName                String?
   lastName                 String?
-  username                 String?   @unique // Никнейм в ТГ
+  username                 String?   @unique
   
   pavilion                 String?
   avatarUrl                String?
@@ -28,9 +28,8 @@ model User {
 
   isOnboardingCompleted    Boolean   @default(false)
 
-  globalSignature   String?          @default("")
-  globalWatermark   GlobalWatermark?
-  
+  globalSignature          String?   @default("")
+  globalWatermark          GlobalWatermark?
   
   // === ПРИВЯЗКА СОЦСЕТЕЙ ===
   vkId                     String?   @unique
@@ -52,16 +51,18 @@ model User {
   planId                   String?
   plan                     SubscriptionPlan? @relation(fields: [planId], references: [id])
 
-  sentSharedPosts     SharedPost[] @relation("SentSharedPosts")
-  receivedSharedPosts SharedPost[] @relation("ReceivedSharedPosts")
+  // === ШАРИНГ ПОСТОВ ===
+  sentSharedPosts          SharedPost[] @relation("SentSharedPosts")
+  receivedSharedPosts      SharedPost[] @relation("ReceivedSharedPosts")
 }
+
 // === 2. ТАРИФЫ (ПОДПИСКИ) ===
 model SubscriptionPlan {
-  id             String @id @default(uuid())
-  name           String // "Базовый", "PRO"
-  maxAccounts    Int    // Сколько групп можно привязать
-  maxPostsPerDay Int    // Лимит постов в сутки
-  price          Int    @default(0)
+  id             String   @id @default(uuid())
+  name           String   
+  maxAccounts    Int    
+  maxPostsPerDay Int    
+  price          Int      @default(0)
   
   users          User[]
 }
@@ -71,29 +72,26 @@ model Account {
   id          String   @id @default(uuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider    String   // 'vk', 'telegram', 'ok'
-  providerId  String   // ID группы или канала
-  accessToken String   // Токен для постинга
-  name        String   // Название группы
+  provider    String   
+  providerId  String   
+  accessToken String   
+  name        String   
   avatarUrl   String?
-
-  signature   String?  @default("")  // <--- ДОБАВИТЬ ЭТУ СТРОКУ
+  signature   String?  @default("")
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  isValid     Boolean  @default(true) // Работает ли аккаунт
+  isValid     Boolean  @default(true) 
   errorMsg    String?
-  
   posts       Post[]
-  watermark   Watermark? // ВОДЯНОЙ ЗНАК ТЕПЕРЬ ПРИВЯЗАН СЮДА!
-
+  watermark   Watermark? 
+  
   @@unique([provider, providerId]) 
 }
 
-// === 4. ВОДЯНЫЕ ЗНАКИ (Индивидуально для каждого Аккаунта) ===
+// === 4. ВОДЯНЫЕ ЗНАКИ ===
 model Watermark {
   id            String   @id @default(uuid())
-  
   accountId     String   @unique
   account       Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   
@@ -102,12 +100,11 @@ model Watermark {
   fontFamily    String?  @default("font-sans")
   visualStyle   String?  @default("glass")
   hasBackground Boolean  @default(true)
-  imageUrl      String?  
+  imageUrl      String?
   position      String   @default("br")
   size          Int      @default(100)
   opacity       Int      @default(90)
   
-
   updatedAt     DateTime @updatedAt
 
   image         String?  @db.Text
@@ -118,18 +115,37 @@ model Watermark {
   y             Float?
 }
 
+// === 4.1 ГЛОБАЛЬНЫЙ ВОДЯНОЙ ЗНАК (ШАБЛОН) ===
+model GlobalWatermark {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type          String   @default("text")
+  text          String?
+  image         String?  @db.Text
+  angle         Float    @default(0)
+  hasBackground Boolean  @default(true)
+  textColor     String   @default("#FFFFFF")
+  bgColor       String   @default("#000000")
+  x             Float?
+  y             Float?
+  position      String   @default("br")
+  size          Int      @default(100)
+  opacity       Int      @default(90)
+  
+  updatedAt     DateTime @updatedAt
+}
+
 // === 5. ПОСТЫ И ПЛАНИРОВЩИК ===
 model Post {
   id          String   @id @default(uuid())
-  text        String?  
+  text        String?
   mediaUrls   String?  
-  
-  publishAt   DateTime? // Время публикации (если null - публикуем сразу)
-  status      String   @default("DRAFT") // DRAFT, SCHEDULED, PUBLISHED, FAILED
-  
+  publishAt   DateTime? 
+  status      String   @default("DRAFT") 
   accountId   String   
   account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  
   createdAt   DateTime @default(now())
 }
 
@@ -157,35 +173,13 @@ model Notification {
   createdAt DateTime @default(now())
 }
 
-// === 4.1 ГЛОБАЛЬНЫЙ ВОДЯНОЙ ЗНАК (ШАБЛОН) ===
-model GlobalWatermark {
-  id            String   @id @default(uuid())
-  userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  type          String   @default("text")
-  text          String?
-  image         String?  @db.Text
-  angle         Float    @default(0)
-  hasBackground Boolean  @default(true)
-  textColor     String   @default("#FFFFFF")
-  bgColor       String   @default("#000000")
-  x             Float?
-  y             Float?
-  position      String   @default("br")
-  size          Int      @default(100)
-  opacity       Int      @default(90)
-  
-  updatedAt     DateTime @updatedAt
-}
-
 // === 8. ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ ===
 model SharedPost {
   id          String   @id @default(uuid())
   senderId    String
   receiverId  String
   text        String?
-  mediaUrls   String?  @db.Text // Здесь будут храниться фото в Base64
+  mediaUrls   String?  @db.Text 
   createdAt   DateTime @default(now())
 
   sender      User     @relation("SentSharedPosts", fields: [senderId], references: [id], onDelete: Cascade)
