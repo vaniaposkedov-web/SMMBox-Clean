@@ -101,7 +101,7 @@ export default function Publish() {
     }
   };
 
-  // === ИСПРАВЛЕННАЯ ЛОГИКА ИНДИВИДУАЛЬНЫХ НАСТРОЕК (БЕЗ МУТАЦИЙ) ===
+  // === ЖЕЛЕЗОБЕТОННАЯ ЛОГИКА ИНДИВИДУАЛЬНЫХ НАСТРОЕК ===
   const getEffectiveSetting = (accountId, settingType) => {
     if (accountOverrides[accountId] && accountOverrides[accountId][settingType] !== undefined) {
       return accountOverrides[accountId][settingType];
@@ -111,12 +111,11 @@ export default function Publish() {
 
   const handleOverride = (accountId, settingType) => {
     setAccountOverrides(prev => {
-      // Надежно вычисляем текущее состояние на основе свежего prev
-      let currentVal;
+      let currentVal = getEffectiveSetting(accountId, settingType);
+      // Если мы уже переопределили значение ранее, берем его из стейта напрямую,
+      // чтобы избежать зацикливания при быстрых кликах
       if (prev[accountId] && prev[accountId][settingType] !== undefined) {
         currentVal = prev[accountId][settingType];
-      } else {
-        currentVal = settingType === 'watermark' ? applyWatermark : applySignature;
       }
 
       return {
@@ -131,22 +130,21 @@ export default function Publish() {
 
   const handleGlobalToggle = (type) => {
     if (type === 'watermark') {
-      setApplyWatermark(!applyWatermark);
+      setApplyWatermark(prev => !prev);
       setAccountOverrides(prev => {
-        // Глубокое копирование, чтобы избежать ошибки removeChild в React
-        const next = {};
-        Object.keys(prev).forEach(k => {
-          next[k] = { ...prev[k] };
+        const next = { ...prev };
+        Object.keys(next).forEach(k => {
+          next[k] = { ...next[k] };
           delete next[k].watermark;
         });
         return next;
       });
     } else {
-      setApplySignature(!applySignature);
+      setApplySignature(prev => !prev);
       setAccountOverrides(prev => {
-        const next = {};
-        Object.keys(prev).forEach(k => {
-          next[k] = { ...prev[k] };
+        const next = { ...prev };
+        Object.keys(next).forEach(k => {
+          next[k] = { ...next[k] };
           delete next[k].signature;
         });
         return next;
@@ -619,10 +617,10 @@ export default function Publish() {
                               className={`flex flex-col rounded-2xl border transition-all overflow-hidden group
                                 ${isSelected ? (publishMode === 'schedule' ? 'bg-gray-800 border-purple-500/50 shadow-md shadow-purple-500/10' : 'bg-gray-800 border-blue-500/50 shadow-md shadow-blue-500/10') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700 hover:bg-gray-800'}`}
                             >
-                              {/* Основная карточка (Кликабельная) */}
-                              <button 
+                              {/* ИСПРАВЛЕНИЕ ОШИБКИ: Заменили тег <button> на <div>, чтобы можно было вкладывать другие кнопки */}
+                              <div 
                                 onClick={() => toggleAccount(acc.id)}
-                                className="flex items-center gap-3 p-3 w-full text-left"
+                                className="flex items-center gap-3 p-3 w-full text-left cursor-pointer"
                               >
                                 <div className="relative w-10 h-10 rounded-xl shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
                                   {avatarSrc ? (
@@ -640,21 +638,23 @@ export default function Publish() {
                                   <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
                                   {isSelected && (
                                     <div className="flex gap-2 mt-0.5">
-                                      {/* ИСПРАВЛЕНО: Безопасный рендеринг без удаления узлов React */}
-                                      <span className={`text-[10px] flex items-center gap-1 ${isWatermarkActive ? 'text-blue-400' : 'text-gray-500 line-through'}`}>
-                                        {isWatermarkActive && <Check size={10}/>} Знак
+                                      {/* ИСПРАВЛЕНИЕ ОШИБКИ: Иконки <Check> больше не удаляются, а просто скрываются */}
+                                      <span className={`text-[10px] flex items-center gap-1 ${isWatermarkActive ? 'text-blue-400' : 'text-gray-500'}`}>
+                                        <Check size={10} className={isWatermarkActive ? 'block' : 'hidden'} />
+                                        <span className={!isWatermarkActive ? 'line-through' : ''}>Знак</span>
                                       </span>
-                                      <span className={`text-[10px] flex items-center gap-1 ${isSignatureActive ? 'text-purple-400' : 'text-gray-500 line-through'}`}>
-                                        {isSignatureActive && <Check size={10}/>} Подпись
+                                      <span className={`text-[10px] flex items-center gap-1 ${isSignatureActive ? 'text-purple-400' : 'text-gray-500'}`}>
+                                        <Check size={10} className={isSignatureActive ? 'block' : 'hidden'} />
+                                        <span className={!isSignatureActive ? 'line-through' : ''}>Подпись</span>
                                       </span>
                                     </div>
                                   )}
                                 </div>
                                 
                                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? (publishMode === 'schedule' ? 'border-purple-500 bg-purple-500' : 'border-blue-500 bg-blue-500') : 'border-gray-600 group-hover:border-gray-500'}`}>
-                                  {isSelected && <CheckCircle2 size={12} className="text-white" />}
+                                  <CheckCircle2 size={12} className={`text-white ${isSelected ? 'block' : 'hidden'}`} />
                                 </div>
-                              </button>
+                              </div>
 
                               {/* Индивидуальные настройки (появляются при выборе) */}
                               {isSelected && (
@@ -724,12 +724,11 @@ export default function Publish() {
 
                </div>
                
-               {/* ИСПРАВЛЕНО: Безопасный рендеринг текста */}
-               {(!globalSettings?.watermark && applyWatermark) ? (
+               {(!globalSettings?.watermark && applyWatermark) && (
                   <p className="text-xs text-yellow-500 mt-3 flex items-center gap-1">
                     ⚠️ В глобальных настройках не задан водяной знак. Он не будет применен.
                   </p>
-               ) : null}
+               )}
             </div>
 
             {/* БЛОК 3: НАСТРОЙКИ ВРЕМЕНИ */}
