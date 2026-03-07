@@ -138,30 +138,32 @@ exports.createPost = async (req, res) => {
                         let wmPixelHeight = 0;
 
                         if (wmType === 'text') {
-                            // 1. Адаптация размера 1-в-1 как в React (4% базовый + scale)
+                            // 1. Адаптация размера (4% базовый + scale)
                             const scaleFactor = (wm.size || 100) / 100;
                             const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
                             
-                            // 2. Отступы (эквивалент Tailwind px-3 py-1.5)
-                            const paddingX = Math.floor(fontSize * 0.8);
-                            const paddingY = Math.floor(fontSize * 0.4);
+                            // 2. ИСПРАВЛЕНИЕ: Делаем отступы более просторными (как px-3 py-1.5 в Tailwind)
+                            const paddingX = Math.floor(fontSize * 1.2); // Увеличили боковые отступы
+                            const paddingY = Math.floor(fontSize * 0.7); // Увеличили отступы сверху/снизу
                             
-                            // 3. Расчет ширины блока с текстом
-                            const textWidthRaw = Math.floor(wmText.length * fontSize * 0.6);
+                            // 3. ИСПРАВЛЕНИЕ: Коэффициент ширины текста 0.75 (так как DejaVu Sans очень широкий шрифт)
+                            const textWidthRaw = Math.floor(wmText.length * fontSize * 0.75);
                             wmPixelWidth = textWidthRaw + (paddingX * 2);
-                            wmPixelHeight = Math.floor(fontSize * 1.2) + (paddingY * 2);
+                            wmPixelHeight = Math.floor(fontSize * 1.4) + (paddingY * 2);
                             
                             const bgColor = wm.bgColor || '#000000';
                             const textColor = wm.textColor || '#ffffff';
                             const hasBg = wm.hasBackground !== false;
-                            const borderRadius = Math.floor(fontSize * 0.25);
+                            
+                            // Чуть более мягкое скругление углов (как в React)
+                            const borderRadius = Math.floor(fontSize * 0.35); 
 
-                            // 4. Генерация SVG с идеальным выравниванием текста
+                            // 4. Генерация SVG с текстом
                             const svgText = `
                             <svg width="${wmPixelWidth}" height="${wmPixelHeight}" xmlns="http://www.w3.org/2000/svg">
                                 <g opacity="${opacity}">
                                     ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
-                                    <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}px" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="${textColor}">${wmText}</text>
+                                    <text x="50%" y="52%" text-anchor="middle" dominant-baseline="central" font-size="${fontSize}px" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="${textColor}">${wmText}</text>
                                 </g>
                             </svg>`;
                             
