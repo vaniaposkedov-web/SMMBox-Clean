@@ -800,20 +800,19 @@ export default function Publish() {
                 </div>
               ) : (
                 myPartners.map(partner => {
-                  const pData = partner.requesterId === user.id ? partner.receiver : partner.requester;
-                  const isSelected = selectedPartners.includes(pData.id);
+                  const isSelected = selectedPartners.includes(partner.id);
                   return (
                     <div 
-                      key={pData.id} 
-                      onClick={() => togglePartner(pData.id)}
+                      key={partner.id} 
+                      onClick={() => togglePartner(partner.id)}
                       className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${isSelected ? 'bg-blue-500/10 border-blue-500/50' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
                     >
                        <div className={`w-5 h-5 rounded flex items-center justify-center border ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'}`}>
                          {isSelected && <Check size={14} className="text-white"/>}
                        </div>
                        <div>
-                         <p className="text-white text-sm font-bold">{pData.name}</p>
-                         <p className="text-gray-500 text-xs">Павильон: {pData.pavilion || '?'}</p>
+                         <p className="text-white text-sm font-bold">{partner.name || 'Без имени'}</p>
+                         <p className="text-gray-500 text-xs">Павильон: {partner.pavilion || '?'}</p>
                        </div>
                     </div>
                   )
