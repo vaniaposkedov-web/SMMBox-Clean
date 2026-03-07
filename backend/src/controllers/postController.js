@@ -140,7 +140,6 @@ exports.createPost = async (req, res) => {
                 const wm = accData.watermarkConfig;
                 const wmText = wm.text || 'SMMBOX';
                 
-                // Карта позиций фронтенда -> гравитация Sharp
                 const gravityMap = {
                     'tl': 'northwest', 'tc': 'north', 'tr': 'northeast',
                     'cl': 'west', 'cc': 'center', 'cr': 'east',
@@ -153,28 +152,35 @@ exports.createPost = async (req, res) => {
                         const image = sharp(buf);
                         const metadata = await image.metadata();
                         
-                        // Вычисляем адаптивный размер шрифта
                         const width = metadata.width || 1000;
                         const fontSize = Math.max(20, Math.floor(width * 0.05 * ((wm.size || 100) / 100)));
                         
-                        // Размеры бокса для текста
-                        const textWidth = Math.floor(wmText.length * fontSize * 0.65);
+                        // Добавляем отступы для фона
+                        const padding = Math.floor(fontSize * 0.5);
+                        const textWidth = Math.floor(wmText.length * fontSize * 0.6) + (padding * 2);
                         const textHeight = Math.floor(fontSize * 1.5);
+                        
+                        const bgColor = wm.bgColor || '#000000';
+                        const textColor = wm.textColor || '#ffffff';
+                        const opacity = wm.opacity !== undefined ? wm.opacity / 100 : 0.9;
+                        const hasBg = wm.hasBackground !== false;
 
-                        // Генерируем текст в виде SVG
+                        // ВАЖНО: Добавлен атрибут xmlns и правильный рендер прямоугольника фона
                         const svgText = `
-                        <svg width="${textWidth}" height="${textHeight}">
-                            <text x="50%" y="80%" text-anchor="middle" font-size="${fontSize}px" font-family="sans-serif" font-weight="bold" fill="${wm.textColor || '#ffffff'}" opacity="${(wm.opacity || 90) / 100}">${wmText}</text>
+                        <svg width="${textWidth}" height="${textHeight}" xmlns="http://www.w3.org/2000/svg">
+                            <g opacity="${opacity}">
+                                ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${padding / 2}" />` : ''}
+                                <text x="50%" y="70%" text-anchor="middle" dominant-baseline="middle" font-size="${fontSize}px" font-family="Arial, sans-serif" font-weight="bold" fill="${textColor}">${wmText}</text>
+                            </g>
                         </svg>`;
 
-                        // Накладываем SVG на картинку
                         return await image
                             .composite([{ input: Buffer.from(svgText), gravity: gravity }])
-                            .jpeg({ quality: 90 }) // Сжимаем результат для быстрой загрузки
+                            .jpeg({ quality: 90 }) 
                             .toBuffer();
                     } catch (e) {
-                        console.error('Ошибка наложения водяного знака:', e);
-                        return buf; // В случае ошибки просто возвращаем фото без знака
+                        console.error('Ошибка наложения водяного знака:', e.message);
+                        return buf; 
                     }
                 }));
             }
