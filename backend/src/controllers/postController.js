@@ -376,7 +376,7 @@ exports.getScheduledPosts = async (req, res) => {
 exports.shareWithPartners = async (req, res) => {
     try {
         const { text, mediaUrls = [], partnerIds = [] } = req.body;
-        const senderId = req.user?.id || req.userId || (typeof req.user === 'string' ? req.user : null);
+        const senderId = req.user?.id || req.user?.userId || req.userId || (typeof req.user === 'string' ? req.user : null);
 
         if (!senderId) return res.status(401).json({ success: false, error: 'Ошибка авторизации: сервер не видит ваш ID' });
         if (!partnerIds || partnerIds.length === 0) return res.status(400).json({ success: false, error: 'Выберите партнера' });
