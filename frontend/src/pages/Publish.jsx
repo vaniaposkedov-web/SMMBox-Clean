@@ -275,8 +275,7 @@ export default function Publish() {
     }
   };
 
-  // === НОВАЯ, РЕАЛЬНАЯ ЛОГИКА ОТПРАВКИ ПОСТА НА СЕРВЕР ===
-  // === ЗАМЕНИТЬ ФУНКЦИЮ В Publish.jsx ===
+  // === ЗАМЕНИ ЭТУ ФУНКЦИЮ ЦЕЛИКОМ ===
   const handlePublish = async () => {
     if (selectedAccounts.length === 0) {
       setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
@@ -300,21 +299,21 @@ export default function Publish() {
 
         const publishAt = publishMode === 'schedule' ? `${selectedCalendarDate}T${scheduleTime}:00` : null;
 
-        // Передаем и selectedAccounts (как accountIds) и accountsData
         const result = await createPostAction(text, base64Images, selectedAccounts, accountsData, publishAt);
 
         if (result.success) {
+            // ВАЖНО: Мы НЕ вызываем setIsPublishing(false) при успехе, 
+            // чтобы React не пытался обновить кнопку перед удалением панели!
             setStep(4); 
             if (saveTempDraft) saveTempDraft(null); 
         } else {
-            // Обертка setTimeout спасает от краша "removeChild"
+            setIsPublishing(false); // Снимаем загрузку только при ошибке
             setTimeout(() => alert(result.error || 'Ошибка сервера при попытке публикации'), 10);
         }
     } catch (error) {
         console.error('Критическая ошибка публикации:', error);
+        setIsPublishing(false); // Снимаем загрузку только при ошибке
         setTimeout(() => alert('Произошла ошибка. Бэкенд не отвечает.'), 10);
-    } finally {
-        setIsPublishing(false);
     }
   };
 
@@ -325,6 +324,7 @@ export default function Publish() {
     }, 2000);
   };
 
+  // === ЗАМЕНИ ЭТУ ФУНКЦИЮ ЦЕЛИКОМ ===
   const resetForm = () => {
     setPhotos([]);
     setText('');
@@ -332,6 +332,7 @@ export default function Publish() {
     setAccountOverrides({});
     setScheduleTime('');
     setStep(1);
+    setIsPublishing(false); // <-- Добавили этот сброс сюда
     setShowPartnerModal(false);
     setPartnerStatus('idle');
     setView('start'); 
