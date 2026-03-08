@@ -54,6 +54,8 @@ model User {
   // === ШАРИНГ ПОСТОВ ===
   sentSharedPosts          SharedPost[] @relation("SentSharedPosts")
   receivedSharedPosts      SharedPost[] @relation("ReceivedSharedPosts")
+
+  isPro Boolean @default(false)
 }
 
 // === 2. ТАРИФЫ (ПОДПИСКИ) ===

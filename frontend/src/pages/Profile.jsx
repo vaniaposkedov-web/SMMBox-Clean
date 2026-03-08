@@ -502,15 +502,26 @@ export default function Profile() {
                         )}
                       </div>
 
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-white font-medium line-clamp-2 leading-snug pr-2">{post.text}</p>
-                        <div className="flex flex-wrap items-center gap-3 mt-2">
-                          <StatusBadge status={post.statusLower} />
-                          <span className="w-1 h-1 rounded-full bg-gray-700 hidden sm:block"></span>
-                          <p className="text-xs text-gray-500 flex items-center gap-1 font-medium">
-                            <Clock size={12} /> {post.formattedDate}
-                          </p>
+                      {/* Иконка или превью */}
+                      <div className="relative w-12 h-12 shrink-0">
+                        <div className={`w-full h-full rounded-xl flex items-center justify-center text-sm font-bold border overflow-hidden ${post.networkColor}`}>
+                          {post.media && post.media.length > 0 ? (
+                             <img src={post.media[0]} alt="media" className="w-full h-full object-cover opacity-80" />
+                          ) : (
+                             <div className="w-6 h-6">
+                               {post.network === 'VK' ? <IconVK /> : <IconTG />}
+                             </div>
+                          )}
                         </div>
+                        
+                        {/* Красивый круглый бейдж поверх картинки */}
+                        {post.media && post.media.length > 0 && (
+                          <div className={`absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center border-[2.5px] border-gray-900 ${post.networkBg} text-white shadow-sm`}>
+                             <div className="w-3 h-3">
+                               {post.network === 'VK' ? <IconVK /> : <IconTG />}
+                             </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 

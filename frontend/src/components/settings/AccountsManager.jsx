@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useStore } from '../../store';
+import { useNavigate } from 'react-router-dom';
 import { 
   Send, Plus, Trash2, RefreshCw, ShieldAlert,
   ChevronDown, Copy, Check, LayoutTemplate,
@@ -9,8 +10,9 @@ import {
 } from 'lucide-react';
 
 export default function AccountsManager() {
+  const navigate = useNavigate();
   const user = useStore((state) => state.user);
-  const accounts = useStore((state) => state.accounts);
+  const accounts = useStore((state) => state.accounts) || [];
   const fetchAccounts = useStore((state) => state.fetchAccounts);
   const verifyAccountsStatus = useStore((state) => state.verifyAccountsStatus);
   const removeAccount = useStore((state) => state.removeAccount);
@@ -43,6 +45,12 @@ export default function AccountsManager() {
     'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
     'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
   };
+
+  // === ЛОГИКА ЛИМИТОВ ===
+  const isPro = user?.isPro || false;
+  const accountsLimit = 10;
+  const currentCount = accounts.length;
+  const isLimitReached = !isPro && currentCount >= accountsLimit;
 
   useEffect(() => {
     if (user?.id) {
@@ -85,21 +93,18 @@ export default function AccountsManager() {
   // --- ЛОГИКА ПОДПИСИ ---
   const saveSignatureOnly = async (acc) => {
     setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
-    // Сохраняем введенный текст (режим "Свой")
     await saveAccountDesign(acc.id, localSignatures[acc.id] || "", undefined);
     setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
   };
 
   const setGlobalSignature = async (acc) => {
     setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
-    // Отправляем null, чтобы сервер понял: нужно использовать Общий Шаблон
     await saveAccountDesign(acc.id, null, undefined);
     setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
   };
 
   const enableCustomSignature = async (acc) => {
     setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
-    // Активируем режим "Свой", сохраняя пустую строку (если до этого был шаблон)
     await saveAccountDesign(acc.id, acc.signature || "", undefined);
     setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
   };
@@ -255,7 +260,9 @@ export default function AccountsManager() {
   };
 
   const handleAddTg = async () => {
+    if (isLimitReached) return alert('Лимит аккаунтов исчерпан! Оформите PRO.');
     if (!tgInput.trim()) return alert('Введите ссылку канала!');
+    
     setIsAddingTg(true);
     try {
       const infoRes = await fetch(`/api/auth/tg-chat-info`, {
@@ -451,11 +458,26 @@ export default function AccountsManager() {
 
   return (
     <div className="space-y-8 pb-10 max-w-7xl mx-auto px-2 sm:px-4">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Мои группы</h1>
       </div>
 
-      {/* ШАГ 1: ВЕРХНИЕ БЛОКИ ДОБАВЛЕНИЯ (ИДЕАЛЬНАЯ ВЫСОТА И ВЫРАВНИВАНИЕ) */}
+      {/* === ПЛАШКА ЛИМИТОВ (ТОЛЬКО ДЛЯ БЕСПЛАТНОЙ ВЕРСИИ) === */}
+      {!isPro && (
+        <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors ${isLimitReached ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/10' : 'bg-gray-900 border-gray-800'}`}>
+          <div>
+            <p className="text-white font-bold text-base flex items-center gap-2">
+              Бесплатный тариф {isLimitReached && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest">Лимит исчерпан</span>}
+            </p>
+            <p className="text-gray-400 text-sm mt-1">Привязано аккаунтов (ВК + ТГ): <span className={isLimitReached ? 'text-red-400 font-bold' : 'text-white font-bold'}>{currentCount} / {accountsLimit}</span></p>
+          </div>
+          <button onClick={() => navigate('/profile')} className="w-full sm:w-auto text-sm bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 whitespace-nowrap">
+            Снять лимит (PRO)
+          </button>
+        </div>
+      )}
+
+      {/* ШАГ 1: ВЕРХНИЕ БЛОКИ ДОБАВЛЕНИЯ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
         
         <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col h-full">
@@ -470,9 +492,10 @@ export default function AccountsManager() {
             <input 
               type="text" value={tgInput} onChange={(e) => setTgInput(e.target.value)}
               placeholder="t.me/channel" 
-              className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-sky-500 transition-all placeholder:text-gray-600"
+              disabled={isLimitReached}
+              className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-sky-500 transition-all placeholder:text-gray-600 disabled:opacity-50"
             />
-            <button onClick={handleAddTg} disabled={isAddingTg} className="shrink-0 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap">
+            <button onClick={handleAddTg} disabled={isAddingTg || isLimitReached} className="shrink-0 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap">
               {isAddingTg ? <RefreshCw className="animate-spin" size={16} /> : <Plus size={16} />} Добавить
             </button>
           </div>
@@ -495,7 +518,7 @@ export default function AccountsManager() {
 
       </div>
 
-      {/* ШАГ 2: НИЖНИЕ СПИСКИ (НАЧИНАЮТСЯ СТРОГО НА ОДНОМ УРОВНЕ) */}
+      {/* ШАГ 2: НИЖНИЕ СПИСКИ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mt-8">
         
         {/* ЛЕВАЯ КОЛОНКА (ТГ) */}
@@ -530,7 +553,7 @@ export default function AccountsManager() {
 
       </div>
 
-      {/* --- МОДАЛЬНОЕ ОКНО --- */}
+      {/* --- МОДАЛЬНОЕ ОКНО ДИЗАЙНА --- */}
       {designModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeDesignModal}></div>
