@@ -3,7 +3,7 @@ const prisma = new PrismaClient();
 const axios = require('axios');
 const FormData = require('form-data');
 const sharp = require('sharp'); 
-const cron = require('node-cron'); // Подключаем таймер
+const cron = require('node-cron'); 
 const jwt = require('jsonwebtoken');
 
 // === ЛОГИКА ОТПРАВКИ В TELEGRAM ===
@@ -37,19 +37,17 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
     }
 }
 
-// === ЗАЩИТА АВТОРИЗАЦИИ (Гарантированно достает ID пользователя) ===
+// === ЗАЩИТА АВТОРИЗАЦИИ ===
 const getUserId = (req) => {
-    // 1. Стандартный способ
     if (req.user && typeof req.user === 'object') return req.user.id || req.user.userId;
     if (req.userId) return req.userId;
     if (typeof req.user === 'string') return req.user;
 
-    // 2. Бронебойный способ: достаем ID прямо из заголовка, если система его потеряла
     try {
         const authHeader = req.headers.authorization;
         if (authHeader && authHeader.startsWith('Bearer ')) {
             const token = authHeader.split(' ')[1];
-            const decoded = jwt.decode(token); // Читаем начинку токена
+            const decoded = jwt.decode(token); 
             if (decoded) return decoded.id || decoded.userId;
         }
     } catch (e) {
@@ -140,7 +138,6 @@ exports.createPost = async (req, res) => {
 
             let processedBuffers = rawImageBuffers;
             
-            // Накладываем водяной знак (Логика сохранена)
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
                 const wm = accData.watermarkConfig;
                 const wmType = wm.type || 'text'; 
@@ -274,11 +271,9 @@ exports.createPost = async (req, res) => {
                 }));
             }
 
-            // === ВАЖНО: ПРОВЕРКА НА ОТЛОЖЕННЫЙ ПОСТ ===
             const isScheduled = publishAt ? true : false;
 
             if (isScheduled) {
-                // Превращаем обработанные картинки обратно в base64, чтобы сохранить в БД
                 const base64ImagesToSave = processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
                 
                 await prisma.post.create({
@@ -287,7 +282,7 @@ exports.createPost = async (req, res) => {
                         text: finalText,
                         mediaUrls: JSON.stringify(base64ImagesToSave),
                         publishAt: new Date(publishAt),
-                        status: 'SCHEDULED' // СТРОГО сохраняем как отложенный
+                        status: 'SCHEDULED' 
                     }
                 });
                 
@@ -295,7 +290,6 @@ exports.createPost = async (req, res) => {
                 hasSuccess = true;
                 console.log(`[ПЛАН] Пост запланирован в ${account.name} на ${publishAt}`);
             } else {
-                // Отправляем СЕЙЧАС
                 try {
                     const providerType = account.provider.toLowerCase(); 
                     if (providerType === 'telegram') {
@@ -305,7 +299,6 @@ exports.createPost = async (req, res) => {
                         await sendToVK(account.accessToken, account.providerId, finalText, processedBuffers);
                     }
                     
-                    // Сохраняем в историю
                     await prisma.post.create({
                         data: { accountId: account.id, text: finalText, mediaUrls: JSON.stringify([]), status: 'PUBLISHED' }
                     });
@@ -330,11 +323,9 @@ exports.createPost = async (req, res) => {
 
 // === ТАЙМЕР (CRON): АВТОМАТИЧЕСКАЯ ОТПРАВКА ОТЛОЖЕННЫХ ПОСТОВ ===
 exports.initCron = () => {
-    // Запускается каждую минуту
     cron.schedule('* * * * *', async () => {
         try {
             const now = new Date();
-            // Ищем все посты, время которых уже настало
             const postsToPublish = await prisma.post.findMany({
                 where: { status: 'SCHEDULED', publishAt: { lte: now } },
                 include: { account: true }
@@ -345,7 +336,6 @@ exports.initCron = () => {
                     const account = post.account;
                     const mediaUrls = JSON.parse(post.mediaUrls || '[]');
                     
-                    // Превращаем base64 из базы обратно в буферы для отправки
                     const imageBuffers = mediaUrls.map(img => {
                         const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
                         return Buffer.from(base64Data, 'base64');
@@ -359,7 +349,6 @@ exports.initCron = () => {
                         await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
                     }
 
-                    // Обновляем статус на Опубликовано и очищаем тяжелые фото из базы для экономии места
                     await prisma.post.update({
                         where: { id: post.id },
                         data: { status: 'PUBLISHED', mediaUrls: JSON.stringify([]) }
@@ -377,16 +366,20 @@ exports.initCron = () => {
     console.log('[CRON] Планировщик отложенных постов запущен!');
 };
 
-// === ПОЛУЧИТЬ ОТЛОЖЕННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
+// === ПОЛУЧИТЬ ОТЛОЖЕННЫЕ И ОПУБЛИКОВАННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
 exports.getScheduledPosts = async (req, res) => {
     try {
-        const userId = req.user?.id || req.userId || (typeof req.user === 'string' ? req.user : null);
+        const userId = getUserId(req);
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
         const posts = await prisma.post.findMany({
-            where: { account: { userId: userId }, status: 'SCHEDULED' },
+            where: { 
+                account: { userId: userId }, 
+                status: { in: ['SCHEDULED', 'PUBLISHED'] } 
+            },
             include: { account: { select: { name: true, provider: true } } },
-            orderBy: { publishAt: 'asc' }
+            orderBy: { publishAt: 'asc' },
+            take: 150 // Ограничение, чтобы не грузить миллион постов за год
         });
         res.json({ success: true, posts });
     } catch (error) {
@@ -394,13 +387,37 @@ exports.getScheduledPosts = async (req, res) => {
     }
 };
 
-// === ОСТАЛЬНЫЕ ФУНКЦИИ ПАРТНЕРОВ ===
+// === ОБНОВИТЬ СУЩЕСТВУЮЩИЙ ОТЛОЖЕННЫЙ ПОСТ (РЕДАКТИРОВАНИЕ) ===
+exports.updateScheduledPost = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { text, publishAt } = req.body;
+        
+        const post = await prisma.post.findUnique({ where: { id }});
+        if (!post) return res.status(404).json({ success: false, error: 'Пост не найден' });
+        if (post.status !== 'SCHEDULED') return res.status(400).json({ success: false, error: 'Этот пост уже опубликован' });
+        
+        const updated = await prisma.post.update({
+            where: { id },
+            data: {
+                text: text !== undefined ? text : post.text,
+                publishAt: publishAt ? new Date(publishAt) : post.publishAt
+            }
+        });
+        res.json({ success: true, post: updated });
+    } catch (error) {
+        console.error('Ошибка редактирования:', error);
+        res.status(500).json({ success: false });
+    }
+};
+
+// === ОСТАЛЬНЫЕ ФУНКЦИИ ПАРТНЕРОВ И УДАЛЕНИЯ ===
 exports.shareWithPartners = async (req, res) => {
     try {
         const { text, mediaUrls = [], partnerIds = [] } = req.body;
-        const senderId = req.user?.id || req.user?.userId || req.userId || (typeof req.user === 'string' ? req.user : null);
+        const senderId = getUserId(req);
 
-        if (!senderId) return res.status(401).json({ success: false, error: 'Ошибка авторизации: сервер не видит ваш ID' });
+        if (!senderId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
         if (!partnerIds || partnerIds.length === 0) return res.status(400).json({ success: false, error: 'Выберите партнера' });
 
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
@@ -422,7 +439,7 @@ exports.shareWithPartners = async (req, res) => {
 
 exports.getSharedPosts = async (req, res) => {
     try {
-        const userId = req.user?.id || req.userId || (typeof req.user === 'string' ? req.user : null);
+        const userId = getUserId(req);
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
         const incoming = await prisma.sharedPost.findMany({
