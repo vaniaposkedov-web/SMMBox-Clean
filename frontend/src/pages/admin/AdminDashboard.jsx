@@ -3,7 +3,7 @@ import {
   Users, Crown, MessageSquare, Link as LinkIcon, LogOut, 
   RefreshCw, Sun, Moon, Search, ShieldAlert, CheckCircle2, 
   XCircle, Activity, Eye, X, User as UserIcon, Calendar, 
-  Mail, Phone, LayoutDashboard, LayoutTemplate, Send, Key
+  Mail, Phone, LayoutDashboard, LayoutTemplate, Send, Key, Loader2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
