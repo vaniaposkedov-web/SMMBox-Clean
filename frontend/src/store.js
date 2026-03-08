@@ -452,7 +452,7 @@ export const useStore = create(
         } catch (error) { return { success: false }; }
       },
 
-      createPostAction: async (text, mediaUrls, accountIds, accountsData, publishAt) => {
+     createPostAction: async (text, mediaUrls, accountIds, accountsData, publishAt) => {
         try {
           const res = await fetch('/api/posts/create', {
             method: 'POST', 
@@ -466,7 +466,16 @@ export const useStore = create(
             })
           });
           const data = await res.json();
-          if (res.ok && data.success) return { success: true };
+          
+          if (res.ok && data.success) {
+            // === ИСПРАВЛЕНИЕ ЗДЕСЬ ===
+            // Если пост отложенный, запрашиваем обновленный список с сервера
+            if (publishAt) {
+              get().fetchScheduledPosts();
+            }
+            return { success: true };
+          }
+          
           return { success: false, error: data.error || 'Ошибка при обработке сервером' };
         } catch (error) { 
           return { success: false, error: 'Ошибка соединения с сервером.' }; 
