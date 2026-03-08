@@ -10,7 +10,7 @@ exports.adminLogin = async (req, res) => {
         const user = await prisma.user.findUnique({ where: { email } });
         
         if (!user || user.role !== 'ADMIN') {
-            return res.status(401).json({ error: 'Неверные учетные данные' }); // Не выдаем, что админа нет
+            return res.status(401).json({ error: 'Неверные учетные данные' }); 
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
@@ -33,11 +33,10 @@ exports.getDashboardData = async (req, res) => {
         const totalAccounts = await prisma.account.count();
         const totalPosts = await prisma.post.count();
         
-        // Последние 10 регистраций
         const recentUsers = await prisma.user.findMany({
-            take: 10,
+            take: 5,
             orderBy: { createdAt: 'desc' },
-            select: { id: true, name: true, email: true, phone: true, isPro: true, createdAt: true }
+            select: { id: true, name: true, email: true, phone: true, isPro: true, role: true, createdAt: true }
         });
 
         res.json({
@@ -47,5 +46,37 @@ exports.getDashboardData = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: 'Ошибка загрузки данных' });
+    }
+};
+
+// Получить всех пользователей для управления
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await prisma.user.findMany({
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, name: true, email: true, phone: true, isPro: true, role: true, createdAt: true }
+        });
+        res.json({ success: true, users });
+    } catch (error) {
+        res.status(500).json({ error: 'Ошибка загрузки пользователей' });
+    }
+};
+
+// Выдать / Забрать PRO статус
+exports.toggleProStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const targetUser = await prisma.user.findUnique({ where: { id } });
+        
+        if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
+
+        const updatedUser = await prisma.user.update({
+            where: { id },
+            data: { isPro: !targetUser.isPro }
+        });
+
+        res.json({ success: true, isPro: updatedUser.isPro });
+    } catch (error) {
+        res.status(500).json({ error: 'Ошибка при изменении статуса' });
     }
 };
