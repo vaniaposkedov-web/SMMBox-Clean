@@ -3,10 +3,23 @@ import { useStore } from '../store';
 import { 
   User, Mail, Shield, Edit2, Clock, X, Hash, Camera, 
   Check, Copy, CalendarClock, CheckCircle2, AlertCircle, BarChart3, 
-  Settings as SettingsIcon, LayoutDashboard, Lock, Zap, Eye, Share2, 
-  Phone, Key, Users, Send, Image as ImageIcon, Loader2, Search, Filter, Plus
+  Settings as SettingsIcon, LayoutDashboard, Lock, Eye, Share2, 
+  Phone, Key, Users, Send, Loader2, Search, Plus
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
+// === ИКОНКИ СОЦСЕТЕЙ ===
+const IconVK = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
+    <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2zm3.3 14.53h-1.55c-.52 0-.67-.41-1.58-1.33-.77-.79-1.07-.88-1.26-.88-.26 0-.34.08-.34.5v1.2c0 .32-.1.51-1.5.51-2.2 0-4.6-1.5-6.23-3.86C4.16 9.88 3.5 6.92 3.5 6.57c0-.28.1-.5.62-.5h1.56c.46 0 .61.22.8.72 1.25 3.5 2.92 5.51 3.73 5.51.21 0 .31-.1.31-.63V8.65c-.06-1.14-.34-1.25-1.08-1.25-.33 0-.15-.46.12-.64.41-.27 1.15-.29 1.76-.29.83 0 1.05.07 1.25.13.34.11.31.39.31 1.09v3.08c0 .41.18.51.3.51.25 0 .65-.18 1.48-1.02 1.22-1.34 2.1-3.64 2.4-4.57.14-.39.3-.57.77-.57h1.55c.61 0 .73.3.62.72-.25.86-1.74 3.12-2.51 4.14-.36.47-.46.61-.17 1 .23.33 1.05 1.02 1.5 1.58 1.01 1.23 1.3 1.77 1.48 2.05.21.31.06.63-.4.63z"/>
+  </svg>
+);
+
+const IconTG = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+  </svg>
+);
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -31,10 +44,10 @@ export default function Profile() {
 
   // === СОСТОЯНИЯ ВКЛАДОК И МОДАЛОК ===
   const [activeTab, setActiveTab] = useState('overview'); 
-  const [postFilter, setPostFilter] = useState('all'); // all, published, scheduled
+  const [postFilter, setPostFilter] = useState('all'); 
   
-  const [viewPostModal, setViewPostModal] = useState(null); // Содержит объект поста для просмотра
-  const [sharePostModal, setSharePostModal] = useState(null); // Содержит объект поста для отправки партнерам
+  const [viewPostModal, setViewPostModal] = useState(null); 
+  const [sharePostModal, setSharePostModal] = useState(null); 
   
   // === СОСТОЯНИЯ ШЕРИНГА ===
   const [selectedPartners, setSelectedPartners] = useState([]);
@@ -56,7 +69,7 @@ export default function Profile() {
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [passwordResetSent, setPasswordResetSent] = useState(false);
 
-  // Состояния для привязки Email/Телефона
+  // === СОСТОЯНИЯ ПРИВЯЗКИ (КРАСНАЯ ПЛАШКА) ===
   const [realEmail, setRealEmail] = useState('');
   const [realPhone, setRealPhone] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
@@ -72,6 +85,19 @@ export default function Profile() {
       fetchPartnerData(user.id);
     }
   }, [user?.id, fetchAccounts, fetchScheduledPosts, fetchPartnerData]);
+
+  // Умная маска для телефона (+7 (XXX) XXX-XX-XX)
+  const formatPhoneNumber = (value) => {
+    let input = value.replace(/\D/g, '');
+    if (!input) return '';
+    if (input[0] === '7' || input[0] === '8') input = input.substring(1);
+    let formatted = '+7';
+    if (input.length > 0) formatted += ' (' + input.substring(0, 3);
+    if (input.length >= 4) formatted += ') ' + input.substring(3, 6);
+    if (input.length >= 7) formatted += '-' + input.substring(6, 8);
+    if (input.length >= 9) formatted += '-' + input.substring(8, 10);
+    return formatted;
+  };
 
   // Вычисляем статистику
   const stats = useMemo(() => {
@@ -93,19 +119,16 @@ export default function Profile() {
       .sort((a, b) => new Date(b.publishAt || b.createdAt).getTime() - new Date(a.publishAt || a.createdAt).getTime())
       .map(p => {
         let parsedMedia = [];
-        try {
-            parsedMedia = p.mediaUrls ? JSON.parse(p.mediaUrls) : [];
-        } catch(e) { parsedMedia = []; }
+        try { parsedMedia = p.mediaUrls ? JSON.parse(p.mediaUrls) : []; } catch(e) { parsedMedia = []; }
 
         return {
             ...p,
             media: parsedMedia,
             statusLower: p.status.toLowerCase(),
-            formattedDate: new Date(p.publishAt || p.createdAt).toLocaleString('ru-RU', {
-                day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
-            }),
+            formattedDate: new Date(p.publishAt || p.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
             network: p.account?.provider === 'vk' ? 'VK' : 'TG',
             networkColor: p.account?.provider === 'vk' ? 'text-blue-500 bg-blue-500/10 border-blue-500/20' : 'text-sky-400 bg-sky-400/10 border-sky-400/20',
+            networkBg: p.account?.provider === 'vk' ? 'bg-blue-600' : 'bg-sky-500',
             accountName: p.account?.name || 'Аккаунт удален'
         };
       });
@@ -225,7 +248,6 @@ export default function Profile() {
     if (selectedPartners.length === 0) return alert('Выберите хотя бы одного партнера!');
     setIsSharing(true);
     try {
-      // Отправляем текст и оригинальные картинки (base64)
       const result = await sharePostAction(sharePostModal.text, sharePostModal.media, selectedPartners);
       if (result.success) {
          setShareSuccess(true);
@@ -296,7 +318,14 @@ export default function Profile() {
                   {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0 w-max">{linkError}</p>}
                 </div>
                 {!user?.phone && (
-                   <input type="tel" value={realPhone} onChange={(e) => setRealPhone(e.target.value)} placeholder="Номер телефона" required className="w-full sm:w-48 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-red-500 transition-colors" />
+                   <input 
+                     type="tel" 
+                     value={realPhone} 
+                     onChange={(e) => setRealPhone(formatPhoneNumber(e.target.value))} 
+                     placeholder="+7 (___) ___-__-__" 
+                     required 
+                     className="w-full sm:w-48 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-red-500 transition-colors" 
+                   />
                 )}
                 <button type="submit" disabled={isLinking} className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0">
                   {isLinking ? 'Отправка...' : 'Подтвердить'}
@@ -462,11 +491,15 @@ export default function Profile() {
                         {post.media && post.media.length > 0 ? (
                            <>
                              <img src={post.media[0]} alt="media" className="w-full h-full object-cover opacity-80" />
-                             <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-tl-lg flex items-center justify-center text-[9px] ${post.networkColor.replace('bg-opacity-10', 'bg-opacity-100').replace('text-', 'bg-').replace('400', '600')} text-white`}>
-                               {post.network}
+                             <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-tl-lg flex items-center justify-center p-1 ${post.networkBg} text-white`}>
+                               {post.network === 'VK' ? <IconVK /> : <IconTG />}
                              </div>
                            </>
-                        ) : post.network}
+                        ) : (
+                           <div className="w-6 h-6">
+                             {post.network === 'VK' ? <IconVK /> : <IconTG />}
+                           </div>
+                        )}
                       </div>
 
                       <div className="min-w-0 flex-1">
@@ -531,7 +564,13 @@ export default function Profile() {
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Номер телефона</label>
-                  <input type="tel" value={phone} onChange={(e) => {setPhone(e.target.value); setIsEditing(true);}} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3.5 text-white text-sm focus:border-blue-500 outline-none transition-all shadow-inner" />
+                  <input 
+                    type="tel" 
+                    value={phone} 
+                    onChange={(e) => { setPhone(formatPhoneNumber(e.target.value)); setIsEditing(true); }} 
+                    placeholder="+7 (___) ___-__-__"
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3.5 text-white text-sm focus:border-blue-500 outline-none transition-all shadow-inner" 
+                  />
                 </div>
                 
                 {isEditing && (
@@ -602,7 +641,9 @@ export default function Profile() {
 
             <div className="flex items-center gap-3 mb-6 pr-8">
                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${viewPostModal.networkColor}`}>
-                 {viewPostModal.network}
+                 <div className="w-5 h-5">
+                   {viewPostModal.network === 'VK' ? <IconVK /> : <IconTG />}
+                 </div>
                </div>
                <div>
                  <h3 className="text-white font-bold text-lg leading-none">{viewPostModal.accountName}</h3>
@@ -701,6 +742,13 @@ export default function Profile() {
               >
                 {isSharing ? <><Loader2 className="animate-spin" size={18}/> Отправка...</> : <><Send size={18} /> Разослать выбранным</>}
               </button>
+            )}
+            
+            {/* Предупреждение о медиафайлах, если это уже опубликованный пост */}
+            {sharePostModal?.statusLower === 'published' && (!sharePostModal.media || sharePostModal.media.length === 0) && (
+              <p className="text-center text-[10px] text-gray-500 mt-3 leading-tight">
+                *Уже опубликованные посты отправляются без картинок (так как фото были удалены с сервера для экономии места).
+              </p>
             )}
           </div>
         </div>
