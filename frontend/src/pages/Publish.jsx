@@ -40,7 +40,10 @@ export default function Publish() {
   const [accountOverrides, setAccountOverrides] = useState({});
 
   const [publishMode, setPublishMode] = useState('now');
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [scheduleTime, setScheduleTime] = useState('');
 
   const [isImprovingAI, setIsImprovingAI] = useState(false);
@@ -62,6 +65,7 @@ export default function Publish() {
   const MAX_CHARS = 1000;
 
   const scheduledPostsRaw = useStore(state => state.scheduledPosts) || [];
+  const watermarkSettings = useStore(state => state.watermarkSettings); // <--- ВОТ ЭТА СТРОКА ВКЛЮЧИТ ЗНАКИ
   const fetchScheduledPosts = useStore(state => state.fetchScheduledPosts);
   const deleteScheduledPostAction = useStore(state => state.deleteScheduledPostAction);
 
@@ -324,18 +328,18 @@ const handlePublish = async () => {
     try {
         const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
         
-        // ИСПРАВЛЕНИЕ: Теперь мы передаем не только true/false, но и сами настройки водяного знака
+        // ИСПРАВЛЕНИЕ: Бронебойная передача настроек водяного знака
         const accountsData = selectedAccounts.map(id => {
           const acc = accounts.find(a => a.id === id);
           let wmConfig = null;
           let sigText = '';
           
           if (accountOverrides[id]?.mode === 'custom') {
-              wmConfig = acc?.watermark || globalSettings.watermark;
-              sigText = acc?.signature || globalSettings.signature;
+              wmConfig = acc?.watermark || globalSettings?.watermark || watermarkSettings;
+              sigText = acc?.signature || globalSettings?.signature || '';
           } else {
-              wmConfig = globalSettings.watermark;
-              sigText = globalSettings.signature;
+              wmConfig = globalSettings?.watermark || watermarkSettings;
+              sigText = globalSettings?.signature || '';
           }
 
           return {
@@ -360,7 +364,7 @@ const handlePublish = async () => {
             if (saveTempDraft) saveTempDraft(null); 
             
             if (publishMode === 'schedule') {
-                fetchScheduledPosts(); // Мгновенно обновляем календарь!
+                await fetchScheduledPosts(); // ЖДЕМ подгрузки новой карточки!
             }
             
             setStep(4); 
@@ -436,7 +440,7 @@ const handlePublish = async () => {
             <p className="text-sm text-gray-400">Мгновенная публикация во все выбранные социальные сети</p>
           </button>
 
-          <button onClick={() => setView('calendar')} className="bg-admin-card border border-gray-800 hover:border-purple-500 rounded-[2rem] p-6 sm:p-8 flex flex-col items-center text-center transition-all group active:scale-95 shadow-xl hover:shadow-purple-500/10">
+          <button onClick={() => { fetchScheduledPosts(); setView('calendar'); }} className="bg-admin-card border border-gray-800 hover:border-purple-500 rounded-[2rem] p-6 sm:p-8 flex flex-col items-center text-center transition-all group active:scale-95 shadow-xl hover:shadow-purple-500/10">
             <div className="w-20 h-20 bg-purple-500/10 text-purple-500 rounded-full flex items-center justify-center mb-5 group-hover:scale-110 transition-transform border border-purple-500/20">
               <CalendarClock size={32} />
             </div>
