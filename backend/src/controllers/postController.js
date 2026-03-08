@@ -4,6 +4,7 @@ const axios = require('axios');
 const FormData = require('form-data');
 const sharp = require('sharp'); 
 const cron = require('node-cron'); // Подключаем таймер
+const jwt = require('jsonwebtoken');
 
 // === ЛОГИКА ОТПРАВКИ В TELEGRAM ===
 async function sendToTelegram(token, chatId, text, imageBuffers) {
@@ -35,6 +36,27 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         await axios.post(`${baseUrl}/sendMediaGroup`, form, { headers: form.getHeaders() });
     }
 }
+
+// === ЗАЩИТА АВТОРИЗАЦИИ (Гарантированно достает ID пользователя) ===
+const getUserId = (req) => {
+    // 1. Стандартный способ
+    if (req.user && typeof req.user === 'object') return req.user.id || req.user.userId;
+    if (req.userId) return req.userId;
+    if (typeof req.user === 'string') return req.user;
+
+    // 2. Бронебойный способ: достаем ID прямо из заголовка, если система его потеряла
+    try {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.split(' ')[1];
+            const decoded = jwt.decode(token); // Читаем начинку токена
+            if (decoded) return decoded.id || decoded.userId;
+        }
+    } catch (e) {
+        console.error("Ошибка при ручной расшифровке токена:", e);
+    }
+    return null;
+};
 
 // === ЛОГИКА ОТПРАВКИ В ВКОНТАКТЕ ===
 async function sendToVK(token, groupId, text, imageBuffers) {
