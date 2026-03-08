@@ -43,7 +43,8 @@ export default function Profile() {
   const fileInputRef = useRef(null);
 
   // === ПОДПИСКА PRO ===
-  const PRO_MANAGER_TG = 'smmbox_admin'; 
+  // 💡 Сюда вписывать юзернейм менеджера БЕЗ знака @
+  const PRO_MANAGER_TG = 'bnbslow'; 
   const [showProModal, setShowProModal] = useState(false);
 
   // === СОСТОЯНИЯ ВКЛАДОК И МОДАЛОК ===
@@ -245,7 +246,7 @@ export default function Profile() {
 
   // === ОБРАБОТЧИКИ ШЕРИНГА И PRO ===
   const handleBuyPro = () => {
-    const message = `Здравствуйте! 👋\n\nЯ хочу оформить подписку PRO для SMMBOX.\nМой ID: ${user.id}`;
+    const message = `Здравствуйте! 👋\n\nЯ хочу приобрести подписку PRO для SMMBOX за 2000 руб.\nМой ID в системе: ${user.id}`;
     const tgLink = `https://t.me/${PRO_MANAGER_TG}?text=${encodeURIComponent(message)}`;
     window.open(tgLink, '_blank');
     setShowProModal(false);
@@ -796,7 +797,7 @@ export default function Profile() {
       {/* === МОДАЛЬНОЕ ОКНО ОФОРМЛЕНИЯ PRO === */}
       {showProModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-admin-card w-full max-w-md border border-purple-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative text-center">
+          <div className="bg-admin-card w-full max-w-md border border-purple-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
             <button onClick={() => setShowProModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 transition-colors">
               <X size={20} />
             </button>
@@ -805,14 +806,26 @@ export default function Profile() {
               <Crown size={40} className="text-black" />
             </div>
             
-            <h3 className="text-2xl font-bold text-white mb-3">Оформление PRO</h3>
-            <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-              Сейчас покупка PRO-статуса осуществляется напрямую через нашего менеджера в Telegram. 
-              <br/><br/>
-              Нажмите на кнопку ниже — вас перекинет в чат с уже готовым сообщением и вашим ID. Менеджер ответит вам и моментально активирует подписку!
-            </p>
+            <div className="text-center">
+              <h3 className="text-2xl font-bold text-white mb-4">Оформление PRO</h3>
+              
+              <div className="text-gray-400 text-sm mb-8 leading-relaxed space-y-4">
+                <p>
+                  Стоимость безлимитной PRO-подписки составляет <span className="text-yellow-400 font-bold text-base px-1">2000 ₽</span><br/>
+                  Оплата производится напрямую переводом на банковскую карту.
+                </p>
+                <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl">
+                  <p className="text-gray-300">
+                    Нажмите на кнопку ниже, чтобы перейти в Telegram. Наш менеджер ответит вам в течение <span className="text-white font-bold">нескольких часов</span> и пришлет реквизиты. 
+                  </p>
+                  <p className="text-gray-300 mt-2">
+                    Подписка будет активирована <span className="text-emerald-400 font-bold">в течение дня</span> после оплаты!
+                  </p>
+                </div>
+              </div>
+            </div>
 
-            <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-[#229ED9]/20">
+            <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-[#229ED9]/20 active:scale-95">
               <Send size={18} /> Написать менеджеру
             </button>
           </div>
