@@ -327,12 +327,27 @@ export default function Publish() {
           applySignature: getEffectiveSetting(id, 'signature')
         }));
 
-        const publishAt = publishMode === 'schedule' ? `${selectedCalendarDate}T${scheduleTime}:00` : null;
+        // === ИСПРАВЛЕНИЕ 1: МАГИЯ ЧАСОВЫХ ПОЯСОВ ===
+        // Браузер сам знает, где вы находитесь. Он берет ваше местное время
+        // и конвертирует его в единое серверное время (UTC) с помощью toISOString()
+        let publishAt = null;
+        if (publishMode === 'schedule') {
+            const localDate = new Date(`${selectedCalendarDate}T${scheduleTime}:00`);
+            publishAt = localDate.toISOString(); 
+        }
+
         const result = await createPostAction(text, base64Images, selectedAccounts, accountsData, publishAt);
 
         if (result.success) {
             setIsPublishing(false);
             if (saveTempDraft) saveTempDraft(null); 
+            
+            // === ИСПРАВЛЕНИЕ 2: ОБНОВЛЯЕМ КАЛЕНДАРЬ СРАЗУ ПОСЛЕ УСПЕХА ===
+            // Чтобы карточка моментально появилась на нужной дате
+            if (publishMode === 'schedule') {
+                fetchScheduledPosts(); 
+            }
+            
             setStep(4); 
         } else {
             setIsPublishing(false);
