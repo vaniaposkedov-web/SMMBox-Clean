@@ -1,4 +1,3 @@
-
 const axios = require('axios'); // <-- ВОТ ОН, СПАСИТЕЛЬ ОТ 500 ОШИБКИ!
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
@@ -57,6 +56,17 @@ exports.saveVkGroups = async (req, res) => {
       return res.status(400).json({ error: 'Нет данных для сохранения' });
     }
 
+    // === ПРОВЕРКА ЛИМИТОВ PRO ===
+    const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
+    const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
+    
+    if (!currentUser.isPro && (currentAccountsCount + groups.length) > 10) {
+      return res.status(403).json({ 
+        error: `Лимит бесплатной версии — 10 аккаунтов (сейчас привязано ${currentAccountsCount}). Оформите PRO!` 
+      });
+    }
+    // ============================
+
     const savedAccounts = await Promise.all(groups.map(async (group) => {
       const safeProviderId = String(group.id); 
 
@@ -94,6 +104,17 @@ exports.saveTgAccounts = async (req, res) => {
     if (!userId || !channels || channels.length === 0) {
       return res.status(400).json({ error: 'Нет данных для сохранения' });
     }
+
+    // === ПРОВЕРКА ЛИМИТОВ PRO ===
+    const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
+    const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
+    
+    if (!currentUser.isPro && (currentAccountsCount + channels.length) > 10) {
+      return res.status(403).json({ 
+        error: `Лимит бесплатной версии — 10 аккаунтов (сейчас привязано ${currentAccountsCount}). Оформите PRO!` 
+      });
+    }
+    // ============================
 
     for (const channel of channels) {
       const safeProviderId = String(channel.chatId);

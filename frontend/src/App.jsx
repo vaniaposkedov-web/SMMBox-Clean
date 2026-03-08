@@ -8,7 +8,6 @@ import Publish from './pages/Publish';
 import Requests from './pages/Requests';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
-import Subscription from './pages/Subscription';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import Onboarding from './pages/Onboarding'; 
 
@@ -65,7 +64,7 @@ function Sidebar() {
         </NavLink>
 
         <NavLink to="/settings" className={linkClass}><SettingsIcon size={20} /> Настройки</NavLink>
-        <NavLink to="/subscription" className={linkClass}><Crown size={20} /> Подписка</NavLink>
+        
       </nav>
 
       <div className="p-4 border-t border-gray-800 space-y-2">
@@ -187,7 +186,6 @@ function App() {
           <Route path="/publish" element={<Publish />} />
           <Route path="/requests" element={<Requests />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/subscription" element={<Subscription />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
         </Route>
 
@@ -197,8 +195,10 @@ function App() {
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
 
+        <Route path="/reset-password/:token" element={<ResetPassword />} />
+
         {/* Любая другая ссылка вернет в профиль (или в путеводитель, если он не пройден) */}
-        <Route path="*" element={<Navigate to={!user.isOnboardingCompleted ? "/onboarding" : "/profile"} replace />} />
+       <Route path="*" element={<Navigate to={!user.isOnboardingCompleted ? "/onboarding" : "/profile"} replace />} />
       </Routes>
     </BrowserRouter>
   );
