@@ -287,7 +287,7 @@ exports.createPost = async (req, res) => {
                         text: finalText,
                         mediaUrls: JSON.stringify(base64ImagesToSave),
                         publishAt: new Date(publishAt),
-                        status: 'SCHEDULED'
+                        status: 'SCHEDULED' // СТРОГО сохраняем как отложенный
                     }
                 });
                 
