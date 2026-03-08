@@ -11,6 +11,7 @@ const partnerRoutes = require('./routes/partnerRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const postRoutes = require('./routes/postRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const path = require('path');
 
@@ -40,6 +41,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/partners', partnerRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/posts', postRoutes);
+app.use('/api/admin', adminRoutes);
 
 // === ЗАЩИТА НЕЙРОСЕТИ (RATE LIMITER) ===
 const rateLimit = require('express-rate-limit');

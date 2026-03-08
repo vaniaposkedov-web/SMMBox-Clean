@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-r
 import { PlusSquare, Inbox, Settings as SettingsIcon, User, Crown, Box, LogOut, ShieldAlert } from 'lucide-react';
 import { useStore } from './store'; 
 
+import AdminLogin from './pages/admin/AdminLogin';
+import AdminDashboard from './pages/admin/AdminDashboard';
+
 // --- СТРАНИЦЫ ДЛЯ АВТОРИЗОВАННЫХ ---
 import Publish from './pages/Publish';
 import Requests from './pages/Requests';
