@@ -67,6 +67,7 @@ export const useStore = create(
       fetchScheduledPosts: async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
+          if (!token || token === 'null') return;
           const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${token}` } });
           if (res.ok) {
             const data = await res.json();
@@ -78,6 +79,7 @@ export const useStore = create(
       deleteScheduledPostAction: async (id) => {
         try {
           const token = localStorage.getItem('token') || get().token;
+          if (!token || token === 'null') return;
           const res = await fetch(`/api/posts/scheduled/${id}`, {
             method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
           });
@@ -474,6 +476,7 @@ export const useStore = create(
       fetchSharedPosts: async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
+          if (!token || token === 'null') return;
           const res = await fetch('/api/posts/shared', { 
             headers: { 'Authorization': `Bearer ${token}` } 
           });
@@ -487,6 +490,7 @@ export const useStore = create(
       sharePostAction: async (text, mediaUrls, partnerIds) => {
         try {
           const token = localStorage.getItem('token') || get().token;
+          if (!token || token === 'null') return;
           const res = await fetch('/api/posts/share', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },

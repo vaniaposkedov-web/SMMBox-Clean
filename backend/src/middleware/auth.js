@@ -1,26 +1,31 @@
-// Файл: backend/src/middleware/auth.js
 const jwt = require('jsonwebtoken');
 
 module.exports = (req, res, next) => {
-  // Браузеры иногда шлют предварительный запрос OPTIONS, пропускаем его
-  if (req.method === 'OPTIONS') return next();
+    try {
+        const authHeader = req.headers.authorization;
+        
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            console.log("❌ [Auth] Блокировка: Нет заголовка Authorization");
+            return res.status(401).json({ error: 'Нет токена авторизации' });
+        }
 
-  try {
-    // Достаем токен из заголовка "Authorization: Bearer <token>"
-    const token = req.headers.authorization.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ error: 'Нет доступа. Токен не найден.' });
+        const token = authHeader.split(' ')[1];
+        
+        if (!token || token === 'null' || token === 'undefined') {
+            console.log("❌ [Auth] Блокировка: Токен пустой (null)");
+            return res.status(401).json({ error: 'Пустой токен' });
+        }
+
+        // Расшифровываем токен. Ключ должен совпадать с тем, что в логине!
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret'); 
+        
+        // Гарантированно сохраняем ID для следующих функций
+        req.user = decoded;
+        req.userId = decoded.id || decoded.userId;
+        
+        next(); // Пускаем дальше!
+    } catch (error) {
+        console.error("❌ [Auth] Блокировка: Ошибка проверки токена:", error.message);
+        return res.status(401).json({ error: 'Неверный или просроченный токен' });
     }
-
-    // Расшифровываем токен. Если он подделан, выдаст ошибку
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Записываем ID пользователя из токена в сам запрос
-    req.user = decoded; 
-    
-    // Пропускаем дальше к контроллеру
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Неверный или просроченный токен авторизации.' });
-  }
 };
