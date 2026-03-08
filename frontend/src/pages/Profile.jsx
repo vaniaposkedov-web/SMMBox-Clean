@@ -4,7 +4,7 @@ import {
   User, Mail, Shield, Edit2, Clock, X, Hash, Camera, 
   Check, Copy, CalendarClock, CheckCircle2, AlertCircle, BarChart3, 
   Settings as SettingsIcon, LayoutDashboard, Lock, Eye, Share2, 
-  Phone, Key, Users, Send, Loader2, Search, Plus
+  Phone, Key, Users, Send, Loader2, Search, Plus, Crown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -41,6 +41,10 @@ export default function Profile() {
   const sharePostAction = useStore((state) => state.sharePostAction);
 
   const fileInputRef = useRef(null);
+
+  // === ПОДПИСКА PRO ===
+  const PRO_MANAGER_TG = 'smmbox_admin'; 
+  const [showProModal, setShowProModal] = useState(false);
 
   // === СОСТОЯНИЯ ВКЛАДОК И МОДАЛОК ===
   const [activeTab, setActiveTab] = useState('overview'); 
@@ -128,7 +132,7 @@ export default function Profile() {
             formattedDate: new Date(p.publishAt || p.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
             network: p.account?.provider === 'vk' ? 'VK' : 'TG',
             networkColor: p.account?.provider === 'vk' ? 'text-blue-500 bg-blue-500/10 border-blue-500/20' : 'text-sky-400 bg-sky-400/10 border-sky-400/20',
-            networkBg: p.account?.provider === 'vk' ? 'bg-blue-600' : 'bg-sky-500',
+            networkBg: p.account?.provider === 'vk' ? 'bg-[#0077FF]' : 'bg-[#229ED9]',
             accountName: p.account?.name || 'Аккаунт удален'
         };
       });
@@ -239,7 +243,14 @@ export default function Profile() {
     setIsLinking(false);
   };
 
-  // === ОБРАБОТЧИКИ ШЕРИНГА ===
+  // === ОБРАБОТЧИКИ ШЕРИНГА И PRO ===
+  const handleBuyPro = () => {
+    const message = `Здравствуйте! 👋\n\nЯ хочу оформить подписку PRO для SMMBOX.\nМой ID: ${user.id}`;
+    const tgLink = `https://t.me/${PRO_MANAGER_TG}?text=${encodeURIComponent(message)}`;
+    window.open(tgLink, '_blank');
+    setShowProModal(false);
+  };
+
   const togglePartner = (id) => {
     setSelectedPartners(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
   };
@@ -460,6 +471,27 @@ export default function Profile() {
                  <Plus size={20} /> Создать пост
                </button>
             </div>
+
+            {/* Баннер PRO */}
+            <div className="md:col-span-3 bg-gradient-to-r from-purple-900 to-indigo-900 border border-purple-500/30 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden mt-2 flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="absolute -right-10 -top-10 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
+              <div className="relative z-10 text-center sm:text-left">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-white mb-2 flex items-center justify-center sm:justify-start gap-2">
+                  <Crown className={user?.isPro ? "text-yellow-400" : "text-purple-400"} size={28} /> 
+                  {user?.isPro ? 'У вас активна PRO подписка!' : 'Снимите все ограничения с PRO'}
+                </h3>
+                <p className="text-gray-300 text-sm sm:text-base max-w-2xl">
+                  {user?.isPro 
+                    ? 'Вам доступны безлимитные аккаунты, автопостинг и все премиум функции платформы.' 
+                    : 'Подключите безлимитное количество аккаунтов ВКонтакте и Telegram. Забудьте об ограничениях и развивайте бизнес быстрее!'}
+                </p>
+              </div>
+              {!user?.isPro && (
+                <button onClick={() => setShowProModal(true)} className="relative z-10 shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black px-8 py-4 rounded-xl text-base font-extrabold transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] active:scale-95 w-full sm:w-auto">
+                  Подключить PRO
+                </button>
+              )}
+            </div>
             
           </div>
         )}
@@ -487,41 +519,37 @@ export default function Profile() {
                     <div className="flex items-start gap-4 overflow-hidden w-full sm:w-auto flex-1">
                       
                       {/* Иконка или превью */}
-                      <div className={`w-12 h-12 shrink-0 rounded-xl flex items-center justify-center text-sm font-bold border relative overflow-hidden ${post.networkColor}`}>
-                        {post.media && post.media.length > 0 ? (
-                           <>
-                             <img src={post.media[0]} alt="media" className="w-full h-full object-cover opacity-80" />
-                             <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-tl-lg flex items-center justify-center p-1 ${post.networkBg} text-white`}>
-                               {post.network === 'VK' ? <IconVK /> : <IconTG />}
-                             </div>
-                           </>
-                        ) : (
-                           <div className="w-6 h-6">
-                             {post.network === 'VK' ? <IconVK /> : <IconTG />}
-                           </div>
-                        )}
-                      </div>
-
-                      {/* Иконка или превью */}
                       <div className="relative w-12 h-12 shrink-0">
-                        <div className={`w-full h-full rounded-xl flex items-center justify-center text-sm font-bold border overflow-hidden ${post.networkColor}`}>
+                        {/* Основная картинка или заглушка */}
+                        <div className={`w-full h-full rounded-xl flex items-center justify-center text-sm font-bold border overflow-hidden ${post.media && post.media.length > 0 ? 'border-gray-700 bg-gray-800' : post.networkColor}`}>
                           {post.media && post.media.length > 0 ? (
-                             <img src={post.media[0]} alt="media" className="w-full h-full object-cover opacity-80" />
+                             <img src={post.media[0]} alt="media" className="w-full h-full object-cover" />
                           ) : (
-                             <div className="w-6 h-6">
+                             <div className="w-6 h-6 flex items-center justify-center">
                                {post.network === 'VK' ? <IconVK /> : <IconTG />}
                              </div>
                           )}
                         </div>
                         
-                        {/* Красивый круглый бейдж поверх картинки */}
+                        {/* Маленький круглый бейдж соцсети в углу (только если есть картинка) */}
                         {post.media && post.media.length > 0 && (
-                          <div className={`absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center border-[2.5px] border-gray-900 ${post.networkBg} text-white shadow-sm`}>
-                             <div className="w-3 h-3">
+                          <div className={`absolute -bottom-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center border-2 border-gray-900 ${post.networkBg} text-white shadow-sm z-10`}>
+                             <div className="w-3.5 h-3.5 flex items-center justify-center">
                                {post.network === 'VK' ? <IconVK /> : <IconTG />}
                              </div>
                           </div>
                         )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-white font-medium line-clamp-2 leading-snug pr-2">{post.text}</p>
+                        <div className="flex flex-wrap items-center gap-3 mt-2">
+                          <StatusBadge status={post.statusLower} />
+                          <span className="w-1 h-1 rounded-full bg-gray-700 hidden sm:block"></span>
+                          <p className="text-xs text-gray-500 flex items-center gap-1 font-medium">
+                            <Clock size={12} /> {post.formattedDate}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
@@ -652,7 +680,7 @@ export default function Profile() {
 
             <div className="flex items-center gap-3 mb-6 pr-8">
                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${viewPostModal.networkColor}`}>
-                 <div className="w-5 h-5">
+                 <div className="w-5 h-5 flex items-center justify-center">
                    {viewPostModal.network === 'VK' ? <IconVK /> : <IconTG />}
                  </div>
                </div>
@@ -761,6 +789,32 @@ export default function Profile() {
                 *Уже опубликованные посты отправляются без картинок (так как фото были удалены с сервера для экономии места).
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* === МОДАЛЬНОЕ ОКНО ОФОРМЛЕНИЯ PRO === */}
+      {showProModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-admin-card w-full max-w-md border border-purple-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative text-center">
+            <button onClick={() => setShowProModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 transition-colors">
+              <X size={20} />
+            </button>
+
+            <div className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-yellow-500/20">
+              <Crown size={40} className="text-black" />
+            </div>
+            
+            <h3 className="text-2xl font-bold text-white mb-3">Оформление PRO</h3>
+            <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+              Сейчас покупка PRO-статуса осуществляется напрямую через нашего менеджера в Telegram. 
+              <br/><br/>
+              Нажмите на кнопку ниже — вас перекинет в чат с уже готовым сообщением и вашим ID. Менеджер ответит вам и моментально активирует подписку!
+            </p>
+
+            <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-[#229ED9]/20">
+              <Send size={18} /> Написать менеджеру
+            </button>
           </div>
         </div>
       )}
