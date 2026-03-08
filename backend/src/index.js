@@ -4,7 +4,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 // Запускаем планировщик постов
-//require('./controllers/postController').initCron();
+require('./controllers/postController').initCron();
 
 const authRoutes = require('./routes/authRoutes');
 const partnerRoutes = require('./routes/partnerRoutes');
