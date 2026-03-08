@@ -66,7 +66,8 @@ export const useStore = create(
 
       fetchScheduledPosts: async () => {
         try {
-          const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${get().token}` } });
+          const token = localStorage.getItem('token') || get().token;
+          const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${token}` } });
           if (res.ok) {
             const data = await res.json();
             set({ scheduledPosts: data.posts });
@@ -76,8 +77,9 @@ export const useStore = create(
 
       deleteScheduledPostAction: async (id) => {
         try {
+          const token = localStorage.getItem('token') || get().token;
           const res = await fetch(`/api/posts/scheduled/${id}`, {
-            method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` }
+            method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
           });
           if (res.ok) get().fetchScheduledPosts();
         } catch (error) {}
@@ -469,11 +471,11 @@ export const useStore = create(
         }
       },
 
-      // === НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ СО ВХОДЯЩИМИ/ИСХОДЯЩИМИ ПОСТАМИ ===
       fetchSharedPosts: async () => {
         try {
+          const token = localStorage.getItem('token') || get().token;
           const res = await fetch('/api/posts/shared', { 
-            headers: { 'Authorization': `Bearer ${get().token}` } 
+            headers: { 'Authorization': `Bearer ${token}` } 
           });
           if (res.ok) {
             const data = await res.json();
@@ -484,9 +486,10 @@ export const useStore = create(
 
       sharePostAction: async (text, mediaUrls, partnerIds) => {
         try {
+          const token = localStorage.getItem('token') || get().token;
           const res = await fetch('/api/posts/share', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ text, mediaUrls, partnerIds })
           });
           const data = await res.json();
