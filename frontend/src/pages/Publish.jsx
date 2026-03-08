@@ -102,7 +102,7 @@ export default function Publish() {
         network: p.account?.provider === 'vk' ? 'VK' : 'TG',
         color: p.account?.provider === 'vk' ? 'bg-blue-600' : 'bg-sky-500',
         accountName: p.account?.name || 'Аккаунт',
-        status: p.status, // SCHEDULED или PUBLISHED
+        status: p.status, 
         rawPublishAt: p.publishAt
       };
     });
@@ -411,13 +411,11 @@ export default function Publish() {
     }
   };
 
-  // === ЛОГИКА РЕДАКТИРОВАНИЯ ПОСТА ===
   const openEditModal = (post) => {
     setEditPost(post);
     setEditTab('text');
     setEditText(post.text);
     
-    // Подготовка даты
     const d = new Date(post.rawPublishAt);
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -477,31 +475,31 @@ export default function Publish() {
   // ==========================================
   if (view === 'start') {
     return (
-      <div className="min-h-[100dvh] bg-admin-bg p-4 sm:p-8 flex flex-col items-center justify-center animate-fade-in relative pb-24 md:pb-0">
+      <div className="min-h-[100dvh] bg-admin-bg px-4 py-8 flex flex-col items-center justify-center animate-fade-in relative pb-24 md:pb-0">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-blue-500/10 blur-[100px] rounded-full pointer-events-none"></div>
         <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-3xl flex items-center justify-center mb-6 relative z-10 border border-blue-500/20">
           <LayoutTemplate size={32} />
         </div>
         <h1 className="text-2xl sm:text-4xl font-bold text-white mb-3 text-center relative z-10">Создание публикации</h1>
-        <p className="text-gray-400 mb-10 text-center max-w-md relative z-10">
+        <p className="text-gray-400 mb-8 sm:mb-10 text-center max-w-md relative z-10 text-sm sm:text-base">
           Выберите, хотите ли вы отправить пост прямо сейчас или запланировать его в контент-плане.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 w-full max-w-2xl relative z-10">
-          <button onClick={() => { setPublishMode('now'); setView('wizard'); setStep(1); }} className="bg-admin-card border border-gray-800 hover:border-blue-500 rounded-[2rem] p-6 sm:p-8 flex flex-col items-center text-center transition-all group active:scale-95 shadow-xl hover:shadow-blue-500/10">
-            <div className="w-20 h-20 bg-blue-500/10 text-blue-500 rounded-full flex items-center justify-center mb-5 group-hover:scale-110 transition-transform border border-blue-500/20">
-              <Send size={32} className="ml-1" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl relative z-10">
+          <button onClick={() => { setPublishMode('now'); setView('wizard'); setStep(1); }} className="bg-admin-card border border-gray-800 hover:border-blue-500 rounded-3xl sm:rounded-[2rem] p-6 sm:p-8 flex flex-col items-center text-center transition-all group active:scale-95 shadow-xl hover:shadow-blue-500/10">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-blue-500/10 text-blue-500 rounded-full flex items-center justify-center mb-4 sm:mb-5 group-hover:scale-110 transition-transform border border-blue-500/20">
+              <Send size={28} className="ml-1 sm:w-8 sm:h-8" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Запостить сейчас</h3>
-            <p className="text-sm text-gray-400">Мгновенная публикация во все выбранные социальные сети</p>
+            <h3 className="text-lg sm:text-xl font-bold text-white mb-2">Запостить сейчас</h3>
+            <p className="text-xs sm:text-sm text-gray-400">Мгновенная публикация во все выбранные социальные сети</p>
           </button>
 
-          <button onClick={() => { fetchScheduledPosts(); setView('calendar'); }} className="bg-admin-card border border-gray-800 hover:border-purple-500 rounded-[2rem] p-6 sm:p-8 flex flex-col items-center text-center transition-all group active:scale-95 shadow-xl hover:shadow-purple-500/10">
-            <div className="w-20 h-20 bg-purple-500/10 text-purple-500 rounded-full flex items-center justify-center mb-5 group-hover:scale-110 transition-transform border border-purple-500/20">
-              <CalendarClock size={32} />
+          <button onClick={() => { fetchScheduledPosts(); setView('calendar'); }} className="bg-admin-card border border-gray-800 hover:border-purple-500 rounded-3xl sm:rounded-[2rem] p-6 sm:p-8 flex flex-col items-center text-center transition-all group active:scale-95 shadow-xl hover:shadow-purple-500/10">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-purple-500/10 text-purple-500 rounded-full flex items-center justify-center mb-4 sm:mb-5 group-hover:scale-110 transition-transform border border-purple-500/20">
+              <CalendarClock size={28} className="sm:w-8 sm:h-8" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Отложенный пост</h3>
-            <p className="text-sm text-gray-400">Откройте календарь, выберите дату и запланируйте публикацию</p>
+            <h3 className="text-lg sm:text-xl font-bold text-white mb-2">Отложенный пост</h3>
+            <p className="text-xs sm:text-sm text-gray-400">Откройте календарь, выберите дату и запланируйте публикацию</p>
           </button>
         </div>
       </div>
@@ -516,14 +514,16 @@ export default function Publish() {
     const postsForSelectedDate = realScheduledPosts.filter(p => p.date === selectedCalendarDate);
 
     return (
-      <div className="min-h-[100dvh] bg-admin-bg p-4 sm:p-8 pb-32 md:pb-8 animate-fade-in">
+      <div className="min-h-[100dvh] bg-admin-bg px-4 py-6 sm:p-8 pb-32 md:pb-8 animate-fade-in">
         <div className="max-w-3xl mx-auto">
-          <button onClick={() => setView('start')} className="flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors p-2 -ml-2 rounded-lg active:bg-gray-800">
-            <span className="flex items-center justify-center"><ChevronLeft size={24} className="sm:w-5 sm:h-5" /></span>
-            <span className="font-medium">Назад к выбору</span>
+          <button onClick={() => setView('start')} className="flex items-center gap-2 text-gray-400 hover:text-white mb-4 sm:mb-6 transition-colors min-h-[44px] px-2 -ml-2 rounded-xl active:bg-gray-800 w-max">
+            <ChevronLeft size={24} />
+            <span className="font-medium text-sm sm:text-base">Назад к выбору</span>
           </button>
-          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6">Контент-план</h2>
-          <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 mb-4">
+          
+          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4 sm:mb-6">Контент-план</h2>
+          
+          <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 mb-2 sm:mb-4">
             {calendarDays.map((d) => {
               const year = d.getFullYear();
               const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -555,21 +555,20 @@ export default function Publish() {
               <Clock size={20} className="text-purple-500" /> 
               {selectedDateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
             </h3>
+            
             <div className="space-y-3">
               {postsForSelectedDate.length > 0 ? (
                 postsForSelectedDate.map(post => (
-                  <div key={post.id} className={`bg-admin-card border border-gray-800 p-4 rounded-2xl flex items-center justify-between gap-4 transition-all hover:bg-gray-900/80 group ${post.status === 'PUBLISHED' ? 'opacity-80 grayscale-[30%] bg-gray-900/50' : ''}`}>
-                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                  <div key={post.id} className={`bg-admin-card border border-gray-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:bg-gray-900/80 group ${post.status === 'PUBLISHED' ? 'opacity-80 grayscale-[30%] bg-gray-900/50' : ''}`}>
+                    <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
                       
-                      {/* АВАТАРКА СОЦСЕТИ */}
-                      <div className={`w-14 h-14 rounded-xl shrink-0 flex items-center justify-center text-white border border-gray-700/50 ${post.color}`}>
-                        <div className="w-7 h-7">
+                      <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 flex items-center justify-center text-white border border-gray-700/50 ${post.color}`}>
+                        <div className="w-6 h-6 sm:w-7 sm:h-7">
                           {post.network === 'VK' ? <IconVK /> : <IconTG />}
                         </div>
                       </div>
 
-                      {/* ТЕКСТ И ИНФО */}
-                      <div className="min-w-0 flex-1 pr-4">
+                      <div className="min-w-0 flex-1">
                         <p className={`font-medium text-sm line-clamp-2 leading-snug break-words ${post.status === 'PUBLISHED' ? 'text-gray-300' : 'text-white'}`}>
                           {post.text}
                         </p>
@@ -580,7 +579,6 @@ export default function Publish() {
                             <Clock size={12} /> {post.time}
                           </span>
                           
-                          {/* ЗНАЧОК СТАТУСА (Отправлен) */}
                           {post.status === 'PUBLISHED' && (
                             <span className="text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
                               <CheckCircle2 size={10} /> Отправлен
@@ -590,12 +588,11 @@ export default function Publish() {
                       </div>
                     </div>
                     
-                    {/* КНОПКИ ДЕЙСТВИЙ (Скрываем редактирование, если пост уже опубликован) */}
-                    <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-end gap-2 shrink-0 pt-3 border-t border-gray-800 sm:pt-0 sm:border-t-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       {post.status === 'SCHEDULED' && (
                         <button 
                           onClick={() => openEditModal(post)} 
-                          className="w-10 h-10 rounded-xl bg-gray-900 hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 flex items-center justify-center transition-colors border border-gray-800 hover:border-blue-500/30"
+                          className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl bg-gray-900 hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 flex items-center justify-center transition-colors border border-gray-800 hover:border-blue-500/30"
                           title="Редактировать"
                         >
                           <PenTool size={18} />
@@ -603,7 +600,7 @@ export default function Publish() {
                       )}
                       <button 
                         onClick={() => deleteScheduledPostAction(post.id)} 
-                        className="w-10 h-10 rounded-xl bg-gray-900 hover:bg-red-500/20 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors border border-gray-800 hover:border-red-500/30"
+                        className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl bg-gray-900 hover:bg-red-500/20 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors border border-gray-800 hover:border-red-500/30"
                         title="Удалить"
                       >
                         <Trash2 size={18} />
@@ -624,34 +621,33 @@ export default function Publish() {
           </div>
         </div>
 
-        <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
           <div className="max-w-3xl mx-auto">
             <button 
               onClick={() => { setPublishMode('schedule'); setView('wizard'); setStep(1); }}
               className="w-full bg-purple-600 hover:bg-purple-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 flex justify-center items-center gap-2"
             >
-              <span className="flex items-center gap-2"><Plus size={20} /> Запостить ещё на эту дату</span>
+              <Plus size={20} /> Запостить ещё на эту дату
             </button>
           </div>
         </div>
 
-        {/* МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ПОСТА */}
+        {/* МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ПОСТА (BOTTOM SHEET MOBILE) */}
         {editPost && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-            <div className="bg-admin-card w-full max-w-lg border border-gray-800 rounded-3xl p-6 shadow-2xl relative flex flex-col max-h-[90vh]">
-              <button onClick={() => setEditPost(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
+            <div className="bg-admin-card w-full max-w-lg border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative flex flex-col max-h-[90vh] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">
+              <button onClick={() => setEditPost(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-10 h-10 rounded-full flex items-center justify-center transition-colors z-10">
                 <X size={20} />
               </button>
 
-              <h3 className="text-xl font-bold text-white mb-4">Редактирование поста</h3>
+              <h3 className="text-xl font-bold text-white mb-4 pr-12">Редактирование</h3>
               
-              <div className="flex gap-2 mb-6 border-b border-gray-800 pb-2">
-                <button onClick={() => setEditTab('text')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${editTab === 'text' ? 'bg-purple-500/20 text-purple-400' : 'text-gray-500 hover:text-gray-300'}`}>Текст</button>
-                <button onClick={() => setEditTab('settings')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${editTab === 'settings' ? 'bg-purple-500/20 text-purple-400' : 'text-gray-500 hover:text-gray-300'}`}>Настройки (Время)</button>
-                <button disabled title="Изображения фиксируются при создании" className="px-4 py-2 text-sm font-bold rounded-lg text-gray-700 cursor-not-allowed hidden sm:block">Картинки (Только чтение)</button>
+              <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-4 border-b border-gray-800 pb-2">
+                <button onClick={() => setEditTab('text')} className={`px-4 py-2 min-h-[44px] text-sm font-bold rounded-lg transition-colors whitespace-nowrap ${editTab === 'text' ? 'bg-purple-500/20 text-purple-400' : 'text-gray-500 hover:text-gray-300'}`}>Текст</button>
+                <button onClick={() => setEditTab('settings')} className={`px-4 py-2 min-h-[44px] text-sm font-bold rounded-lg transition-colors whitespace-nowrap ${editTab === 'settings' ? 'bg-purple-500/20 text-purple-400' : 'text-gray-500 hover:text-gray-300'}`}>Время</button>
               </div>
 
-              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 mb-4">
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 sm:pr-2 mb-4">
                 {editTab === 'text' && (
                   <textarea
                     value={editText} onChange={(e) => setEditText(e.target.value)}
@@ -660,31 +656,31 @@ export default function Publish() {
                 )}
                 {editTab === 'settings' && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
                       <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase">Дата публикации</label>
-                        <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white mt-1" />
+                        <label className="text-xs font-bold text-gray-500 uppercase">Дата</label>
+                        <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white mt-1 min-h-[48px]" />
                       </div>
                       <div>
                         <label className="text-xs font-bold text-gray-500 uppercase">Время</label>
-                        <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white mt-1" />
+                        <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white mt-1 min-h-[48px]" />
                       </div>
                     </div>
-                    <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl mt-4">
-                      <p className="text-sm text-blue-400 font-medium flex items-start gap-2 leading-snug">
+                    <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl mt-2">
+                      <p className="text-xs sm:text-sm text-blue-400 font-medium flex items-start gap-2 leading-snug">
                         <Settings size={18} className="shrink-0 mt-0.5" />
-                        Для изменения водяного знака, подписи или списка аккаунтов, отмените эту публикацию и создайте новую. Изображения уже обработаны и привязаны к аккаунту.
+                        Для изменения знака, подписи или фото, отмените эту публикацию и создайте новую.
                       </p>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="pt-4 border-t border-gray-800 flex flex-col sm:flex-row gap-3">
-                 <button onClick={() => setEditPost(null)} className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-colors order-2 sm:order-1">Отмена</button>
-                 <button onClick={handleUpdatePost} disabled={isUpdatingPost} className="flex-[2] py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold transition-colors flex justify-center items-center gap-2 order-1 sm:order-2 shadow-lg shadow-purple-500/20">
+              <div className="pt-2 sm:pt-4 border-t border-gray-800 flex flex-col sm:flex-row gap-3">
+                 <button onClick={() => setEditPost(null)} className="flex-1 py-3.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-colors order-2 sm:order-1 min-h-[48px]">Отмена</button>
+                 <button onClick={handleUpdatePost} disabled={isUpdatingPost} className="flex-[2] py-3.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold transition-colors flex justify-center items-center gap-2 order-1 sm:order-2 shadow-lg shadow-purple-500/20 min-h-[48px]">
                    {isUpdatingPost ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />} 
-                   {isUpdatingPost ? 'Сохранение...' : 'Сохранить изменения'}
+                   {isUpdatingPost ? 'Сохранение...' : 'Сохранить'}
                  </button>
               </div>
             </div>
@@ -698,12 +694,12 @@ export default function Publish() {
   // РЕНДЕР: ЭКРАН 3 - ВИЗАРД (САМА ПУБЛИКАЦИЯ)
   // ==========================================
   return (
-    <div className="min-h-[100dvh] bg-admin-bg pb-32 md:pb-8 font-sans relative animate-fade-in">
+    <div className="min-h-[100dvh] bg-admin-bg pb-[120px] md:pb-24 font-sans relative animate-fade-in">
       <div className="p-4 sm:p-8 max-w-3xl mx-auto">
         
         {step < 4 && (
           <div className="mb-6">
-            <div className="flex justify-between text-xs font-bold text-gray-500 mb-2 px-1">
+            <div className="flex justify-between text-[10px] sm:text-xs font-bold text-gray-500 mb-2 px-1">
               <span className={step >= 1 ? (publishMode === 'schedule' ? 'text-purple-500' : 'text-blue-500') : ''}>1. Фото</span>
               <span className={step >= 2 ? (publishMode === 'schedule' ? 'text-purple-500' : 'text-blue-500') : ''}>2. Текст</span>
               <span className={step >= 3 ? (publishMode === 'schedule' ? 'text-purple-500' : 'text-blue-500') : ''}>3. Настройки</span>
@@ -715,36 +711,36 @@ export default function Publish() {
         )}
 
         {step === 1 && (
-          <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl animate-fade-in">
-            <h2 className="text-xl font-bold text-white mb-1">Загрузите фотографии</h2>
-            <p className="text-sm text-gray-400 mb-6">От 1 до {MAX_PHOTOS} снимков.</p>
+          <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl animate-fade-in">
+            <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Загрузите фотографии</h2>
+            <p className="text-xs sm:text-sm text-gray-400 mb-5">От 1 до {MAX_PHOTOS} снимков.</p>
 
             {photos.length === 0 ? (
-              <button onClick={() => fileInputRef.current?.click()} className={`w-full border-2 border-dashed border-gray-700 bg-gray-900/50 rounded-3xl p-10 flex flex-col items-center justify-center gap-4 transition-all group ${publishMode === 'schedule' ? 'hover:border-purple-500 hover:bg-purple-500/5' : 'hover:border-blue-500 hover:bg-blue-500/5'}`}>
-                <div className={`w-16 h-16 bg-gray-800 rounded-2xl flex items-center justify-center text-gray-400 transition-all ${publishMode === 'schedule' ? 'group-hover:bg-purple-500/20 group-hover:text-purple-500' : 'group-hover:bg-blue-500/20 group-hover:text-blue-500'}`}>
-                  <ImagePlus size={32} />
+              <button onClick={() => fileInputRef.current?.click()} className={`w-full border-2 border-dashed border-gray-700 bg-gray-900/50 rounded-3xl p-8 sm:p-10 flex flex-col items-center justify-center gap-4 transition-all group ${publishMode === 'schedule' ? 'hover:border-purple-500 hover:bg-purple-500/5' : 'hover:border-blue-500 hover:bg-blue-500/5'}`}>
+                <div className={`w-14 h-14 sm:w-16 sm:h-16 bg-gray-800 rounded-2xl flex items-center justify-center text-gray-400 transition-all ${publishMode === 'schedule' ? 'group-hover:bg-purple-500/20 group-hover:text-purple-500' : 'group-hover:bg-blue-500/20 group-hover:text-blue-500'}`}>
+                  <ImagePlus size={28} className="sm:w-8 sm:h-8" />
                 </div>
                 <div className="text-center">
-                  <p className="text-white font-medium">Нажмите для выбора фото</p>
-                  <p className="text-gray-500 text-sm mt-1">До 10 файлов (JPEG, PNG)</p>
+                  <p className="text-white font-medium text-sm sm:text-base">Нажмите для выбора фото</p>
+                  <p className="text-gray-500 text-xs sm:text-sm mt-1">До 10 файлов (JPEG, PNG)</p>
                 </div>
               </button>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3">
                   {photos.map((photo) => (
                     <div key={photo.id} className="relative aspect-square rounded-2xl overflow-hidden group border border-gray-800">
                       <img src={photo.url || photo.preview} alt="Preview" className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                      <button onClick={() => removePhoto(photo.id)} className="absolute top-2 right-2 bg-red-500/90 text-white p-1.5 rounded-xl hover:bg-red-50 active:scale-90 transition-all">
-                        <span className="flex items-center justify-center"><X size={16} /></span>
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:block"></div>
+                      <button onClick={() => removePhoto(photo.id)} className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 bg-red-500/90 text-white w-8 h-8 sm:w-auto sm:h-auto sm:p-1.5 rounded-xl flex items-center justify-center hover:bg-red-500 active:scale-90 transition-all z-10">
+                        <X size={16} />
                       </button>
                     </div>
                   ))}
                   {photos.length < MAX_PHOTOS && (
-                    <button onClick={() => fileInputRef.current?.click()} className={`aspect-square rounded-2xl border-2 border-dashed border-gray-700 flex flex-col items-center justify-center text-gray-500 transition-colors ${publishMode === 'schedule' ? 'hover:border-purple-500 hover:text-purple-500' : 'hover:border-blue-500 hover:text-blue-500'}`}>
+                    <button onClick={() => fileInputRef.current?.click()} className={`aspect-square rounded-2xl border-2 border-dashed border-gray-700 flex flex-col items-center justify-center text-gray-500 transition-colors active:scale-95 ${publishMode === 'schedule' ? 'hover:border-purple-500 hover:text-purple-500' : 'hover:border-blue-500 hover:text-blue-500'}`}>
                       <ImagePlus size={24} className="mb-1" />
-                      <span className="text-xs font-bold">Ещё</span>
+                      <span className="text-[10px] sm:text-xs font-bold">Ещё</span>
                     </button>
                   )}
                 </div>
@@ -755,13 +751,13 @@ export default function Publish() {
         )}
 
         {step === 2 && (
-          <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl animate-fade-in relative">
+          <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl animate-fade-in relative">
             <div className="flex justify-between items-end mb-4">
-              <div>
-                <h2 className="text-xl font-bold text-white mb-1">Описание поста</h2>
-                <p className="text-sm text-gray-400">Напишите текст или поручите это ИИ</p>
+              <div className="pr-4">
+                <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Описание поста</h2>
+                <p className="text-xs sm:text-sm text-gray-400">Напишите текст или поручите это ИИ</p>
               </div>
-              <div className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors border ${(text || '').length >= MAX_CHARS ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-gray-900 text-gray-500 border-gray-800'}`}>
+              <div className={`text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1.5 rounded-lg transition-colors border shrink-0 ${(text || '').length >= MAX_CHARS ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-gray-900 text-gray-500 border-gray-800'}`}>
                 {(text || '').length} / {MAX_CHARS}
               </div>
             </div>
@@ -771,11 +767,11 @@ export default function Publish() {
               {isImprovingAI && (
                 <div className="absolute inset-0 z-20 bg-gray-900/80 backdrop-blur-[2px] flex flex-col items-center justify-center animate-fade-in rounded-2xl">
                   <div className="relative mb-4 flex items-center justify-center">
-                    <Loader2 className="text-purple-500 animate-spin absolute" size={48} />
-                    <Sparkles className="text-purple-400 animate-pulse" size={20} />
+                    <Loader2 className="text-purple-500 animate-spin absolute" size={40} />
+                    <Sparkles className="text-purple-400 animate-pulse" size={18} />
                   </div>
-                  <h3 className="text-white font-bold mb-1 text-lg">Нейросеть пишет текст...</h3>
-                  <div className="w-48 h-2 bg-gray-800 rounded-full overflow-hidden shadow-inner relative mt-4">
+                  <h3 className="text-white font-bold mb-1 text-sm sm:text-lg">Нейросеть пишет текст...</h3>
+                  <div className="w-3/4 max-w-[200px] h-2 bg-gray-800 rounded-full overflow-hidden shadow-inner relative mt-3 sm:mt-4">
                     <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-300" style={{ width: `${aiProgress}%` }}></div>
                   </div>
                 </div>
@@ -784,16 +780,16 @@ export default function Publish() {
               <textarea
                 value={text} onChange={(e) => setText(e.target.value.slice(0, MAX_CHARS))}
                 placeholder="Расскажите о товаре, укажите цены, размеры и особенности..."
-                className="w-full min-h-[200px] bg-transparent p-4 text-white text-base resize-none outline-none placeholder:text-gray-600"
+                className="w-full min-h-[180px] sm:min-h-[200px] bg-transparent p-4 text-base text-white resize-none outline-none placeholder:text-gray-600"
               />
               
               <div className="bg-gray-800/50 p-3 border-t border-gray-800 flex flex-wrap gap-2 justify-between items-center">
                 <span className="text-xs text-gray-500 hidden sm:block">Поддерживаются эмодзи 🚀</span>
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-3 sm:mt-0">
-                  <button onClick={() => setShowAiModal(true)} disabled={isImprovingAI} className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold active:scale-95">
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <button onClick={() => setShowAiModal(true)} disabled={isImprovingAI} className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 sm:py-2.5 rounded-xl text-sm font-bold active:scale-95 min-h-[44px]">
                     ✨ Написать с нуля
                   </button>
-                  <button onClick={() => handleAiAction('rewrite')} disabled={isImprovingAI || !(text || '').trim()} className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold active:scale-95">
+                  <button onClick={() => handleAiAction('rewrite')} disabled={isImprovingAI || !(text || '').trim()} className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-3 sm:py-2.5 rounded-xl text-sm font-bold active:scale-95 min-h-[44px]">
                     <Sparkles size={16} /> Улучшить текст
                   </button>
                 </div>
@@ -803,25 +799,25 @@ export default function Publish() {
         )}
 
         {step === 3 && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
+          <div className="space-y-4 sm:space-y-6 animate-fade-in">
+            <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 <div>
-                  <h2 className="text-xl font-bold text-white mb-1">Куда опубликовать?</h2>
-                  <p className="text-sm text-gray-400">Выберите аккаунты для отправки (выбрано {selectedAccounts.length})</p>
+                  <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Куда опубликовать?</h2>
+                  <p className="text-xs sm:text-sm text-gray-400">Выберите аккаунты (выбрано {selectedAccounts.length})</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
                   <div className="relative flex-1 sm:w-48">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"><Search size={16} /></span>
-                    <input type="text" placeholder="Поиск..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`w-full bg-gray-900 border border-gray-800 rounded-xl py-2 pl-9 pr-3 text-sm text-white outline-none ${publishMode === 'schedule' ? 'focus:border-purple-500' : 'focus:border-blue-500'}`} />
+                    <input type="text" placeholder="Поиск..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`w-full bg-gray-900 border border-gray-800 rounded-xl py-2 sm:py-2 pl-9 pr-3 text-base sm:text-sm text-white outline-none min-h-[44px] sm:min-h-0 ${publishMode === 'schedule' ? 'focus:border-purple-500' : 'focus:border-blue-500'}`} />
                   </div>
-                  <button onClick={toggleAllAccounts} className={`text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap ${publishMode === 'schedule' ? 'text-purple-500 bg-purple-500/10' : 'text-blue-500 bg-blue-500/10'}`}>
+                  <button onClick={toggleAllAccounts} className={`text-[10px] sm:text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap min-h-[44px] sm:min-h-0 shrink-0 ${publishMode === 'schedule' ? 'text-purple-500 bg-purple-500/10' : 'text-blue-500 bg-blue-500/10'}`}>
                     {selectedAccounts.length === accounts.length && accounts.length > 0 ? 'Снять все' : 'Выбрать все'}
                   </button>
                 </div>
               </div>
 
-              <div className="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar space-y-4">
+              <div className="max-h-[350px] sm:max-h-[400px] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar space-y-4">
                 {Object.keys(groupedAccounts).length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500 text-sm mb-2">Аккаунты не найдены</p>
@@ -829,11 +825,11 @@ export default function Publish() {
                 ) : (
                   Object.entries(groupedAccounts).map(([provider, providerAccounts]) => (
                     <div key={provider} className="mb-4 last:mb-0">
-                      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 pl-1 flex items-center gap-2">
+                      <h3 className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 pl-1 flex items-center gap-2">
                         {provider === 'vk' ? 'ВКонтакте' : provider === 'tg' ? 'Telegram' : provider}
-                        <span className="bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full text-[10px] ml-2">{providerAccounts.length}</span>
+                        <span className="bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] ml-2">{providerAccounts.length}</span>
                       </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                         {providerAccounts.map(acc => {
                           const isSelected = selectedAccounts.includes(acc.id);
                           const isWatermarkActive = getEffectiveSetting(acc.id, 'watermark');
@@ -844,21 +840,23 @@ export default function Publish() {
                           
                           return (
                             <div key={acc.id} className={`flex flex-col rounded-2xl border transition-all overflow-hidden group ${isSelected ? (publishMode === 'schedule' ? 'bg-gray-800 border-purple-500/50 shadow-md shadow-purple-500/10' : 'bg-gray-800 border-blue-500/50 shadow-md shadow-blue-500/10') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'}`}>
-                              <div onClick={() => toggleAccount(acc.id)} className="flex items-center gap-3 p-3 w-full text-left cursor-pointer">
+                              <div onClick={() => toggleAccount(acc.id)} className="flex items-center gap-3 p-3 w-full text-left cursor-pointer min-h-[56px]">
                                 <div className="relative w-10 h-10 rounded-xl shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
-                                  {avatarSrc ? <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-xl" /> : <span className="text-sm">{acc.name.substring(0, 2).toUpperCase()}</span>}
-                                  <div className={`absolute -bottom-1 -right-1 w-5 h-5 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
-                                    {provider === 'vk' ? <IconVK /> : <IconTG />}
+                                  {avatarSrc ? <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-xl" /> : <span className="text-xs sm:text-sm">{acc.name.substring(0, 2).toUpperCase()}</span>}
+                                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
+                                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex items-center justify-center">
+                                      {provider === 'vk' ? <IconVK /> : <IconTG />}
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="flex-1 min-w-0 pr-2">
-                                  <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
+                                  <p className={`text-xs sm:text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
                                   {isSelected && (
                                     <div className="flex gap-2 mt-0.5">
-                                      <span className={`text-[10px] flex items-center gap-1 ${isWatermarkActive ? 'text-blue-400' : 'text-gray-500'}`}>
+                                      <span className={`text-[9px] sm:text-[10px] flex items-center gap-1 ${isWatermarkActive ? 'text-blue-400' : 'text-gray-500'}`}>
                                         <Check size={10} className={isWatermarkActive ? 'block' : 'hidden'} /><span className={!isWatermarkActive ? 'line-through' : ''}>Знак</span>
                                       </span>
-                                      <span className={`text-[10px] flex items-center gap-1 ${isSignatureActive ? 'text-purple-400' : 'text-gray-500'}`}>
+                                      <span className={`text-[9px] sm:text-[10px] flex items-center gap-1 ${isSignatureActive ? 'text-purple-400' : 'text-gray-500'}`}>
                                         <Check size={10} className={isSignatureActive ? 'block' : 'hidden'} /><span className={!isSignatureActive ? 'line-through' : ''}>Подпись</span>
                                       </span>
                                     </div>
@@ -870,20 +868,20 @@ export default function Publish() {
                               </div>
 
                               {isSelected && (
-                                <div className="bg-gray-900/50 border-t border-gray-700/50 px-3 py-2 flex flex-col gap-2">
+                                <div className="bg-gray-900/50 border-t border-gray-700/50 px-3 py-2 sm:py-2.5 flex flex-col gap-2">
                                   <div className="flex items-center justify-between">
-                                    <label className="text-[10px] text-gray-500 uppercase font-bold">Настройки:</label>
-                                    <select className="bg-gray-950 text-white text-[11px] p-1 rounded border border-gray-700 outline-none" value={overrideMode} onChange={(e) => handleModeChange(acc.id, e.target.value)}>
+                                    <label className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold">Настройки:</label>
+                                    <select className="bg-gray-950 text-white text-base sm:text-[11px] p-1 sm:p-1.5 rounded border border-gray-700 outline-none" value={overrideMode} onChange={(e) => handleModeChange(acc.id, e.target.value)}>
                                       <option value="template">По шаблону</option>
                                       <option value="custom">Свои</option>
                                     </select>
                                   </div>
                                   {overrideMode === 'custom' && (
-                                    <div className="flex items-center justify-between pt-1 border-t border-gray-800/50">
-                                      <span className="text-[10px] text-gray-400">Только для этой группы:</span>
-                                      <div className="flex gap-2">
-                                        <button onClick={() => handleOverride(acc.id, 'watermark')} className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md ${isWatermarkActive ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-800 text-gray-500'}`}><Settings size={12}/> Знак</button>
-                                        <button onClick={() => handleOverride(acc.id, 'signature')} className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md ${isSignatureActive ? 'bg-purple-500/20 text-purple-400' : 'bg-gray-800 text-gray-500'}`}><PenTool size={12}/> Подпись</button>
+                                    <div className="flex items-center justify-between pt-2 border-t border-gray-800/50">
+                                      <span className="text-[9px] sm:text-[10px] text-gray-400 hidden sm:inline">Только для этой группы:</span>
+                                      <div className="flex gap-2 w-full sm:w-auto">
+                                        <button onClick={() => handleOverride(acc.id, 'watermark')} className={`flex-1 flex items-center justify-center gap-1 text-[10px] sm:text-[11px] px-2 py-2 sm:py-1.5 rounded-lg border ${isWatermarkActive ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-800 text-gray-500 border-transparent'}`}><Settings size={12}/> Знак</button>
+                                        <button onClick={() => handleOverride(acc.id, 'signature')} className={`flex-1 flex items-center justify-center gap-1 text-[10px] sm:text-[11px] px-2 py-2 sm:py-1.5 rounded-lg border ${isSignatureActive ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' : 'bg-gray-800 text-gray-500 border-transparent'}`}><PenTool size={12}/> Подпись</button>
                                       </div>
                                     </div>
                                   )}
@@ -899,24 +897,24 @@ export default function Publish() {
               </div>
             </div>
 
-            <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
-               <h2 className="text-xl font-bold text-white mb-1">Глобальный шаблон</h2>
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                  <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${applyWatermark ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => handleGlobalToggle('watermark')}>
+            <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl">
+               <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Глобальный шаблон</h2>
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-3 sm:mt-4">
+                  <div className={`p-3 sm:p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer min-h-[64px] ${applyWatermark ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => handleGlobalToggle('watermark')}>
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${applyWatermark ? 'bg-blue-500/20 text-blue-500' : 'bg-gray-800 text-gray-500'}`}><Settings size={20} /></div>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${applyWatermark ? 'bg-blue-500/20 text-blue-500' : 'bg-gray-800 text-gray-500'}`}><Settings size={20} /></div>
                       <div><p className="text-white font-bold text-sm">Водяной знак</p></div>
                     </div>
-                    <div className={`w-12 h-6 rounded-full transition-colors relative ${applyWatermark ? 'bg-blue-500' : 'bg-gray-700'}`}>
+                    <div className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${applyWatermark ? 'bg-blue-500' : 'bg-gray-700'}`}>
                       <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${applyWatermark ? 'left-7' : 'left-1'}`}></div>
                     </div>
                   </div>
-                  <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${applySignature ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => handleGlobalToggle('signature')}>
+                  <div className={`p-3 sm:p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer min-h-[64px] ${applySignature ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => handleGlobalToggle('signature')}>
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${applySignature ? 'bg-purple-500/20 text-purple-500' : 'bg-gray-800 text-gray-500'}`}><PenTool size={20} /></div>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${applySignature ? 'bg-purple-500/20 text-purple-500' : 'bg-gray-800 text-gray-500'}`}><PenTool size={20} /></div>
                       <div><p className="text-white font-bold text-sm">Подпись</p></div>
                     </div>
-                    <div className={`w-12 h-6 rounded-full transition-colors relative ${applySignature ? 'bg-purple-500' : 'bg-gray-700'}`}>
+                    <div className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${applySignature ? 'bg-purple-500' : 'bg-gray-700'}`}>
                       <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${applySignature ? 'left-7' : 'left-1'}`}></div>
                     </div>
                   </div>
@@ -924,15 +922,15 @@ export default function Publish() {
             </div>
             
             {publishMode === 'schedule' && (
-              <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
-                 <div className="grid grid-cols-2 gap-4 bg-gray-900/50 p-4 rounded-2xl border border-gray-800/50">
+              <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl mb-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-gray-900/50 p-3 sm:p-4 rounded-2xl border border-gray-800/50">
                     <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase">Дата</label>
-                      <input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Дата</label>
+                      <input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-base sm:text-sm text-white mt-1 min-h-[48px]" />
                     </div>
                     <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase">Время</label>
-                      <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white" />
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Время</label>
+                      <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-base sm:text-sm text-white mt-1 min-h-[48px]" />
                     </div>
                   </div>
               </div>
@@ -941,17 +939,17 @@ export default function Publish() {
         )}
 
         {step === 4 && (
-          <div className="bg-admin-card border border-gray-800 rounded-3xl p-8 shadow-xl text-center animate-fade-in relative overflow-hidden">
+          <div className="bg-admin-card border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-xl text-center animate-fade-in relative overflow-hidden">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-gradient-to-b from-green-500/10 to-transparent pointer-events-none"></div>
-            <div className="w-24 h-24 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle2 size={48} /></div>
-            <h2 className="text-2xl font-bold text-white mb-2">{publishMode === 'schedule' ? 'Пост запланирован!' : 'Успешно опубликовано!'}</h2>
-            <p className="text-gray-400 mb-8 max-w-sm mx-auto">Ваш контент отправлен в {selectedAccounts.length} аккаунт(а/ов).</p>
+            <div className="w-20 h-20 sm:w-24 sm:h-24 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-5 sm:mb-6"><CheckCircle2 size={40} className="sm:w-12 sm:h-12" /></div>
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">{publishMode === 'schedule' ? 'Пост запланирован!' : 'Успешно опубликовано!'}</h2>
+            <p className="text-sm sm:text-base text-gray-400 mb-8 max-w-sm mx-auto">Ваш контент отправлен в {selectedAccounts.length} аккаунт(а/ов).</p>
             <div className="space-y-3">
-              <button onClick={resetForm} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-xl font-bold border border-gray-700">
-                <span className="flex items-center gap-2"><LayoutTemplate size={20} /> Вернуться в меню</span>
+              <button onClick={resetForm} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-xl font-bold border border-gray-700 transition-colors">
+                <LayoutTemplate size={20} /> <span>В главное меню</span>
               </button>
-              <button onClick={() => setShowPartnerModal(true)} className="w-full flex items-center justify-center gap-2 text-white py-4 rounded-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600">
-                <span className="flex items-center gap-2"><Share2 size={20} /> Отправить партнерам</span>
+              <button onClick={() => setShowPartnerModal(true)} className="w-full flex items-center justify-center gap-2 text-white py-4 rounded-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 active:scale-95 transition-all">
+                <Share2 size={20} /> <span>Отправить партнерам</span>
               </button>
             </div>
           </div>
@@ -959,24 +957,26 @@ export default function Publish() {
 
       </div>
 
+      {/* МОДАЛКА: ИИ (BOTTOM SHEET НА MOBILE) */}
       {showAiModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-admin-card w-full max-w-md border border-gray-800 rounded-3xl p-6 shadow-2xl relative">
-            <button onClick={() => setShowAiModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2"><X size={20} /></button>
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-purple-500/10 text-purple-500"><Sparkles size={32} /></div>
-            <h3 className="text-xl font-bold text-white mb-2">О чем написать пост?</h3>
-            <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Скидка 50% на кроссовки..." className="w-full bg-gray-900 border border-gray-800 rounded-2xl p-4 text-white h-32 mb-4" autoFocus />
-            <button onClick={() => handleAiAction('generate', aiPrompt)} disabled={!aiPrompt.trim() || isImprovingAI} className="w-full bg-purple-600 hover:bg-purple-500 text-white py-4 rounded-xl font-bold">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
+          <div className="bg-admin-card w-full max-w-md border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">
+            <button onClick={() => setShowAiModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-10 h-10 rounded-full flex items-center justify-center transition-colors z-10"><X size={20} /></button>
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 bg-purple-500/10 text-purple-500"><Sparkles size={28} /></div>
+            <h3 className="text-xl font-bold text-white mb-3">О чем написать пост?</h3>
+            <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Скидка 50% на кроссовки..." className="w-full bg-gray-900 border border-gray-800 rounded-2xl p-4 text-base text-white h-32 mb-4 resize-none focus:border-purple-500 outline-none" autoFocus />
+            <button onClick={() => handleAiAction('generate', aiPrompt)} disabled={!aiPrompt.trim() || isImprovingAI} className="w-full bg-purple-600 hover:bg-purple-500 text-white py-4 rounded-xl font-bold transition-all disabled:opacity-50">
               Сгенерировать пост
             </button>
           </div>
         </div>
       )}
 
+      {/* НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ ПО ШАГАМ */}
       {step < 4 && (
-        <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
           <div className="max-w-3xl mx-auto flex items-center gap-3">
-            <button onClick={() => { if (step === 1) setView(publishMode === 'schedule' ? 'calendar' : 'start'); else setStep(step - 1); }} className="w-14 h-14 shrink-0 flex items-center justify-center bg-gray-800 text-white rounded-2xl">
+            <button onClick={() => { if (step === 1) setView(publishMode === 'schedule' ? 'calendar' : 'start'); else setStep(step - 1); }} className="w-14 h-14 shrink-0 flex items-center justify-center bg-gray-800 text-white rounded-2xl hover:bg-gray-700 transition-colors">
               <ChevronLeft size={24} />
             </button>
             <button 
@@ -988,36 +988,37 @@ export default function Publish() {
               }}
               disabled={isPublishing}
               className={`flex-1 flex items-center justify-center gap-2 h-14 rounded-2xl font-bold text-base transition-all active:scale-95
-                ${step === 3 ? 'bg-blue-600 text-white' : 'bg-white text-black'}`}
+                ${step === 3 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white text-black'}`}
             >
               <span className={`pointer-events-none items-center gap-2 ${isPublishing ? 'flex' : 'hidden'}`}><Loader2 size={20} className="animate-spin" /> Обработка...</span>
-              <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step === 3) ? 'flex' : 'hidden'}`}><Send size={20}/> Опубликовать</span>
+              <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step === 3) ? 'flex' : 'hidden'}`}><Send size={18}/> Опубликовать</span>
               <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step < 3) ? 'flex' : 'hidden'}`}>Далее <ChevronRight size={20}/></span>
             </button>
           </div>
         </div>
       )}
 
+      {/* МОДАЛКА: ОТПРАВКА ПАРТНЕРАМ (BOTTOM SHEET НА MOBILE) */}
       {showPartnerModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-admin-card w-full max-w-md border border-gray-800 rounded-3xl p-6 shadow-2xl relative flex flex-col max-h-[90vh]">
-            <button onClick={() => setShowPartnerModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2">
-              <span className="flex items-center justify-center"><X size={20} /></span>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
+          <div className="bg-admin-card w-full max-w-md border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative flex flex-col max-h-[90vh] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">
+            <button onClick={() => setShowPartnerModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-10 h-10 rounded-full flex items-center justify-center transition-colors z-10">
+              <X size={20} />
             </button>
 
-            <div className="w-16 h-16 rounded-2xl flex shrink-0 items-center justify-center mb-4 bg-blue-500/10 text-blue-500">
-              <Users size={32} />
+            <div className="w-14 h-14 rounded-2xl flex shrink-0 items-center justify-center mb-4 bg-blue-500/10 text-blue-500">
+              <Users size={28} />
             </div>
             
             <h3 className="text-xl font-bold text-white mb-2 shrink-0">Кому отправить?</h3>
-            <p className="text-gray-400 text-sm mb-4 shrink-0">
+            <p className="text-gray-400 text-xs sm:text-sm mb-4 shrink-0">
               Выберите партнеров, которые получат чистые фото и текст для перепубликации.
             </p>
 
             <div className="overflow-y-auto custom-scrollbar pr-2 mb-4 space-y-2 flex-1 min-h-[150px]">
               {myPartners.length === 0 ? (
                 <div className="text-center py-8 text-gray-500 bg-gray-900/50 rounded-2xl border border-gray-800">
-                  <p>У вас пока нет партнеров.</p>
+                  <p className="text-sm">У вас пока нет партнеров.</p>
                   <p className="text-xs mt-1">Добавьте их в разделе настроек.</p>
                 </div>
               ) : (
@@ -1027,14 +1028,14 @@ export default function Publish() {
                     <div 
                       key={partner.id} 
                       onClick={() => togglePartner(partner.id)}
-                      className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors ${isSelected ? 'bg-blue-500/10 border-blue-500/50' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
+                      className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors min-h-[64px] ${isSelected ? 'bg-blue-500/10 border-blue-500/50' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
                     >
-                       <div className={`w-5 h-5 rounded flex items-center justify-center border ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'}`}>
+                       <div className={`w-5 h-5 rounded flex items-center justify-center border shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'}`}>
                          {isSelected && <Check size={14} className="text-white"/>}
                        </div>
-                       <div>
-                         <p className="text-white text-sm font-bold">{partner.name || 'Без имени'}</p>
-                         <p className="text-gray-500 text-xs">Павильон: {partner.pavilion || '?'}</p>
+                       <div className="min-w-0 pr-2">
+                         <p className="text-white text-sm font-bold truncate">{partner.name || 'Без имени'}</p>
+                         <p className="text-gray-500 text-[10px] sm:text-xs truncate">Павильон: {partner.pavilion || '?'}</p>
                        </div>
                     </div>
                   )
@@ -1046,15 +1047,15 @@ export default function Publish() {
               <button 
                 onClick={handleSendToPartners} 
                 disabled={myPartners.length === 0}
-                className="w-full shrink-0 text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50"
+                className="w-full shrink-0 text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 min-h-[56px]"
               >
-                <span className="flex items-center gap-2"><Send size={18} /> Разослать выбранным</span>
+                <Send size={18} /> <span>Разослать выбранным</span>
               </button>
             )}
 
             {partnerStatus === 'sending' && (
-              <button disabled className="w-full shrink-0 bg-gray-800 text-gray-400 py-4 rounded-xl font-bold flex justify-center items-center gap-2">
-                <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={20}/> Отправка...</span>
+              <button disabled className="w-full shrink-0 bg-gray-800 text-gray-400 py-4 rounded-xl font-bold flex justify-center items-center gap-2 min-h-[56px]">
+                <Loader2 className="animate-spin" size={20}/> <span>Отправка...</span>
               </button>
             )}
 
@@ -1062,7 +1063,7 @@ export default function Publish() {
               <div className="text-center py-2 animate-fade-in shrink-0">
                 <div className="text-green-500 flex justify-center mb-2"><CheckCircle2 size={32} /></div>
                 <p className="text-white font-bold">Успешно отправлено!</p>
-                <button onClick={resetForm} className="mt-4 text-sm font-bold text-blue-500 hover:underline">
+                <button onClick={resetForm} className="mt-4 text-sm font-bold text-blue-500 hover:text-blue-400 transition-colors p-2">
                   В главное меню
                 </button>
               </div>
