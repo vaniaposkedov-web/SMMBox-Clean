@@ -70,20 +70,25 @@ export const useStore = create(
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
           
-          const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${token}` } });
-          const data = await res.json(); // Сначала парсим данные!
+          const res = await fetch('/api/posts/scheduled', { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+          });
           
-          console.log("ОТВЕТ ОТ СЕРВЕРА (fetchScheduledPosts):", data); // <--- ДОБАВЬ ЭТО
-
-          if (res.ok) {
-            // Проверяем, в каком именно ключе лежат посты
-            const postsArray = data.posts || data.scheduledPosts || []; 
-            console.log("СОХРАНЯЕМ В ZUSTAND МАССИВ:", postsArray); // <--- И ЭТО
-            
-            set({ scheduledPosts: postsArray }); 
+          // ЗАЩИТА: Если сервер упал (502, 500, 404), просто прерываемся и не ломаем сайт
+          if (!res.ok) {
+            console.error("Сервер недоступен, статус:", res.status);
+            return; 
           }
+
+          // Только если сервер ответил "ОК" (200), пытаемся прочитать JSON
+          const data = await res.json(); 
+          console.log("ОТВЕТ ОТ СЕРВЕРА (fetchScheduledPosts):", data);
+
+          const postsArray = data.posts || data.scheduledPosts || []; 
+          set({ scheduledPosts: postsArray }); 
+          
         } catch (error) {
-           console.error("Ошибка:", error);
+           console.error("Ошибка сети или парсинга:", error);
         }
       },
 
