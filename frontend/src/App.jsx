@@ -19,10 +19,7 @@ import Auth from './pages/Auth';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 
-// --- АДМИНКА ---
-import AdminRoute from './components/AdminRoute';
-import AdminLayout from './layouts/AdminLayout';
-import AdminDashboard from './pages/admin/AdminDashboard';
+
 
 // --- БОКОВОЕ МЕНЮ ДЛЯ ПК (ОБЫЧНЫЙ ЮЗЕР) ---
 function Sidebar() {
@@ -166,6 +163,8 @@ function App() {
           <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route path="*" element={<Navigate to="/auth" replace />} />
+          <Route path="/boss-login" element={<AdminLogin />} />
+          <Route path="/system-core-dashboard" element={<AdminDashboard />} />
         </Routes>
       </BrowserRouter>
     );
@@ -192,11 +191,7 @@ function App() {
           <Route path="/privacy" element={<PrivacyPolicy />} />
         </Route>
 
-        {/* --- АДМИН ПАНЕЛЬ --- */}
-        <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="*" element={<Navigate to="/admin" replace />} />
-        </Route>
+        
 
         <Route path="/reset-password/:token" element={<ResetPassword />} />
 
