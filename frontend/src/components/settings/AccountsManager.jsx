@@ -5,7 +5,7 @@ import {
   Send, Plus, Trash2, RefreshCw, ShieldAlert,
   ChevronDown, Copy, Check, LayoutTemplate,
   Settings2, Image as ImageIcon, Type, X,
-  Sliders, Type as TypeIcon, Eye, Upload, RotateCw, Palette,
+  Sliders, Type as TypeIcon, Upload, RotateCw, Palette,
   ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move, Loader2
 } from 'lucide-react';
 
@@ -115,7 +115,6 @@ export default function AccountsManager() {
     await saveAccountDesign(acc.id, undefined, null);
     setSavingWatermark(prev => ({ ...prev, [acc.id]: false }));
   };
-
 
   const openDesignModal = (acc) => {
     const initialPos = acc.watermark?.position || 'br';
@@ -237,21 +236,21 @@ export default function AccountsManager() {
   const ColorPicker = ({ label, colorKey, hasCheckbox, checkboxKey }) => {
     return (
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-gray-400 uppercase flex justify-between items-center">
+        <label className="text-xs font-semibold text-gray-400 uppercase flex justify-between items-center min-h-[24px]">
           {label}
           {hasCheckbox && (
-            <input type="checkbox" checked={localWatermark[checkboxKey] !== false} onChange={e => setLocalWatermark({...localWatermark, [checkboxKey]: e.target.checked})} className="accent-blue-500 w-4 h-4 cursor-pointer" />
+            <input type="checkbox" checked={localWatermark[checkboxKey] !== false} onChange={e => setLocalWatermark({...localWatermark, [checkboxKey]: e.target.checked})} className="accent-blue-500 w-5 h-5 cursor-pointer" />
           )}
         </label>
         <div className={`space-y-2 transition-opacity duration-200 ${(hasCheckbox && localWatermark[checkboxKey] === false) ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
-          <div className="flex items-center gap-2 bg-black/40 border border-gray-700 rounded-xl p-1.5 pr-3 w-full">
+          <div className="flex items-center gap-2 bg-black/40 border border-gray-700 rounded-xl p-1.5 pr-3 w-full min-h-[44px]">
             <input type="color" value={localWatermark[colorKey] || '#FFFFFF'} onChange={e => setLocalWatermark({...localWatermark, [colorKey]: e.target.value})} className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0 p-0 shrink-0" />
-            <span className="text-xs font-mono text-gray-300 uppercase flex-1">{localWatermark[colorKey] || '#FFFFFF'}</span>
-            <Palette size={14} className="text-gray-500 shrink-0"/>
+            <span className="text-base sm:text-sm font-mono text-gray-300 uppercase flex-1">{localWatermark[colorKey] || '#FFFFFF'}</span>
+            <Palette size={16} className="text-gray-500 shrink-0"/>
           </div>
-          <div className="flex gap-1.5 justify-between">
+          <div className="flex gap-2 justify-between pt-1">
             {presetColors.map(c => (
-              <button key={c} onClick={() => setLocalWatermark({...localWatermark, [colorKey]: c})} className="w-5 h-5 rounded-full border border-gray-600 transition-transform hover:scale-110 shadow-sm" style={{ backgroundColor: c }} />
+              <button key={c} onClick={() => setLocalWatermark({...localWatermark, [colorKey]: c})} className="w-6 h-6 sm:w-5 sm:h-5 rounded-full border border-gray-600 transition-transform hover:scale-110 shadow-sm" style={{ backgroundColor: c }} />
             ))}
           </div>
         </div>
@@ -307,17 +306,17 @@ export default function AccountsManager() {
 
     return (
       <div key={acc.id} className={`flex flex-col transition-all duration-300 rounded-2xl overflow-hidden border ${borderClasses}`}>
-        <div onClick={() => toggleExpand(acc)} className="p-4 flex items-center justify-between cursor-pointer group hover:bg-white/[0.03] transition-colors">
-          <div className="flex items-center gap-3 min-w-0">
+        <div onClick={() => toggleExpand(acc)} className="p-3 sm:p-4 min-h-[64px] flex items-center justify-between cursor-pointer group hover:bg-white/[0.03] transition-colors">
+          <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
             <div className="relative shrink-0">
-              <img src={acc.avatarUrl || 'https://via.placeholder.com/150'} alt="avatar" className="w-11 h-11 rounded-full border border-gray-700 object-cover" />
+              <img src={acc.avatarUrl || 'https://via.placeholder.com/150'} alt="avatar" className="w-10 h-10 sm:w-11 sm:h-11 rounded-full border border-gray-700 object-cover" />
               <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center ${providerColor} border-2 border-gray-900`}>
                 {providerIcon}
               </div>
             </div>
             <div className="flex flex-col min-w-0">
               <h3 className="font-bold text-gray-100 truncate text-sm sm:text-base">{acc.name}</h3>
-              <div className="flex items-center mt-1">
+              <div className="flex items-center mt-0.5 sm:mt-1">
                 {acc.isValid ? (
                   <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-emerald-400 bg-emerald-400/20 border border-emerald-500/20 px-2 py-0.5 rounded-full whitespace-nowrap shadow-[0_0_5px_rgba(16,185,129,0.3)]">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Подключено
@@ -330,27 +329,27 @@ export default function AccountsManager() {
               </div>
             </div>
           </div>
-          <div className={`shrink-0 text-gray-500 transition-transform duration-300 ml-2 ${isExpanded ? 'rotate-180' : ''}`}>
+          <div className={`shrink-0 text-gray-500 transition-transform duration-300 ml-1 ${isExpanded ? 'rotate-180' : ''}`}>
             <ChevronDown size={20} />
           </div>
         </div>
 
         <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
           <div className="overflow-hidden">
-            <div className="p-4 border-t border-gray-800/50 bg-gray-950/40 space-y-6">
+            <div className="p-3 sm:p-4 border-t border-gray-800/50 bg-gray-950/40 space-y-5 sm:space-y-6">
               
               {!acc.isValid && acc.provider === 'TELEGRAM' && (
                 <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4">
                   <p className="font-bold text-rose-400 flex items-center gap-2 mb-2 text-sm"><ShieldAlert size={16} /> Требуется настройка</p>
                   <p className="text-gray-300 text-xs sm:text-sm mb-3">{acc.errorMsg || 'Бот удален или не имеет прав администратора.'}</p>
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-gray-400 bg-black/30 p-2.5 rounded-lg mb-3 gap-2">
-                    <span className="truncate">Бот: <span className="font-mono text-white">@smmbox_auth_bot</span></span>
-                    <button onClick={copyBotName} className="shrink-0 w-full sm:w-auto text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-1.5 rounded-md flex items-center justify-center gap-1.5">
-                      {copied ? <><Check size={12} className="text-emerald-500" /> Сохранено</> : <><Copy size={12} /> Копировать</>}
+                    <span className="truncate w-full sm:w-auto">Бот: <span className="font-mono text-white">@smmbox_auth_bot</span></span>
+                    <button onClick={copyBotName} className="shrink-0 w-full sm:w-auto text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-2.5 sm:py-1.5 rounded-md flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0">
+                      {copied ? <><Check size={14} className="text-emerald-500" /> Сохранено</> : <><Copy size={14} /> Копировать</>}
                     </button>
                   </div>
-                  <button onClick={handleManualVerify} disabled={isVerifying} className="w-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                    <RefreshCw size={14} className={isVerifying ? "animate-spin" : ""} /> Проверить статус
+                  <button onClick={handleManualVerify} disabled={isVerifying} className="w-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px]">
+                    <RefreshCw size={16} className={isVerifying ? "animate-spin" : ""} /> Проверить статус
                   </button>
                 </div>
               )}
@@ -370,17 +369,17 @@ export default function AccountsManager() {
 
                     {/* Переключатель Подписи */}
                     <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
-                      <button onClick={() => setGlobalSignature(acc)} disabled={savingSignature[acc.id]} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${!hasCustomSignature ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
-                        {savingSignature[acc.id] && !hasCustomSignature ? <Loader2 size={14} className="animate-spin"/> : <LayoutTemplate size={14}/>} <span>Шаблон</span>
+                      <button onClick={() => setGlobalSignature(acc)} disabled={savingSignature[acc.id]} className={`flex-1 py-2 sm:py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0 ${!hasCustomSignature ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
+                        {savingSignature[acc.id] && !hasCustomSignature ? <Loader2 size={16} className="animate-spin"/> : <LayoutTemplate size={16}/>} <span>Шаблон</span>
                       </button>
-                      <button onClick={() => enableCustomSignature(acc)} disabled={savingSignature[acc.id]} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${hasCustomSignature ? 'bg-blue-600/10 text-blue-400 border-blue-500/30' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
-                         <Settings2 size={14} /> <span>Своя</span>
+                      <button onClick={() => enableCustomSignature(acc)} disabled={savingSignature[acc.id]} className={`flex-1 py-2 sm:py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0 ${hasCustomSignature ? 'bg-blue-600/10 text-blue-400 border-blue-500/30' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
+                         <Settings2 size={16} /> <span>Своя</span>
                       </button>
                     </div>
 
                     {/* Визуализация режима Подписи */}
                     {!hasCustomSignature ? (
-                      <div className="mt-2.5 bg-gray-900/50 p-3 rounded-lg border border-gray-800/50 flex items-center gap-3">
+                      <div className="mt-2.5 bg-gray-900/50 p-3 sm:p-3 rounded-lg border border-gray-800/50 flex items-center gap-3">
                         <div className="p-2 bg-gray-800 rounded-md text-gray-400"><LayoutTemplate size={16}/></div>
                         <p className="text-xs text-gray-400 leading-relaxed">Используется <span className="text-gray-300 font-semibold">Шаблон</span> проекта.</p>
                       </div>
@@ -390,9 +389,9 @@ export default function AccountsManager() {
                           type="text" value={localSignatures[acc.id] !== undefined ? localSignatures[acc.id] : ''}
                           onChange={(e) => handleSignatureChange(acc.id, e.target.value)}
                           placeholder="Например: t.me/mychannel" 
-                          className="w-full bg-black/40 border border-gray-700 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                          className="w-full bg-black/40 border border-gray-700 rounded-lg py-3 sm:py-2.5 px-3 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500 transition-colors min-h-[48px]"
                         />
-                        <button onClick={() => saveSignatureOnly(acc)} disabled={savingSignature[acc.id]} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-700">
+                        <button onClick={() => saveSignatureOnly(acc)} disabled={savingSignature[acc.id]} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-colors border border-gray-700 min-h-[48px]">
                           {savingSignature[acc.id] ? <Loader2 size={16} className="animate-spin" /> : <Check size={16}/>} <span>Сохранить подпись</span>
                         </button>
                       </div>
@@ -412,11 +411,11 @@ export default function AccountsManager() {
                     
                     {/* Переключатель Водяного знака */}
                     <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
-                      <button onClick={() => setGlobalWatermark(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${!hasCustomWatermark ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
-                        {savingWatermark[acc.id] && !hasCustomWatermark ? <Loader2 size={14} className="animate-spin"/> : <LayoutTemplate size={14}/>} <span>Шаблон</span>
+                      <button onClick={() => setGlobalWatermark(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-2 sm:py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0 ${!hasCustomWatermark ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
+                        {savingWatermark[acc.id] && !hasCustomWatermark ? <Loader2 size={16} className="animate-spin"/> : <LayoutTemplate size={16}/>} <span>Шаблон</span>
                       </button>
-                      <button onClick={() => openDesignModal(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${hasCustomWatermark ? 'bg-blue-600/10 text-blue-400 border-blue-500/30' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
-                         <Settings2 size={14} /> <span>Свой</span>
+                      <button onClick={() => openDesignModal(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-2 sm:py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0 ${hasCustomWatermark ? 'bg-blue-600/10 text-blue-400 border-blue-500/30' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
+                         <Settings2 size={16} /> <span>Свой</span>
                       </button>
                     </div>
 
@@ -434,8 +433,8 @@ export default function AccountsManager() {
                           </div>
                           <p className="text-xs text-blue-300 leading-relaxed flex-1">Для этой группы активен <span className="font-semibold text-blue-400">свой дизайн</span>.</p>
                         </div>
-                        <button onClick={() => openDesignModal(acc)} className="w-full py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2">
-                          <Settings2 size={14} /> Изменить настройки
+                        <button onClick={() => openDesignModal(acc)} className="w-full py-3 sm:py-2 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0">
+                          <Settings2 size={16} /> Изменить настройки
                         </button>
                       </div>
                     )}
@@ -443,9 +442,9 @@ export default function AccountsManager() {
                 </>
               )}
 
-              <div className="pt-3 border-t border-gray-800/50 flex justify-end">
-                <button onClick={() => removeAccount(acc.id)} className="flex items-center gap-1.5 text-xs font-medium text-rose-500 hover:text-rose-400 transition-colors p-2 bg-rose-500/5 hover:bg-rose-500/10 rounded-lg">
-                  <Trash2 size={14} /> Отключить группу
+              <div className="pt-4 border-t border-gray-800/50 flex justify-end">
+                <button onClick={() => removeAccount(acc.id)} className="w-full sm:w-auto flex items-center justify-center gap-1.5 text-xs font-medium text-rose-500 hover:text-rose-400 transition-colors py-3 sm:py-2 px-3 bg-rose-500/5 hover:bg-rose-500/10 rounded-lg min-h-[44px] sm:min-h-0">
+                  <Trash2 size={16} /> Отключить группу
                 </button>
               </div>
 
@@ -457,9 +456,9 @@ export default function AccountsManager() {
   };
 
   return (
-    <div className="space-y-8 pb-10 max-w-7xl mx-auto px-2 sm:px-4">
+    <div className="space-y-6 sm:space-y-8 pb-10 max-w-7xl mx-auto px-2 sm:px-4 w-full font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Мои группы</h1>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight px-1 sm:px-0">Мои группы</h1>
       </div>
 
       {/* === ПЛАШКА ЛИМИТОВ (ТОЛЬКО ДЛЯ БЕСПЛАТНОЙ ВЕРСИИ) === */}
@@ -471,47 +470,49 @@ export default function AccountsManager() {
             </p>
             <p className="text-gray-400 text-sm mt-1">Привязано аккаунтов (ВК + ТГ): <span className={isLimitReached ? 'text-red-400 font-bold' : 'text-white font-bold'}>{currentCount} / {accountsLimit}</span></p>
           </div>
-          <button onClick={() => navigate('/profile')} className="w-full sm:w-auto text-sm bg-purple-600 hover:bg-purple-500 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 whitespace-nowrap">
+          <button onClick={() => navigate('/profile')} className="w-full sm:w-auto text-sm bg-purple-600 hover:bg-purple-500 text-white px-6 py-3.5 sm:py-3 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 whitespace-nowrap min-h-[48px]">
             Снять лимит (PRO)
           </button>
         </div>
       )}
 
       {/* ШАГ 1: ВЕРХНИЕ БЛОКИ ДОБАВЛЕНИЯ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-stretch">
         
+        {/* ТЕЛЕГРАМ */}
         <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col h-full">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/10 blur-[50px] rounded-full pointer-events-none"></div>
+          <div className="absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 bg-sky-500/10 blur-[40px] sm:blur-[50px] rounded-full pointer-events-none"></div>
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
-              <Send size={20} className="text-sky-400" /> Telegram
+              <Send size={20} className="text-sky-400 shrink-0" /> Telegram
             </h2>
-            <p className="text-xs sm:text-sm text-gray-400 mb-5">Добавьте бота <span className="text-gray-300 font-mono">@smmbox_auth_bot</span> в админы канала и вставьте ссылку.</p>
+            <p className="text-xs sm:text-sm text-gray-400 mb-5">Добавьте бота <span className="text-gray-300 font-mono select-all">@smmbox_auth_bot</span> в админы канала и вставьте ссылку.</p>
           </div>
           <div className="mt-auto pt-2 flex flex-col sm:flex-row gap-3">
             <input 
               type="text" value={tgInput} onChange={(e) => setTgInput(e.target.value)}
               placeholder="t.me/channel" 
               disabled={isLimitReached}
-              className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-sky-500 transition-all placeholder:text-gray-600 disabled:opacity-50"
+              className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-sky-500 transition-all placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
             />
-            <button onClick={handleAddTg} disabled={isAddingTg || isLimitReached} className="shrink-0 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap">
-              {isAddingTg ? <RefreshCw className="animate-spin" size={16} /> : <Plus size={16} />} Добавить
+            <button onClick={handleAddTg} disabled={isAddingTg || isLimitReached} className="shrink-0 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap min-h-[48px] shadow-lg shadow-sky-500/20 active:scale-95">
+              {isAddingTg ? <RefreshCw className="animate-spin shrink-0" size={18} /> : <Plus size={18} className="shrink-0"/>} Добавить
             </button>
           </div>
         </div>
 
+        {/* ВКОНТАКТЕ */}
         <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col h-full opacity-80">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-[#0077FF]/10 blur-[50px] rounded-full pointer-events-none"></div>
+          <div className="absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 bg-[#0077FF]/10 blur-[40px] sm:blur-[50px] rounded-full pointer-events-none"></div>
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 bg-[#0077FF] rounded-md flex items-center justify-center font-bold text-[10px] text-white">K</span> ВКонтакте
+              <span className="w-5 h-5 bg-[#0077FF] rounded-md flex items-center justify-center font-bold text-[10px] text-white shrink-0">K</span> ВКонтакте
             </h2>
             <p className="text-xs sm:text-sm text-gray-400 mb-5">Подключение сообществ ВКонтакте находится в процессе глобального обновления.</p>
           </div>
           <div className="mt-auto pt-2">
-            <button disabled className="w-full bg-gray-800/80 text-gray-500 border border-gray-700/80 py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-sm cursor-not-allowed">
-              Подключить ВКонтакте <span className="text-[10px] uppercase tracking-wider bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded-full ml-1">Скоро</span>
+            <button disabled className="w-full bg-gray-800/80 text-gray-500 border border-gray-700/80 py-3.5 sm:py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-sm cursor-not-allowed min-h-[48px]">
+              Подключить ВКонтакте <span className="text-[9px] sm:text-[10px] uppercase tracking-wider bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded-full ml-1">Скоро</span>
             </button>
           </div>
         </div>
@@ -519,33 +520,33 @@ export default function AccountsManager() {
       </div>
 
       {/* ШАГ 2: НИЖНИЕ СПИСКИ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mt-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mt-6 sm:mt-8">
         
         {/* ЛЕВАЯ КОЛОНКА (ТГ) */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
-            <Send size={14} className="text-sky-500"/> Подключенные каналы
+        <div className="space-y-3 sm:space-y-4">
+          <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
+            <Send size={14} className="text-sky-500 shrink-0"/> Подключенные каналы
           </h3>
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 sm:gap-4">
             {tgAccounts.map(acc => renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-sky-500', 'Telegram'))}
             {tgAccounts.length === 0 && (
               <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
-                <p className="text-gray-500 text-sm">Нет подключенных каналов</p>
+                <p className="text-gray-500 text-sm px-4">Нет подключенных каналов Telegram</p>
               </div>
             )}
           </div>
         </div>
 
         {/* ПРАВАЯ КОЛОНКА (ВК) */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
-            <span className="w-4 h-4 rounded bg-[#0077FF] flex items-center justify-center text-[9px] text-white font-bold">K</span> Сообщества ВКонтакте
+        <div className="space-y-3 sm:space-y-4">
+          <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
+            <span className="w-4 h-4 rounded bg-[#0077FF] flex items-center justify-center text-[9px] text-white font-bold shrink-0">K</span> Сообщества ВКонтакте
           </h3>
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 sm:gap-4">
             {vkAccounts.map(acc => renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]', 'ВКонтакте'))}
             {vkAccounts.length === 0 && (
               <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
-                <p className="text-gray-500 text-sm">Нет подключенных сообществ</p>
+                <p className="text-gray-500 text-sm px-4">Нет подключенных сообществ ВКонтакте</p>
               </div>
             )}
           </div>
@@ -553,19 +554,22 @@ export default function AccountsManager() {
 
       </div>
 
-      {/* --- МОДАЛЬНОЕ ОКНО ДИЗАЙНА --- */}
+      {/* --- МОДАЛЬНОЕ ОКНО ДИЗАЙНА (BOTTOM SHEET MOBILE) --- */}
       {designModal.isOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeDesignModal}></div>
-          <div className="relative w-full max-w-lg bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] sm:max-h-[85vh] animate-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-lg bg-[#111318] border-t sm:border border-gray-700 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] pb-[max(0px,env(safe-area-inset-bottom))] sm:pb-0 z-10 transition-transform">
+            
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/50">
-              <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2"><ImageIcon size={18} className="text-blue-400"/> Настройка дизайна</h3>
-              <button onClick={closeDesignModal} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-1.5 rounded-lg transition-colors"><X size={18}/></button>
+              <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2 pr-4 truncate"><ImageIcon size={18} className="text-blue-400 shrink-0"/> Настройка дизайна</h3>
+              <button onClick={closeDesignModal} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 sm:p-1.5 rounded-full sm:rounded-lg transition-colors shrink-0">
+                <X size={20} className="sm:w-[18px] sm:h-[18px]" />
+              </button>
             </div>
 
             <div className="p-4 sm:p-5 bg-black/50 border-b border-gray-800">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-xs text-gray-500 uppercase flex items-center gap-1"><Move size={12}/> Можно перетаскивать мышью</span>
+                <span className="text-[10px] sm:text-xs text-gray-500 uppercase flex items-center gap-1"><Move size={12}/> Перетаскивайте мышью/пальцем</span>
               </div>
               <div ref={previewRef} onPointerDown={handleBackgroundClick} className="relative w-full aspect-[16/9] rounded-xl shadow-inner border border-gray-800 overflow-hidden bg-cover bg-center cursor-crosshair touch-none" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop')" }}>
                 <div 
@@ -580,36 +584,55 @@ export default function AccountsManager() {
                     boxShadow: (localWatermark.type === 'text' && localWatermark.hasBackground) ? '0 4px 6px rgba(0,0,0,0.3)' : 'none', zIndex: 10
                   }}
                 >
-                  {localWatermark.type === 'image' && localWatermark.image ? (<img src={localWatermark.image} alt="watermark" draggable="false" className="max-h-12 object-contain drop-shadow-lg pointer-events-none" />) : (localWatermark.text || 'SMMBOX')}
+                  {localWatermark.type === 'image' && localWatermark.image ? (<img src={localWatermark.image} alt="watermark" draggable="false" className="max-h-10 sm:max-h-12 object-contain drop-shadow-lg pointer-events-none" />) : (localWatermark.text || 'SMMBOX')}
                 </div>
               </div>
             </div>
 
             <div className="flex border-b border-gray-800 bg-gray-900/30">
-              <button onClick={() => setWatermarkTab('simple')} className={`flex-1 py-3.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${watermarkTab === 'simple' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><TypeIcon size={16}/> Базовая</button>
-              <button onClick={() => setWatermarkTab('advanced')} className={`flex-1 py-3.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${watermarkTab === 'advanced' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><Sliders size={16}/> Продвинутая</button>
+              <button onClick={() => setWatermarkTab('simple')} className={`flex-1 py-3 sm:py-3.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors min-h-[48px] ${watermarkTab === 'simple' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><TypeIcon size={16}/> Базовая</button>
+              <button onClick={() => setWatermarkTab('advanced')} className={`flex-1 py-3 sm:py-3.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors min-h-[48px] ${watermarkTab === 'advanced' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><Sliders size={16}/> Продвинутая</button>
             </div>
 
             <div className="p-4 sm:p-5 overflow-y-auto custom-scrollbar flex-1 bg-[#111318]">
               {watermarkTab === 'simple' && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="space-y-5 sm:space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
-                    <button onClick={() => setLocalWatermark({...localWatermark, type: 'text'})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${localWatermark.type === 'text' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Текст</button>
-                    <button onClick={() => setLocalWatermark({...localWatermark, type: 'image'})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${localWatermark.type === 'image' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Свое лого</button>
+                    <button onClick={() => setLocalWatermark({...localWatermark, type: 'text'})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all min-h-[40px] ${localWatermark.type === 'text' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Текст</button>
+                    <button onClick={() => setLocalWatermark({...localWatermark, type: 'image'})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all min-h-[40px] ${localWatermark.type === 'image' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Свое лого</button>
                   </div>
                   {localWatermark.type === 'text' ? (
                     <>
-                      <div className="space-y-2"><label className="text-xs font-semibold text-gray-400 uppercase">Текст знака</label><input type="text" value={localWatermark.text || ''} onChange={e => setLocalWatermark({...localWatermark, text: e.target.value})} placeholder="SMMBOX" className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-blue-500 outline-none transition-colors" /></div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5"><ColorPicker label="Цвет текста" colorKey="textColor" /><ColorPicker label="Фон плашки" colorKey="bgColor" hasCheckbox checkboxKey="hasBackground" /></div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] sm:text-xs font-semibold text-gray-400 uppercase">Текст знака</label>
+                        <input type="text" value={localWatermark.text || ''} onChange={e => setLocalWatermark({...localWatermark, text: e.target.value})} placeholder="SMMBOX" className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 sm:py-2.5 px-4 text-base sm:text-sm text-white focus:border-blue-500 outline-none transition-colors min-h-[48px] sm:min-h-[44px]" />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5"><ColorPicker label="Цвет текста" colorKey="textColor" /><ColorPicker label="Фон плашки" colorKey="bgColor" hasCheckbox checkboxKey="hasBackground" /></div>
                     </>
                   ) : (
-                    <div className="space-y-2"><label className="text-xs font-semibold text-gray-400 uppercase">Файл логотипа</label><div className="border-2 border-dashed border-gray-700 rounded-xl p-6 text-center hover:bg-gray-900/50 transition-colors bg-black/20"><input type="file" accept="image/*" onChange={handleImageUpload} ref={fileInputRef} className="hidden" />{localWatermark.image ? (<div className="flex flex-col items-center gap-3"><img src={localWatermark.image} alt="preview" className="h-16 object-contain" /><button onClick={() => fileInputRef.current?.click()} className="text-blue-400 text-xs font-bold hover:underline">Заменить логотип</button></div>) : (<div className="flex flex-col items-center gap-2 cursor-pointer" onClick={() => fileInputRef.current?.click()}><div className="w-10 h-10 bg-blue-500/10 rounded-full flex items-center justify-center"><Upload size={18} className="text-blue-400"/></div><span className="text-sm font-medium text-gray-300">Нажмите, чтобы загрузить</span></div>)}</div></div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] sm:text-xs font-semibold text-gray-400 uppercase">Файл логотипа</label>
+                      <div className="border-2 border-dashed border-gray-700 rounded-xl p-5 sm:p-6 text-center hover:bg-gray-900/50 transition-colors bg-black/20">
+                        <input type="file" accept="image/*" onChange={handleImageUpload} ref={fileInputRef} className="hidden" />
+                        {localWatermark.image ? (
+                          <div className="flex flex-col items-center gap-3">
+                            <img src={localWatermark.image} alt="preview" className="h-16 object-contain" />
+                            <button onClick={() => fileInputRef.current?.click()} className="text-blue-400 text-xs font-bold hover:underline p-2 min-h-[44px]">Заменить логотип</button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2 cursor-pointer p-2" onClick={() => fileInputRef.current?.click()}>
+                            <div className="w-12 h-12 sm:w-10 sm:h-10 bg-blue-500/10 rounded-full flex items-center justify-center"><Upload size={20} className="text-blue-400"/></div>
+                            <span className="text-sm font-medium text-gray-300 mt-1">Нажмите, чтобы загрузить</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
-                  <div className="space-y-2"><label className="text-xs font-semibold text-gray-400 uppercase">Сетка позиций</label><PositionGridButtons /></div>
+                  <div className="space-y-2"><label className="text-[10px] sm:text-xs font-semibold text-gray-400 uppercase">Быстрая позиция</label><PositionGridButtons /></div>
                 </div>
               )}
               {watermarkTab === 'advanced' && (
-                <div className="space-y-7 animate-in fade-in slide-in-from-left-4 duration-300">
+                <div className="space-y-6 sm:space-y-7 animate-in fade-in slide-in-from-left-4 duration-300 py-2">
                   <div className="space-y-3"><div className="flex justify-between items-center"><label className="text-xs font-semibold text-gray-400 uppercase">Прозрачность</label><span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded">{localWatermark.opacity || 90}%</span></div><input type="range" min="10" max="100" value={localWatermark.opacity || 90} onChange={e => setLocalWatermark({...localWatermark, opacity: Number(e.target.value)})} className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-500" /></div>
                   <div className="space-y-3"><div className="flex justify-between items-center"><label className="text-xs font-semibold text-gray-400 uppercase">Масштаб</label><span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded">{localWatermark.size || 100}%</span></div><input type="range" min="50" max="250" value={localWatermark.size || 100} onChange={e => setLocalWatermark({...localWatermark, size: Number(e.target.value)})} className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-500" /></div>
                   <div className="space-y-3"><div className="flex justify-between items-center"><label className="text-xs font-semibold text-gray-400 uppercase flex items-center gap-1.5"><RotateCw size={14}/> Поворот</label><span className="text-xs text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded">{localWatermark.angle || 0}°</span></div><input type="range" min="-180" max="180" value={localWatermark.angle || 0} onChange={handleAngleChange} className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-500" /><div className="flex justify-between text-[10px] text-gray-500 font-mono px-1 pt-1"><span>-180°</span><span>0°</span><span>180°</span></div></div>
@@ -617,20 +640,20 @@ export default function AccountsManager() {
               )}
             </div>
 
-            <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] flex flex-row gap-3">
+            <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] flex flex-col sm:flex-row gap-3">
               <button 
                 onClick={closeDesignModal} 
                 disabled={isModalSaving} 
-                className="flex-1 py-3 text-sm font-bold text-gray-300 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-xl transition-colors"
+                className="w-full sm:flex-1 py-3 sm:py-3 text-sm font-bold text-gray-300 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded-xl transition-colors min-h-[48px] order-2 sm:order-1"
               >
                 Отмена
               </button>
               <button 
                 onClick={handleSaveModalDesign} 
                 disabled={isModalSaving} 
-                className="flex-[2] py-3 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex flex-row justify-center items-center gap-2"
+                className="w-full sm:flex-[2] py-3 sm:py-3 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex flex-row justify-center items-center gap-2 min-h-[48px] order-1 sm:order-2 active:scale-95"
               >
-                {isModalSaving ? <Loader2 size={18} className="animate-spin"/> : <Check size={18}/>} 
+                {isModalSaving ? <Loader2 size={18} className="animate-spin shrink-0"/> : <Check size={18} className="shrink-0"/>} 
                 <span>Сохранить настройки</span>
               </button>
             </div>
