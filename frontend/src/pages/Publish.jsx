@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, 
   Send, CheckCircle2, Share2, Users, LayoutTemplate,
-  Search, CalendarClock, Clock, MessageSquare, Plus, Loader2,
+  Search, CalendarClock, Clock, Loader2,
   Settings, PenTool, Check, Trash2 
 } from 'lucide-react';
 import { useStore } from '../store';
@@ -23,7 +23,7 @@ export default function Publish() {
   const { 
     user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings, 
     tempDraft, saveTempDraft, createPostAction,
-    myPartners, sharePostAction, fetchPartnerData // <-- ДОБАВЛЕНЫ НОВЫЕ МЕТОДЫ
+    myPartners, sharePostAction, fetchPartnerData
   } = useStore();
   
   const isRestored = useRef(false);
@@ -57,10 +57,17 @@ export default function Publish() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // === СТЕЙТЫ ДЛЯ ПАРТНЕРОВ ===
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const [partnerStatus, setPartnerStatus] = useState('idle'); 
   const [selectedPartners, setSelectedPartners] = useState([]);
+
+  // === СТЕЙТЫ РЕДАКТИРОВАНИЯ ОТЛОЖЕННОГО ПОСТА ===
+  const [editPost, setEditPost] = useState(null);
+  const [editTab, setEditTab] = useState('text');
+  const [editText, setEditText] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [isUpdatingPost, setIsUpdatingPost] = useState(false);
 
   const fileInputRef = useRef(null);
 
@@ -68,25 +75,20 @@ export default function Publish() {
   const MAX_CHARS = 1000;
 
   const scheduledPostsRaw = useStore(state => state.scheduledPosts) || [];
-  const watermarkSettings = useStore(state => state.watermarkSettings); // <--- ВОТ ЭТА СТРОКА ВКЛЮЧИТ ЗНАКИ
+  const watermarkSettings = useStore(state => state.watermarkSettings);
   const fetchScheduledPosts = useStore(state => state.fetchScheduledPosts);
   const deleteScheduledPostAction = useStore(state => state.deleteScheduledPostAction);
 
-  // Подгружаем посты при входе
   useEffect(() => {
     if (user?.id) fetchScheduledPosts();
-  }, [user?.id, fetchScheduledPosts, view]); // Обновляем, когда переключаемся на календарь
+  }, [user?.id, fetchScheduledPosts, view]);
 
-  // Превращаем сырые данные из базы в удобный формат (СТРОГО МЕСТНОЕ ВРЕМЯ БЕЗ СДВИГОВ)
-  // Превращаем сырые данные из базы в удобный формат (СТРОГО МЕСТНОЕ ВРЕМЯ БЕЗ СДВИГОВ)
   const realScheduledPosts = useMemo(() => {
-    // ЗАЩИТА: Если данных нет, возвращаем пустой массив
     if (!Array.isArray(scheduledPostsRaw)) return [];
 
     return scheduledPostsRaw.map(p => {
-      const d = new Date(p.publishAt);
+      const d = new Date(p.publishAt || p.createdAt);
       
-      // ИСПРАВЛЕНИЕ: Получаем локальное время пользователя
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
@@ -99,18 +101,12 @@ export default function Publish() {
         text: p.text || 'Без текста',
         network: p.account?.provider === 'vk' ? 'VK' : 'TG',
         color: p.account?.provider === 'vk' ? 'bg-blue-600' : 'bg-sky-500',
-        accountName: p.account?.name || 'Аккаунт'
+        accountName: p.account?.name || 'Аккаунт',
+        status: p.status, // SCHEDULED или PUBLISHED
+        rawPublishAt: p.publishAt
       };
     });
   }, [scheduledPostsRaw]);
-
-  // === ТЕСТОВЫЙ БЛОК ===
-  useEffect(() => {
-    console.log("=== ДИАГНОСТИКА КАЛЕНДАРЯ ===");
-    console.log("1. Выбранная дата в календаре:", selectedCalendarDate);
-    console.log("2. Сырые посты из базы:", scheduledPostsRaw);
-    console.log("3. Готовые карточки:", realScheduledPosts);
-  }, [selectedCalendarDate, scheduledPostsRaw, realScheduledPosts]);
 
   const calendarDays = useMemo(() => {
     return Array.from({length: 14}).map((_, i) => {
@@ -132,7 +128,6 @@ export default function Publish() {
     }, {});
   }, [searchQuery, accounts]);
 
-  // ИСПРАВЛЕНИЕ: Убрали лишние зависимости, чтобы не было бесконечного цикла
   useEffect(() => {
     if (user?.id) {
       fetchAccounts(user.id);
@@ -145,7 +140,7 @@ export default function Publish() {
   useEffect(() => {
     if (tempDraft && !isRestored.current) {
       if (tempDraft.text) setText(tempDraft.text);
-      if (tempDraft.photos) setPhotos(tempDraft.photos); // Восстанавливаем фото от партнера
+      if (tempDraft.photos) setPhotos(tempDraft.photos); 
       if (tempDraft.selectedAccounts) setSelectedAccounts(tempDraft.selectedAccounts);
       if (tempDraft.accountOverrides) setAccountOverrides(tempDraft.accountOverrides);
       if (tempDraft.applyWatermark !== undefined) setApplyWatermark(tempDraft.applyWatermark);
@@ -162,7 +157,6 @@ export default function Publish() {
   useEffect(() => {
     if (!isRestored.current || !saveTempDraft || step === 4) return; 
     const timer = setTimeout(() => {
-      // Исключаем photos из автосохранения, чтобы не переполнять память браузера
       saveTempDraft({ 
         text, selectedAccounts, accountOverrides, applyWatermark, applySignature,
         step, view, publishMode, scheduleTime, selectedCalendarDate
@@ -335,7 +329,7 @@ export default function Publish() {
     }
   };
 
-const handlePublish = async () => {
+  const handlePublish = async () => {
     if (selectedAccounts.length === 0) return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
     if (publishMode === 'schedule' && (!selectedCalendarDate || !scheduleTime)) return setTimeout(() => alert('Укажите дату и время!'), 10);
     
@@ -344,7 +338,6 @@ const handlePublish = async () => {
     try {
         const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
         
-        // ИСПРАВЛЕНИЕ: Бронебойная передача настроек водяного знака
         const accountsData = selectedAccounts.map(id => {
           const acc = accounts.find(a => a.id === id);
           let wmConfig = null;
@@ -369,13 +362,10 @@ const handlePublish = async () => {
 
         let publishAt = null;
         if (publishMode === 'schedule') {
-            // ИСПРАВЛЕНИЕ: Бронебойный парсинг даты для всех браузеров
             const [year, month, day] = selectedCalendarDate.split('-');
             const [hours, minutes] = scheduleTime.split(':');
-            
-            // Месяцы в JS начинаются с 0, поэтому month - 1
             const localDate = new Date(year, month - 1, day, hours, minutes);
-            publishAt = localDate.toISOString(); // Конвертируем в UTC для базы данных
+            publishAt = localDate.toISOString(); 
         }
 
         const result = await createPostAction(text, base64Images, selectedAccounts, accountsData, publishAt);
@@ -385,7 +375,7 @@ const handlePublish = async () => {
             if (saveTempDraft) saveTempDraft(null); 
             
             if (publishMode === 'schedule') {
-                await fetchScheduledPosts(); // ЖДЕМ подгрузки новой карточки!
+                await fetchScheduledPosts(); 
             }
             
             setStep(4); 
@@ -399,7 +389,6 @@ const handlePublish = async () => {
     }
   };
 
-  // === РЕАЛЬНАЯ ЛОГИКА ОТПРАВКИ ПАРТНЕРАМ ===
   const handleSendToPartners = async () => {
     if (selectedPartners.length === 0) return alert('Выберите хотя бы одного партнера!');
     setPartnerStatus('sending');
@@ -410,7 +399,7 @@ const handlePublish = async () => {
       
       if (result.success) {
          setPartnerStatus('sent');
-         setSelectedPartners([]); // Очищаем выбор после успеха
+         setSelectedPartners([]); 
       } else {
          alert(result.error || 'Ошибка при отправке');
          setPartnerStatus('idle');
@@ -422,6 +411,52 @@ const handlePublish = async () => {
     }
   };
 
+  // === ЛОГИКА РЕДАКТИРОВАНИЯ ПОСТА ===
+  const openEditModal = (post) => {
+    setEditPost(post);
+    setEditTab('text');
+    setEditText(post.text);
+    
+    // Подготовка даты
+    const d = new Date(post.rawPublishAt);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    
+    setEditDate(`${year}-${month}-${day}`);
+    setEditTime(`${hours}:${minutes}`);
+  };
+
+  const handleUpdatePost = async () => {
+    setIsUpdatingPost(true);
+    try {
+      const token = localStorage.getItem('token');
+      const [year, month, day] = editDate.split('-');
+      const [hours, minutes] = editTime.split(':');
+      const localDate = new Date(year, month - 1, day, hours, minutes);
+      const newIsoDate = localDate.toISOString();
+
+      const res = await fetch(`/api/posts/scheduled/${editPost.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ text: editText, publishAt: newIsoDate })
+      });
+      
+      if (res.ok) {
+         await fetchScheduledPosts();
+         setEditPost(null);
+      } else {
+         alert('Ошибка при обновлении поста на сервере');
+      }
+    } catch (e) {
+      alert('Ошибка соединения с сервером');
+    }
+    setIsUpdatingPost(false);
+  };
+
   const resetForm = () => {
     setPhotos([]);
     setText('');
@@ -431,7 +466,7 @@ const handlePublish = async () => {
     setStep(1);
     setIsPublishing(false); 
     setShowPartnerModal(false);
-    setSelectedPartners([]); // Сброс выбранных партнеров
+    setSelectedPartners([]); 
     setPartnerStatus('idle');
     setView('start'); 
     if (saveTempDraft) saveTempDraft(null);
@@ -478,8 +513,6 @@ const handlePublish = async () => {
   // ==========================================
   if (view === 'calendar') {
     const selectedDateObj = new Date(selectedCalendarDate);
-    
-    // ИСПРАВЛЕНИЕ 1: Теперь используем реальные посты из базы данных!
     const postsForSelectedDate = realScheduledPosts.filter(p => p.date === selectedCalendarDate);
 
     return (
@@ -492,7 +525,6 @@ const handlePublish = async () => {
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6">Контент-план</h2>
           <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 mb-4">
             {calendarDays.map((d) => {
-              // ИСПРАВЛЕНИЕ: Вычисляем дату кнопок строго по местному времени
               const year = d.getFullYear();
               const month = String(d.getMonth() + 1).padStart(2, '0');
               const day = String(d.getDate()).padStart(2, '0');
@@ -520,30 +552,63 @@ const handlePublish = async () => {
 
           <div className="mt-2">
             <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <Clock size={20} className="text-purple-500" /> Запланировано на {selectedDateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
+              <Clock size={20} className="text-purple-500" /> 
+              {selectedDateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
             </h3>
             <div className="space-y-3">
               {postsForSelectedDate.length > 0 ? (
                 postsForSelectedDate.map(post => (
-                  <div key={post.id} className="bg-admin-card border border-gray-800 p-4 rounded-2xl flex items-center justify-between gap-4 transition-colors hover:bg-gray-900/80">
-                    <div className="flex items-center gap-4 min-w-0">
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-white shrink-0 ${post.color}`}>{post.network}</div>
-                      <div className="min-w-0">
-                        <p className="text-white font-medium text-sm truncate">{post.text}</p>
-                        <p className="text-gray-400 text-xs mt-1">
-                          {post.accountName} <span className="text-purple-400 font-bold ml-2">{post.time}</span>
+                  <div key={post.id} className={`bg-admin-card border border-gray-800 p-4 rounded-2xl flex items-center justify-between gap-4 transition-all hover:bg-gray-900/80 group ${post.status === 'PUBLISHED' ? 'opacity-80 grayscale-[30%] bg-gray-900/50' : ''}`}>
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                      
+                      {/* АВАТАРКА СОЦСЕТИ */}
+                      <div className={`w-14 h-14 rounded-xl shrink-0 flex items-center justify-center text-white border border-gray-700/50 ${post.color}`}>
+                        <div className="w-7 h-7">
+                          {post.network === 'VK' ? <IconVK /> : <IconTG />}
+                        </div>
+                      </div>
+
+                      {/* ТЕКСТ И ИНФО */}
+                      <div className="min-w-0 flex-1 pr-4">
+                        <p className={`font-medium text-sm line-clamp-2 leading-snug break-words ${post.status === 'PUBLISHED' ? 'text-gray-300' : 'text-white'}`}>
+                          {post.text}
                         </p>
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                          <span className="text-gray-400 text-[11px] bg-gray-800 px-2 py-0.5 rounded-md truncate max-w-[120px]">{post.accountName}</span>
+                          <span className="w-1 h-1 rounded-full bg-gray-700"></span>
+                          <span className="text-purple-400 text-xs font-bold flex items-center gap-1">
+                            <Clock size={12} /> {post.time}
+                          </span>
+                          
+                          {/* ЗНАЧОК СТАТУСА (Отправлен) */}
+                          {post.status === 'PUBLISHED' && (
+                            <span className="text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <CheckCircle2 size={10} /> Отправлен
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     
-                    {/* ИСПРАВЛЕНИЕ 3: Добавлена кнопка отмены (удаления) отложенного поста */}
-                    <button 
-                      onClick={() => deleteScheduledPostAction(post.id)} 
-                      className="w-10 h-10 rounded-xl bg-gray-900 hover:bg-red-500/20 text-gray-500 hover:text-red-500 flex items-center justify-center transition-colors shrink-0 border border-gray-800 hover:border-red-500/30"
-                      title="Отменить публикацию"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    {/* КНОПКИ ДЕЙСТВИЙ (Скрываем редактирование, если пост уже опубликован) */}
+                    <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                      {post.status === 'SCHEDULED' && (
+                        <button 
+                          onClick={() => openEditModal(post)} 
+                          className="w-10 h-10 rounded-xl bg-gray-900 hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 flex items-center justify-center transition-colors border border-gray-800 hover:border-blue-500/30"
+                          title="Редактировать"
+                        >
+                          <PenTool size={18} />
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => deleteScheduledPostAction(post.id)} 
+                        className="w-10 h-10 rounded-xl bg-gray-900 hover:bg-red-500/20 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors border border-gray-800 hover:border-red-500/30"
+                        title="Удалить"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
                 ))
               ) : (
@@ -569,6 +634,62 @@ const handlePublish = async () => {
             </button>
           </div>
         </div>
+
+        {/* МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ПОСТА */}
+        {editPost && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-admin-card w-full max-w-lg border border-gray-800 rounded-3xl p-6 shadow-2xl relative flex flex-col max-h-[90vh]">
+              <button onClick={() => setEditPost(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2">
+                <X size={20} />
+              </button>
+
+              <h3 className="text-xl font-bold text-white mb-4">Редактирование поста</h3>
+              
+              <div className="flex gap-2 mb-6 border-b border-gray-800 pb-2">
+                <button onClick={() => setEditTab('text')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${editTab === 'text' ? 'bg-purple-500/20 text-purple-400' : 'text-gray-500 hover:text-gray-300'}`}>Текст</button>
+                <button onClick={() => setEditTab('settings')} className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors ${editTab === 'settings' ? 'bg-purple-500/20 text-purple-400' : 'text-gray-500 hover:text-gray-300'}`}>Настройки (Время)</button>
+                <button disabled title="Изображения фиксируются при создании" className="px-4 py-2 text-sm font-bold rounded-lg text-gray-700 cursor-not-allowed hidden sm:block">Картинки (Только чтение)</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 mb-4">
+                {editTab === 'text' && (
+                  <textarea
+                    value={editText} onChange={(e) => setEditText(e.target.value)}
+                    className="w-full min-h-[200px] bg-gray-900 border border-gray-800 rounded-xl p-4 text-white text-base resize-none outline-none focus:border-purple-500 transition-colors"
+                  />
+                )}
+                {editTab === 'settings' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase">Дата публикации</label>
+                        <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white mt-1" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase">Время</label>
+                        <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white mt-1" />
+                      </div>
+                    </div>
+                    <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl mt-4">
+                      <p className="text-sm text-blue-400 font-medium flex items-start gap-2 leading-snug">
+                        <Settings size={18} className="shrink-0 mt-0.5" />
+                        Для изменения водяного знака, подписи или списка аккаунтов, отмените эту публикацию и создайте новую. Изображения уже обработаны и привязаны к аккаунту.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-gray-800 flex flex-col sm:flex-row gap-3">
+                 <button onClick={() => setEditPost(null)} className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-colors order-2 sm:order-1">Отмена</button>
+                 <button onClick={handleUpdatePost} disabled={isUpdatingPost} className="flex-[2] py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold transition-colors flex justify-center items-center gap-2 order-1 sm:order-2 shadow-lg shadow-purple-500/20">
+                   {isUpdatingPost ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />} 
+                   {isUpdatingPost ? 'Сохранение...' : 'Сохранить изменения'}
+                 </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -877,7 +998,6 @@ const handlePublish = async () => {
         </div>
       )}
 
-      {/* === РЕАЛЬНОЕ МОДАЛЬНОЕ ОКНО ПАРТНЕРОВ === */}
       {showPartnerModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-admin-card w-full max-w-md border border-gray-800 rounded-3xl p-6 shadow-2xl relative flex flex-col max-h-[90vh]">
