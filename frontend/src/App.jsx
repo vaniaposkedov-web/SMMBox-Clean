@@ -66,11 +66,6 @@ function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-gray-800 space-y-2">
-        {user?.role === 'ADMIN' && (
-          <NavLink to="/system-core-dashboard" className="flex items-center gap-3 w-full p-3 rounded-xl bg-gradient-to-r from-rose-600/10 to-transparent text-rose-500 hover:bg-rose-600/20 transition-all font-bold">
-            <ShieldAlert size={20} /> Панель Админа
-          </NavLink>
-        )}
         <button onClick={() => logout()} className="flex items-center gap-3 w-full p-3 rounded-xl text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all font-medium">
           <LogOut size={20} /> Выйти
         </button>
