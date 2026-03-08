@@ -78,10 +78,15 @@ export default function Publish() {
   }, [user?.id, fetchScheduledPosts, view]); // Обновляем, когда переключаемся на календарь
 
   // Превращаем сырые данные из базы в удобный формат (СТРОГО МЕСТНОЕ ВРЕМЯ БЕЗ СДВИГОВ)
+  // Превращаем сырые данные из базы в удобный формат (СТРОГО МЕСТНОЕ ВРЕМЯ БЕЗ СДВИГОВ)
   const realScheduledPosts = useMemo(() => {
+    // ЗАЩИТА: Если данных нет, возвращаем пустой массив
+    if (!Array.isArray(scheduledPostsRaw)) return [];
+
     return scheduledPostsRaw.map(p => {
       const d = new Date(p.publishAt);
       
+      // ИСПРАВЛЕНИЕ: Получаем локальное время пользователя
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
@@ -94,7 +99,7 @@ export default function Publish() {
         text: p.text || 'Без текста',
         network: p.account?.provider === 'vk' ? 'VK' : 'TG',
         color: p.account?.provider === 'vk' ? 'bg-blue-600' : 'bg-sky-500',
-        accountName: p.account?.name
+        accountName: p.account?.name || 'Аккаунт'
       };
     });
   }, [scheduledPostsRaw]);
@@ -364,8 +369,13 @@ const handlePublish = async () => {
 
         let publishAt = null;
         if (publishMode === 'schedule') {
-            const localDate = new Date(`${selectedCalendarDate}T${scheduleTime}:00`);
-            publishAt = localDate.toISOString(); 
+            // ИСПРАВЛЕНИЕ: Бронебойный парсинг даты для всех браузеров
+            const [year, month, day] = selectedCalendarDate.split('-');
+            const [hours, minutes] = scheduleTime.split(':');
+            
+            // Месяцы в JS начинаются с 0, поэтому month - 1
+            const localDate = new Date(year, month - 1, day, hours, minutes);
+            publishAt = localDate.toISOString(); // Конвертируем в UTC для базы данных
         }
 
         const result = await createPostAction(text, base64Images, selectedAccounts, accountsData, publishAt);
