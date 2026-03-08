@@ -70,22 +70,24 @@ export default function Publish() {
     if (user?.id) fetchScheduledPosts();
   }, [user?.id, fetchScheduledPosts, view]); // Обновляем, когда переключаемся на календарь
 
-  // Превращаем сырые данные из базы в удобный формат для календаря
+  // Превращаем сырые данные из базы в удобный формат (СТРОГО МЕСТНОЕ ВРЕМЯ БЕЗ СДВИГОВ)
   const realScheduledPosts = useMemo(() => {
     return scheduledPostsRaw.map(p => {
       const d = new Date(p.publishAt);
-      // Защита от часовых поясов: получаем локальную дату в формате YYYY-MM-DD
-      const offset = d.getTimezoneOffset() * 60000;
-      const localISODate = (new Date(d - offset)).toISOString().split('T')[0];
+      
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const localISODate = `${year}-${month}-${day}`;
       
       return {
         id: p.id,
         date: localISODate,
         time: d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         text: p.text || 'Без текста',
-        network: p.account.provider === 'vk' ? 'VK' : 'TG',
-        color: p.account.provider === 'vk' ? 'bg-blue-600' : 'bg-sky-500',
-        accountName: p.account.name
+        network: p.account?.provider === 'vk' ? 'VK' : 'TG',
+        color: p.account?.provider === 'vk' ? 'bg-blue-600' : 'bg-sky-500',
+        accountName: p.account?.name
       };
     });
   }, [scheduledPostsRaw]);
@@ -313,7 +315,7 @@ export default function Publish() {
     }
   };
 
-  const handlePublish = async () => {
+const handlePublish = async () => {
     if (selectedAccounts.length === 0) return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
     if (publishMode === 'schedule' && (!selectedCalendarDate || !scheduleTime)) return setTimeout(() => alert('Укажите дату и время!'), 10);
     
@@ -321,15 +323,30 @@ export default function Publish() {
 
     try {
         const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
-        const accountsData = selectedAccounts.map(id => ({
-          accountId: id,
-          applyWatermark: getEffectiveSetting(id, 'watermark'),
-          applySignature: getEffectiveSetting(id, 'signature')
-        }));
+        
+        // ИСПРАВЛЕНИЕ: Теперь мы передаем не только true/false, но и сами настройки водяного знака
+        const accountsData = selectedAccounts.map(id => {
+          const acc = accounts.find(a => a.id === id);
+          let wmConfig = null;
+          let sigText = '';
+          
+          if (accountOverrides[id]?.mode === 'custom') {
+              wmConfig = acc?.watermark || globalSettings.watermark;
+              sigText = acc?.signature || globalSettings.signature;
+          } else {
+              wmConfig = globalSettings.watermark;
+              sigText = globalSettings.signature;
+          }
 
-        // === ИСПРАВЛЕНИЕ 1: МАГИЯ ЧАСОВЫХ ПОЯСОВ ===
-        // Браузер сам знает, где вы находитесь. Он берет ваше местное время
-        // и конвертирует его в единое серверное время (UTC) с помощью toISOString()
+          return {
+            accountId: id,
+            applyWatermark: getEffectiveSetting(id, 'watermark'),
+            applySignature: getEffectiveSetting(id, 'signature'),
+            watermarkConfig: wmConfig,
+            signatureText: sigText
+          };
+        });
+
         let publishAt = null;
         if (publishMode === 'schedule') {
             const localDate = new Date(`${selectedCalendarDate}T${scheduleTime}:00`);
@@ -342,10 +359,8 @@ export default function Publish() {
             setIsPublishing(false);
             if (saveTempDraft) saveTempDraft(null); 
             
-            // === ИСПРАВЛЕНИЕ 2: ОБНОВЛЯЕМ КАЛЕНДАРЬ СРАЗУ ПОСЛЕ УСПЕХА ===
-            // Чтобы карточка моментально появилась на нужной дате
             if (publishMode === 'schedule') {
-                fetchScheduledPosts(); 
+                fetchScheduledPosts(); // Мгновенно обновляем календарь!
             }
             
             setStep(4); 
@@ -452,12 +467,16 @@ export default function Publish() {
           <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6">Контент-план</h2>
           <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 mb-4">
             {calendarDays.map((d) => {
-              const isoDate = d.toISOString().split('T')[0];
+              // ИСПРАВЛЕНИЕ: Вычисляем дату кнопок строго по местному времени
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              const isoDate = `${year}-${month}-${day}`;
+              
               const isSelected = isoDate === selectedCalendarDate;
               const dayName = d.toLocaleDateString('ru-RU', { weekday: 'short' });
               const dayNum = d.getDate();
               
-              // ИСПРАВЛЕНИЕ 2: Точки в календаре теперь тоже работают от реальных постов
               const hasPosts = realScheduledPosts.some(p => p.date === isoDate);
               
               return (
