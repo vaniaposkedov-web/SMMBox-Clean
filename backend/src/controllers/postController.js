@@ -275,7 +275,7 @@ exports.createPost = async (req, res) => {
             }
 
             // === ВАЖНО: ПРОВЕРКА НА ОТЛОЖЕННЫЙ ПОСТ ===
-            const isScheduled = publishAt && new Date(publishAt) > new Date();
+            const isScheduled = publishAt ? true : false;
 
             if (isScheduled) {
                 // Превращаем обработанные картинки обратно в base64, чтобы сохранить в БД
