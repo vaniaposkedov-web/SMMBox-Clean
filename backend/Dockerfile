@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     fonts-dejavu \
     fonts-liberation \
     fonts-noto \
+    openssl \
     && rm -rf /var/lib/apt/lists/*
 
 # Принудительно обновляем системный кэш шрифтов
