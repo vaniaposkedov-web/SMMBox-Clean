@@ -62,6 +62,37 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
+// === НОВАЯ ФУНКЦИЯ: Получить полное досье пользователя ===
+exports.getUserDetails = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await prisma.user.findUnique({
+            where: { id },
+            include: {
+                accounts: {
+                    select: { id: true, provider: true, name: true, isValid: true, createdAt: true }
+                },
+                globalWatermark: true
+            }
+        });
+        
+        if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+        // Считаем посты пользователя через его аккаунты
+        const postsCount = await prisma.post.count({
+            where: { account: { userId: id } }
+        });
+
+        // Убираем хэш пароля из ответа в целях безопасности
+        const { password, ...safeUser } = user;
+
+        res.json({ success: true, user: safeUser, postsCount });
+    } catch (error) {
+        console.error('Ошибка получения досье:', error);
+        res.status(500).json({ error: 'Ошибка сервера при загрузке досье' });
+    }
+};
+
 // Выдать / Забрать PRO статус
 exports.toggleProStatus = async (req, res) => {
     try {
