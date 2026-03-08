@@ -3,7 +3,7 @@ import {
   ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, 
   Send, CheckCircle2, Share2, Users, LayoutTemplate,
   Search, CalendarClock, Clock, MessageSquare, Plus, Loader2,
-  Settings, PenTool, Check
+  Settings, PenTool, Check, Trash2 
 } from 'lucide-react';
 import { useStore } from '../store';
 
