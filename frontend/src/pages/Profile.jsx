@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { 
   User, Mail, Shield, Crown, Edit2, Clock, Save, X, Hash, Camera, 
   Check, Copy, CalendarClock, CheckCircle2, AlertCircle, BarChart3, 
-  Settings as SettingsIcon, LayoutDashboard, Lock, Zap, Eye, Share2, Phone, Key
+  Settings as SettingsIcon, LayoutDashboard, Lock, Zap, Eye, Share2, Phone, Key, Users
 } from 'lucide-react';
 
 export default function Profile() {
@@ -12,6 +12,12 @@ export default function Profile() {
   const updateUser = useStore((state) => state.updateUser);
   const requestEmailLink = useStore((state) => state.requestEmailLink);
   const verifyEmailLink = useStore((state) => state.verifyEmailLink);
+
+  // === НОВЫЕ ДАННЫЕ ИЗ СТОРА ДЛЯ РЕАЛЬНОЙ СТАТИСТИКИ ===
+  const accounts = useStore((state) => state.accounts) || [];
+  const fetchAccounts = useStore((state) => state.fetchAccounts);
+  const scheduledPostsRaw = useStore((state) => state.scheduledPosts) || [];
+  const fetchScheduledPosts = useStore((state) => state.fetchScheduledPosts);
 
   const fileInputRef = useRef(null);
 
@@ -28,7 +34,7 @@ export default function Profile() {
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(user?.avatarUrl || null);
 
-  // Состояния для привязки Email/Телефона (Умная плашка)
+  // Состояния для привязки Email/Телефона
   const [realEmail, setRealEmail] = useState('');
   const [realPhone, setRealPhone] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
@@ -36,24 +42,48 @@ export default function Profile() {
   const [isLinking, setIsLinking] = useState(false);
   const [linkError, setLinkError] = useState('');
 
-  // === МОКОВЫЕ ДАННЫЕ ===
-  const subscription = {
-    plan: 'Базовый',
-    daysLeft: 14,
-    totalDays: 14, 
-    postsUsed: 3,
-    postsLimit: 50, 
-  };
+  // Загружаем данные при открытии профиля
+  useEffect(() => {
+    if (user?.id) {
+      fetchAccounts(user.id);
+      fetchScheduledPosts();
+    }
+  }, [user?.id, fetchAccounts, fetchScheduledPosts]);
 
-  const recentPosts = [
-    { id: 1, text: 'Новая поставка кроссовок Nike...', status: 'published', date: 'Сегодня, 14:30', network: 'VK' },
-    { id: 2, text: 'Скидки 50% на весь ассортимент...', status: 'scheduled', date: 'Завтра, 10:00', network: 'VK' },
-    { id: 3, text: 'Обзор новинок этой недели...', status: 'error', date: 'Вчера, 18:00', network: 'TG' },
-  ];
+  // Вычисляем реальную статистику "на лету"
+  const stats = useMemo(() => {
+    let published = 0;
+    let scheduled = 0;
+    if (Array.isArray(scheduledPostsRaw)) {
+      scheduledPostsRaw.forEach(p => {
+        if (p.status === 'PUBLISHED') published++;
+        if (p.status === 'SCHEDULED') scheduled++;
+      });
+    }
+    return { published, scheduled, accountsCount: accounts.length };
+  }, [scheduledPostsRaw, accounts]);
+
+  // Формируем список последних постов (сортировка от новых к старым)
+  const recentPosts = useMemo(() => {
+    if (!Array.isArray(scheduledPostsRaw)) return [];
+    return [...scheduledPostsRaw]
+      .sort((a, b) => new Date(b.publishAt || b.createdAt).getTime() - new Date(a.publishAt || a.createdAt).getTime())
+      .reverse() // Переворачиваем, чтобы новые были сверху
+      .slice(0, 10) // Берем только 10 последних
+      .map(p => ({
+        id: p.id,
+        text: p.text || 'Без текста',
+        status: p.status.toLowerCase(), // 'published' или 'scheduled'
+        date: new Date(p.publishAt || p.createdAt).toLocaleString('ru-RU', {
+          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+        }),
+        network: p.account?.provider === 'vk' ? 'VK' : 'TG',
+        networkColor: p.account?.provider === 'vk' ? 'text-blue-500 bg-blue-500/10 border-blue-500/20' : 'text-sky-400 bg-sky-400/10 border-sky-400/20'
+      }));
+  }, [scheduledPostsRaw]);
 
   if (!user) return null;
 
-  // Главная проверка: Уязвим ли аккаунт? (Техническая почта или нет телефона)
   const isVulnerable = user?.email?.includes('.local') || !user?.phone;
 
   const handleFileChange = (e) => {
@@ -100,15 +130,6 @@ export default function Profile() {
     setPreviewUrl(user?.avatarUrl || null);
   };
 
-  const handleViewPost = (postId) => {
-    alert(`Открытие подробностей поста #${postId}`);
-  };
-
-  const handleSharePost = (postId) => {
-    alert(`Ссылка на пост #${postId} скопирована для партнеров!`);
-  };
-
-  // === ЛОГИКА ОТПРАВКИ И ПРОВЕРКИ ДАННЫХ ===
   const handleRequestCode = async (e) => {
     e.preventDefault();
     setIsLinking(true);
@@ -126,10 +147,8 @@ export default function Profile() {
     e.preventDefault();
     setIsLinking(true);
     setLinkError('');
-    // Отправляем на проверку код, почту и телефон
     const res = await verifyEmailLink(user.id, realEmail, verifyCode, realPhone);
     if (res.success) {
-      // Мгновенно обновляем стейт, чтобы плашка пропала
       useStore.setState({ user: { ...user, email: realEmail, phone: realPhone || user.phone } });
       setIsCodeSent(false);
       setRealEmail('');
@@ -148,21 +167,26 @@ export default function Profile() {
   };
 
   const StatusBadge = ({ status }) => {
+    const s = status || 'draft';
     const styles = {
       published: 'bg-green-500/10 text-green-500 border-green-500/20',
-      scheduled: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+      scheduled: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
       error: 'bg-red-500/10 text-red-500 border-red-500/20',
+      failed: 'bg-red-500/10 text-red-500 border-red-500/20',
+      draft: 'bg-gray-500/10 text-gray-500 border-gray-500/20'
     };
     const icons = {
       published: <CheckCircle2 size={14} />,
       scheduled: <CalendarClock size={14} />,
       error: <AlertCircle size={14} />,
+      failed: <AlertCircle size={14} />,
+      draft: <Edit2 size={14} />
     };
-    const labels = { published: 'Опубликовано', scheduled: 'Запланировано', error: 'Ошибка' };
+    const labels = { published: 'Опубликовано', scheduled: 'В очереди', error: 'Ошибка', failed: 'Ошибка', draft: 'Черновик' };
 
     return (
-      <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${styles[status]}`}>
-        {icons[status]} {labels[status]}
+      <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${styles[s] || styles.draft}`}>
+        {icons[s] || icons.draft} {labels[s] || labels.draft}
       </span>
     );
   };
@@ -198,7 +222,6 @@ export default function Profile() {
                   {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0 w-max">{linkError}</p>}
                 </div>
                 
-                {/* Запрашиваем телефон, только если его нет в базе */}
                 {!user?.phone && (
                    <input 
                      type="tel" 
@@ -210,11 +233,7 @@ export default function Profile() {
                    />
                 )}
                 
-                <button 
-                  type="submit" 
-                  disabled={isLinking}
-                  className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0"
-                >
+                <button type="submit" disabled={isLinking} className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0">
                   {isLinking ? 'Отправка...' : 'Подтвердить'}
                 </button>
               </form>
@@ -232,20 +251,10 @@ export default function Profile() {
                   />
                   {linkError && <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-0 w-max">{linkError}</p>}
                 </div>
-                <button 
-                  type="submit" 
-                  disabled={isLinking || verifyCode.length !== 6}
-                  className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0"
-                >
+                <button type="submit" disabled={isLinking || verifyCode.length !== 6} className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0">
                   {isLinking ? 'Проверка...' : 'Завершить'}
                 </button>
-                <button 
-                  type="button" 
-                  onClick={() => setIsCodeSent(false)} 
-                  className="px-4 text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  Отмена
-                </button>
+                <button type="button" onClick={() => setIsCodeSent(false)} className="px-4 text-sm text-gray-400 hover:text-white transition-colors">Отмена</button>
               </form>
             )}
           </div>
@@ -330,113 +339,76 @@ export default function Profile() {
       {/* СОДЕРЖИМОЕ ВКЛАДОК */}
       <div className="space-y-6">
         
-        {/* === ВКЛАДКА: ОБЗОР === */}
+        {/* === ВКЛАДКА: ОБЗОР (РЕАЛЬНАЯ СТАТИСТИКА) === */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
             
-            {/* Карточка Базового Тарифа */}
-            <div className="lg:col-span-2 bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-r from-blue-500 to-cyan-500"></div>
-              
-              <div className="flex flex-col sm:flex-row justify-between items-start mb-6 gap-4">
-                <div>
-                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                    <Zap className="text-blue-500" size={24} /> Тариф {subscription.plan}
-                  </h3>
-                  <p className="text-sm text-gray-400 mt-1">Стартовые лимиты. Идеально для начала.</p>
-                </div>
-                <button className="w-full sm:w-auto bg-gradient-to-r from-yellow-600/20 to-orange-600/20 hover:from-yellow-500/30 hover:to-orange-500/30 text-yellow-500 border border-yellow-500/30 px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-yellow-500/5">
-                  <Crown size={16} /> Перейти на PRO
-                </button>
-              </div>
-
-              <div className="space-y-5">
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-400">Осталось дней:</span>
-                    <span className="font-bold text-white">{subscription.daysLeft} из {subscription.totalDays}</span>
-                  </div>
-                  <div className="w-full bg-gray-800 rounded-full h-2.5 overflow-hidden border border-gray-700">
-                    <div className="bg-gradient-to-r from-blue-500 to-cyan-500 h-2.5 rounded-full" style={{ width: `${(subscription.daysLeft / subscription.totalDays) * 100}%` }}></div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-400">Лимит постов (в месяц):</span>
-                    <span className="font-bold text-white">{subscription.postsUsed} / {subscription.postsLimit}</span>
-                  </div>
-                  <div className="w-full bg-gray-800 rounded-full h-2.5 overflow-hidden border border-gray-700">
-                    <div className="bg-gradient-to-r from-blue-500 to-cyan-500 h-2.5 rounded-full" style={{ width: `${(subscription.postsUsed / subscription.postsLimit) * 100}%` }}></div>
-                  </div>
-                </div>
-              </div>
+            <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col justify-center relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-24 h-24 bg-green-500/10 rounded-full blur-2xl group-hover:bg-green-500/20 transition-all"></div>
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-green-500" /> Опубликовано
+              </h3>
+              <span className="text-4xl font-extrabold text-white">{stats.published}</span>
+              <p className="text-xs text-gray-500 mt-2">Успешных постов</p>
             </div>
 
-            {/* Быстрая статистика */}
-            <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col justify-center">
-              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Статистика</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-900 rounded-2xl border border-gray-800">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-blue-500/10 p-2 rounded-xl text-blue-500"><CalendarClock size={20} /></div>
-                    <span className="text-sm font-medium text-white">В очереди</span>
-                  </div>
-                  <span className="text-lg font-bold text-white">1</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-900 rounded-2xl border border-gray-800">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-green-500/10 p-2 rounded-xl text-green-500"><CheckCircle2 size={20} /></div>
-                    <span className="text-sm font-medium text-white">Опубликовано</span>
-                  </div>
-                  <span className="text-lg font-bold text-white">{subscription.postsUsed}</span>
-                </div>
-              </div>
+            <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col justify-center relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl group-hover:bg-purple-500/20 transition-all"></div>
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <CalendarClock size={16} className="text-purple-500" /> В очереди
+              </h3>
+              <span className="text-4xl font-extrabold text-white">{stats.scheduled}</span>
+              <p className="text-xs text-gray-500 mt-2">Ждут публикации</p>
             </div>
+
+            <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col justify-center relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all"></div>
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <Users size={16} className="text-blue-500" /> Аккаунты
+              </h3>
+              <span className="text-4xl font-extrabold text-white">{stats.accountsCount}</span>
+              <p className="text-xs text-gray-500 mt-2">Подключено соцсетей</p>
+            </div>
+            
           </div>
         )}
 
-        {/* === ВКЛАДКА: МОИ ПОСТЫ === */}
+        {/* === ВКЛАДКА: МОИ ПОСТЫ (РЕАЛЬНЫЕ ДАННЫЕ) === */}
         {activeTab === 'posts' && (
           <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-white">Недавние посты</h2>
-              <button className="text-sm text-blue-500 hover:text-white transition-colors">Смотреть все</button>
+              <h2 className="text-lg font-bold text-white">Последние публикации</h2>
             </div>
             
             <div className="space-y-4">
-              {recentPosts.map((post) => (
-                <div key={post.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 bg-gray-900 hover:bg-gray-800 transition-colors rounded-2xl border border-gray-800 group">
-                  <div className="flex items-start gap-4 overflow-hidden w-full sm:w-auto flex-1">
-                    <div className="w-10 h-10 shrink-0 bg-gray-800 rounded-xl flex items-center justify-center text-sm font-bold text-gray-400 border border-gray-700">
-                      {post.network}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-white font-medium truncate">{post.text}</p>
-                      <div className="flex items-center gap-3 mt-1.5">
-                        <p className="text-xs text-gray-500 flex items-center gap-1">
-                          <Clock size={12} /> {post.date}
-                        </p>
-                        <StatusBadge status={post.status} />
+              {recentPosts.length > 0 ? (
+                recentPosts.map((post) => (
+                  <div key={post.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 bg-gray-900 hover:bg-gray-800 transition-colors rounded-2xl border border-gray-800 group">
+                    <div className="flex items-start gap-4 overflow-hidden w-full sm:w-auto flex-1">
+                      <div className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-sm font-bold border ${post.networkColor}`}>
+                        {post.network}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-white font-medium truncate">{post.text}</p>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <p className="text-xs text-gray-500 flex items-center gap-1">
+                            <Clock size={12} /> {post.date}
+                          </p>
+                          <StatusBadge status={post.status} />
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 pt-3 sm:pt-0 border-t border-gray-800 sm:border-t-0 sm:ml-auto w-full sm:w-auto justify-end shrink-0">
-                    <button 
-                      onClick={() => handleViewPost(post.id)}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold transition-all active:scale-95"
-                    >
-                      <Eye size={14} /> <span className="sm:hidden md:block">Подробнее</span>
-                    </button>
-                    <button 
-                      onClick={() => handleSharePost(post.id)}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-xl text-xs font-bold transition-all active:scale-95 border border-blue-500/10"
-                    >
-                      <Share2 size={14} /> <span className="sm:hidden md:block">Партнерам</span>
-                    </button>
+                ))
+              ) : (
+                <div className="text-center py-10">
+                  <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-500">
+                    <BarChart3 size={24} />
                   </div>
+                  <p className="text-gray-400 font-medium">Пока нет публикаций</p>
+                  <p className="text-gray-600 text-sm mt-1">Запланируйте свой первый пост!</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         )}
@@ -481,13 +453,13 @@ export default function Profile() {
             <div className="space-y-4 sm:space-y-6">
               <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl">
                 <h2 className="text-lg font-bold text-white mb-4">Безопасность</h2>
-                <button className="w-full flex items-center justify-between p-4 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-2xl transition-colors text-left group">
+                <button className="w-full flex items-center justify-between p-4 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-2xl transition-colors text-left group cursor-not-allowed opacity-50">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 bg-gray-800 group-hover:bg-gray-700 rounded-full flex items-center justify-center">
                       <Lock size={18} className="text-gray-400" />
                     </div>
                     <div>
-                      <p className="text-white text-sm font-medium">Изменить пароль</p>
+                      <p className="text-white text-sm font-medium">Изменить пароль (в разработке)</p>
                     </div>
                   </div>
                 </button>
