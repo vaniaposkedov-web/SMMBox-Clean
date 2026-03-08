@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { 
   Users, Crown, MessageSquare, Link as LinkIcon, LogOut, 
-  RefreshCw, Sun, Moon, Search, ShieldAlert, CheckCircle2, XCircle, Activity
+  RefreshCw, Sun, Moon, Search, ShieldAlert, CheckCircle2, 
+  XCircle, Activity, Eye, X, User as UserIcon, Calendar, 
+  Mail, Phone, LayoutDashboard, LayoutTemplate, Send, Key
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -13,9 +15,14 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   
   // Состояния интерфейса
-  const [activeTab, setActiveTab] = useState('overview'); // overview, users
+  const [activeTab, setActiveTab] = useState('overview'); 
   const [searchQuery, setSearchQuery] = useState('');
   
+  // === СОСТОЯНИЯ ДОСЬЕ ===
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [userDetails, setUserDetails] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
   // Тема (День/Ночь)
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem('adminTheme') !== 'light';
@@ -36,9 +43,7 @@ export default function AdminDashboard() {
     if (!token) return navigate('/boss-login');
 
     try {
-      const res = await fetch('/api/admin/dashboard', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await fetch('/api/admin/dashboard', { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.status === 403 || res.status === 401) {
         localStorage.removeItem('adminToken');
         return navigate('/boss-login');
@@ -46,10 +51,7 @@ export default function AdminDashboard() {
       const result = await res.json();
       if (result.success) setData(result);
 
-      // Сразу грузим всех юзеров для вкладки "Пользователи"
-      const usersRes = await fetch('/api/admin/users', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const usersRes = await fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${token}` } });
       const usersData = await usersRes.json();
       if (usersData.success) setAllUsers(usersData.users);
 
@@ -59,9 +61,7 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
-  useEffect(() => { 
-    fetchDashboardData(); 
-  }, []);
+  useEffect(() => { fetchDashboardData(); }, []);
 
   const handleTogglePro = async (userId) => {
     const token = localStorage.getItem('adminToken');
@@ -72,13 +72,30 @@ export default function AdminDashboard() {
       });
       const result = await res.json();
       if (result.success) {
-        // Обновляем список локально, чтобы не перезагружать всю страницу
         setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, isPro: result.isPro } : u));
-        fetchDashboardData(); // Обновляем статистику в фоне
+        fetchDashboardData(); 
       }
     } catch (e) {
       alert('Ошибка при изменении статуса');
     }
+  };
+
+  // === ОТКРЫТИЕ ДОСЬЕ ПОЛЬЗОВАТЕЛЯ ===
+  const openUserDetails = async (userId) => {
+    setIsModalOpen(true);
+    setLoadingDetails(true);
+    setUserDetails(null);
+    const token = localStorage.getItem('adminToken');
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const result = await res.json();
+      if (result.success) {
+        setUserDetails(result);
+      }
+    } catch (e) {
+      alert('Ошибка загрузки досье');
+    }
+    setLoadingDetails(false);
   };
 
   const handleLogout = () => {
@@ -86,7 +103,6 @@ export default function AdminDashboard() {
     navigate('/boss-login');
   };
 
-  // Фильтрация пользователей
   const filteredUsers = allUsers.filter(u => 
     (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
     (u.id && u.id.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -118,7 +134,7 @@ export default function AdminDashboard() {
     <div className={`min-h-screen ${theme.bg} ${theme.text} font-sans transition-colors duration-300`}>
       
       {/* HEADER */}
-      <header className={`${theme.card} border-b sticky top-0 z-50 px-6 py-4 flex items-center justify-between`}>
+      <header className={`${theme.card} border-b sticky top-0 z-40 px-6 py-4 flex items-center justify-between`}>
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 bg-red-500/10 text-red-500 rounded-xl flex items-center justify-center border border-red-500/20">
             <ShieldAlert size={20} />
@@ -187,7 +203,7 @@ export default function AdminDashboard() {
             {/* НЕДАВНИЕ РЕГИСТРАЦИИ (КРАТКО) */}
             <div className={`${theme.card} border rounded-2xl p-6`}>
               <h2 className="text-lg font-bold mb-4">Новые регистрации</h2>
-              <div className={`border ${theme.border} rounded-xl overflow-hidden`}>
+              <div className={`border ${theme.border} rounded-xl overflow-hidden overflow-x-auto`}>
                 <table className="w-full text-sm text-left">
                   <thead className={`${theme.tableHeader} uppercase text-xs font-bold ${theme.muted}`}>
                     <tr>
@@ -218,7 +234,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* === ВКЛАДКА: ПОЛЬЗОВАТЕЛИ (ВЫДАЧА PRO) === */}
+        {/* === ВКЛАДКА: ПОЛЬЗОВАТЕЛИ === */}
         {activeTab === 'users' && (
           <div className={`${theme.card} border rounded-2xl p-6 animate-in fade-in duration-300`}>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -240,13 +256,13 @@ export default function AdminDashboard() {
                     <th className="px-6 py-4">ID (Копируется)</th>
                     <th className="px-6 py-4">Данные клиента</th>
                     <th className="px-6 py-4">Роль</th>
-                    <th className="px-6 py-4 text-right">Управление PRO</th>
+                    <th className="px-6 py-4 text-right">Действия</th>
                   </tr>
                 </thead>
                 <tbody className={`divide-y ${theme.border}`}>
                   {filteredUsers.length > 0 ? filteredUsers.map(u => (
-                    <tr key={u.id} className={`${theme.rowHover} transition-colors`}>
-                      <td className="px-6 py-4 font-mono text-[11px] select-all cursor-copy text-blue-500" title="Нажмите, чтобы выделить">{u.id}</td>
+                    <tr key={u.id} className={`${theme.rowHover} transition-colors group/row`}>
+                      <td className="px-6 py-4 font-mono text-[11px] select-all cursor-copy text-blue-500">{u.id}</td>
                       <td className="px-6 py-4">
                         <div className="font-bold">{u.name || 'Без имени'}</div>
                         <div className="text-sm mt-0.5">{u.email || 'Нет почты'}</div>
@@ -260,16 +276,22 @@ export default function AdminDashboard() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {u.isPro ? (
-                          <button onClick={() => handleTogglePro(u.id)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-yellow-500/10 hover:bg-red-500/10 text-yellow-600 hover:text-red-500 border border-yellow-500/20 hover:border-red-500/30 rounded-lg text-xs font-bold transition-all group">
-                            <span className="group-hover:hidden flex items-center gap-1"><Crown size={14}/> PRO Активен</span>
-                            <span className="hidden group-hover:flex items-center gap-1"><XCircle size={14}/> Забрать PRO</span>
+                        <div className="flex items-center justify-end gap-2">
+                          <button onClick={() => openUserDetails(u.id)} className={`p-2 rounded-lg transition-colors ${isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`} title="Посмотреть досье">
+                            <Eye size={16} />
                           </button>
-                        ) : (
-                          <button onClick={() => handleTogglePro(u.id)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white dark:bg-blue-600/10 dark:hover:bg-blue-600 dark:text-blue-400 dark:border-blue-500/30 border border-blue-200 rounded-lg text-xs font-bold transition-all shadow-sm hover:shadow-blue-500/20">
-                            <CheckCircle2 size={14}/> Выдать PRO
-                          </button>
-                        )}
+                          
+                          {u.isPro ? (
+                            <button onClick={() => handleTogglePro(u.id)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-yellow-500/10 hover:bg-red-500/10 text-yellow-600 hover:text-red-500 border border-yellow-500/20 hover:border-red-500/30 rounded-lg text-xs font-bold transition-all group">
+                              <span className="group-hover:hidden flex items-center gap-1"><Crown size={14}/> PRO Активен</span>
+                              <span className="hidden group-hover:flex items-center gap-1"><XCircle size={14}/> Забрать PRO</span>
+                            </button>
+                          ) : (
+                            <button onClick={() => handleTogglePro(u.id)} className={`inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white ${isDark ? 'dark:bg-blue-600/10 dark:hover:bg-blue-600 dark:text-blue-400 dark:border-blue-500/30' : ''} border border-blue-200 rounded-lg text-xs font-bold transition-all shadow-sm hover:shadow-blue-500/20`}>
+                              <CheckCircle2 size={14}/> Выдать PRO
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )) : (
@@ -284,6 +306,118 @@ export default function AdminDashboard() {
         )}
 
       </div>
+
+      {/* === МОДАЛЬНОЕ ОКНО "ДОСЬЕ ПОЛЬЗОВАТЕЛЯ" === */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`${theme.card} w-full max-w-3xl border rounded-3xl p-6 shadow-2xl relative max-h-[90vh] flex flex-col`}>
+            <button onClick={() => setIsModalOpen(false)} className={`absolute top-5 right-5 p-2 rounded-full transition-colors ${isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}>
+              <X size={20} />
+            </button>
+            
+            <h2 className="text-2xl font-black mb-6 flex items-center gap-3">
+              <UserIcon className="text-blue-500" size={28} /> Досье клиента
+            </h2>
+            
+            <div className="overflow-y-auto custom-scrollbar flex-1 pr-2 space-y-6">
+              {loadingDetails || !userDetails ? (
+                 <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-500" size={40} /></div>
+              ) : (
+                <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+                  
+                  {/* Базовая информация */}
+                  <div className={`p-5 rounded-2xl border ${theme.border} ${isDark ? 'bg-gray-900/50' : 'bg-gray-50'} grid grid-cols-1 sm:grid-cols-2 gap-4`}>
+                    <div>
+                      <p className={`text-xs uppercase font-bold tracking-wider ${theme.muted} mb-1`}>Имя и Фамилия</p>
+                      <p className="font-bold text-lg">{userDetails.user.name || 'Не указано'}</p>
+                    </div>
+                    <div>
+                      <p className={`text-xs uppercase font-bold tracking-wider ${theme.muted} mb-1`}>Павильон</p>
+                      <p className="font-bold text-lg">{userDetails.user.pavilion ? <span className="bg-blue-500/10 text-blue-500 px-3 py-1 rounded-lg border border-blue-500/20">{userDetails.user.pavilion}</span> : 'Нет данных'}</p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Mail size={16} className={theme.muted}/> 
+                      <span className={userDetails.user.email?.includes('.local') ? 'text-red-500 font-bold' : ''}>{userDetails.user.email || 'Нет'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Phone size={16} className={theme.muted}/> 
+                      <span>{userDetails.user.phone || 'Нет телефона'}</span>
+                    </div>
+                  </div>
+
+                  {/* Технические данные */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className={`p-4 rounded-2xl border ${theme.border}`}>
+                      <p className={`text-[10px] uppercase font-bold tracking-wider ${theme.muted} mb-1 flex items-center gap-1`}><Calendar size={12}/> Дата регистрации</p>
+                      <p className="font-medium text-sm">{new Date(userDetails.user.createdAt).toLocaleDateString('ru-RU')} в {new Date(userDetails.user.createdAt).toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'})}</p>
+                    </div>
+                    <div className={`p-4 rounded-2xl border ${theme.border}`}>
+                      <p className={`text-[10px] uppercase font-bold tracking-wider ${theme.muted} mb-1 flex items-center gap-1`}><Key size={12}/> Идентификатор</p>
+                      <p className="font-mono text-[10px] truncate select-all text-blue-400">{userDetails.user.id}</p>
+                    </div>
+                    <div className={`p-4 rounded-2xl border ${theme.border}`}>
+                      <p className={`text-[10px] uppercase font-bold tracking-wider ${theme.muted} mb-1 flex items-center gap-1`}><Activity size={12}/> Статус онбординга</p>
+                      <p className="font-medium text-sm">
+                        {userDetails.user.isOnboardingCompleted ? <span className="text-green-500 flex items-center gap-1"><CheckCircle2 size={14}/> Пройден</span> : <span className="text-yellow-500 flex items-center gap-1"><RefreshCw size={14}/> В процессе</span>}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Статистика активности */}
+                  <h3 className="text-lg font-bold border-b border-gray-800 pb-2 mt-4 flex items-center gap-2"><LayoutDashboard size={18} className="text-purple-500"/> Активность</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className={`p-5 rounded-2xl border ${theme.border} flex items-center justify-between`}>
+                      <div>
+                        <p className={`text-xs uppercase font-bold tracking-wider ${theme.muted}`}>Подключено групп</p>
+                        <p className="text-3xl font-black mt-1">{userDetails.user.accounts.length}</p>
+                      </div>
+                      <LinkIcon size={32} className="text-gray-700 opacity-20" />
+                    </div>
+                    <div className={`p-5 rounded-2xl border ${theme.border} flex items-center justify-between`}>
+                      <div>
+                        <p className={`text-xs uppercase font-bold tracking-wider ${theme.muted}`}>Всего постов</p>
+                        <p className="text-3xl font-black mt-1">{userDetails.postsCount}</p>
+                      </div>
+                      <MessageSquare size={32} className="text-gray-700 opacity-20" />
+                    </div>
+                  </div>
+
+                  {/* Список подключенных групп */}
+                  {userDetails.user.accounts.length > 0 && (
+                    <div className="space-y-3">
+                      <p className={`text-xs uppercase font-bold tracking-wider ${theme.muted}`}>Список групп / каналов</p>
+                      <div className={`border ${theme.border} rounded-xl overflow-hidden`}>
+                        {userDetails.user.accounts.map(acc => (
+                          <div key={acc.id} className={`flex items-center justify-between p-3 border-b ${theme.border} last:border-0 ${isDark ? 'bg-gray-900/30' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded flex items-center justify-center font-bold text-[10px] text-white ${acc.provider === 'VK' ? 'bg-[#0077FF]' : 'bg-sky-500'}`}>
+                                {acc.provider === 'VK' ? 'VK' : 'TG'}
+                              </div>
+                              <p className="font-bold text-sm">{acc.name}</p>
+                            </div>
+                            {acc.isValid ? <span className="text-[10px] text-green-500 bg-green-500/10 px-2 py-0.5 rounded font-bold uppercase">Активен</span> : <span className="text-[10px] text-red-500 bg-red-500/10 px-2 py-0.5 rounded font-bold uppercase">Ошибка</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Шаблоны */}
+                  <div className={`p-4 rounded-xl border ${theme.border} ${isDark ? 'bg-blue-500/5 border-blue-500/20' : 'bg-blue-50 border-blue-200'}`}>
+                    <h4 className="text-sm font-bold flex items-center gap-2 mb-2"><LayoutTemplate size={16} className="text-blue-500"/> Глобальные настройки</h4>
+                    <div className="flex flex-col sm:flex-row gap-4 text-sm">
+                      <p><span className={theme.muted}>Подпись:</span> {userDetails.user.globalSignature ? <span className="text-blue-500 font-bold">Настроена</span> : 'Нет'}</p>
+                      <p><span className={theme.muted}>Водяной знак:</span> {userDetails.user.globalWatermark ? <span className="text-blue-500 font-bold">Настроен ({userDetails.user.globalWatermark.type})</span> : 'По умолчанию'}</p>
+                    </div>
+                  </div>
+
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
