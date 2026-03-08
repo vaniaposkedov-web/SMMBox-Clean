@@ -19,8 +19,6 @@ import Auth from './pages/Auth';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 
-
-
 // --- БОКОВОЕ МЕНЮ ДЛЯ ПК (ОБЫЧНЫЙ ЮЗЕР) ---
 function Sidebar() {
   const logout = useStore((state) => state.logout);
@@ -69,7 +67,7 @@ function Sidebar() {
 
       <div className="p-4 border-t border-gray-800 space-y-2">
         {user?.role === 'ADMIN' && (
-          <NavLink to="/admin" className="flex items-center gap-3 w-full p-3 rounded-xl bg-gradient-to-r from-rose-600/10 to-transparent text-rose-500 hover:bg-rose-600/20 transition-all font-bold">
+          <NavLink to="/system-core-dashboard" className="flex items-center gap-3 w-full p-3 rounded-xl bg-gradient-to-r from-rose-600/10 to-transparent text-rose-500 hover:bg-rose-600/20 transition-all font-bold">
             <ShieldAlert size={20} /> Панель Админа
           </NavLink>
         )}
@@ -106,7 +104,6 @@ function BottomNav() {
       </NavLink>
 
       <NavLink to="/settings" className={linkClass}><SettingsIcon size={22} /><span className="text-[10px] mt-1 font-medium">Настройки</span></NavLink>
-      <NavLink to="/subscription" className={linkClass}><Crown size={22} /><span className="text-[10px] mt-1 font-medium">Тариф</span></NavLink>
     </nav>
   );
 }
@@ -162,9 +159,13 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="*" element={<Navigate to="/auth" replace />} />
+          
+          {/* СЕКРЕТНАЯ АДМИНКА */}
           <Route path="/boss-login" element={<AdminLogin />} />
           <Route path="/system-core-dashboard" element={<AdminDashboard />} />
+
+          {/* Catch-all ДОЛЖЕН БЫТЬ В САМОМ НИЗУ */}
+          <Route path="*" element={<Navigate to="/auth" replace />} />
         </Routes>
       </BrowserRouter>
     );
@@ -191,12 +192,14 @@ function App() {
           <Route path="/privacy" element={<PrivacyPolicy />} />
         </Route>
 
-        
-
         <Route path="/reset-password/:token" element={<ResetPassword />} />
 
-        {/* Любая другая ссылка вернет в профиль (или в путеводитель, если он не пройден) */}
-       <Route path="*" element={<Navigate to={!user.isOnboardingCompleted ? "/onboarding" : "/profile"} replace />} />
+        {/* СЕКРЕТНАЯ АДМИНКА ДЛЯ АВТОРИЗОВАННЫХ */}
+        <Route path="/boss-login" element={<AdminLogin />} />
+        <Route path="/system-core-dashboard" element={<AdminDashboard />} />
+
+        {/* Catch-all ДОЛЖЕН БЫТЬ В САМОМ НИЗУ */}
+        <Route path="*" element={<Navigate to={!user.isOnboardingCompleted ? "/onboarding" : "/profile"} replace />} />
       </Routes>
     </BrowserRouter>
   );
