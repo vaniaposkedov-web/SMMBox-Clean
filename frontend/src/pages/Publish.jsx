@@ -110,13 +110,15 @@ export default function Publish() {
     }, {});
   }, [searchQuery, accounts]);
 
+  // ИСПРАВЛЕНИЕ: Убрали лишние зависимости, чтобы не было бесконечного цикла
   useEffect(() => {
     if (user?.id) {
       fetchAccounts(user.id);
       fetchGlobalSettings();
-      fetchPartnerData(user.id); // Подгружаем партнеров при входе
+      fetchPartnerData(user.id);
+      fetchScheduledPosts(); 
     }
-  }, [user?.id, fetchAccounts, fetchGlobalSettings, fetchPartnerData]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (tempDraft && !isRestored.current) {
