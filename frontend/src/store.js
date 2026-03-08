@@ -70,18 +70,20 @@ export const useStore = create(
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
           
-          const res = await fetch('/api/posts/scheduled', { 
-            headers: { 'Authorization': `Bearer ${token}` } 
-          });
+          const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${token}` } });
+          const data = await res.json(); // Сначала парсим данные!
           
+          console.log("ОТВЕТ ОТ СЕРВЕРА (fetchScheduledPosts):", data); // <--- ДОБАВЬ ЭТО
+
           if (res.ok) {
-            const data = await res.json();
-            // Бэкенд возвращает { success: true, posts: [...] }
-            // Поэтому сохраняем именно массив data.posts !
-            set({ scheduledPosts: data.posts }); 
+            // Проверяем, в каком именно ключе лежат посты
+            const postsArray = data.posts || data.scheduledPosts || []; 
+            console.log("СОХРАНЯЕМ В ZUSTAND МАССИВ:", postsArray); // <--- И ЭТО
+            
+            set({ scheduledPosts: postsArray }); 
           }
         } catch (error) {
-          console.error("Ошибка запроса календаря:", error);
+           console.error("Ошибка:", error);
         }
       },
 
