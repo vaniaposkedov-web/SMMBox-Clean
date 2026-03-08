@@ -42,7 +42,10 @@ export default function Publish() {
   const [publishMode, setPublishMode] = useState('now');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
     const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   });
   const [scheduleTime, setScheduleTime] = useState('');
 
@@ -95,6 +98,14 @@ export default function Publish() {
       };
     });
   }, [scheduledPostsRaw]);
+
+  // === ТЕСТОВЫЙ БЛОК ===
+  useEffect(() => {
+    console.log("=== ДИАГНОСТИКА КАЛЕНДАРЯ ===");
+    console.log("1. Выбранная дата в календаре:", selectedCalendarDate);
+    console.log("2. Сырые посты из базы:", scheduledPostsRaw);
+    console.log("3. Готовые карточки:", realScheduledPosts);
+  }, [selectedCalendarDate, scheduledPostsRaw, realScheduledPosts]);
 
   const calendarDays = useMemo(() => {
     return Array.from({length: 14}).map((_, i) => {
