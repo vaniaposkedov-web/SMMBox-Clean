@@ -16,6 +16,7 @@ export const useStore = create(
       // === НОВЫЕ ДАННЫЕ ДЛЯ ПАРТНЕРОВ ===
       sharedIncoming: [],
       sharedOutgoing: [],
+      scheduledPosts: [],
 
       watermarkSettings: {
         type: 'text',
@@ -68,12 +69,20 @@ export const useStore = create(
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
-          const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${token}` } });
+          
+          const res = await fetch('/api/posts/scheduled', { 
+            headers: { 'Authorization': `Bearer ${token}` } 
+          });
+          
           if (res.ok) {
             const data = await res.json();
-            set({ scheduledPosts: data.posts });
+            // Бэкенд возвращает { success: true, posts: [...] }
+            // Поэтому сохраняем именно массив data.posts !
+            set({ scheduledPosts: data.posts }); 
           }
-        } catch (error) {}
+        } catch (error) {
+          console.error("Ошибка запроса календаря:", error);
+        }
       },
 
       deleteScheduledPostAction: async (id) => {
