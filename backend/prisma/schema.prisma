@@ -7,7 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// === 1. ПОЛЬЗОВАТЕЛИ И РОЛИ ===
 model User {
   id                       String    @id @default(uuid())
   email                    String?   @unique
@@ -15,7 +14,6 @@ model User {
   password                 String?
   name                     String?
   
-  // === НОВЫЕ ПОЛЯ ДЛЯ TELEGRAM ===
   firstName                String?
   lastName                 String?
   username                 String?   @unique
@@ -31,52 +29,72 @@ model User {
   globalSignature          String?   @default("")
   globalWatermark          GlobalWatermark?
   
-  // === ПРИВЯЗКА СОЦСЕТЕЙ ===
   vkId                     String?   @unique
   telegramId               String?   @unique
 
-  // === ПОДТВЕРЖДЕНИЕ ПОЧТЫ ===
   isEmailVerified          Boolean   @default(false)
   emailVerificationCode    String?
   emailVerificationExpires DateTime?
   
-  // === БЕЗОПАСНОСТЬ ===
   resetPasswordToken       String?
   resetPasswordExpires     DateTime?
   
-  accounts                 Account[] 
+  profiles                 SocialProfile[]
+  accounts                 Account[]
+
   sentRequests             Partnership[] @relation("SentRequests")
   receivedRequests         Partnership[] @relation("ReceivedRequests")
   notifications            Notification[]
+  
   planId                   String?
   plan                     SubscriptionPlan? @relation(fields: [planId], references: [id])
 
-  // === ШАРИНГ ПОСТОВ ===
   sentSharedPosts          SharedPost[] @relation("SentSharedPosts")
   receivedSharedPosts      SharedPost[] @relation("ReceivedSharedPosts")
 
-  isPro Boolean @default(false)
+  isPro                    Boolean @default(false)
 }
 
-// === 2. ТАРИФЫ (ПОДПИСКИ) ===
+model SocialProfile {
+  id                String    @id @default(uuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  provider          String    
+  providerAccountId String    
+  name              String?   
+  avatarUrl         String?
+  accessToken       String?   
+
+  accounts          Account[] 
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([provider, providerAccountId]) 
+}
+
 model SubscriptionPlan {
   id             String   @id @default(uuid())
   name           String   
   maxAccounts    Int    
   maxPostsPerDay Int    
   price          Int      @default(0)
-  
   users          User[]
 }
 
-// === 3. ПОДКЛЮЧЕННЫЕ АККАУНТЫ (ГРУППЫ ВК/ТГ) ===
 model Account {
   id          String   @id @default(uuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  profileId   String?  
+  profile     SocialProfile? @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
   provider    String   
   providerId  String   
-  accessToken String   
+  accessToken String  
+  
   name        String   
   avatarUrl   String?
   signature   String?  @default("")
@@ -86,12 +104,11 @@ model Account {
   isValid     Boolean  @default(true) 
   errorMsg    String?
   posts       Post[]
-  watermark   Watermark? 
+  watermark   Watermark?
   
   @@unique([provider, providerId]) 
 }
 
-// === 4. ВОДЯНЫЕ ЗНАКИ ===
 model Watermark {
   id            String   @id @default(uuid())
   accountId     String   @unique
@@ -117,7 +134,6 @@ model Watermark {
   y             Float?
 }
 
-// === 4.1 ГЛОБАЛЬНЫЙ ВОДЯНОЙ ЗНАК (ШАБЛОН) ===
 model GlobalWatermark {
   id            String   @id @default(uuid())
   userId        String   @unique
@@ -139,7 +155,6 @@ model GlobalWatermark {
   updatedAt     DateTime @updatedAt
 }
 
-// === 5. ПОСТЫ И ПЛАНИРОВЩИК ===
 model Post {
   id          String   @id @default(uuid())
   text        String?
@@ -151,7 +166,6 @@ model Post {
   createdAt   DateTime @default(now())
 }
 
-// === 6. ПАРТНЕРЫ ===
 model Partnership {
   id          String   @id @default(uuid())
   requesterId String   
@@ -165,7 +179,6 @@ model Partnership {
   @@unique([requesterId, receiverId]) 
 }
 
-// === 7. УВЕДОМЛЕНИЯ ===
 model Notification {
   id        String   @id @default(uuid())
   userId    String   
@@ -175,7 +188,6 @@ model Notification {
   createdAt DateTime @default(now())
 }
 
-// === 8. ПОДЕЛИТЬСЯ С ПАРТНЕРАМИ ===
 model SharedPost {
   id          String   @id @default(uuid())
   senderId    String
