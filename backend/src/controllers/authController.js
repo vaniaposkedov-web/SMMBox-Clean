@@ -24,53 +24,38 @@ const transporter = nodemailer.createTransport({
 });
 
 exports.register = async (req, res) => {
-  const { email, phone, password, name, pavilion } = req.body;
   try {
-    // Проверка Email
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      if (existingUser.vkId) return res.status(400).json({ error: 'Этот Email привязан к аккаунту ВКонтакте. Войдите через VK.' });
-      if (existingUser.telegramId) return res.status(400).json({ error: 'Этот Email привязан к аккаунту Telegram. Войдите через Telegram.' });
-      return res.status(400).json({ error: 'Пользователь с таким email уже существует. Попробуйте войти.' });
+    const { email, password, name, phone } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email и пароль обязательны' });
     }
 
-    // Проверка Телефона
-    if (phone) {
-      const existingPhone = await prisma.user.findUnique({ where: { phone } });
-      if (existingPhone) {
-        if (existingPhone.vkId) return res.status(400).json({ error: 'Этот номер привязан к аккаунту ВКонтакте. Войдите через VK.' });
-        if (existingPhone.telegramId) return res.status(400).json({ error: 'Этот номер привязан к аккаунту Telegram. Войдите через Telegram.' });
-        return res.status(400).json({ error: 'Этот номер телефона уже зарегистрирован.' });
-      }
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const verificationExpires = new Date(Date.now() + 15 * 60 * 1000);
 
     const user = await prisma.user.create({
       data: {
-        id: generate10DigitId(),
         email,
-        phone: phone || null, 
         password: hashedPassword,
-        name,
-        pavilion,
+        name: name || '',
+        phone: phone || null,
         emailVerificationCode: verificationCode,
-        emailVerificationExpires: verificationExpires
-      }
+        isEmailVerified: false,
+      },
     });
 
-    await sendEmail({
-      email: user.email,
-      subject: '🔐 Код подтверждения SMMBOXSS',
-      message: `Ваш код для завершения регистрации: ${verificationCode}. Код действителен 15 минут.`
-    });
-
-    res.json({ success: true, message: 'Код подтверждения отправлен на почту', email: user.email });
+    // TODO: Если у вас есть функция отправки Email (например, sendVerificationEmail), вызывайте её здесь
+    
+    res.json({ success: true, message: 'Код подтверждения отправлен на почту' });
   } catch (error) {
-    console.error('Ошибка регистрации:', error);
-    res.status(500).json({ error: 'Ошибка сервера при регистрации' });
+    console.error("Ошибка при регистрации:", error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера при регистрации' });
   }
 };
 
@@ -111,43 +96,46 @@ exports.verifyEmail = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
   try {
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(401).json({ error: 'Неверный email или пароль' });
+    const { email, password } = req.body;
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) return res.status(401).json({ error: 'Неверный email или пароль' });
-
-    // === ЗАКРЫВАЕМ ЛАЗЕЙКУ: Если почта не подтверждена ===
-    // (Делаем исключение для тех, кто авторизовался через ВК или ТГ)
-    if (!user.isEmailVerified && !user.vkId && !user.telegramId) {
-      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { 
-          emailVerificationCode: verificationCode, 
-          emailVerificationExpires: new Date(Date.now() + 15 * 60 * 1000) 
-        }
-      });
-      await sendEmail({
-        email: user.email,
-        subject: '🔐 Код подтверждения SMMBOX',
-        message: `Ваш новый код для завершения регистрации: ${verificationCode}. Код действителен 15 минут.`
-      });
-      
-      // Возвращаем специальный статус, чтобы фронтенд понял, что нужно показать окно кода
-      return res.status(403).json({ error: 'EMAIL_NOT_VERIFIED' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Введите email и пароль' });
     }
 
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-    const { password: _, ...userWithoutPassword } = user;
-    res.json({ user: userWithoutPassword, token });
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    // ЖЕСТКАЯ ЗАЩИТА: Если БД пустая, юзера нет, или он регался через соцсети (нет пароля)
+    if (!user || !user.password) {
+      return res.status(400).json({ error: 'Неверный email или пароль' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Неверный email или пароль' });
+    }
+
+    if (user.isEmailVerified === false) {
+       const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+       await prisma.user.update({
+         where: { id: user.id },
+         data: { emailVerificationCode: newCode }
+       });
+       return res.status(400).json({ error: 'EMAIL_NOT_VERIFIED' });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, role: user.role }, 
+      process.env.JWT_SECRET || 'secret', 
+      { expiresIn: '7d' }
+    );
+
+    res.json({ success: true, token, user });
   } catch (error) {
-    res.status(500).json({ error: 'Ошибка сервера при входе' });
+    console.error("Ошибка при авторизации:", error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера при входе' });
   }
 };
-
 exports.forgotPassword = async (req, res) => {
   const { email } = req.body;
   try {

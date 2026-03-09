@@ -46,7 +46,7 @@ export default function Auth() {
     setPhone(formatted);
   };
 
-  // === ЛОГИКА АВТОРИЗАЦИИ ЧЕРЕЗ STATE ===
+  // === ЛОГИКА АВТОРИЗАЦИИ ===
   const handleAuth = async (e) => {
     e.preventDefault();
     setError('');
@@ -58,12 +58,11 @@ export default function Auth() {
         if (result.success) {
           navigate('/profile');
         } else {
-          // ЕСЛИ СЕРВЕР ТРЕБУЕТ ПОДТВЕРЖДЕНИЯ
           if (result.error === 'EMAIL_NOT_VERIFIED') {
             setIsVerification(true);
             setError('Почта не подтверждена. Мы отправили вам новый код.');
           } else {
-            setError(result.error || 'Ошибка входа');
+            setError(result.error || 'Ошибка входа. Проверьте данные.');
           }
         }
       } else {
@@ -104,7 +103,7 @@ export default function Auth() {
       const verifyEmailCode = useStore.getState().verifyEmailCode;
       const result = await verifyEmailCode(email, code);
       if (result.success) {
-        navigate('/onboarding'); // Код верный! Пускаем в систему
+        navigate('/onboarding');
       } else {
         setError(result.error || 'Неверный код');
       }
@@ -114,7 +113,6 @@ export default function Auth() {
     setIsLoading(false);
   };
 
-  // === ОБРАБОТКА ВХОДА ЧЕРЕЗ СОЦСЕТИ ===
   const handleTelegramResponse = async (tgUser) => {
     setIsLoading(true);
     const result = await telegramLogin(tgUser);
@@ -140,7 +138,6 @@ export default function Auth() {
   if (isVerification) {
     return (
       <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 sm:p-6 font-sans relative overflow-y-auto">
-        {/* Фоновые эффекты */}
         <div className="absolute top-1/4 left-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-blue-600/20 rounded-full blur-[80px] sm:blur-[120px] pointer-events-none"></div>
         <div className="absolute bottom-1/4 right-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-purple-600/20 rounded-full blur-[80px] sm:blur-[120px] pointer-events-none"></div>
 
@@ -167,19 +164,28 @@ export default function Auth() {
                 maxLength="6"
               />
             </div>
-            <div className="min-h-[48px] flex flex-col justify-end mt-2">
-            {error ? (
-              <p className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20 animate-in fade-in">{error}</p>
-            ) : null}
-          </div>
-          
-          <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-3.5 sm:py-4 rounded-xl transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 disabled:opacity-50 active:scale-95 flex justify-center items-center gap-2 min-h-[52px]">
-            {isLoading ? (
-              <span className="flex items-center gap-2"><Loader2 size={20} className="animate-spin"/> Загрузка...</span>
-            ) : (
-              <span>{isLogin ? 'Войти по паролю' : 'Создать аккаунт'}</span>
-            )}
-          </button>
+            
+            <div className="min-h-[48px] flex flex-col justify-end mt-2 w-full">
+              {error && (
+                <div className="text-red-500 text-xs text-center bg-red-500/10 py-3 px-2 rounded-xl border border-red-500/20 animate-in fade-in">
+                  <span>{error}</span>
+                </div>
+              )}
+            </div>
+            
+            {/* ИЗОЛИРОВАННАЯ КНОПКА ОТ ПЕРЕВОДЧИКА */}
+            <button type="submit" disabled={isLoading || code.length !== 6} className="w-full font-bold py-3.5 sm:py-4 rounded-xl transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 disabled:opacity-50 active:scale-95 min-h-[52px]">
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Loader2 size={20} className="animate-spin"/>
+                  <span>Проверка...</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center">
+                  <span>Завершить регистрацию</span>
+                </div>
+              )}
+            </button>
           </form>
         </div>
       </div>
@@ -188,7 +194,6 @@ export default function Auth() {
 
   return (
     <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 sm:p-6 font-sans relative overflow-y-auto py-[max(2rem,env(safe-area-inset-bottom))]">
-      {/* Декоративные блюр-пятна на фоне */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none flex items-center justify-center">
          <div className="absolute top-[10%] left-[10%] w-[300px] sm:w-[500px] h-[300px] sm:h-[500px] bg-blue-600/10 rounded-full blur-[100px] sm:blur-[150px]"></div>
          <div className="absolute bottom-[10%] right-[10%] w-[300px] sm:w-[500px] h-[300px] sm:h-[500px] bg-purple-600/10 rounded-full blur-[100px] sm:blur-[150px]"></div>
@@ -210,13 +215,13 @@ export default function Auth() {
             onClick={() => { setIsLogin(true); setError(''); }} 
             className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl transition-all min-h-[44px] ${isLogin ? 'bg-gray-800 text-white shadow-sm border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
           >
-            Вход
+            <span>Вход</span>
           </button>
           <button 
             onClick={() => { setIsLogin(false); setError(''); }} 
             className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl transition-all min-h-[44px] ${!isLogin ? 'bg-gray-800 text-white shadow-sm border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
           >
-            Регистрация
+            <span>Регистрация</span>
           </button>
         </div>
 
@@ -277,10 +282,28 @@ export default function Auth() {
             </div>
           )}
           
-          {error && <p className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20 animate-in fade-in">{error}</p>}
+          {error && (
+            <div className="text-red-500 text-xs text-center bg-red-500/10 py-3 px-2 rounded-xl border border-red-500/20 animate-in fade-in">
+              <span>{error}</span>
+            </div>
+          )}
           
-          <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-3.5 sm:py-4 rounded-xl transition-all mt-4 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 disabled:opacity-50 active:scale-95 flex justify-center items-center gap-2 min-h-[52px]">
-            {isLoading ? <><Loader2 size={20} className="animate-spin"/> Загрузка...</> : (isLogin ? 'Войти по паролю' : 'Создать аккаунт')}
+          {/* ИЗОЛИРОВАННАЯ КНОПКА ОТ ПЕРЕВОДЧИКА */}
+          <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-3.5 sm:py-4 rounded-xl transition-all mt-4 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 disabled:opacity-50 active:scale-95 min-h-[52px]">
+            {isLoading ? (
+              <div className="flex justify-center items-center gap-2">
+                <Loader2 size={20} className="animate-spin"/>
+                <span>Загрузка...</span>
+              </div>
+            ) : isLogin ? (
+              <div className="flex justify-center items-center">
+                <span>Войти по паролю</span>
+              </div>
+            ) : (
+              <div className="flex justify-center items-center">
+                <span>Создать аккаунт</span>
+              </div>
+            )}
           </button>
         </form>
 
