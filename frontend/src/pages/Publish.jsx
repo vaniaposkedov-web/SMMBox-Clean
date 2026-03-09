@@ -61,7 +61,6 @@ export default function Publish() {
   const [partnerStatus, setPartnerStatus] = useState('idle'); 
   const [selectedPartners, setSelectedPartners] = useState([]);
 
-  // === СТЕЙТЫ РЕДАКТИРОВАНИЯ ОТЛОЖЕННОГО ПОСТА ===
   const [editPost, setEditPost] = useState(null);
   const [editTab, setEditTab] = useState('text');
   const [editText, setEditText] = useState('');
@@ -405,7 +404,6 @@ export default function Publish() {
          setPartnerStatus('idle');
       }
     } catch (e) {
-      console.error(e);
       alert('Ошибка соединения с сервером');
       setPartnerStatus('idle');
     }
@@ -470,9 +468,6 @@ export default function Publish() {
     if (saveTempDraft) saveTempDraft(null);
   };
 
-  // ==========================================
-  // РЕНДЕР: ЭКРАН 1 - ВЫБОР РЕЖИМА (СТАРТ)
-  // ==========================================
   if (view === 'start') {
     return (
       <div className="min-h-[100dvh] bg-admin-bg px-4 py-8 flex flex-col items-center justify-center animate-fade-in relative pb-24 md:pb-0">
@@ -506,9 +501,6 @@ export default function Publish() {
     );
   }
 
-  // ==========================================
-  // РЕНДЕР: ЭКРАН 2 - КАЛЕНДАРЬ
-  // ==========================================
   if (view === 'calendar') {
     const selectedDateObj = new Date(selectedCalendarDate);
     const postsForSelectedDate = realScheduledPosts.filter(p => p.date === selectedCalendarDate);
@@ -561,13 +553,11 @@ export default function Publish() {
                 postsForSelectedDate.map(post => (
                   <div key={post.id} className={`bg-admin-card border border-gray-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:bg-gray-900/80 group ${post.status === 'PUBLISHED' ? 'opacity-80 grayscale-[30%] bg-gray-900/50' : ''}`}>
                     <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
-                      
                       <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 flex items-center justify-center text-white border border-gray-700/50 ${post.color}`}>
                         <div className="w-6 h-6 sm:w-7 sm:h-7">
                           {post.network === 'VK' ? <IconVK /> : <IconTG />}
                         </div>
                       </div>
-
                       <div className="min-w-0 flex-1">
                         <p className={`font-medium text-sm line-clamp-2 leading-snug break-words ${post.status === 'PUBLISHED' ? 'text-gray-300' : 'text-white'}`}>
                           {post.text}
@@ -578,7 +568,6 @@ export default function Publish() {
                           <span className="text-purple-400 text-xs font-bold flex items-center gap-1">
                             <Clock size={12} /> {post.time}
                           </span>
-                          
                           {post.status === 'PUBLISHED' && (
                             <span className="text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
                               <CheckCircle2 size={10} /> Отправлен
@@ -587,22 +576,13 @@ export default function Publish() {
                         </div>
                       </div>
                     </div>
-                    
                     <div className="flex items-center justify-end gap-2 shrink-0 pt-3 border-t border-gray-800 sm:pt-0 sm:border-t-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       {post.status === 'SCHEDULED' && (
-                        <button 
-                          onClick={() => openEditModal(post)} 
-                          className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl bg-gray-900 hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 flex items-center justify-center transition-colors border border-gray-800 hover:border-blue-500/30"
-                          title="Редактировать"
-                        >
+                        <button onClick={() => openEditModal(post)} className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl bg-gray-900 hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 flex items-center justify-center transition-colors border border-gray-800 hover:border-blue-500/30">
                           <PenTool size={18} />
                         </button>
                       )}
-                      <button 
-                        onClick={() => deleteScheduledPostAction(post.id)} 
-                        className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl bg-gray-900 hover:bg-red-500/20 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors border border-gray-800 hover:border-red-500/30"
-                        title="Удалить"
-                      >
+                      <button onClick={() => deleteScheduledPostAction(post.id)} className="w-11 h-11 sm:w-10 sm:h-10 rounded-xl bg-gray-900 hover:bg-red-500/20 text-gray-400 hover:text-red-500 flex items-center justify-center transition-colors border border-gray-800 hover:border-red-500/30">
                         <Trash2 size={18} />
                       </button>
                     </div>
@@ -610,9 +590,7 @@ export default function Publish() {
                 ))
               ) : (
                 <div className="bg-admin-card border border-gray-800 border-dashed rounded-3xl p-8 text-center">
-                  <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CalendarClock size={28} className="text-gray-600" />
-                  </div>
+                  <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-4"><CalendarClock size={28} className="text-gray-600" /></div>
                   <p className="text-gray-300 font-medium">Свободный день</p>
                   <p className="text-gray-500 text-sm mt-1">На эту дату пока нет запланированных публикаций.</p>
                 </div>
@@ -623,23 +601,17 @@ export default function Publish() {
 
         <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
           <div className="max-w-3xl mx-auto">
-            <button 
-              onClick={() => { setPublishMode('schedule'); setView('wizard'); setStep(1); }}
-              className="w-full bg-purple-600 hover:bg-purple-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 flex justify-center items-center gap-2"
-            >
+            <button onClick={() => { setPublishMode('schedule'); setView('wizard'); setStep(1); }} className="w-full bg-purple-600 hover:bg-purple-500 text-white py-4 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 flex justify-center items-center gap-2">
               <Plus size={20} /> Запостить ещё на эту дату
             </button>
           </div>
         </div>
 
-        {/* МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ПОСТА (BOTTOM SHEET MOBILE) */}
+        {/* === ИСПРАВЛЕНИЕ: ВЕРСТКА ДАТЫ И ВРЕМЕНИ В РЕДАКТИРОВАНИИ === */}
         {editPost && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
             <div className="bg-admin-card w-full max-w-lg border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative flex flex-col max-h-[90vh] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">
-              <button onClick={() => setEditPost(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-10 h-10 rounded-full flex items-center justify-center transition-colors z-10">
-                <X size={20} />
-              </button>
-
+              <button onClick={() => setEditPost(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-10 h-10 rounded-full flex items-center justify-center transition-colors z-10"><X size={20} /></button>
               <h3 className="text-xl font-bold text-white mb-4 pr-12">Редактирование</h3>
               
               <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-4 border-b border-gray-800 pb-2">
@@ -649,28 +621,23 @@ export default function Publish() {
 
               <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 sm:pr-2 mb-4">
                 {editTab === 'text' && (
-                  <textarea
-                    value={editText} onChange={(e) => setEditText(e.target.value)}
-                    className="w-full min-h-[200px] bg-gray-900 border border-gray-800 rounded-xl p-4 text-white text-base resize-none outline-none focus:border-purple-500 transition-colors"
-                  />
+                  <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full min-h-[200px] bg-gray-900 border border-gray-800 rounded-xl p-4 text-white text-base resize-none outline-none focus:border-purple-500 transition-colors" />
                 )}
                 {editTab === 'settings' && (
                   <div className="space-y-4">
+                    {/* ДОБАВЛЕНО min-w-0 для предотвращения разрыва сетки */}
                     <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                      <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase">Дата</label>
-                        <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white mt-1 min-h-[48px]" />
+                      <div className="flex flex-col min-w-0">
+                        <label className="text-xs font-bold text-gray-500 uppercase mb-1">Дата</label>
+                        <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[48px]" />
                       </div>
-                      <div>
-                        <label className="text-xs font-bold text-gray-500 uppercase">Время</label>
-                        <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white mt-1 min-h-[48px]" />
+                      <div className="flex flex-col min-w-0">
+                        <label className="text-xs font-bold text-gray-500 uppercase mb-1">Время</label>
+                        <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[48px]" />
                       </div>
                     </div>
                     <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl mt-2">
-                      <p className="text-xs sm:text-sm text-blue-400 font-medium flex items-start gap-2 leading-snug">
-                        <Settings size={18} className="shrink-0 mt-0.5" />
-                        Для изменения знака, подписи или фото, отмените эту публикацию и создайте новую.
-                      </p>
+                      <p className="text-xs sm:text-sm text-blue-400 font-medium flex items-start gap-2 leading-snug"><Settings size={18} className="shrink-0 mt-0.5" /> Для изменения знака, подписи или фото, отмените эту публикацию и создайте новую.</p>
                     </div>
                   </div>
                 )}
@@ -679,8 +646,7 @@ export default function Publish() {
               <div className="pt-2 sm:pt-4 border-t border-gray-800 flex flex-col sm:flex-row gap-3">
                  <button onClick={() => setEditPost(null)} className="flex-1 py-3.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-colors order-2 sm:order-1 min-h-[48px]">Отмена</button>
                  <button onClick={handleUpdatePost} disabled={isUpdatingPost} className="flex-[2] py-3.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold transition-colors flex justify-center items-center gap-2 order-1 sm:order-2 shadow-lg shadow-purple-500/20 min-h-[48px]">
-                   {isUpdatingPost ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />} 
-                   {isUpdatingPost ? 'Сохранение...' : 'Сохранить'}
+                   {isUpdatingPost ? <Loader2 className="animate-spin" size={20} /> : <Check size={20} />} {isUpdatingPost ? 'Сохранение...' : 'Сохранить'}
                  </button>
               </div>
             </div>
@@ -691,7 +657,7 @@ export default function Publish() {
   }
 
   // ==========================================
-  // РЕНДЕР: ЭКРАН 3 - ВИЗАРД (САМА ПУБЛИКАЦИЯ)
+  // РЕНДЕР: ЭКРАН 3 - ВИЗАРД
   // ==========================================
   return (
     <div className="min-h-[100dvh] bg-admin-bg pb-[120px] md:pb-24 font-sans relative animate-fade-in">
@@ -844,9 +810,7 @@ export default function Publish() {
                                 <div className="relative w-10 h-10 rounded-xl shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
                                   {avatarSrc ? <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-xl" /> : <span className="text-xs sm:text-sm">{acc.name.substring(0, 2).toUpperCase()}</span>}
                                   <div className={`absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
-                                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex items-center justify-center">
-                                      {provider === 'vk' ? <IconVK /> : <IconTG />}
-                                    </div>
+                                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex items-center justify-center"><IconVK /></div>
                                   </div>
                                 </div>
                                 <div className="flex-1 min-w-0 pr-2">
@@ -921,16 +885,17 @@ export default function Publish() {
                </div>
             </div>
             
+            {/* === ИСПРАВЛЕНИЕ: ВЕРСТКА ДАТЫ И ВРЕМЕНИ (ШАГ 3) === */}
             {publishMode === 'schedule' && (
               <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl mb-4">
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-gray-900/50 p-3 sm:p-4 rounded-2xl border border-gray-800/50">
-                    <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Дата</label>
-                      <input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-base sm:text-sm text-white mt-1 min-h-[48px]" />
+                    <div className="flex flex-col min-w-0">
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1 mb-1">Дата</label>
+                      <input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[48px]" />
                     </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-500 uppercase ml-1">Время</label>
-                      <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-base sm:text-sm text-white mt-1 min-h-[48px]" />
+                    <div className="flex flex-col min-w-0">
+                      <label className="text-xs font-bold text-gray-500 uppercase ml-1 mb-1">Время</label>
+                      <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[48px]" />
                     </div>
                   </div>
               </div>
@@ -957,7 +922,7 @@ export default function Publish() {
 
       </div>
 
-      {/* МОДАЛКА: ИИ (BOTTOM SHEET НА MOBILE) */}
+      {/* МОДАЛКИ ПАРТНЕРОВ И ИИ... */}
       {showAiModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
           <div className="bg-admin-card w-full max-w-md border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">
@@ -972,7 +937,6 @@ export default function Publish() {
         </div>
       )}
 
-      {/* НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ ПО ШАГАМ */}
       {step < 4 && (
         <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
           <div className="max-w-3xl mx-auto flex items-center gap-3">
@@ -994,80 +958,6 @@ export default function Publish() {
               <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step === 3) ? 'flex' : 'hidden'}`}><Send size={18}/> Опубликовать</span>
               <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step < 3) ? 'flex' : 'hidden'}`}>Далее <ChevronRight size={20}/></span>
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* МОДАЛКА: ОТПРАВКА ПАРТНЕРАМ (BOTTOM SHEET НА MOBILE) */}
-      {showPartnerModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
-          <div className="bg-admin-card w-full max-w-md border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative flex flex-col max-h-[90vh] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">
-            <button onClick={() => setShowPartnerModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-10 h-10 rounded-full flex items-center justify-center transition-colors z-10">
-              <X size={20} />
-            </button>
-
-            <div className="w-14 h-14 rounded-2xl flex shrink-0 items-center justify-center mb-4 bg-blue-500/10 text-blue-500">
-              <Users size={28} />
-            </div>
-            
-            <h3 className="text-xl font-bold text-white mb-2 shrink-0">Кому отправить?</h3>
-            <p className="text-gray-400 text-xs sm:text-sm mb-4 shrink-0">
-              Выберите партнеров, которые получат чистые фото и текст для перепубликации.
-            </p>
-
-            <div className="overflow-y-auto custom-scrollbar pr-2 mb-4 space-y-2 flex-1 min-h-[150px]">
-              {myPartners.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 bg-gray-900/50 rounded-2xl border border-gray-800">
-                  <p className="text-sm">У вас пока нет партнеров.</p>
-                  <p className="text-xs mt-1">Добавьте их в разделе настроек.</p>
-                </div>
-              ) : (
-                myPartners.map(partner => {
-                  const isSelected = selectedPartners.includes(partner.id);
-                  return (
-                    <div 
-                      key={partner.id} 
-                      onClick={() => togglePartner(partner.id)}
-                      className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-colors min-h-[64px] ${isSelected ? 'bg-blue-500/10 border-blue-500/50' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
-                    >
-                       <div className={`w-5 h-5 rounded flex items-center justify-center border shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'}`}>
-                         {isSelected && <Check size={14} className="text-white"/>}
-                       </div>
-                       <div className="min-w-0 pr-2">
-                         <p className="text-white text-sm font-bold truncate">{partner.name || 'Без имени'}</p>
-                         <p className="text-gray-500 text-[10px] sm:text-xs truncate">Павильон: {partner.pavilion || '?'}</p>
-                       </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-
-            {partnerStatus === 'idle' && (
-              <button 
-                onClick={handleSendToPartners} 
-                disabled={myPartners.length === 0}
-                className="w-full shrink-0 text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 min-h-[56px]"
-              >
-                <Send size={18} /> <span>Разослать выбранным</span>
-              </button>
-            )}
-
-            {partnerStatus === 'sending' && (
-              <button disabled className="w-full shrink-0 bg-gray-800 text-gray-400 py-4 rounded-xl font-bold flex justify-center items-center gap-2 min-h-[56px]">
-                <Loader2 className="animate-spin" size={20}/> <span>Отправка...</span>
-              </button>
-            )}
-
-            {partnerStatus === 'sent' && (
-              <div className="text-center py-2 animate-fade-in shrink-0">
-                <div className="text-green-500 flex justify-center mb-2"><CheckCircle2 size={32} /></div>
-                <p className="text-white font-bold">Успешно отправлено!</p>
-                <button onClick={resetForm} className="mt-4 text-sm font-bold text-blue-500 hover:text-blue-400 transition-colors p-2">
-                  В главное меню
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}
