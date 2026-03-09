@@ -15,7 +15,6 @@ export default function Onboarding() {
   const [tgChannels, setTgChannels] = useState([]); 
   const [vkConnected, setVkConnected] = useState(false);
 
-  // === НОВЫЕ СОСТОЯНИЯ ДЛЯ ВК ===
   const [vkGroupsFetched, setVkGroupsFetched] = useState([]);
   const [selectedVkGroups, setSelectedVkGroups] = useState([]);
   const [vkAccessToken, setVkAccessToken] = useState('');
@@ -39,6 +38,9 @@ export default function Onboarding() {
 
   const saveVkGroupWithToken = useStore(state => state.saveVkGroupWithToken);
 
+  const isPro = user?.isPro || false;
+  const limits = isPro ? 100 : 10;
+
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/\D/g, '');
     if (!val) { setPhone(''); return; }
@@ -54,6 +56,8 @@ export default function Onboarding() {
 
   const handleAddVkGroup = async () => {
     if (!vkLinkInput.trim() || !vkTokenInput.trim()) return setError('Заполните оба поля');
+    if (!isPro && vkConnectedGroups.length >= limits) return setError('Достигнут лимит в 10 групп для бесплатной версии.');
+    
     setVkLoading(true); setError('');
     
     const res = await saveVkGroupWithToken(user.id, vkLinkInput, vkTokenInput);
@@ -63,7 +67,6 @@ export default function Onboarding() {
         avatar: res.group?.avatar || null,
         link: vkLinkInput
       }]);
-      // Очищаем форму и возвращаем на Шаг 1 для добавления следующей группы
       setVkLinkInput(''); 
       setVkTokenInput('');
       setVkStep(1); 
@@ -73,7 +76,6 @@ export default function Onboarding() {
     setVkLoading(false);
   };
 
-  // === ЛОГИКА АВТОРИЗАЦИИ И ВЫБОРА ГРУПП ВК ===
   const handleVkConnect = () => {
     setIsVkLoading(true);
     setError('');
@@ -140,7 +142,9 @@ export default function Onboarding() {
 
   const handleAddTgChannel = async () => {
     if (!tgInput.trim() || tgLoading) return;
+    if (!isPro && tgChannels.length >= limits) return setError('Достигнут лимит в 10 каналов для бесплатной версии.');
     if (tgChannels.some(c => c.originalInput === tgInput.trim())) { setTgInput(''); return; }
+    
     setTgLoading(true); setError('');
     try {
       const res = await fetch('/api/auth/tg-chat-info', {
@@ -260,7 +264,9 @@ export default function Onboarding() {
           <div className="space-y-5 sm:space-y-6 text-left animate-in fade-in slide-in-from-right-8 duration-500">
             <div className="text-center mb-4 sm:mb-6">
               <h2 className="text-xl sm:text-2xl font-bold text-white">Сообщества ВКонтакте</h2>
-              <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">Подключение групп по API-ключу (без паролей).</p>
+              <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">
+                Подключение по API-ключу ({user?.isPro ? 'без лимитов' : 'до 10 групп в бесплатной версии'}).
+              </p>
             </div>
             
             <div className="min-h-[48px] mb-2 w-full">
@@ -361,7 +367,9 @@ export default function Onboarding() {
           <div className="space-y-5 sm:space-y-6 text-left animate-in fade-in slide-in-from-right-8 duration-500">
             <div className="text-center mb-4 sm:mb-6">
               <h2 className="text-xl sm:text-2xl font-bold text-white">Каналы Telegram</h2>
-              <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">Добавьте неограниченное количество каналов.</p>
+              <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">
+                {user?.isPro ? 'Добавляйте неограниченное количество каналов.' : 'Добавьте до 10 каналов (в бесплатной версии).'}
+              </p>
             </div>
             
             <div className="min-h-[48px] mb-2">
