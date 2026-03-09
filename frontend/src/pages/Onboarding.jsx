@@ -257,36 +257,61 @@ export default function Onboarding() {
               <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">Подключение групп по API-ключу (без паролей).</p>
             </div>
             
-            {error && <p className="text-red-400 bg-red-400/10 py-3 px-4 rounded-xl border border-red-400/20 text-xs sm:text-sm text-left mb-4">{error}</p>}
-            
-            <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-2xl p-4 sm:p-5 space-y-3">
-              <h3 className="text-[#0077FF] font-bold flex items-center gap-2 mb-2 text-sm sm:text-base">
-                <Info size={18} /> Как подключить:
-              </h3>
-              <ol className="list-decimal list-inside text-gray-300 text-xs sm:text-sm space-y-2 ml-1 leading-relaxed">
-                <li>Зайдите в настройки вашей группы ВКонтакте.</li>
-                <li>Перейдите в раздел <b>Работа с API</b> и нажмите <b>Создать ключ</b>.</li>
-                <li>Поставьте галочки: <b>Управление сообществом, Фотографии, Стена</b>.</li>
-                <li>Скопируйте ключ и вставьте его ниже вместе со ссылкой на группу.</li>
-              </ol>
+            {/* ЗАЩИЩЕННЫЙ КОНТЕЙНЕР ДЛЯ ОШИБКИ (Предотвращает краш) */}
+            <div className="min-h-[48px]">
+              {error ? (
+                <p className="text-red-400 bg-red-400/10 py-3 px-4 rounded-xl border border-red-400/20 text-xs sm:text-sm text-left animate-in fade-in">
+                  {error}
+                </p>
+              ) : null}
             </div>
-
-            <div className="space-y-3 mt-4">
-              <input 
-                type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
-                placeholder="Ссылка на группу (vk.com/public123)" 
-                className="w-full min-w-0 bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 outline-none focus:border-[#0077FF] transition-colors placeholder:text-gray-500 text-base sm:text-sm min-h-[48px]"
-              />
-              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                <input 
-                  type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)}
-                  placeholder="Ключ доступа (Токен)" 
-                  className="flex-1 w-full min-w-0 bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 outline-none focus:border-[#0077FF] transition-colors placeholder:text-gray-500 text-base sm:text-sm min-h-[48px]"
-                />
-                <button onClick={handleAddVkGroup} disabled={vkLoading || !vkLinkInput || !vkTokenInput} className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-5 sm:px-6 py-3 rounded-xl border border-gray-700 transition-colors flex items-center justify-center shrink-0 min-h-[48px] active:scale-95 font-bold text-sm">
-                  {vkLoading ? <Loader2 size={18} className="animate-spin" /> : <><Plus size={18} className="mr-1"/> Добавить</>}
-                </button>
-              </div>
+            
+            <div className="space-y-3 mt-1 text-left">
+              {vkStep === 1 ? (
+                <div className="flex flex-col gap-3 animate-in fade-in">
+                  <input 
+                    type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
+                    placeholder="Ссылка на группу (vk.com/public123)" 
+                    className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 outline-none focus:border-[#0077FF] min-h-[48px]"
+                  />
+                  {/* Обернули текст в SPAN */}
+                  <button onClick={() => {
+                    if (!vkLinkInput.trim()) return setError('Укажите ссылку на группу');
+                    setError(''); setVkStep(2);
+                  }} disabled={!vkLinkInput} className="w-full bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold disabled:opacity-50 transition-colors">
+                    <span>Далее: Инструкция по ключу</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-right-4">
+                  <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-2xl p-4 text-sm text-gray-300">
+                    <p className="font-bold text-white mb-2">Группа найдена! Теперь нужен API-ключ:</p>
+                    <ol className="list-decimal list-inside space-y-1">
+                      <li>Зайдите в настройки вашей группы → <b>Работа с API</b></li>
+                      <li>Нажмите <b>Создать ключ</b></li>
+                      <li>Выберите права: <b>Управление, Фотографии, Стена</b></li>
+                    </ol>
+                  </div>
+                  <input 
+                    type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)}
+                    placeholder="Ключ доступа (Токен)" 
+                    className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 outline-none focus:border-[#0077FF] min-h-[48px]"
+                  />
+                  <div className="flex gap-3">
+                    <button onClick={() => setVkStep(1)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-6 py-3.5 rounded-xl font-bold transition-colors">
+                      <span>Назад</span>
+                    </button>
+                    {/* Обернули текст загрузки и кнопки в SPAN */}
+                    <button onClick={handleAddVkGroup} disabled={vkLoading || !vkTokenInput} className="flex-1 bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors">
+                      {vkLoading ? (
+                        <span className="flex items-center gap-2"><Loader2 className="animate-spin" /> Проверка...</span>
+                      ) : (
+                        <span>Подключить группу</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {vkConnectedGroups.length > 0 && (
@@ -297,8 +322,8 @@ export default function Onboarding() {
             )}
 
             <button 
-              onClick={() => { firstChoice === 'vk' ? setStep('offer_second') : handleContactsOrFinish(); }}
-              className="mt-6 w-full bg-[#0077FF] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0066DD] transition-colors shadow-lg shadow-[#0077FF]/20 text-base min-h-[48px] active:scale-95"
+              onClick={() => { firstChoice === 'vk' ? setStep('offer_second') : handleContactsOrFinish(); }} 
+              className="mt-6 w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors text-base min-h-[48px] active:scale-95"
             >
               <span>{vkConnectedGroups.length > 0 ? 'Продолжить' : 'Пропустить шаг'}</span> <ArrowRight size={18} />
             </button>
