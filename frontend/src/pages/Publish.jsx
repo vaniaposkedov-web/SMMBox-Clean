@@ -810,7 +810,9 @@ export default function Publish() {
                                 <div className="relative w-10 h-10 rounded-xl shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
                                   {avatarSrc ? <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-xl" /> : <span className="text-xs sm:text-sm">{acc.name.substring(0, 2).toUpperCase()}</span>}
                                   <div className={`absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
-                                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex items-center justify-center"><IconVK /></div>
+                                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex items-center justify-center">
+                                      {provider.toLowerCase() === 'vk' ? <IconVK /> : <IconTG />}
+                                    </div>
                                   </div>
                                 </div>
                                 <div className="flex-1 min-w-0 pr-2">
