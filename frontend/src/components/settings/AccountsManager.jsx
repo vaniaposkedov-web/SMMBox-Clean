@@ -285,7 +285,6 @@ export default function AccountsManager() {
     );
   };
 
-  // === ОБРАБОТЧИКИ ДОБАВЛЕНИЯ ТГ ===
   const handleAddTg = async () => {
     if (isLimitReached) return alert('Лимит аккаунтов исчерпан! Оформите PRO.');
     if (!tgInput.trim()) return alert('Введите ссылку канала!');
@@ -319,7 +318,6 @@ export default function AccountsManager() {
     setIsAddingTg(false);
   };
 
-  // === ОБРАБОТЧИКИ ДОБАВЛЕНИЯ ВК ===
   const handleVkNextStep = () => {
     if (!vkLinkInput.trim()) return alert('Пожалуйста, укажите ссылку на группу');
     setVkStep(2);
@@ -335,22 +333,20 @@ export default function AccountsManager() {
     if (res.success) {
       setVkLinkInput('');
       setVkTokenInput('');
-      setVkStep(1); // Автоматически возвращаем на Шаг 1 для добавления следующей группы
-      setVkSuccessMsg(`Группа "${res.group?.name || 'ВК'}" подключена!`);
-      setTimeout(() => setVkSuccessMsg(''), 4000); // Плавно убираем уведомление
+      setVkStep(1); 
+      setVkSuccessMsg(`Сообщество "${res.group?.name || 'ВКонтакте'}" успешно подключено!`);
+      setTimeout(() => setVkSuccessMsg(''), 4000); 
     } else {
       alert(res.error || 'Ошибка при добавлении группы');
     }
     setIsAddingVk(false);
   };
 
-  // Рендер отдельной карточки аккаунта
   const renderAccountCard = (acc, providerIcon, providerColor, providerName) => {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
     const hasCustomSignature = acc.signature !== null;
 
-    // ДИНАМИЧЕСКИЕ ГРАДИЕНТЫ ДЛЯ СТАТУСА КАРТОЧКИ
     const borderClasses = acc.isValid
       ? isExpanded
         ? 'bg-gradient-to-r from-emerald-500/20 to-gray-900/50 border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)]'
@@ -421,7 +417,6 @@ export default function AccountsManager() {
 
               {acc.isValid && (
                 <>
-                  {/* === БЛОК ПОДПИСИ === */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><Type size={14}/> Подпись к постам</label>
@@ -432,7 +427,6 @@ export default function AccountsManager() {
                       )}
                     </div>
 
-                    {/* Переключатель Подписи */}
                     <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
                       <button onClick={() => setGlobalSignature(acc)} disabled={savingSignature[acc.id]} className={`flex-1 py-2 sm:py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0 ${!hasCustomSignature ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
                         {savingSignature[acc.id] && !hasCustomSignature ? <Loader2 size={16} className="animate-spin"/> : <LayoutTemplate size={16}/>} <span>Шаблон</span>
@@ -442,7 +436,6 @@ export default function AccountsManager() {
                       </button>
                     </div>
 
-                    {/* Визуализация режима Подписи */}
                     {!hasCustomSignature ? (
                       <div className="mt-2.5 bg-gray-900/50 p-3 sm:p-3 rounded-lg border border-gray-800/50 flex items-center gap-3">
                         <div className="p-2 bg-gray-800 rounded-md text-gray-400"><LayoutTemplate size={16}/></div>
@@ -463,7 +456,6 @@ export default function AccountsManager() {
                     )}
                   </div>
 
-                  {/* === БЛОК ВОДЯНОГО ЗНАКА === */}
                   <div className="space-y-3 pt-5 border-t border-gray-800/50">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5"><ImageIcon size={14}/> Водяной знак</label>
@@ -474,7 +466,6 @@ export default function AccountsManager() {
                       )}
                     </div>
                     
-                    {/* Переключатель Водяного знака */}
                     <div className="flex p-1 bg-black/40 rounded-xl border border-gray-800">
                       <button onClick={() => setGlobalWatermark(acc)} disabled={savingWatermark[acc.id]} className={`flex-1 py-2 sm:py-1.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 min-h-[44px] sm:min-h-0 ${!hasCustomWatermark ? 'bg-gray-800 text-white border-gray-600 shadow-inner' : 'bg-transparent text-gray-500 hover:text-gray-300'}`}>
                         {savingWatermark[acc.id] && !hasCustomWatermark ? <Loader2 size={16} className="animate-spin"/> : <LayoutTemplate size={16}/>} <span>Шаблон</span>
@@ -484,7 +475,6 @@ export default function AccountsManager() {
                       </button>
                     </div>
 
-                    {/* Визуализация режима Водяного знака */}
                     {!hasCustomWatermark ? (
                       <div className="mt-2.5 bg-gray-900/50 p-3 rounded-lg border border-gray-800/50 flex items-center gap-3">
                         <div className="p-2 bg-gray-800 rounded-md text-gray-400"><LayoutTemplate size={16}/></div>
@@ -677,7 +667,6 @@ export default function AccountsManager() {
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeDesignModal}></div>
           <div className="relative w-full max-w-lg bg-[#111318] border-t sm:border border-gray-700 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] pb-[max(0px,env(safe-area-inset-bottom))] sm:pb-0 z-10 transition-transform">
             
-            {/* ФИКСИРОВАННАЯ ШАПКА */}
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/50 shrink-0">
               <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2 pr-4 truncate"><ImageIcon size={18} className="text-blue-400 shrink-0"/> Настройка дизайна</h3>
               <button onClick={closeDesignModal} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 sm:p-1.5 rounded-full sm:rounded-lg transition-colors shrink-0">
@@ -685,10 +674,8 @@ export default function AccountsManager() {
               </button>
             </div>
 
-            {/* ГЛАВНЫЙ СКРОЛЛЯЩИЙСЯ КОНТЕЙНЕР */}
             <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#111318] flex flex-col">
               
-              {/* ПРЕВЬЮ */}
               <div className="p-4 sm:p-5 bg-black/50 border-b border-gray-800 shrink-0">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-[10px] sm:text-xs text-gray-500 uppercase flex items-center gap-1"><Move size={12}/> Перетаскивайте мышью/пальцем</span>
@@ -696,7 +683,6 @@ export default function AccountsManager() {
                 
                 <div ref={previewRef} onClick={handleBackgroundClick} className="relative w-full aspect-[16/9] rounded-xl shadow-inner border border-gray-800 overflow-hidden bg-cover bg-center cursor-crosshair" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop')" }}>
                   
-                  {/* САМ ВОДЯНОЙ ЗНАК */}
                   <div 
                     onPointerDown={handlePointerDown}
                     className={`absolute px-2.5 py-1 flex items-center justify-center whitespace-nowrap cursor-move select-none touch-none ${isDragging ? 'transition-none' : 'transition-all duration-200 ease-out'}`}
@@ -714,13 +700,11 @@ export default function AccountsManager() {
                 </div>
               </div>
 
-              {/* ВКЛАДКИ */}
               <div className="flex border-b border-gray-800 bg-gray-900/30 shrink-0">
                 <button onClick={() => setWatermarkTab('simple')} className={`flex-1 py-3 sm:py-3.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors min-h-[48px] ${watermarkTab === 'simple' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><TypeIcon size={16}/> Базовая</button>
                 <button onClick={() => setWatermarkTab('advanced')} className={`flex-1 py-3 sm:py-3.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors min-h-[48px] ${watermarkTab === 'advanced' ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/5' : 'text-gray-500 hover:text-gray-300'}`}><Sliders size={16}/> Продвинутая</button>
               </div>
 
-              {/* НАСТРОЙКИ */}
               <div className="p-4 sm:p-5 shrink-0">
                 {watermarkTab === 'simple' && (
                   <div className="space-y-5 sm:space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -768,7 +752,6 @@ export default function AccountsManager() {
               </div>
             </div>
 
-            {/* ФИКСИРОВАННЫЙ ФУТЕР С КНОПКАМИ */}
             <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] flex flex-col sm:flex-row gap-3 shrink-0">
               <button 
                 onClick={closeDesignModal} 

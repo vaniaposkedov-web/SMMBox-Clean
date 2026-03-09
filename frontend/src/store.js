@@ -71,46 +71,19 @@ export const useStore = create(
             headers: { 'Authorization': `Bearer ${token}` } 
           });
           
-          // ЗАЩИТА: Если сервер упал (502, 500, 404), просто прерываемся и не ломаем сайт
           if (!res.ok) {
             console.error("Сервер недоступен, статус:", res.status);
             return; 
           }
 
-          // Только если сервер ответил "ОК" (200), пытаемся прочитать JSON
           const data = await res.json(); 
-          console.log("ОТВЕТ ОТ СЕРВЕРА (fetchScheduledPosts):", data);
-
           const postsArray = data.posts || data.scheduledPosts || []; 
           set({ scheduledPosts: postsArray }); 
           
         } catch (error) {
-           console.error("Ошибка сети или парсинга:", error);
+           console.error("Ошибка сети:", error);
         }
       },
-
-      verifyEmailCode: async (email, code) => {
-        try {
-          const res = await fetch('/api/auth/verify-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, code })
-          });
-          const data = await res.json();
-          
-          if (res.ok && data.success) {
-            // Только после верного кода мы авторизуем пользователя в системе
-            set({ user: data.user, token: data.token });
-            localStorage.setItem('token', data.token);
-            return { success: true };
-          }
-          return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка сети' };
-        }
-      },
-
-
 
       deleteScheduledPostAction: async (id) => {
         try {
@@ -548,7 +521,6 @@ export const useStore = create(
         } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
       },
 
-      // === ИЗОЛИРОВАННЫЕ ФУНКЦИИ ВКОНТАКТЕ ===
       saveVkGroupWithToken: async (userId, groupLink, accessToken) => {
         try {
           const res = await fetch('/api/accounts/vk/save-by-token', {
@@ -559,7 +531,8 @@ export const useStore = create(
           const data = await res.json();
           if (res.ok && data.success) {
             get().fetchAccounts(userId); 
-            return { success: true };
+            // === ИСПРАВЛЕНИЕ: ВОЗВРАЩАЕМ ДАННЫЕ ГРУППЫ НА ФРОНТЕНД ===
+            return { success: true, group: data.group };
           }
           return { success: false, error: data.error };
         } catch (error) {
@@ -594,9 +567,6 @@ export const useStore = create(
     }),
     {
       name: 'smmbox-storage',
-      // === ИСПРАВЛЕНИЕ: ФИЛЬТР СОХРАНЕНИЯ ===
-      // Указываем, какие именно данные можно писать на диск (localStorage).
-      // Все тяжелые массивы (картинки, посты, черновики) исключены и остаются в ОЗУ.
       partialize: (state) => ({
         user: state.user,
         token: state.token,

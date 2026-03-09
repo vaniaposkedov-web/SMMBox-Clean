@@ -1,4 +1,4 @@
-const axios = require('axios'); // <-- ВОТ ОН, СПАСИТЕЛЬ ОТ 500 ОШИБКИ!
+const axios = require('axios'); 
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
@@ -56,7 +56,6 @@ exports.saveVkGroups = async (req, res) => {
       return res.status(400).json({ error: 'Нет данных для сохранения' });
     }
 
-    // === ПРОВЕРКА ЛИМИТОВ PRO ===
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
     const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
     
@@ -65,7 +64,6 @@ exports.saveVkGroups = async (req, res) => {
         error: `Лимит бесплатной версии — 10 аккаунтов (сейчас привязано ${currentAccountsCount}). Оформите PRO!` 
       });
     }
-    // ============================
 
     const savedAccounts = await Promise.all(groups.map(async (group) => {
       const safeProviderId = String(group.id); 
@@ -91,12 +89,11 @@ exports.saveVkGroups = async (req, res) => {
 
     res.json({ success: true, count: savedAccounts.length });
   } catch (error) {
-    console.error('=== ОШИБКА СОХРАНЕНИЯ ВК ===', error);
     res.status(500).json({ error: 'Ошибка сервера при сохранении ВК', details: error.message });
   }
 };
 
-// Сохранение выбранных Telegram-каналов (С защитой от угона)
+// Сохранение Telegram-каналов (С защитой от угона)
 exports.saveTgAccounts = async (req, res) => {
   const { userId, channels } = req.body;
 
@@ -105,7 +102,6 @@ exports.saveTgAccounts = async (req, res) => {
       return res.status(400).json({ error: 'Нет данных для сохранения' });
     }
 
-    // === ПРОВЕРКА ЛИМИТОВ PRO ===
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
     const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
     
@@ -114,7 +110,6 @@ exports.saveTgAccounts = async (req, res) => {
         error: `Лимит бесплатной версии — 10 аккаунтов (сейчас привязано ${currentAccountsCount}). Оформите PRO!` 
       });
     }
-    // ============================
 
     for (const channel of channels) {
       const safeProviderId = String(channel.chatId);
@@ -151,7 +146,6 @@ exports.saveTgAccounts = async (req, res) => {
 
     res.json({ success: true, count: savedAccounts.length });
   } catch (error) {
-    console.error('=== ОШИБКА СОХРАНЕНИЯ ТГ ===', error);
     res.status(500).json({ error: 'Ошибка сервера при сохранении ТГ' });
   }
 };
@@ -170,24 +164,20 @@ exports.getAccounts = async (req, res) => {
 
     res.json(accounts);
   } catch (error) {
-    console.error('Ошибка получения аккаунтов:', error);
     res.status(500).json({ error: 'Ошибка сервера при загрузке групп' });
   }
 };
 
-// Удаление аккаунта
 exports.deleteAccount = async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.account.delete({ where: { id: id } });
     res.json({ success: true, message: 'Аккаунт успешно удален' });
   } catch (error) {
-    console.error('Ошибка при удалении аккаунта:', error);
     res.status(500).json({ error: 'Ошибка сервера при удалении' });
   }
 };
 
-// === ПРОВЕРКА СТАТУСОВ (Единственная и бронебойная) ===
 exports.verifyTgAccountsStatus = async (req, res) => {
   const userId = req.user?.userId || req.user?.id || req.body?.userId;
 
@@ -200,12 +190,10 @@ exports.verifyTgAccountsStatus = async (req, res) => {
 
     if (tgAccounts.length === 0) return res.json({ success: true, message: 'Нет ТГ аккаунтов' });
 
-    // Жестко очищаем токен от кавычек на лету!
     let botToken = process.env.TELEGRAM_BOT_TOKEN || '';
     botToken = botToken.replace(/['"]/g, '').trim();
 
     if (!botToken || !botToken.includes(':')) {
-      console.error('ОШИБКА: TELEGRAM_BOT_TOKEN не настроен в .env');
       return res.status(500).json({ error: 'Бот не настроен на сервере' });
     }
     const botId = botToken.split(':')[0];
@@ -221,7 +209,6 @@ exports.verifyTgAccountsStatus = async (req, res) => {
         });
 
         const member = tgRes.data.result;
-        // Для групп и каналов проверяем, является ли бот админом или создателем
         const isWorking = member.status === 'administrator' || member.status === 'creator';
 
         return await prisma.account.update({
@@ -229,11 +216,7 @@ exports.verifyTgAccountsStatus = async (req, res) => {
           data: { isValid: isWorking, errorMsg: isWorking ? null : 'Бот должен быть администратором' }
         });
       } catch (error) {
-        console.error(`\n=== ОШИБКА TELEGRAM ДЛЯ КАНАЛА ${acc.name} ===`);
-        console.error(error.response?.data || error.message);
-
         const errorText = error.response?.data?.description || 'Ошибка связи с Telegram (возможно, неверный ID или бот заблокирован)';
-
         return await prisma.account.update({
           where: { id: acc.id },
           data: { isValid: false, errorMsg: errorText }
@@ -243,18 +226,15 @@ exports.verifyTgAccountsStatus = async (req, res) => {
 
     res.json({ success: true, updated: updates.length });
   } catch (error) {
-    console.error('Критическая ошибка проверки ТГ:', error);
     res.status(500).json({ error: 'Ошибка сервера при проверке статусов' });
   }
 };
 
-// === СОХРАНЕНИЕ ДИЗАЙНА (Точечное) ===
 exports.saveAccountDesign = async (req, res) => {
   const { id } = req.params;
   const { signature, watermark } = req.body;
 
   try {
-    // 1. Сохраняем ТОЛЬКО подпись, если она пришла в запросе
     if (signature !== undefined) {
       await prisma.account.update({
         where: { id: id },
@@ -262,14 +242,11 @@ exports.saveAccountDesign = async (req, res) => {
       });
     }
 
-    // 2. Если пришел null -> удаляем кастомный водяной знак (сброс на общий)
     if (watermark === null) {
       try {
         await prisma.watermark.delete({ where: { accountId: id } });
       } catch(e) {} 
-    } 
-    // 3. Если пришел объект дизайна -> Обновляем водяной знак
-    else if (watermark !== undefined) {
+    } else if (watermark !== undefined) {
       await prisma.watermark.upsert({
         where: { accountId: id },
         update: {
@@ -296,12 +273,10 @@ exports.saveAccountDesign = async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Ошибка сохранения дизайна:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 
-// === ПОЛУЧЕНИЕ ГЛОБАЛЬНЫХ НАСТРОЕК ===
 exports.getGlobalSettings = async (req, res) => {
   const userId = req.user?.userId || req.user?.id;
   try {
@@ -311,12 +286,10 @@ exports.getGlobalSettings = async (req, res) => {
     });
     res.json({ success: true, signature: user?.globalSignature || '', watermark: user?.globalWatermark || null });
   } catch (error) {
-    console.error('Ошибка получения глобальных настроек:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 
-// === СОХРАНЕНИЕ ГЛОБАЛЬНЫХ НАСТРОЕК ===
 exports.saveGlobalSettings = async (req, res) => {
   const userId = req.user?.userId || req.user?.id;
   const { signature, watermark } = req.body;
@@ -357,12 +330,10 @@ exports.saveGlobalSettings = async (req, res) => {
     }
     res.json({ success: true });
   } catch (error) {
-    console.error('Ошибка сохранения глобальных настроек:', error);
     res.status(500).json({ error: 'Ошибка сохранения' });
   }
 };
 
-// === УМНЫЙ РАДАР TELEGRAM-КАНАЛОВ ===
 exports.scanTgChannels = async (req, res) => {
   const { botToken } = req.body;
   const userId = req.user?.userId || req.user?.id;
@@ -371,17 +342,14 @@ exports.scanTgChannels = async (req, res) => {
     if (!botToken) return res.status(400).json({ error: 'Укажите токен бота' });
     const token = botToken.replace(/['"]/g, '').trim();
 
-    // 1. Получаем уже привязанные аккаунты, чтобы не предлагать их дубликаты
     const existingAccounts = await prisma.account.findMany({
       where: { userId: String(userId), provider: 'TELEGRAM' },
       select: { providerId: true }
     });
     const existingIds = new Set(existingAccounts.map(a => a.providerId));
 
-    // 2. Удаляем вебхук, иначе Телеграм не отдаст историю обновлений
     await axios.get(`https://api.telegram.org/bot${token}/deleteWebhook`);
 
-    // 3. Получаем историю событий бота за последние 24 часа
     const updatesRes = await axios.get(`https://api.telegram.org/bot${token}/getUpdates`);
     const updates = updatesRes.data.result;
 
@@ -389,7 +357,6 @@ exports.scanTgChannels = async (req, res) => {
         return res.json({ success: true, channels: [] }); 
     }
 
-    // 4. Фильтруем уникальные чаты (каналы и группы)
     const uniqueChats = new Map();
 
     for (const update of updates) {
@@ -406,7 +373,6 @@ exports.scanTgChannels = async (req, res) => {
       }
     }
 
-    // 5. Получаем красивые аватарки для найденных чатов
     const channels = [];
     for (const [chatId, chatObj] of uniqueChats.entries()) {
         try {
@@ -426,19 +392,18 @@ exports.scanTgChannels = async (req, res) => {
                 avatar: avatarUrl
             });
         } catch (e) {
-            console.log(`Пропуск чата ${chatId}: бот был удален или нет прав`);
+            console.log(`Пропуск чата ${chatId}`);
         }
     }
 
     res.json({ success: true, channels });
 
   } catch (error) {
-    console.error('Ошибка сканирования ТГ:', error.response?.data || error.message);
     res.status(500).json({ error: 'Не удалось просканировать Telegram. Проверьте токен бота.' });
   }
 };
 
-// === НОВЫЙ МЕТОД СОХРАНЕНИЯ ГРУППЫ ВК ПО КЛЮЧУ ДОСТУПА ===
+// === СОХРАНЕНИЕ ГРУППЫ ВК ПО КЛЮЧУ С ЗАЩИТОЙ ===
 exports.saveVkGroupWithToken = async (req, res) => {
   const { userId, groupLink, accessToken } = req.body;
 
@@ -447,72 +412,8 @@ exports.saveVkGroupWithToken = async (req, res) => {
       return res.status(400).json({ error: 'Укажите ссылку на группу и ключ доступа' });
     }
 
-    // Очищаем ссылку, достаем ID или короткое имя
-    let groupId = groupLink.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?vk\.com\//i, '')
-                       .split('/')[0].split('?')[0].split('#')[0].trim();
-
-    // Стучимся в ВК для проверки ключа
-    const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
-    params: { group_id: groupId, access_token: accessToken, v: '5.131' }
-    });
-
-    if (vkRes.data.error) {
-    return res.status(400).json({ error: `Ошибка ВК: ${vkRes.data.error.error_msg}` });
-    }
-
-    const group = vkRes.data.response[0];
-    if (!group || !group.id) {
-      return res.status(400).json({ error: 'Группа не найдена. Проверьте ссылку.' });
-    }
-    const safeProviderId = String(group.id);
-
-    // Проверка лимитов (как у Telegram)
-    const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
-    const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
-    const existing = await prisma.account.findFirst({
-      where: { userId: String(userId), provider: 'VK', providerId: safeProviderId }
-    });
-
-    if (!existing && !currentUser.isPro && currentAccountsCount >= 10) {
-      return res.status(403).json({ error: 'Лимит бесплатной версии — 10 аккаунтов. Оформите PRO!' });
-    }
-
-    // Сохраняем или обновляем
-    if (existing) {
-      await prisma.account.update({
-        where: { id: existing.id },
-        data: { accessToken, avatarUrl: group.photo_50, name: group.name, isValid: true, errorMsg: null }
-      });
-    } else {
-      await prisma.account.create({
-        data: {
-          userId: String(userId), provider: 'VK', providerId: safeProviderId,
-          name: group.name, accessToken, avatarUrl: group.photo_50
-        }
-      });
-    }
-
-    res.json({ success: true, group: { name: group.name, avatar: group.photo_50 } });
-  } catch (error) {
-    console.error('Ошибка ВК:', error);
-    res.status(500).json({ error: 'Ошибка сервера при проверке ключа ВК' });
-  }
-};
-
-// === ИЗОЛИРОВАННАЯ ЛОГИКА ВКОНТАКТЕ ===
-
-exports.saveVkGroupWithToken = async (req, res) => {
-  const { userId, groupLink, accessToken } = req.body;
-
-  try {
-    if (!userId || !groupLink || !accessToken) {
-      return res.status(400).json({ error: 'Укажите ссылку на группу и ключ доступа' });
-    }
-
-    // 1. УМНЫЙ ПАРСИНГ (Срезаем всё лишнее со ссылки)
     let groupId = groupLink.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?vk\.com\//i, '').split('/')[0].split('?')[0].split('#')[0].trim();
 
-    // 2. Запрос в ВК
     const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
       params: { group_id: groupId, access_token: accessToken, v: '5.131' }
     });
@@ -523,12 +424,20 @@ exports.saveVkGroupWithToken = async (req, res) => {
 
     const group = vkRes.data.response[0];
     
-    // 3. ЗАЩИТА ОТ КРАША СЕРВЕРА (Из-за этого была ошибка 502)
     if (!group || !group.id) {
       return res.status(400).json({ error: 'Группа не найдена. Проверьте правильность ссылки.' });
     }
 
     const safeProviderId = String(group.id);
+
+    // === ПРОВЕРКА НА УГОН: Нельзя добавить чужую группу ===
+    const isTaken = await prisma.account.findFirst({
+      where: { provider: 'VK', providerId: safeProviderId }
+    });
+
+    if (isTaken && isTaken.userId !== String(userId)) {
+      return res.status(400).json({ error: `Сообщество "${group.name}" уже привязано к другому пользователю платформы!` });
+    }
 
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
     const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
@@ -556,12 +465,10 @@ exports.saveVkGroupWithToken = async (req, res) => {
 
     res.json({ success: true, group: { name: group.name, avatar: group.photo_50 } });
   } catch (error) {
-    console.error('Ошибка ВК:', error);
     res.status(500).json({ error: 'Внутренняя ошибка сервера. Попробуйте еще раз.' });
   }
 };
 
-// 2. Отдельная проверка статусов только для ВК
 exports.verifyVkAccountsStatus = async (req, res) => {
   const userId = req.user?.userId || req.user?.id || req.body?.userId;
 
