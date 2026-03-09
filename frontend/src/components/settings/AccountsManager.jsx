@@ -25,6 +25,13 @@ export default function AccountsManager() {
   const [savingSignature, setSavingSignature] = useState({});
   const [savingWatermark, setSavingWatermark] = useState({});
   const [isModalSaving, setIsModalSaving] = useState(false);
+
+  const saveVkGroupWithToken = useStore((state) => state.saveVkGroupWithToken);
+  
+  // === ВК СТЕЙТЫ ===
+  const [vkLinkInput, setVkLinkInput] = useState('');
+  const [vkTokenInput, setVkTokenInput] = useState('');
+  const [isAddingVk, setIsAddingVk] = useState(false);
   
   const [expandedId, setExpandedId] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -298,6 +305,22 @@ export default function AccountsManager() {
     setIsAddingTg(false);
   };
 
+  const handleAddVk = async () => {
+    if (isLimitReached) return alert('Лимит аккаунтов исчерпан! Оформите PRO.');
+    if (!vkLinkInput.trim() || !vkTokenInput.trim()) return alert('Заполните ссылку и токен!');
+    
+    setIsAddingVk(true);
+    const res = await saveVkGroupWithToken(user.id, vkLinkInput, vkTokenInput);
+    
+    if (res.success) {
+      setVkLinkInput('');
+      setVkTokenInput('');
+    } else {
+      alert(res.error || 'Ошибка при добавлении группы');
+    }
+    setIsAddingVk(false);
+  };
+
   const renderAccountCard = (acc, providerIcon, providerColor, providerName) => {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
@@ -509,20 +532,25 @@ export default function AccountsManager() {
         </div>
 
         {/* ВКОНТАКТЕ */}
-        <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col h-full opacity-80">
-          <div className="absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 bg-[#0077FF]/10 blur-[40px] sm:blur-[50px] rounded-full pointer-events-none"></div>
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 bg-[#0077FF] rounded-md flex items-center justify-center font-bold text-[10px] text-white shrink-0">K</span> ВКонтакте
-            </h2>
-            <p className="text-xs sm:text-sm text-gray-400 mb-5">Подключение сообществ ВКонтакте находится в процессе глобального обновления.</p>
+        <div className="mt-auto pt-2 flex flex-col gap-3">
+            <input 
+              type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
+              placeholder="Ссылка: vk.com/public123" 
+              disabled={isLimitReached}
+              className="w-full bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
+            />
+            <div className="flex flex-col sm:flex-row gap-3">
+              <input 
+                type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)}
+                placeholder="Ключ доступа (токен)" 
+                disabled={isLimitReached}
+                className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
+              />
+              <button onClick={handleAddVk} disabled={isAddingVk || isLimitReached || !vkLinkInput || !vkTokenInput} className="shrink-0 bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap min-h-[48px] shadow-lg shadow-[#0077FF]/20 active:scale-95">
+                {isAddingVk ? <RefreshCw className="animate-spin shrink-0" size={18} /> : <Plus size={18} className="shrink-0"/>} Добавить
+              </button>
+            </div>
           </div>
-          <div className="mt-auto pt-2">
-            <button disabled className="w-full bg-gray-800/80 text-gray-500 border border-gray-700/80 py-3.5 sm:py-3 rounded-xl font-bold flex items-center justify-center gap-2 text-sm cursor-not-allowed min-h-[48px]">
-              Подключить ВКонтакте <span className="text-[9px] sm:text-[10px] uppercase tracking-wider bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded-full ml-1">Скоро</span>
-            </button>
-          </div>
-        </div>
 
       </div>
 
