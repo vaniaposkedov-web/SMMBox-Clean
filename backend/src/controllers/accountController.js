@@ -501,7 +501,6 @@ exports.saveVkGroupWithToken = async (req, res) => {
 
 // === ИЗОЛИРОВАННАЯ ЛОГИКА ВКОНТАКТЕ ===
 
-// 1. Сохранение группы ВК по токену
 exports.saveVkGroupWithToken = async (req, res) => {
   const { userId, groupLink, accessToken } = req.body;
 
@@ -510,8 +509,10 @@ exports.saveVkGroupWithToken = async (req, res) => {
       return res.status(400).json({ error: 'Укажите ссылку на группу и ключ доступа' });
     }
 
-    let groupId = groupLink.replace('https://vk.com/', '').replace('http://vk.com/', '').replace('/', '').trim();
+    // 1. УМНЫЙ ПАРСИНГ (Срезаем всё лишнее со ссылки)
+    let groupId = groupLink.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?vk\.com\//i, '').split('/')[0].split('?')[0].split('#')[0].trim();
 
+    // 2. Запрос в ВК
     const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
       params: { group_id: groupId, access_token: accessToken, v: '5.131' }
     });
@@ -521,6 +522,12 @@ exports.saveVkGroupWithToken = async (req, res) => {
     }
 
     const group = vkRes.data.response[0];
+    
+    // 3. ЗАЩИТА ОТ КРАША СЕРВЕРА (Из-за этого была ошибка 502)
+    if (!group || !group.id) {
+      return res.status(400).json({ error: 'Группа не найдена. Проверьте правильность ссылки.' });
+    }
+
     const safeProviderId = String(group.id);
 
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
@@ -549,7 +556,8 @@ exports.saveVkGroupWithToken = async (req, res) => {
 
     res.json({ success: true, group: { name: group.name, avatar: group.photo_50 } });
   } catch (error) {
-    res.status(500).json({ error: 'Ошибка сервера при проверке ключа ВК' });
+    console.error('Ошибка ВК:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера. Попробуйте еще раз.' });
   }
 };
 
