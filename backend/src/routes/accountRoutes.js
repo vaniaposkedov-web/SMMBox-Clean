@@ -1,21 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const accountController = require('../controllers/accountController');
-const authMiddleware = require('../middleware/auth');
+const authMiddleware = require('../middleware/authMiddleware');
 
-// Этот роут вызывает сам ВКонтакте, поэтому здесь не нужна проверка авторизации (JWT)
-router.get('/vk/callback', accountController.vkCallback);
-router.post('/vk/save', authMiddleware, accountController.saveVkGroups);
-router.post('/tg/save', authMiddleware, accountController.saveTgAccounts);
-router.post('/tg/scan', authMiddleware, accountController.scanTgChannels);
-router.post('/tg/verify-status', authMiddleware, accountController.verifyTgAccountsStatus);
-router.post('/vk/save-by-token', authMiddleware, accountController.saveVkGroupWithToken);
-router.post('/vk/verify-status', authMiddleware, accountController.verifyVkAccountsStatus);
+// === МАРШРУТЫ ПРОФИЛЕЙ (НОВОЕ) ===
+router.post('/profiles/link', authMiddleware, accountController.linkSocialProfile);
+router.get('/profiles', accountController.getProfiles);
 
-router.get('/global/settings', authMiddleware, accountController.getGlobalSettings);
-router.put('/global/settings', authMiddleware, accountController.saveGlobalSettings);
+// === МАРШРУТЫ ГРУПП И КАНАЛОВ ===
 router.get('/', accountController.getAccounts);
 router.delete('/:id', authMiddleware, accountController.deleteAccount);
-router.put('/:id/design', accountController.saveAccountDesign);
+router.post('/tg/save', authMiddleware, accountController.saveTgAccounts);
+router.post('/tg/verify-status', authMiddleware, accountController.verifyTgAccountsStatus);
+router.post('/tg/scan', authMiddleware, accountController.scanTgChannels);
+router.post('/vk/save', authMiddleware, accountController.saveVkGroups);
+router.post('/vk/save-by-token', authMiddleware, accountController.saveVkGroupWithToken);
+router.post('/vk/verify-status', authMiddleware, accountController.verifyVkAccountsStatus);
+router.put('/:id/design', authMiddleware, accountController.saveAccountDesign);
+router.get('/global/settings', authMiddleware, accountController.getGlobalSettings);
+router.put('/global/settings', authMiddleware, accountController.saveGlobalSettings);
 
 module.exports = router;

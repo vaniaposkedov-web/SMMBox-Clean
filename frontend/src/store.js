@@ -7,13 +7,12 @@ export const useStore = create(
       user: null,
       token: null,
       accounts: [],
+      profiles: [], // НОВОЕ: Хранилище профилей
       posts: [],
       myPartners: [],
       incomingRequests: [],
       outgoingRequests: [],
       notifications: [],
-      
-      // === НОВЫЕ ДАННЫЕ ДЛЯ ПАРТНЕРОВ ===
       sharedIncoming: [],
       sharedOutgoing: [],
       scheduledPosts: [],
@@ -62,36 +61,54 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
+      // === НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ПРОФИЛЯМИ ===
+      fetchProfiles: async (userId) => {
+        try {
+          const res = await fetch(`/api/accounts/profiles?userId=${userId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success) set({ profiles: data.profiles });
+          }
+        } catch (error) {
+          console.error("Ошибка загрузки профилей:", error);
+        }
+      },
+
+      linkSocialProfile: async (userId, provider, providerAccountId, name, avatarUrl, accessToken) => {
+        try {
+          const res = await fetch('/api/accounts/profiles/link', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
+            body: JSON.stringify({ userId, provider, providerAccountId, name, avatarUrl, accessToken })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            get().fetchProfiles(userId);
+            return { success: true, profile: data.profile };
+          }
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения с сервером' };
+        }
+      },
+
+      // === ОСТАЛЬНЫЕ ФУНКЦИИ (БЕЗ ИЗМЕНЕНИЙ) ===
       fetchScheduledPosts: async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
-          
-          const res = await fetch('/api/posts/scheduled', { 
-            headers: { 'Authorization': `Bearer ${token}` } 
-          });
-          
-          if (!res.ok) {
-            console.error("Сервер недоступен, статус:", res.status);
-            return; 
-          }
-
+          const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${token}` } });
+          if (!res.ok) return;
           const data = await res.json(); 
-          const postsArray = data.posts || data.scheduledPosts || []; 
-          set({ scheduledPosts: postsArray }); 
-          
-        } catch (error) {
-           console.error("Ошибка сети:", error);
-        }
+          set({ scheduledPosts: data.posts || data.scheduledPosts || [] }); 
+        } catch (error) {}
       },
 
       deleteScheduledPostAction: async (id) => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
-          const res = await fetch(`/api/posts/scheduled/${id}`, {
-            method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }
-          });
+          const res = await fetch(`/api/posts/scheduled/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
           if (res.ok) get().fetchScheduledPosts();
         } catch (error) {}
       },
@@ -99,81 +116,60 @@ export const useStore = create(
       scanTelegramChannels: async (botToken) => {
         try {
           const res = await fetch('/api/accounts/tg/scan', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${get().token}` 
-            },
-            body: JSON.stringify({ botToken })
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ botToken })
           });
           const data = await res.json();
           if (res.ok && data.success) return { success: true, channels: data.channels };
           return { success: false, error: data.error || 'Ошибка сканирования' };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения с сервером' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
       },
 
       login: async (email, password) => {
         try {
           const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password })
           });
           const data = await res.json();
           if (res.ok) {
             set({ user: data.user, token: data.token });
             localStorage.setItem('token', data.token);
+            get().fetchProfiles(data.user.id);
             return { success: true };
           }
           return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения с сервером' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка сервера' }; }
       },
 
       register: async (email, password, name, phone) => {
         try {
           const res = await fetch('/api/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, name, phone })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, name, phone })
           });
           const data = await res.json();
           if (res.ok) return { success: true };
           return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения с сервером' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка сервера' }; }
       },
 
       vkLogin: async (vkData) => {
         try {
           const res = await fetch('/api/auth/vk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(vkData),
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vkData),
           });
           const data = await res.json();
-          
           if (!res.ok) return { success: false, error: data.error };
           if (data.requiresEmailVerification) return { success: true, requiresEmailVerification: true, userId: data.userId };
-          
           set({ user: data.user, token: data.token });
           localStorage.setItem('token', data.token);
+          get().fetchProfiles(data.user.id);
           return { success: true };
-        } catch (error) {
-          return { success: false, error: 'Ошибка сети при входе через ВК' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
 
       telegramLogin: async (telegramData) => {
         try {
           const res = await fetch('/api/auth/telegram', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(telegramData)
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(telegramData)
           });
           const data = await res.json();
           if (res.ok) {
@@ -182,118 +178,83 @@ export const useStore = create(
             return { success: true };
           }
           return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка сервера' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка сервера' }; }
       },
 
       requestEmailLink: async (userId, email) => {
         try {
           const res = await fetch('/api/auth/request-link-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, email }),
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, email }),
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
           return { success: true };
-        } catch (error) {
-          return { success: false, error: 'Ошибка сети' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
 
       saveTgAccounts: async (userId, channels) => {
         try {
           const res = await fetch('/api/accounts/tg/save', {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${get().token}`
-            },
-            body: JSON.stringify({ userId, channels })
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId, channels })
           });
           const data = await res.json();
           if (res.ok && data.success) {
             get().fetchAccounts(userId);
+            get().fetchProfiles(userId);
             return { success: true };
           }
           return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка сети' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
 
       verifyAccountsStatus: async () => {
         try {
           const user = get().user;
           if (!user?.id) return;
-
           const res = await fetch('/api/accounts/tg/verify-status', {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${get().token}`
-            },
-            body: JSON.stringify({ userId: user.id })
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId: user.id })
           });
-          
-          if (res.ok) {
-            get().fetchAccounts(user.id); 
-          }
+          if (res.ok) get().fetchAccounts(user.id); 
         } catch (error) {}
       },
 
       verifyEmailLink: async (userId, email, code, phone) => { 
         try {
           const res = await fetch('/api/auth/verify-link-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, email, code, phone }), 
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, email, code, phone }), 
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
           return { success: true };
-        } catch (error) {
-          return { success: false, error: 'Ошибка сети' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
 
       forgotPasswordAction: async (email) => {
         try {
           const res = await fetch('/api/auth/forgot-password', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
           });
           const data = await res.json();
           if (res.ok) return { success: true };
           return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
       },
 
       resetPasswordAction: async (token, newPassword) => {
         try {
           const res = await fetch(`/api/auth/reset-password/${token}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: newPassword })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: newPassword })
           });
           const data = await res.json();
           if (res.ok) return { success: true };
           return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
       },
 
       updateUser: async (formData) => {
         try {
           const res = await fetch('/api/auth/profile', {
-            method: 'PUT',
-            headers: { 'Authorization': `Bearer ${get().token}` },
-            body: formData
+            method: 'PUT', headers: { 'Authorization': `Bearer ${get().token}` }, body: formData
           });
           const data = await res.json();
           if (data.success) {
@@ -301,16 +262,13 @@ export const useStore = create(
             return { success: true };
           }
           return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка сети' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
 
       logout: () => {
         localStorage.removeItem('token');
         set({ 
-          user: null, token: null, myPartners: [], incomingRequests: [], notifications: [],
-          sharedIncoming: [], sharedOutgoing: [],
+          user: null, token: null, accounts: [], profiles: [], myPartners: [], incomingRequests: [], notifications: [], sharedIncoming: [], sharedOutgoing: [],
           publishDraft: { step: 1, photos: [], text: '', accountIds: [], isScheduled: false, publishDate: '' }
         });
       },
@@ -320,12 +278,7 @@ export const useStore = create(
           const res = await fetch(`/api/partners/data?userId=${userId}`);
           if (res.ok) {
             const data = await res.json();
-            set({ 
-              myPartners: data.partners, 
-              incomingRequests: data.incomingRequests, 
-              outgoingRequests: data.outgoingRequests,
-              notifications: data.notifications 
-            });
+            set({ myPartners: data.partners, incomingRequests: data.incomingRequests, outgoingRequests: data.outgoingRequests, notifications: data.notifications });
           }
         } catch (error) {}
       },
@@ -341,12 +294,7 @@ export const useStore = create(
       saveVkAccounts: async (userId, accessToken, selectedGroups) => {
         try {
           const res = await fetch('/api/accounts/vk/save', {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${get().token}`
-            },
-            body: JSON.stringify({ userId, accessToken, groups: selectedGroups })
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId, accessToken, groups: selectedGroups })
           });
           const data = await res.json();
           if (res.ok && data.success) {
@@ -354,43 +302,31 @@ export const useStore = create(
             return { success: true };
           }
           return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения с сервером' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка сервера' }; }
       },
 
       sendPartnershipRequest: async (requesterId, receiverId) => {
-        await fetch('/api/partners/request', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId, receiverId })
-        });
+        await fetch('/api/partners/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId, receiverId }) });
         get().fetchPartnerData(requesterId);
       },
 
       acceptPartnership: async (partnershipId) => {
-        await fetch('/api/partners/accept', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId })
-        });
+        await fetch('/api/partners/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId }) });
         get().fetchPartnerData(get().user.id);
       },
 
       declinePartnership: async (partnershipId) => {
-        await fetch('/api/partners/decline', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId })
-        });
+        await fetch('/api/partners/decline', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId }) });
         get().fetchPartnerData(get().user.id);
       },
 
       removePartnerAction: async (currentUserId, partnerId) => {
-        await fetch('/api/partners/remove', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentUserId, partnerId })
-        });
+        await fetch('/api/partners/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentUserId, partnerId }) });
         get().fetchPartnerData(currentUserId);
       },
 
       clearNotifications: async (userId) => {
-        await fetch('/api/partners/notifications/clear', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId })
-        });
+        await fetch('/api/partners/notifications/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
         get().fetchPartnerData(userId);
       },
 
@@ -408,9 +344,7 @@ export const useStore = create(
       
       fetchGlobalSettings: async () => {
         try {
-          const res = await fetch('/api/accounts/global/settings', {
-            headers: { 'Authorization': `Bearer ${get().token}` }
-          });
+          const res = await fetch('/api/accounts/global/settings', { headers: { 'Authorization': `Bearer ${get().token}` } });
           if (res.ok) {
             const data = await res.json();
             set({ globalSettings: { signature: data.signature, watermark: data.watermark } });
@@ -421,24 +355,16 @@ export const useStore = create(
       saveGlobalSettings: async (signature, watermarkData) => {
         try {
           const res = await fetch('/api/accounts/global/settings', {
-            method: 'PUT', 
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
-            body: JSON.stringify({ signature, watermark: watermarkData })
+            method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ signature, watermark: watermarkData })
           });
-          if (res.ok) {
-            get().fetchGlobalSettings();
-            return { success: true };
-          }
+          if (res.ok) { get().fetchGlobalSettings(); return { success: true }; }
           return { success: false };
         } catch (error) { return { success: false }; }
       },
 
       removeAccount: async (accountId) => {
         try {
-          const res = await fetch(`/api/accounts/${accountId}`, { 
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${get().token}` }
-          });
+          const res = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` } });
           if (res.ok) get().fetchAccounts(get().user.id);
         } catch (error) {}
       },
@@ -446,17 +372,9 @@ export const useStore = create(
       saveAccountDesign: async (accountId, signature, watermarkData) => {
         try {
           const res = await fetch(`/api/accounts/${accountId}/design`, {
-            method: 'PUT', 
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${get().token}` 
-            }, 
-            body: JSON.stringify({ signature, watermark: watermarkData })
+            method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ signature, watermark: watermarkData })
           });
-          if (res.ok) {
-            get().fetchAccounts(get().user.id);
-            return { success: true };
-          }
+          if (res.ok) { get().fetchAccounts(get().user.id); return { success: true }; }
           return { success: false };
         } catch (error) { return { success: false }; }
       },
@@ -464,38 +382,23 @@ export const useStore = create(
      createPostAction: async (text, mediaUrls, accountIds, accountsData, publishAt) => {
         try {
           const res = await fetch('/api/posts/create', {
-            method: 'POST', 
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${get().token}` 
-            }, 
-            body: JSON.stringify({ 
-              text, mediaUrls: mediaUrls, accountIds: accountIds, 
-              accounts: accountsData, publishAt 
-            })
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
+            body: JSON.stringify({ text, mediaUrls: mediaUrls, accountIds: accountIds, accounts: accountsData, publishAt })
           });
           const data = await res.json();
-          
           if (res.ok && data.success) {
-            if (publishAt) {
-              get().fetchScheduledPosts();
-            }
+            if (publishAt) get().fetchScheduledPosts();
             return { success: true };
           }
-          
           return { success: false, error: data.error || 'Ошибка при обработке сервером' };
-        } catch (error) { 
-          return { success: false, error: 'Ошибка соединения с сервером.' }; 
-        }
+        } catch (error) { return { success: false, error: 'Ошибка соединения.' }; }
       },
 
       fetchSharedPosts: async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
-          const res = await fetch('/api/posts/shared', { 
-            headers: { 'Authorization': `Bearer ${token}` } 
-          });
+          const res = await fetch('/api/posts/shared', { headers: { 'Authorization': `Bearer ${token}` } });
           if (res.ok) {
             const data = await res.json();
             set({ sharedIncoming: data.incoming, sharedOutgoing: data.outgoing });
@@ -508,9 +411,7 @@ export const useStore = create(
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
           const res = await fetch('/api/posts/share', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ text, mediaUrls, partnerIds })
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ text, mediaUrls, partnerIds })
           });
           const data = await res.json();
           if (res.ok && data.success) {
@@ -524,20 +425,15 @@ export const useStore = create(
       saveVkGroupWithToken: async (userId, groupLink, accessToken) => {
         try {
           const res = await fetch('/api/accounts/vk/save-by-token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
-            body: JSON.stringify({ userId, groupLink, accessToken })
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId, groupLink, accessToken })
           });
           const data = await res.json();
           if (res.ok && data.success) {
             get().fetchAccounts(userId); 
-            // === ИСПРАВЛЕНИЕ: ВОЗВРАЩАЕМ ДАННЫЕ ГРУППЫ НА ФРОНТЕНД ===
             return { success: true, group: data.group };
           }
           return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения с сервером' };
-        }
+        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
       },
 
       verifyVkAccountsStatus: async () => {
@@ -545,21 +441,15 @@ export const useStore = create(
           const user = get().user;
           if (!user?.id) return;
           const res = await fetch('/api/accounts/vk/verify-status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
-            body: JSON.stringify({ userId: user.id })
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId: user.id })
           });
-          if (res.ok) {
-            get().fetchAccounts(user.id); 
-          }
+          if (res.ok) get().fetchAccounts(user.id); 
         } catch (error) {}
       },
 
       deleteSharedPostAction: async (id) => {
         try {
-          const res = await fetch(`/api/posts/shared/${id}`, {
-            method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` }
-          });
+          const res = await fetch(`/api/posts/shared/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` } });
           if (res.ok) get().fetchSharedPosts();
         } catch (error) {}
       }

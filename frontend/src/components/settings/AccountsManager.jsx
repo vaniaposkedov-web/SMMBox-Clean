@@ -6,38 +6,37 @@ import {
   ChevronDown, Copy, Check, LayoutTemplate,
   Settings2, Image as ImageIcon, Type, X,
   Sliders, Type as TypeIcon, Upload, RotateCw, Palette,
-  ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move, Loader2, CheckCircle2
+  ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move, Loader2, CheckCircle2, UserCircle
 } from 'lucide-react';
 
 export default function AccountsManager() {
   const navigate = useNavigate();
   const user = useStore((state) => state.user);
   const accounts = useStore((state) => state.accounts) || [];
+  const profiles = useStore((state) => state.profiles) || [];
   const fetchAccounts = useStore((state) => state.fetchAccounts);
+  const fetchProfiles = useStore((state) => state.fetchProfiles);
   
-  // Функции ТГ
   const verifyAccountsStatus = useStore((state) => state.verifyAccountsStatus);
-  
-  // Функции ВК
   const saveVkGroupWithToken = useStore((state) => state.saveVkGroupWithToken);
   const verifyVkAccountsStatus = useStore((state) => state.verifyVkAccountsStatus);
+  const linkSocialProfile = useStore((state) => state.linkSocialProfile);
 
   const removeAccount = useStore((state) => state.removeAccount);
   const saveAccountDesign = useStore((state) => state.saveAccountDesign);
   const token = useStore((state) => state.token);
 
-  // === ТГ СТЕЙТЫ ===
   const [tgInput, setTgInput] = useState('');
   const [isAddingTg, setIsAddingTg] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
 
-  // === ВК СТЕЙТЫ ===
   const [vkStep, setVkStep] = useState(1);
   const [vkLinkInput, setVkLinkInput] = useState('');
   const [vkTokenInput, setVkTokenInput] = useState('');
   const [isAddingVk, setIsAddingVk] = useState(false);
   const [isVerifyingVk, setIsVerifyingVk] = useState(false);
   const [vkSuccessMsg, setVkSuccessMsg] = useState('');
+  const [isVkProfileLoading, setIsVkProfileLoading] = useState(false);
 
   const [savingSignature, setSavingSignature] = useState({});
   const [savingWatermark, setSavingWatermark] = useState({});
@@ -63,7 +62,6 @@ export default function AccountsManager() {
     'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
   };
 
-  // === ЛОГИКА ЛИМИТОВ ===
   const isPro = user?.isPro || false;
   const accountsLimit = 10;
   const currentCount = accounts.length;
@@ -71,6 +69,7 @@ export default function AccountsManager() {
 
   useEffect(() => {
     if (user?.id) {
+      fetchProfiles(user.id);
       fetchAccounts(user.id).then(() => {
         if (verifyAccountsStatus) verifyAccountsStatus();
         if (verifyVkAccountsStatus) verifyVkAccountsStatus();
@@ -80,77 +79,72 @@ export default function AccountsManager() {
 
   const tgAccounts = accounts.filter(a => a.provider === 'TELEGRAM');
   const vkAccounts = accounts.filter(a => a.provider === 'VK');
+  const vkProfiles = profiles.filter(p => p.provider === 'VK');
+  const hasVkProfile = vkProfiles.length > 0;
+
+  const handleVkConnectProfile = () => {
+    setIsVkProfileLoading(true);
+
+    const cleanAppId = String(import.meta.env.VITE_VK_APP_ID || '54471878').replace(/['"]/g, '').trim();
+    const cleanRedirectUri = String(import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback').replace(/['"]/g, '').trim();
+    const scope = 'groups,wall,photos,video,docs,offline';
+    const url = `https://oauth.vk.com/authorize?client_id=${cleanAppId}&display=popup&redirect_uri=${encodeURIComponent(cleanRedirectUri)}&scope=${scope}&response_type=code&v=5.199`;
+
+    const width = 600; const height = 700;
+    const left = window.screen.width / 2 - width / 2; const top = window.screen.height / 2 - height / 2;
+    const popup = window.open(url, 'vk_auth', `width=${width},height=${height},top=${top},left=${left},status=yes,scrollbars=yes`);
+    
+    const messageListener = async (event) => {
+      if (event.data?.type === 'VK_GROUPS_LOADED') {
+        const { accessToken, profile } = event.data.payload;
+        const name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Профиль ВК';
+        
+        await linkSocialProfile(user.id, 'VK', profile.id, name, profile.photo_100, accessToken);
+        setIsVkProfileLoading(false);
+        window.removeEventListener('message', messageListener);
+      } else if (event.data?.type === 'VK_AUTH_ERROR') {
+        alert('Ошибка авторизации: ' + event.data.error);
+        setIsVkProfileLoading(false);
+        window.removeEventListener('message', messageListener);
+      }
+    };
+
+    window.addEventListener('message', messageListener);
+
+    const checkClosed = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(checkClosed);
+        if (isVkProfileLoading) { setIsVkProfileLoading(false); window.removeEventListener('message', messageListener); }
+      }
+    }, 1000);
+  };
 
   const copyBotName = (e) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText('@smmbox_auth_bot');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    e.stopPropagation(); navigator.clipboard.writeText('@smmbox_auth_bot');
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleManualVerify = async (e) => {
-    if (e) e.stopPropagation();
-    setIsVerifying(true);
-    if (verifyAccountsStatus) await verifyAccountsStatus();
-    setIsVerifying(false);
-  };
-
-  const handleManualVerifyVk = async (e) => {
-    if (e) e.stopPropagation();
-    setIsVerifyingVk(true);
-    if (verifyVkAccountsStatus) await verifyVkAccountsStatus();
-    setIsVerifyingVk(false);
-  };
+  const handleManualVerify = async (e) => { if (e) e.stopPropagation(); setIsVerifying(true); if (verifyAccountsStatus) await verifyAccountsStatus(); setIsVerifying(false); };
+  const handleManualVerifyVk = async (e) => { if (e) e.stopPropagation(); setIsVerifyingVk(true); if (verifyVkAccountsStatus) await verifyVkAccountsStatus(); setIsVerifyingVk(false); };
 
   const toggleExpand = (acc) => {
-    if (expandedId === acc.id) {
-      setExpandedId(null);
-    } else {
-      setExpandedId(acc.id);
-      setLocalSignatures(prev => ({ ...prev, [acc.id]: acc.signature || '' }));
-    }
+    if (expandedId === acc.id) { setExpandedId(null); } else { setExpandedId(acc.id); setLocalSignatures(prev => ({ ...prev, [acc.id]: acc.signature || '' })); }
   };
 
-  const handleSignatureChange = (id, value) => {
-    setLocalSignatures(prev => ({ ...prev, [id]: value }));
-  };
+  const handleSignatureChange = (id, value) => { setLocalSignatures(prev => ({ ...prev, [id]: value })); };
 
-  const saveSignatureOnly = async (acc) => {
-    setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
-    await saveAccountDesign(acc.id, localSignatures[acc.id] || "", undefined);
-    setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
-  };
-
-  const setGlobalSignature = async (acc) => {
-    setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
-    await saveAccountDesign(acc.id, null, undefined);
-    setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
-  };
-
-  const enableCustomSignature = async (acc) => {
-    setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
-    await saveAccountDesign(acc.id, acc.signature || "", undefined);
-    setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
-  };
-
-  const setGlobalWatermark = async (acc) => {
-    setSavingWatermark(prev => ({ ...prev, [acc.id]: true }));
-    await saveAccountDesign(acc.id, undefined, null);
-    setSavingWatermark(prev => ({ ...prev, [acc.id]: false }));
-  };
+  const saveSignatureOnly = async (acc) => { setSavingSignature(prev => ({ ...prev, [acc.id]: true })); await saveAccountDesign(acc.id, localSignatures[acc.id] || "", undefined); setSavingSignature(prev => ({ ...prev, [acc.id]: false })); };
+  const setGlobalSignature = async (acc) => { setSavingSignature(prev => ({ ...prev, [acc.id]: true })); await saveAccountDesign(acc.id, null, undefined); setSavingSignature(prev => ({ ...prev, [acc.id]: false })); };
+  const enableCustomSignature = async (acc) => { setSavingSignature(prev => ({ ...prev, [acc.id]: true })); await saveAccountDesign(acc.id, acc.signature || "", undefined); setSavingSignature(prev => ({ ...prev, [acc.id]: false })); };
+  const setGlobalWatermark = async (acc) => { setSavingWatermark(prev => ({ ...prev, [acc.id]: true })); await saveAccountDesign(acc.id, undefined, null); setSavingWatermark(prev => ({ ...prev, [acc.id]: false })); };
 
   const openDesignModal = (acc) => {
     const initialPos = acc.watermark?.position || 'br';
     const coords = (acc.watermark?.x !== undefined && acc.watermark?.x !== null) ? {x: acc.watermark.x, y: acc.watermark.y} : posToCoords[initialPos];
-
     setLocalWatermark({
-      type: 'text', text: 'SMMBOX', image: null,
-      opacity: 90, size: 100, angle: 0,
+      type: 'text', text: 'SMMBOX', image: null, opacity: 90, size: 100, angle: 0,
       textColor: '#FFFFFF', bgColor: '#000000', hasBackground: true,
-      ...acc.watermark,
-      position: initialPos,
-      x: coords.x,
-      y: coords.y
+      ...acc.watermark, position: initialPos, x: coords.x, y: coords.y
     });
     setWatermarkTab('simple');
     setDesignModal({ isOpen: true, account: acc });
@@ -179,47 +173,32 @@ export default function AccountsManager() {
   const handleAngleChange = (e) => {
     let val = Number(e.target.value);
     const snapPoints = [-180, -90, 0, 90, 180];
-    for (let snap of snapPoints) {
-      if (Math.abs(val - snap) <= 6) { val = snap; break; }
-    }
+    for (let snap of snapPoints) { if (Math.abs(val - snap) <= 6) { val = snap; break; } }
     setLocalWatermark({...localWatermark, angle: val});
   };
 
   const handlePointerDown = (e) => {
-    e.preventDefault();
-    e.stopPropagation(); 
-    setIsDragging(true);
-    
+    e.preventDefault(); e.stopPropagation(); setIsDragging(true);
     const rect = previewRef.current.getBoundingClientRect();
-    const startMouseX = e.clientX || e.touches?.[0]?.clientX;
-    const startMouseY = e.clientY || e.touches?.[0]?.clientY;
-    const startWX = localWatermark.x ?? 50;
-    const startWY = localWatermark.y ?? 50;
+    const startMouseX = e.clientX || e.touches?.[0]?.clientX; const startMouseY = e.clientY || e.touches?.[0]?.clientY;
+    const startWX = localWatermark.x ?? 50; const startWY = localWatermark.y ?? 50;
 
     const handlePointerMove = (moveEvent) => {
       if (moveEvent.cancelable) moveEvent.preventDefault(); 
-      
-      const clientX = moveEvent.clientX || moveEvent.touches?.[0]?.clientX;
-      const clientY = moveEvent.clientY || moveEvent.touches?.[0]?.clientY;
-      const percentDx = ((clientX - startMouseX) / rect.width) * 100;
-      const percentDy = ((clientY - startMouseY) / rect.height) * 100;
-      let newX = Math.max(0, Math.min(100, startWX + percentDx));
-      let newY = Math.max(0, Math.min(100, startWY + percentDy));
+      const clientX = moveEvent.clientX || moveEvent.touches?.[0]?.clientX; const clientY = moveEvent.clientY || moveEvent.touches?.[0]?.clientY;
+      const percentDx = ((clientX - startMouseX) / rect.width) * 100; const percentDy = ((clientY - startMouseY) / rect.height) * 100;
+      let newX = Math.max(0, Math.min(100, startWX + percentDx)); let newY = Math.max(0, Math.min(100, startWY + percentDy));
       setLocalWatermark(prev => ({ ...prev, x: newX, y: newY, position: 'custom' }));
     };
 
     const handlePointerUp = () => {
       setIsDragging(false);
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      window.removeEventListener('touchmove', handlePointerMove);
-      window.removeEventListener('touchend', handlePointerUp);
+      window.removeEventListener('pointermove', handlePointerMove); window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('touchmove', handlePointerMove); window.removeEventListener('touchend', handlePointerUp);
     };
 
-    window.addEventListener('pointermove', handlePointerMove, { passive: false });
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('touchmove', handlePointerMove, { passive: false });
-    window.addEventListener('touchend', handlePointerUp);
+    window.addEventListener('pointermove', handlePointerMove, { passive: false }); window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('touchmove', handlePointerMove, { passive: false }); window.addEventListener('touchend', handlePointerUp);
   };
 
   const handleBackgroundClick = (e) => {
@@ -245,8 +224,7 @@ export default function AccountsManager() {
     return (
       <div className="grid grid-cols-3 gap-2 bg-black/30 p-2.5 rounded-xl border border-gray-800">
         {positions.map(pos => {
-          const Icon = pos.icon;
-          const isActive = localWatermark.position === pos.id;
+          const Icon = pos.icon; const isActive = localWatermark.position === pos.id;
           return (
             <button 
               key={pos.id} onClick={() => handleGridClick(pos.id)}
@@ -265,9 +243,7 @@ export default function AccountsManager() {
       <div className="space-y-2">
         <label className="text-xs font-semibold text-gray-400 uppercase flex justify-between items-center min-h-[24px]">
           {label}
-          {hasCheckbox && (
-            <input type="checkbox" checked={localWatermark[checkboxKey] !== false} onChange={e => setLocalWatermark({...localWatermark, [checkboxKey]: e.target.checked})} className="accent-blue-500 w-5 h-5 cursor-pointer" />
-          )}
+          {hasCheckbox && ( <input type="checkbox" checked={localWatermark[checkboxKey] !== false} onChange={e => setLocalWatermark({...localWatermark, [checkboxKey]: e.target.checked})} className="accent-blue-500 w-5 h-5 cursor-pointer" /> )}
         </label>
         <div className={`space-y-2 transition-opacity duration-200 ${(hasCheckbox && localWatermark[checkboxKey] === false) ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
           <div className="flex items-center gap-2 bg-black/40 border border-gray-700 rounded-xl p-1.5 pr-3 w-full min-h-[44px]">
@@ -276,9 +252,7 @@ export default function AccountsManager() {
             <Palette size={16} className="text-gray-500 shrink-0"/>
           </div>
           <div className="flex gap-2 justify-between pt-1">
-            {presetColors.map(c => (
-              <button key={c} onClick={() => setLocalWatermark({...localWatermark, [colorKey]: c})} className="w-6 h-6 sm:w-5 sm:h-5 rounded-full border border-gray-600 transition-transform hover:scale-110 shadow-sm" style={{ backgroundColor: c }} />
-            ))}
+            {presetColors.map(c => ( <button key={c} onClick={() => setLocalWatermark({...localWatermark, [colorKey]: c})} className="w-6 h-6 sm:w-5 sm:h-5 rounded-full border border-gray-600 transition-transform hover:scale-110 shadow-sm" style={{ backgroundColor: c }} /> ))}
           </div>
         </div>
       </div>
@@ -309,6 +283,7 @@ export default function AccountsManager() {
 
       if (saveData.success) {
         setTgInput('');
+        await fetchProfiles(user.id); 
         await fetchAccounts(user.id); 
         if (verifyAccountsStatus) verifyAccountsStatus(); 
       } else {
@@ -331,9 +306,7 @@ export default function AccountsManager() {
     const res = await saveVkGroupWithToken(user.id, vkLinkInput, vkTokenInput);
     
     if (res.success) {
-      setVkLinkInput('');
-      setVkTokenInput('');
-      setVkStep(1); 
+      setVkLinkInput(''); setVkTokenInput(''); setVkStep(1); 
       setVkSuccessMsg(`Сообщество "${res.group?.name || 'ВКонтакте'}" успешно подключено!`);
       setTimeout(() => setVkSuccessMsg(''), 4000); 
     } else {
@@ -342,7 +315,7 @@ export default function AccountsManager() {
     setIsAddingVk(false);
   };
 
-  const renderAccountCard = (acc, providerIcon, providerColor, providerName) => {
+  const renderAccountCard = (acc, providerIcon, providerColor) => {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
     const hasCustomSignature = acc.signature !== null;
@@ -530,7 +503,7 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* ШАГ 1: ВЕРХНИЕ БЛОКИ ДОБАВЛЕНИЯ */}
+      {/* ШАГ 1 и 2: ДОБАВЛЕНИЕ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-stretch">
         
         {/* ТЕЛЕГРАМ */}
@@ -545,8 +518,7 @@ export default function AccountsManager() {
           <div className="mt-auto pt-2 flex flex-col sm:flex-row gap-3">
             <input 
               type="text" value={tgInput} onChange={(e) => setTgInput(e.target.value)}
-              placeholder="t.me/channel" 
-              disabled={isLimitReached}
+              placeholder="t.me/channel" disabled={isLimitReached}
               className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-sky-500 transition-all placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
             />
             <button onClick={handleAddTg} disabled={isAddingTg || isLimitReached} className="shrink-0 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap min-h-[48px] shadow-lg shadow-sky-500/20 active:scale-95">
@@ -555,15 +527,26 @@ export default function AccountsManager() {
           </div>
         </div>
 
-        {/* ДИНАМИЧЕСКИЙ БЛОК ВКОНТАКТЕ */}
+        {/* ВКОНТАКТЕ */}
         <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col h-full transition-all">
           <div className="absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 bg-[#0077FF]/10 blur-[40px] sm:blur-[50px] rounded-full pointer-events-none"></div>
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
               <span className="w-5 h-5 bg-[#0077FF] rounded-md flex items-center justify-center font-bold text-[10px] text-white shrink-0">K</span> ВКонтакте
             </h2>
-            {vkStep === 1 ? (
-              <p className="text-xs sm:text-sm text-gray-400 mb-5">Укажите ссылку на ваше сообщество, чтобы начать процесс подключения.</p>
+            
+            {!hasVkProfile ? (
+              <p className="text-xs sm:text-sm text-gray-400 mb-5">
+                Для добавления сообществ необходимо подтвердить ваши права. Привяжите личную страницу ВКонтакте.
+              </p>
+            ) : vkStep === 1 ? (
+              <div className="flex items-center gap-3 mb-5">
+                {vkProfiles[0]?.avatarUrl ? <img src={vkProfiles[0].avatarUrl} alt="VK" className="w-8 h-8 rounded-full border border-gray-700"/> : <UserCircle size={32} className="text-gray-500"/>}
+                <div className="flex flex-col min-w-0">
+                   <span className="text-sm font-bold text-white truncate">{vkProfiles[0]?.name || 'Мой профиль'}</span>
+                   <span className="text-[10px] text-[#0077FF] font-medium uppercase tracking-wider">Профиль активен</span>
+                </div>
+              </div>
             ) : (
               <div className="text-xs sm:text-sm text-gray-300 mb-4 bg-[#0077FF]/10 p-3 rounded-xl border border-[#0077FF]/20">
                 <p className="font-bold text-white mb-1">Группа найдена! Следующий шаг:</p>
@@ -577,7 +560,15 @@ export default function AccountsManager() {
           </div>
           
           <div className="mt-auto pt-2 flex flex-col gap-3">
-            {vkStep === 1 ? (
+            {!hasVkProfile ? (
+               <button 
+                 onClick={handleVkConnectProfile} disabled={isVkProfileLoading}
+                 className="w-full bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm min-h-[48px] shadow-lg shadow-[#0077FF]/20 active:scale-95"
+               >
+                 {isVkProfileLoading ? <Loader2 className="animate-spin shrink-0" size={18} /> : <span className="font-black text-lg leading-none shrink-0 mr-1">K</span>}
+                 <span>{isVkProfileLoading ? 'Привязка...' : 'Авторизоваться ВКонтакте'}</span>
+               </button>
+            ) : vkStep === 1 ? (
               <div className="flex flex-col gap-3">
                 {vkSuccessMsg && (
                   <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-xl text-sm animate-in fade-in flex items-center gap-2">
@@ -592,7 +583,7 @@ export default function AccountsManager() {
                     className="flex-1 w-full bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 min-h-[48px]"
                   />
                   <button onClick={handleVkNextStep} disabled={!vkLinkInput || isLimitReached} className="shrink-0 bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg shadow-[#0077FF]/20">
-                    Найти группу
+                    Далее
                   </button>
                 </div>
               </div>
@@ -626,16 +617,15 @@ export default function AccountsManager() {
 
       </div>
 
-      {/* ШАГ 2: НИЖНИЕ СПИСКИ */}
+      {/* НИЖНИЕ СПИСКИ (ГРУППЫ) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mt-6 sm:mt-8">
         
-        {/* СПИСОК ТГ */}
         <div className="space-y-3 sm:space-y-4">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
             <Send size={14} className="text-sky-500 shrink-0"/> Подключенные каналы
           </h3>
           <div className="flex flex-col gap-3 sm:gap-4">
-            {tgAccounts.map(acc => renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-sky-500', 'Telegram'))}
+            {tgAccounts.map(acc => renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-sky-500'))}
             {tgAccounts.length === 0 && (
               <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
                 <p className="text-gray-500 text-sm px-4">Нет подключенных каналов Telegram</p>
@@ -644,13 +634,12 @@ export default function AccountsManager() {
           </div>
         </div>
 
-        {/* СПИСОК ВК */}
         <div className="space-y-3 sm:space-y-4">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
             <span className="w-4 h-4 rounded bg-[#0077FF] flex items-center justify-center text-[9px] text-white font-bold shrink-0">K</span> Сообщества ВКонтакте
           </h3>
           <div className="flex flex-col gap-3 sm:gap-4">
-            {vkAccounts.map(acc => renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]', 'ВКонтакте'))}
+            {vkAccounts.map(acc => renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]'))}
             {vkAccounts.length === 0 && (
               <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
                 <p className="text-gray-500 text-sm px-4">Нет подключенных сообществ ВКонтакте</p>
@@ -661,7 +650,7 @@ export default function AccountsManager() {
 
       </div>
 
-      {/* --- МОДАЛЬНОЕ ОКНО ДИЗАЙНА --- */}
+      {/* МОДАЛЬНОЕ ОКНО ДИЗАЙНА */}
       {designModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeDesignModal}></div>
@@ -675,14 +664,12 @@ export default function AccountsManager() {
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#111318] flex flex-col">
-              
               <div className="p-4 sm:p-5 bg-black/50 border-b border-gray-800 shrink-0">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-[10px] sm:text-xs text-gray-500 uppercase flex items-center gap-1"><Move size={12}/> Перетаскивайте мышью/пальцем</span>
+                  <span className="text-[10px] sm:text-xs text-gray-500 uppercase flex items-center gap-1"><Move size={12}/> Перетаскивайте</span>
                 </div>
                 
                 <div ref={previewRef} onClick={handleBackgroundClick} className="relative w-full aspect-[16/9] rounded-xl shadow-inner border border-gray-800 overflow-hidden bg-cover bg-center cursor-crosshair" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop')" }}>
-                  
                   <div 
                     onPointerDown={handlePointerDown}
                     className={`absolute px-2.5 py-1 flex items-center justify-center whitespace-nowrap cursor-move select-none touch-none ${isDragging ? 'transition-none' : 'transition-all duration-200 ease-out'}`}
@@ -691,8 +678,7 @@ export default function AccountsManager() {
                       backgroundColor: (localWatermark.type === 'text' && localWatermark.hasBackground) ? localWatermark.bgColor : 'transparent', color: localWatermark.textColor,
                       opacity: (localWatermark.opacity || 90) / 100,
                       transform: `translate(-50%, -50%) scale(${(localWatermark.size || 100) / 100}) rotate(${localWatermark.angle || 0}deg)`, transformOrigin: 'center',
-                      borderRadius: '6px', fontSize: '15px', fontWeight: 'bold',
-                      boxShadow: (localWatermark.type === 'text' && localWatermark.hasBackground) ? '0 4px 6px rgba(0,0,0,0.3)' : 'none', zIndex: 10
+                      borderRadius: '6px', fontSize: '15px', fontWeight: 'bold', zIndex: 10
                     }}
                   >
                     {localWatermark.type === 'image' && localWatermark.image ? (<img src={localWatermark.image} alt="watermark" draggable="false" className="max-h-10 sm:max-h-12 object-contain drop-shadow-lg pointer-events-none" />) : (localWatermark.text || 'SMMBOX')}
@@ -769,7 +755,6 @@ export default function AccountsManager() {
                 <span>Сохранить настройки</span>
               </button>
             </div>
-
           </div>
         </div>
       )}
