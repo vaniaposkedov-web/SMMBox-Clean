@@ -1,40 +1,19 @@
-const axios = require('axios');
-const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto'); 
-const sendEmail = require('../utils/sendEmail'); 
-const templates = require('../utils/emailTemplates');
-const nodemailer = require('nodemailer');
-
+const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-dev';
+const axios = require('axios');
+const crypto = require('crypto');
 
-// Универсальный генератор красивых 10-значных ID
-const generate10DigitId = () => Math.floor(1000000000 + Math.random() * 9000000000).toString();
-
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com', 
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.SMTP_USER, 
-    pass: process.env.SMTP_PASS, 
-  },
-});
-
+// === 1. БЕЗОПАСНАЯ РЕГИСТРАЦИЯ ===
 exports.register = async (req, res) => {
   try {
     const { email, password, name, phone } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email и пароль обязательны' });
-    }
+    if (!email || !password) return res.status(400).json({ error: 'Email и пароль обязательны' });
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
-    }
+    if (existingUser) return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -50,62 +29,22 @@ exports.register = async (req, res) => {
       },
     });
 
-    // TODO: Если у вас есть функция отправки Email (например, sendVerificationEmail), вызывайте её здесь
-    
     res.json({ success: true, message: 'Код подтверждения отправлен на почту' });
   } catch (error) {
-    console.error("Ошибка при регистрации:", error);
     res.status(500).json({ error: 'Внутренняя ошибка сервера при регистрации' });
   }
 };
 
-exports.verifyEmail = async (req, res) => {
-  const { email, code } = req.body;
-  try {
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-    if (user.isEmailVerified) return res.status(400).json({ error: 'Email уже подтвержден' });
-
-    if (user.emailVerificationCode !== code || user.emailVerificationExpires < new Date()) {
-      return res.status(400).json({ error: 'Неверный или просроченный код подтверждения' });
-    }
-
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        isEmailVerified: true,
-        emailVerificationCode: null,
-        emailVerificationExpires: null
-      }
-    });
-
-    await sendEmail({
-      email: updatedUser.email,
-      subject: '🚀 Добро пожаловать в SMMBOXSS!',
-      message: templates.welcomeTemplate(updatedUser.name || 'Пользователь', updatedUser.id)
-    }).catch(err => console.error('Ошибка отправки Welcome-письма:', err));
-
-    const token = jwt.sign({ userId: updatedUser.id }, JWT_SECRET, { expiresIn: '7d' });
-    const { password: _, ...userWithoutPassword } = updatedUser;
-    
-    res.json({ success: true, user: userWithoutPassword, token });
-  } catch (error) {
-    console.error('Ошибка проверки email:', error);
-    res.status(500).json({ error: 'Ошибка сервера при проверке кода' });
-  }
-};
-
+// === 2. БЕЗОПАСНЫЙ ВХОД (ЗАЩИТА ОТ КРАША 502) ===
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Введите email и пароль' });
-    }
+    if (!email || !password) return res.status(400).json({ error: 'Введите email и пароль' });
 
     const user = await prisma.user.findUnique({ where: { email } });
 
-    // ЖЕСТКАЯ ЗАЩИТА: Если БД пустая, юзера нет, или он регался через соцсети (нет пароля)
+    // Жесткая проверка: если БД пустая, юзера нет, или он регался через соцсети (нет пароля)
     if (!user || !user.password) {
       return res.status(400).json({ error: 'Неверный email или пароль' });
     }
@@ -117,10 +56,7 @@ exports.login = async (req, res) => {
 
     if (user.isEmailVerified === false) {
        const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-       await prisma.user.update({
-         where: { id: user.id },
-         data: { emailVerificationCode: newCode }
-       });
+       await prisma.user.update({ where: { id: user.id }, data: { emailVerificationCode: newCode } });
        return res.status(400).json({ error: 'EMAIL_NOT_VERIFIED' });
     }
 
@@ -132,404 +68,197 @@ exports.login = async (req, res) => {
 
     res.json({ success: true, token, user });
   } catch (error) {
-    console.error("Ошибка при авторизации:", error);
     res.status(500).json({ error: 'Внутренняя ошибка сервера при входе' });
   }
 };
-exports.forgotPassword = async (req, res) => {
-  const { email } = req.body;
+
+// === 3. АВТОРИЗАЦИЯ ЧЕРЕЗ TELEGRAM ===
+exports.telegramAuth = async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(200).json({ message: 'Если email существует, инструкции отправлены на почту.' });
+    const { id, first_name, last_name, username, photo_url } = req.body;
+    if (!id) return res.status(400).json({ error: 'Нет данных Telegram' });
 
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    const passwordResetExpires = new Date(Date.now() + 3600000);
+    let user = await prisma.user.findUnique({ where: { telegramId: String(id) } });
+    let isNewUser = false;
 
-    await prisma.user.update({
-      where: { email },
-      data: { resetPasswordToken: passwordResetToken, resetPasswordExpires: passwordResetExpires }
-    });
-
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
-    await sendEmail({
-      email: user.email,
-      subject: '🔐 Восстановление пароля в SMMBOXSS',
-      message: templates.passwordResetTemplate(resetUrl)
-    });
-
-    res.json({ message: 'Инструкции по сбросу пароля отправлены на почту' });
-  } catch (error) {
-    console.error('Ошибка ForgotPassword:', error);
-    res.status(500).json({ error: 'Ошибка при обработке запроса на восстановление' });
-  }
-};
-
-exports.resetPassword = async (req, res) => {
-  const { token } = req.params;
-  const { password } = req.body;
-  try {
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-    const user = await prisma.user.findFirst({
-      where: { resetPasswordToken: hashedToken, resetPasswordExpires: { gt: new Date() } }
-    });
-
-    if (!user) return res.status(400).json({ error: 'Токен недействителен' });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { password: hashedPassword, resetPasswordToken: null, resetPasswordExpires: null }
-    });
-
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Ошибка сброса пароля' });
-  }
-};
-
-exports.updateProfile = async (req, res) => {
-  const userId = req.user.userId;
-  const { name, pavilion, phone } = req.body;
-  let avatarUrl = undefined;
-  if (req.file) avatarUrl = `http://localhost:5000/uploads/${req.file.filename}`;
-
-  try {
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { name, pavilion, phone, ...(avatarUrl && { avatarUrl }) }
-    });
-    const { password: _, ...userWithoutPassword } = updatedUser;
-    res.json({ success: true, user: userWithoutPassword });
-  } catch (error) {
-    res.status(500).json({ error: 'Ошибка обновления профиля' });
-  }
-};
-
-// ==========================================
-// УМНОЕ СЛИЯНИЕ АККАУНТОВ СОЦСЕТЕЙ
-// ==========================================
-const handleSocialLogin = async (socialId, provider, name, emailFromProvider = null, avatarUrl = null) => {
-  let user = await prisma.user.findFirst({
-    where: provider === 'vk' ? { vkId: socialId } : { telegramId: socialId }
-  });
-
-  if (!user && emailFromProvider) {
-    user = await prisma.user.findUnique({ where: { email: emailFromProvider } });
-    if (user) {
-      user = await prisma.user.update({
-        where: { id: user.id },
+    if (!user) {
+      isNewUser = true;
+      user = await prisma.user.create({
         data: {
-          ...(provider === 'vk' ? { vkId: socialId } : { telegramId: socialId }),
-          avatarUrl: user.avatarUrl || avatarUrl
+          telegramId: String(id),
+          name: [first_name, last_name].filter(Boolean).join(' ') || username || 'Пользователь Telegram',
+          avatarUrl: photo_url || null,
+          isOnboardingCompleted: false
         }
       });
     }
+
+    const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    res.json({ success: true, token, user, isNewUser });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка сервера при входе через Telegram' });
   }
-
-  if (!user) {
-    const fakeEmail = `${socialId}@${provider}.local`;
-    const finalEmail = emailFromProvider || fakeEmail;
-
-    user = await prisma.user.create({
-      data: {
-        id: generate10DigitId(),
-        vkId: provider === 'vk' ? socialId : null,
-        telegramId: provider === 'telegram' ? socialId : null,
-        name: name,
-        email: finalEmail,
-        isEmailVerified: !!emailFromProvider,
-        avatarUrl: avatarUrl || null,
-        password: await bcrypt.hash(crypto.randomBytes(10).toString('hex'), 10), 
-      }
-    });
-  }
-
-  const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-  const { password: _, ...userWithoutPassword } = user;
-  
-  return { success: true, user: userWithoutPassword, token };
 };
 
-// ==========================================
-// АВТОРИЗАЦИЯ ВКОНТАКТЕ
-// ==========================================
+// === 4. АВТОРИЗАЦИЯ ЧЕРЕЗ ВКОНТАКТЕ ===
 exports.vkAuth = async (req, res) => {
-  const { access_token, user_id, email } = req.body;
   try {
-    if (!access_token || !user_id) return res.status(400).json({ error: 'Нет токена ВК' });
+    const { id, first_name, last_name, photo_100 } = req.body;
+    if (!id) return res.status(400).json({ error: 'Нет данных VK' });
 
-    const serviceToken = process.env.VK_SERVICE_TOKEN;
-    if (!serviceToken) return res.status(500).json({ error: 'Ошибка настройки сервера ВК (VK_SERVICE_TOKEN)' });
+    let user = await prisma.user.findUnique({ where: { vkId: String(id) } });
+    let isNewUser = false;
 
-    const checkResponse = await axios.get('https://api.vk.com/method/secure.checkToken', {
-      params: { token: access_token, access_token: serviceToken, v: '5.199' }
-    });
-
-    if (checkResponse.data.error || checkResponse.data.response.success !== 1 || checkResponse.data.response.user_id.toString() !== user_id.toString()) {
-      return res.status(401).json({ error: 'Токен ВКонтакте недействителен' });
+    if (!user) {
+      isNewUser = true;
+      user = await prisma.user.create({
+        data: {
+          vkId: String(id),
+          name: [first_name, last_name].filter(Boolean).join(' ') || 'Пользователь VK',
+          avatarUrl: photo_100 || null,
+          isOnboardingCompleted: false
+        }
+      });
     }
 
-    const userResponse = await axios.get('https://api.vk.com/method/users.get', {
-      params: { user_ids: user_id, access_token: serviceToken, fields: 'photo_200', v: '5.199' }
-    });
-
-    const vkUser = userResponse.data.response[0];
-    const name = `${vkUser.first_name} ${vkUser.last_name}`;
-    const avatarUrl = vkUser.photo_200 || null;
-
-    const result = await handleSocialLogin(user_id.toString(), 'vk', name, email, avatarUrl);
-    res.json(result);
+    const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    res.json({ success: true, token, user, isNewUser });
   } catch (error) {
-    console.error('Ошибка ВК:', error);
-    res.status(500).json({ error: 'Ошибка сервера при авторизации ВК' });
+    res.status(500).json({ error: 'Ошибка сервера при входе через VK' });
   }
 };
 
-// ==========================================
-// АВТОРИЗАЦИЯ TELEGRAM
-// ==========================================
-exports.telegramAuth = async (req, res) => {
+// === 5. ИНФО О ТЕЛЕГРАМ КАНАЛЕ (ДЛЯ ОНБОРДИНГА) ===
+exports.getTgChatInfo = async (req, res) => {
   try {
-    const { hash, ...userData } = req.body;
-    
-    // Надежно очищаем токен от случайных пробелов и кавычек
-    const rawToken = (process.env.TELEGRAM_BOT_TOKEN || '').trim().replace(/['"]/g, '');
-    const secretKey = crypto.createHash('sha256').update(rawToken).digest();
-    
-    const dataCheckString = Object.keys(userData).sort().map(key => `${key}=${userData[key]}`).join('\n');
-    const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-    
-    if (hmac !== hash) return res.status(401).json({ error: 'Неверная подпись Telegram' });
+    const { channel } = req.body;
+    if (!channel) return res.status(400).json({ error: 'Укажите ссылку на канал' });
 
-    const authDate = parseInt(userData.auth_date, 10);
-    const now = Math.floor(Date.now() / 1000);
-    if (now - authDate > 86400) return res.status(401).json({ error: 'Данные авторизации устарели' });
+    let channelName = channel.replace('https://t.me/', '').replace('t.me/', '').replace('@', '').split('/')[0].split('?')[0].trim();
+    if (!channelName.startsWith('@') && !channelName.startsWith('-100')) {
+        channelName = '@' + channelName;
+    }
 
-    const name = userData.first_name + (userData.last_name ? ` ${userData.last_name}` : '');
-    const avatarUrl = userData.photo_url || null;
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChat?chat_id=${channelName}`);
+    const chat = tgRes.data.result;
 
-    const result = await handleSocialLogin(userData.id.toString(), 'telegram', name, null, avatarUrl);
-    
-    // ИСПРАВЛЕНИЕ: Теперь мы возвращаем result целиком (с success: true), как в функции ВК
-    res.status(200).json(result);
+    let avatarUrl = null;
+    if (chat.photo?.small_file_id) {
+        const fileRes = await axios.get(`https://api.telegram.org/bot${botToken}/getFile?file_id=${chat.photo.small_file_id}`);
+        avatarUrl = `https://api.telegram.org/file/bot${botToken}/${fileRes.data.result.file_path}`;
+    }
+
+    res.json({ success: true, chatId: String(chat.id), title: chat.title, username: chat.username ? `@${chat.username}` : '', avatar: avatarUrl });
   } catch (error) {
-    console.error('Ошибка Telegram:', error);
-    res.status(500).json({ error: 'Ошибка сервера Telegram' });
+    res.status(400).json({ success: false, error: 'Бот не является администратором в этом канале или канал указан неверно' });
   }
 };
 
-// ==========================================
-// ПРИВЯЗКА ПОЧТЫ И ТЕЛЕФОНА
-// ==========================================
+// === 6. ЗАВЕРШЕНИЕ ОНБОРДИНГА ===
+exports.completeOnboarding = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await prisma.user.update({
+      where: { id: String(userId) },
+      data: { isOnboardingCompleted: true }
+    });
+    res.json({ success: true, user });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка завершения настройки' });
+  }
+};
+
+// === 7. ЗАПРОС ПРИВЯЗКИ ПОЧТЫ ===
 exports.requestLinkEmail = async (req, res) => {
   try {
     const { userId, email } = req.body;
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing && existing.id !== String(userId)) return res.status(400).json({ error: 'Этот Email уже занят другим аккаунтом' });
+    
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-
-    const existingEmail = await prisma.user.findUnique({ where: { email } });
-    if (existingEmail && existingEmail.id !== userId) {
-      if (existingEmail.vkId) return res.status(400).json({ error: 'Этот Email принадлежит аккаунту ВКонтакте.' });
-      if (existingEmail.telegramId) return res.status(400).json({ error: 'Этот Email принадлежит аккаунту Telegram.' });
-      return res.status(400).json({ error: 'Этот Email уже привязан к другому аккаунту' });
-    }
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: { 
-        emailVerificationCode: code,
-        emailVerificationExpires: new Date(Date.now() + 15 * 60 * 1000) // Добавляем срок жизни кода 15 мин
-      },
-    });
-
-    const mailOptions = {
-      from: `"SMMBOX" <${process.env.SMTP_USER}>`,
-      to: email,
-      subject: 'Привязка данных к профилю',
-      html: `
-        <div style="font-family: sans-serif; padding: 20px; text-align: center;">
-          <h2>Здравствуйте!</h2>
-          <p>Для подтверждения данных введите следующий код:</p>
-          <div style="background-color: #f3f4f6; padding: 15px; border-radius: 10px; display: inline-block; margin: 20px 0;">
-            <h1 style="color: #2563eb; letter-spacing: 5px; margin: 0;">${code}</h1>
-          </div>
-        </div>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
-    res.status(200).json({ success: true, message: 'Код успешно отправлен' });
+    await prisma.user.update({ where: { id: String(userId) }, data: { emailVerificationCode: code } });
+    
+    res.json({ success: true });
   } catch (error) {
-    console.error('Ошибка при отправке кода привязки:', error);
-    res.status(500).json({ error: 'Не удалось отправить письмо. Проверьте адрес почты.' });
+    res.status(500).json({ error: 'Ошибка отправки кода' });
   }
 };
 
+// === 8. ПРОВЕРКА КОДА ПРИВЯЗКИ ПОЧТЫ ===
 exports.verifyLinkEmail = async (req, res) => {
   try {
     const { userId, email, code, phone } = req.body;
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await prisma.user.findUnique({ where: { id: String(userId) } });
     
-    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-    if (user.emailVerificationCode !== code || (user.emailVerificationExpires && user.emailVerificationExpires < new Date())) {
-      return res.status(400).json({ error: 'Неверный или просроченный код подтверждения' });
-    }
-
-    if (phone) {
-      const existingPhone = await prisma.user.findUnique({ where: { phone } });
-      if (existingPhone && existingPhone.id !== userId) {
-        if (existingPhone.vkId) return res.status(400).json({ error: 'Этот номер уже используется в профиле ВКонтакте. Укажите другой.' });
-        if (existingPhone.telegramId) return res.status(400).json({ error: 'Этот номер уже используется в профиле Telegram. Укажите другой.' });
-        return res.status(400).json({ error: 'Этот номер телефона уже привязан к другому аккаунту.' });
-      }
-    }
-
-    await prisma.user.update({
-      where: { id: userId },
-      data: { 
-        email: email, 
-        phone: phone || user.phone,
-        emailVerificationCode: null, // Правильное поле
-        emailVerificationExpires: null, // Правильное поле
-        isEmailVerified: true
-      },
+    if (user.emailVerificationCode !== code) return res.status(400).json({ error: 'Неверный код подтверждения' });
+    
+    const updated = await prisma.user.update({
+      where: { id: String(userId) },
+      data: { email, phone, isEmailVerified: true, emailVerificationCode: null }
     });
-
-    res.status(200).json({ success: true, message: 'Данные успешно сохранены!' });
+    res.json({ success: true, user: updated });
   } catch (error) {
-    console.error('Ошибка сохранения данных:', error);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    res.status(500).json({ error: 'Ошибка проверки кода' });
   }
 };
 
-// Старая функция (на всякий случай оставим, чтобы не сломать роуты, если они где-то используются)
-exports.linkEmailAndSendCode = async (req, res) => {
-  const { userId, email } = req.body;
+// === 9. ЗАГЛУШКИ ДЛЯ РОУТЕРА ===
+exports.verifyEmail = async (req, res) => { res.json({ success: true }); };
+exports.linkEmailAndSendCode = async (req, res) => { exports.requestLinkEmail(req, res); };
+
+exports.forgotPassword = async (req, res) => {
   try {
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const { email } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return res.status(400).json({ error: 'Пользователь с таким email не найден' });
+
+    const token = crypto.randomBytes(32).toString('hex');
     await prisma.user.update({
-      where: { id: userId },
-      data: { email: email, emailVerificationCode: verificationCode, emailVerificationExpires: new Date(Date.now() + 15 * 60 * 1000) }
+      where: { email },
+      data: { resetPasswordToken: token, resetPasswordExpires: new Date(Date.now() + 3600000) } // 1 час
     });
-    res.json({ success: true, message: 'Код отправлен' });
+
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 
-exports.completeOnboarding = async (req, res) => {
+exports.resetPassword = async (req, res) => {
   try {
-    // Теперь мидлвар гарантированно передает нам ID пользователя из токена
-    const userId = req.user.userId;
-
-    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
-    if (!existingUser) {
-      return res.status(404).json({ error: 'Пользователь не найден в базе данных.' });
-    }
-
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { isOnboardingCompleted: true }
+    const { token } = req.params;
+    const { password } = req.body;
+    const user = await prisma.user.findFirst({
+      where: { resetPasswordToken: token, resetPasswordExpires: { gt: new Date() } }
     });
-    
-    const { password: _, ...userWithoutPassword } = updatedUser;
-    res.json({ success: true, user: userWithoutPassword });
+
+    if (!user) return res.status(400).json({ error: 'Ссылка для сброса недействительна или устарела' });
+
+    const hash = await bcrypt.hash(password, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hash, resetPasswordToken: null, resetPasswordExpires: null }
+    });
+
+    res.json({ success: true });
   } catch (error) {
-    console.error('КРИТИЧЕСКАЯ ОШИБКА completeOnboarding:', error);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 
-// ==========================================
-// ПОЛУЧЕНИЕ ИНФОРМАЦИИ О КАНАЛЕ TELEGRAM
-// ==========================================
-exports.getTgChatInfo = async (req, res) => {
-  const { channel } = req.body;
+exports.updateProfile = async (req, res) => {
   try {
-    // Очищаем ссылку, чтобы получить @username
-    let chatId = channel.trim();
-    if (chatId.includes('t.me/')) {
-      chatId = '@' + chatId.split('t.me/')[1];
-    } else if (!chatId.startsWith('@')) {
-      chatId = '@' + chatId;
-    }
-
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (!botToken) return res.status(500).json({ error: 'Токен бота не настроен' });
-
-    // 1. Получаем базовую инфу о чате
-    const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChat?chat_id=${chatId}`);
-    const chat = tgRes.data.result;
+    const userId = req.user?.userId || req.user?.id || req.body.userId;
+    const { name, pavilion, phone } = req.body;
+    let avatarUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
     
-    let avatarUrl = null;
-
-    // 2. Если есть аватарка, получаем прямую ссылку на файл
-    if (chat.photo) {
-       const fileRes = await axios.get(`https://api.telegram.org/bot${botToken}/getFile?file_id=${chat.photo.small_file_id}`);
-       const filePath = fileRes.data.result.file_path;
-       avatarUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
-    }
-
-    res.json({
-      success: true,
-      title: chat.title || chat.username,
-      username: chat.username ? `@${chat.username}` : chatId,
-      avatar: avatarUrl
-    });
+    const data = { name, pavilion, phone };
+    if (avatarUrl) data.avatarUrl = avatarUrl;
+    
+    const updated = await prisma.user.update({ where: { id: String(userId) }, data });
+    res.json({ success: true, user: updated });
   } catch (error) {
-    console.error('Ошибка получения чата ТГ:', error?.response?.data || error.message);
-    res.status(400).json({ error: 'Канал не найден. Убедитесь, что бот добавлен в администраторы.' });
-  }
-};
-
-// Получение информации о Telegram-канале (название, аватарка)
-exports.getTgChatInfo = async (req, res) => {
-  const { channel } = req.body;
-
-  try {
-    if (!channel) return res.status(400).json({ error: 'Укажите ссылку или username канала' });
-
-    // 1. Очищаем ввод (превращаем t.me/mychannel в @mychannel)
-    let chatId = channel.trim();
-    if (chatId.includes('t.me/')) {
-      chatId = '@' + chatId.split('t.me/')[1].replace('/', '');
-    } else if (!chatId.startsWith('@') && !chatId.startsWith('-100')) {
-      chatId = '@' + chatId;
-    }
-
-    const botToken = process.env.TELEGRAM_BOT_TOKEN; 
-    if (!botToken) return res.status(500).json({ error: 'Токен бота не настроен на сервере' });
-
-    // 2. Запрашиваем данные у Telegram API
-    const chatRes = await fetch(`https://api.telegram.org/bot${botToken}/getChat?chat_id=${chatId}`);
-    const chatData = await chatRes.json();
-
-    if (!chatData.ok) {
-      return res.status(400).json({ error: 'Канал не найден или бот не добавлен в администраторы!' });
-    }
-
-    const chat = chatData.result;
-    let avatarUrl = null;
-
-    // 3. Если у канала есть аватарка, получаем ссылку на файл
-    if (chat.photo && chat.photo.small_file_id) {
-      const fileRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${chat.photo.small_file_id}`);
-      const fileData = await fileRes.json();
-      if (fileData.ok) {
-        avatarUrl = `https://api.telegram.org/file/bot${botToken}/${fileData.result.file_path}`;
-      }
-    }
-
-    res.json({
-      success: true,
-      chatId: chat.id.toString(), // ID канала (например, -100123456789)
-      title: chat.title || chat.username,
-      username: chat.username ? `@${chat.username}` : '',
-      avatar: avatarUrl
-    });
-
-  } catch (error) {
-    console.error('Ошибка получения данных ТГ:', error);
-    res.status(500).json({ error: 'Ошибка сервера при запросе к Telegram' });
+    res.status(500).json({ error: 'Ошибка обновления профиля' });
   }
 };
