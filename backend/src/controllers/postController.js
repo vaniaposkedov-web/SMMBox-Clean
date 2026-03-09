@@ -124,9 +124,9 @@ exports.createPost = async (req, res) => {
             return Buffer.from(base64Data, 'base64');
         });
 
-        // Ужимаем оригиналы для отправки в соцсети, чтобы API не зависало на тяжелых фото
+        // ПРЕ-ОПТИМИЗАЦИЯ: Один раз подготавливаем базу, чтобы не грузить сервер в цикле
         const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
-            return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+            return await sharp(buf).rotate().jpeg({ quality: 85 }).toBuffer();
         }));
 
         for (const accData of accounts) {
@@ -143,20 +143,18 @@ exports.createPost = async (req, res) => {
 
             let processedBuffers = optimizedBaseBuffers;
             
-            // Водяной знак с максимальной защитой от крашей
+            // Водяной знак с максимальной геометрической защитой
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
                 let wm = accData.watermarkConfig;
                 
-                if (typeof wm === 'string') {
-                    try { wm = JSON.parse(wm); } catch(e) {}
-                }
-                if (typeof wm === 'string') {
-                    try { wm = JSON.parse(wm); } catch(e) {} // Двойной парсинг на случай вложенности
-                }
+                if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
+                if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} } 
                 if (!wm || typeof wm !== 'object') wm = {};
                 
                 const wmType = wm.type || 'text'; 
-                const wmText = wm.text || 'SMMBOX';
+                let wmText = wm.text || 'SMMBOX';
+                if (!wmText.trim()) wmText = 'SMMBOX'; // Защита от пустого текста
+
                 const opacity = wm.opacity !== undefined ? Number(wm.opacity) / 100 : 0.9;
                 const angle = Number(wm.angle) || 0;
                 
@@ -176,8 +174,8 @@ exports.createPost = async (req, res) => {
                             const scaleFactor = (Number(wm.size) || 100) / 100;
                             const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
                             
-                            const paddingX = Math.max(2, Math.floor(fontSize * 1.5)); 
-                            const paddingY = Math.max(2, Math.floor(fontSize * 1)); 
+                            const paddingX = Math.max(4, Math.floor(fontSize * 1.5)); 
+                            const paddingY = Math.max(4, Math.floor(fontSize * 1)); 
                             
                             const lines = String(wmText).split('\n');
                             let maxTextWidthRaw = 0;
@@ -191,9 +189,9 @@ exports.createPost = async (req, res) => {
                                 if (currentLineWidth > maxTextWidthRaw) maxTextWidthRaw = currentLineWidth;
                             }
                             
-                            wmPixelWidth = Math.max(10, Math.floor(maxTextWidthRaw) + (paddingX * 2));
-                            const lineHeight = Math.max(10, Math.floor(fontSize * 1.25));
-                            wmPixelHeight = Math.max(10, (lines.length * lineHeight) + (paddingY * 2));
+                            wmPixelWidth = Math.max(20, Math.floor(maxTextWidthRaw) + (paddingX * 2));
+                            const lineHeight = Math.max(20, Math.floor(fontSize * 1.25));
+                            wmPixelHeight = Math.max(20, (lines.length * lineHeight) + (paddingY * 2));
                             
                             const bgColor = wm.bgColor || '#000000';
                             const textColor = wm.textColor || '#ffffff';
@@ -251,10 +249,20 @@ exports.createPost = async (req, res) => {
                                 .toBuffer();
                         }
 
+                        // === КРИТИЧЕСКАЯ ЗАЩИТА === 
+                        // Проверяем, чтобы накладываемый знак физически не был больше самого фото
+                        const tempMeta = await sharp(watermarkBuffer).metadata();
+                        if (tempMeta.width > width || tempMeta.height > height) {
+                            watermarkBuffer = await sharp(watermarkBuffer)
+                                .resize({ width: Math.max(10, width - 20), height: Math.max(10, height - 20), fit: 'inside' })
+                                .toBuffer();
+                        }
+
                         const wmMeta = await sharp(watermarkBuffer).metadata();
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
+                        // Жесткая логика координат с привязкой к краям кадра
                         let targetX = 90;
                         let targetY = 85;
 
@@ -266,10 +274,9 @@ exports.createPost = async (req, res) => {
                                 'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
                                 'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
                             };
-                            const fallbackCoord = posToCoords[wm.position];
-                            if (fallbackCoord) {
-                                targetX = fallbackCoord.x;
-                                targetY = fallbackCoord.y;
+                            if (posToCoords[wm.position]) {
+                                targetX = posToCoords[wm.position].x;
+                                targetY = posToCoords[wm.position].y;
                             }
                         }
                         
@@ -277,11 +284,20 @@ exports.createPost = async (req, res) => {
                             targetY = Number(wm.y);
                         }
 
+                        // Удерживаем координаты от ухода в космос
+                        targetX = Math.max(0, Math.min(100, targetX));
+                        targetY = Math.max(0, Math.min(100, targetY));
+
                         const centerX = Math.floor(width * (targetX / 100));
                         const centerY = Math.floor(height * (targetY / 100));
+                        
                         let leftPos = Math.floor(centerX - (wmPixelWidth / 2));
                         let topPos = Math.floor(centerY - (wmPixelHeight / 2));
 
+                        // === КРИТИЧЕСКАЯ ЗАЩИТА 2 ===
+                        // Сдвигаем знак обратно в кадр, если он вылез за края
+                        if (leftPos + wmPixelWidth > width) leftPos = width - wmPixelWidth;
+                        if (topPos + wmPixelHeight > height) topPos = height - wmPixelHeight;
                         if (leftPos < 0) leftPos = 0;
                         if (topPos < 0) topPos = 0;
 
@@ -298,7 +314,7 @@ exports.createPost = async (req, res) => {
 
             const isScheduled = publishAt ? true : false;
             
-            // СОЗДАНИЕ ЛЕГКИХ ПРЕВЬЮ ДЛЯ БД (РЕШАЕТ ПРОБЛЕМУ ТАЙМ-АУТА)
+            // СОЗДАНИЕ ЛЕГКИХ ПРЕВЬЮ ДЛЯ БД (СНИЖАЕТ ВЕС СОХРАНЕНИЯ В 10 РАЗ)
             const thumbnailsForDb = await Promise.all(processedBuffers.map(async (buf) => {
                 const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
                 return 'data:image/jpeg;base64,' + thumb.toString('base64');
