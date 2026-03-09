@@ -2,9 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-
 import CustomTelegramButton from '../components/CustomTelegramButton';
-import CustomVkButton from '../components/CustomVkButton';
 
 export default function Auth() {
   const login = useStore((state) => state.login);
@@ -40,93 +38,80 @@ export default function Auth() {
 
   const handleAuth = async (e) => {
     e.preventDefault();
-    setError(''); 
-    setIsLoading(true);
-
+    setError(''); setIsLoading(true);
     try {
       if (isLogin) {
         const result = await login(email, password);
-        if (result.success) {
-          window.location.href = '/'; 
-        } else {
-          if (result.error === 'EMAIL_NOT_VERIFIED') {
-            setIsVerification(true);
-            setError('Почта не подтверждена. Новый код отправлен.');
-          } else {
-            setError(result.error || 'Ошибка входа.');
-          }
-        }
+        if (result.success) window.location.href = '/'; 
+        else if (result.error === 'EMAIL_NOT_VERIFIED') { setIsVerification(true); setError('Почта не подтверждена. Новый код отправлен.'); } 
+        else setError(result.error || 'Ошибка входа.');
       } else {
         if (!isAccepted) { setError('Нужно согласие с политикой'); setIsLoading(false); return; }
         if (password.length < 6) { setError('Пароль минимум 6 символов'); setIsLoading(false); return; }
-
         const result = await register(email, password, name, phone);
-        if (result.success) {
-          setIsVerification(true); 
-        } else {
-          setError(result.error || 'Ошибка регистрации');
-        }
+        if (result.success) setIsVerification(true); 
+        else setError(result.error || 'Ошибка регистрации');
       }
-    } catch (err) { 
-      setError('Ошибка соединения с сервером'); 
-    }
+    } catch (err) { setError('Ошибка соединения с сервером'); }
     setIsLoading(false);
   };
 
   const handleVerifySubmit = async (e) => {
     e.preventDefault();
-    setError(''); 
-    setIsLoading(true);
+    setError(''); setIsLoading(true);
     try {
       const verifyEmailCode = useStore.getState().verifyEmailCode;
       const result = await verifyEmailCode(email, code);
-      if (result.success) {
-        window.location.href = '/';
-      } else {
-        setError(result.error || 'Неверный код');
-      }
-    } catch(err) { 
-      setError('Ошибка соединения'); 
-    }
+      if (result.success) window.location.href = '/';
+      else setError(result.error || 'Неверный код');
+    } catch(err) { setError('Ошибка соединения'); }
     setIsLoading(false);
   };
 
   const handleTelegramResponse = async (tgUser) => {
     setIsLoading(true);
     const result = await telegramLogin(tgUser);
-    if (result.success) {
-       window.location.href = '/';
-    } else {
-       setIsLoading(false);
-       setError(result.error || 'Ошибка авторизации Telegram');
-    }
+    if (result.success) window.location.href = '/';
+    else { setIsLoading(false); setError(result.error || 'Ошибка Telegram'); }
   };
 
-  const handleVkResponse = async (vkData) => {
-    setIsLoading(true);
-    const result = await vkLogin(vkData);
-    if (result.success) {
-       window.location.href = '/';
-    } else {
-       setIsLoading(false);
-       setError(result.error || 'Ошибка авторизации ВКонтакте');
-    }
+  // НАДЕЖНАЯ АВТОРИЗАЦИЯ ВК (БЕЗ РЕДИРЕКТА СТРАНИЦЫ)
+  const handleVkConnect = () => {
+    setIsLoading(true); setError('');
+    const cleanAppId = String(import.meta.env.VITE_VK_APP_ID || '54471878').replace(/['"]/g, '').trim();
+    const cleanRedirectUri = String(import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback').replace(/['"]/g, '').trim();
+    const url = `https://oauth.vk.com/authorize?client_id=${cleanAppId}&display=popup&redirect_uri=${encodeURIComponent(cleanRedirectUri)}&scope=email,offline&response_type=code&v=5.199`;
+
+    const popup = window.open(url, 'vk_auth', `width=600,height=700,top=${window.screen.height/2-350},left=${window.screen.width/2-300},status=yes,scrollbars=yes`);
+
+    const messageListener = async (event) => {
+      if (event.data?.type === 'VK_GROUPS_LOADED') {
+        const { profile } = event.data.payload;
+        const result = await vkLogin(profile);
+        if (result.success) window.location.href = '/';
+        else setError(result.error || 'Ошибка при входе');
+        setIsLoading(false); window.removeEventListener('message', messageListener);
+      } else if (event.data?.type === 'VK_AUTH_ERROR') {
+        setError('Ошибка ВК: ' + event.data.error);
+        setIsLoading(false); window.removeEventListener('message', messageListener);
+      }
+    };
+    window.addEventListener('message', messageListener);
+
+    const checkClosed = setInterval(() => {
+      if (popup?.closed) { clearInterval(checkClosed); setIsLoading(false); window.removeEventListener('message', messageListener); }
+    }, 1000);
   };
 
   if (isVerification) {
     return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 sm:p-6 font-sans relative overflow-y-auto">
-        <div className="absolute top-1/4 left-1/4 w-48 h-48 bg-blue-600/20 rounded-full blur-[100px] pointer-events-none"></div>
-        <div className="w-full max-w-md bg-admin-card border border-gray-800 rounded-[2rem] p-6 sm:p-8 shadow-2xl relative z-10 animate-in fade-in">
-          <button onClick={() => setIsVerification(false)} className="flex items-center gap-2 text-gray-500 hover:text-white mb-6">
-            <ArrowLeft size={20} /> <span className="font-medium">Назад</span>
-          </button>
-          <div className="w-14 h-14 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center mb-6"><ShieldCheck size={28} /></div>
+      <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 font-sans relative">
+        <div className="w-full max-w-md bg-admin-card border border-gray-800 rounded-3xl p-8 shadow-2xl relative z-10 animate-in fade-in">
+          <button onClick={() => setIsVerification(false)} className="flex items-center gap-2 text-gray-500 hover:text-white mb-6"><ArrowLeft size={20} /> <span>Назад</span></button>
           <h2 className="text-2xl font-bold text-white mb-2">Подтверждение</h2>
           <p className="text-sm text-gray-400 mb-6">Код отправлен на <span className="text-white">{email}</span></p>
-
           <form onSubmit={handleVerifySubmit} className="space-y-4">
-            <input type="text" value={code} onChange={(e) => setCode(e.target.value)} placeholder="000000" className="w-full bg-gray-900 border border-gray-800 rounded-xl py-4 px-4 text-center tracking-[0.5em] text-lg text-white focus:border-blue-500 outline-none" maxLength="6" />
+            <input type="text" value={code} onChange={(e) => setCode(e.target.value)} placeholder="000000" className="w-full bg-gray-900 border border-gray-800 rounded-xl py-4 px-4 text-center tracking-[0.5em] text-lg text-white outline-none focus:border-blue-500" maxLength="6" />
             <div className="min-h-[40px]">{error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20"><span>{error}</span></div>}</div>
             <button type="submit" disabled={isLoading || code.length !== 6} className="w-full font-bold py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">
               {isLoading ? <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin"/><span>Проверка...</span></div> : <span>Завершить регистрацию</span>}
@@ -138,9 +123,7 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 sm:p-6 font-sans relative py-[max(2rem,env(safe-area-inset-bottom))]">
-      <div className="absolute top-[10%] left-[10%] w-[300px] h-[300px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none"></div>
-      
+    <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 font-sans relative py-[max(2rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-md bg-admin-card border border-gray-800 rounded-[2rem] p-6 sm:p-8 shadow-2xl relative z-10 animate-in fade-in">
         <div className="flex justify-center mb-8">
            <div className="flex items-center gap-3">
@@ -161,7 +144,6 @@ export default function Auth() {
               <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Phone size={18} /></span><input type="tel" value={phone} onChange={handlePhoneChange} placeholder="+7 (___) ___-__-__" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3.5 pl-11 pr-4 text-white focus:border-blue-500 outline-none" /></div>
             </>
           )}
-
           <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Mail size={18} /></span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Электронная почта" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3.5 pl-11 pr-4 text-white focus:border-blue-500 outline-none" /></div>
           
           <div className="relative">
@@ -176,7 +158,6 @@ export default function Auth() {
               <label className="text-sm text-gray-400 leading-relaxed">Согласен(на) с <Link to="/privacy" className="text-blue-500">политикой</Link>.</label>
             </div>
           )}
-
           <div className="min-h-[40px]">{error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20"><span>{error}</span></div>}</div>
           
           <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors">
@@ -188,7 +169,12 @@ export default function Auth() {
           <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase">Быстрый вход через соцсети</p>
           <div className="flex flex-row justify-center gap-6">
              <CustomTelegramButton onAuthCallback={handleTelegramResponse} />
-             <CustomVkButton onAuthCallback={handleVkResponse} />
+             
+             {/* НАША НОВАЯ КНОПКА ВК БЕЗ РЕДИРЕКТОВ */}
+             <button onClick={handleVkConnect} disabled={isLoading} className="flex items-center justify-center w-12 h-12 bg-[#0077FF] hover:bg-[#0066DD] text-white rounded-xl transition-all shadow-lg shadow-[#0077FF]/20 active:scale-95 disabled:opacity-50">
+               <span className="font-black text-xl">K</span>
+             </button>
+
           </div>
         </div>
       </div>
