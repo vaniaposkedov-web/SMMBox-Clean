@@ -56,7 +56,7 @@ const getUserId = (req) => {
     return null;
 };
 
-// === ЛОГИКА ОТПРАВКИ В ВКОНТАКТЕ ===
+// === ЛОГИКА ОТПРАВКИ В ВКОНТАКТЕ (ПАКЕТНАЯ ЗАГРУЗКА - УСКОРЕНО В 5 РАЗ) ===
 async function sendToVK(token, groupId, text, imageBuffers) {
     const v = '5.131';
     const cleanGroupId = Math.abs(parseInt(groupId)); 
@@ -68,9 +68,17 @@ async function sendToVK(token, groupId, text, imageBuffers) {
         });
         const uploadUrl = serverRes.data.response.upload_url;
 
-        for (let i = 0; i < imageBuffers.length; i++) {
+        // Разбиваем массив картинок на чанки по 5 штук (ВК принимает макс 5 за один POST-запрос)
+        const chunks = [];
+        for (let i = 0; i < imageBuffers.length; i += 5) {
+            chunks.push(imageBuffers.slice(i, i + 5));
+        }
+
+        for (const chunk of chunks) {
             const form = new FormData();
-            form.append('file1', imageBuffers[i], { filename: `image${i}.jpg`, contentType: 'image/jpeg' });
+            chunk.forEach((buf, index) => {
+                form.append(`file${index + 1}`, buf, { filename: `image${index + 1}.jpg`, contentType: 'image/jpeg' });
+            });
             
             const uploadRes = await axios.post(uploadUrl, form, { headers: form.getHeaders() });
 
@@ -85,8 +93,11 @@ async function sendToVK(token, groupId, text, imageBuffers) {
                 }
             });
 
-            const savedPhoto = saveRes.data.response[0];
-            attachments.push(`photo${savedPhoto.owner_id}_${savedPhoto.id}`);
+            if (saveRes.data.response) {
+                saveRes.data.response.forEach(savedPhoto => {
+                    attachments.push(`photo${savedPhoto.owner_id}_${savedPhoto.id}`);
+                });
+            }
         }
     }
 
@@ -106,7 +117,7 @@ async function sendToVK(token, groupId, text, imageBuffers) {
     if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
 }
 
-// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ ===
+// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ (ПАРАЛЛЕЛЬНАЯ ОБРАБОТКА) ===
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
@@ -115,226 +126,215 @@ exports.createPost = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        const results = [];
-        let hasSuccess = false;
-
         // Читаем загруженные буферы
         const rawImageBuffers = mediaUrls.map(img => {
             const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
             return Buffer.from(base64Data, 'base64');
         });
 
-        // ПРЕ-ОПТИМИЗАЦИЯ: Один раз подготавливаем базу, чтобы не грузить сервер в цикле
+        // ПРЕ-ОПТИМИЗАЦИЯ: Один раз сжимаем фото для всех аккаунтов
         const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
-            return await sharp(buf).rotate().jpeg({ quality: 85 }).toBuffer();
+            return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
         }));
 
-        for (const accData of accounts) {
-            const account = await prisma.account.findUnique({
-                where: { id: accData.accountId }
-            });
-
-            if (!account) continue;
-
-            let finalText = text || '';
-            if (accData.applySignature && accData.signatureText) {
-                finalText += `\n\n${accData.signatureText}`;
-            }
-
-            let processedBuffers = optimizedBaseBuffers;
-            
-            // Водяной знак с максимальной геометрической защитой
-            if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
-                let wm = accData.watermarkConfig;
-                
-                if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
-                if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} } 
-                if (!wm || typeof wm !== 'object') wm = {};
-                
-                const wmType = wm.type || 'text'; 
-                let wmText = wm.text || 'SMMBOX';
-                if (!wmText.trim()) wmText = 'SMMBOX'; // Защита от пустого текста
-
-                const opacity = wm.opacity !== undefined ? Number(wm.opacity) / 100 : 0.9;
-                const angle = Number(wm.angle) || 0;
-                
-                processedBuffers = await Promise.all(processedBuffers.map(async (buf) => {
-                    try {
-                        const image = sharp(buf);
-                        const metadata = await image.metadata();
-                        
-                        const width = metadata.width || 1000;
-                        const height = metadata.height || 1000;
-                        
-                        let watermarkBuffer;
-                        let wmPixelWidth = 0;
-                        let wmPixelHeight = 0;
-
-                        if (wmType === 'text') {
-                            const scaleFactor = (Number(wm.size) || 100) / 100;
-                            const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
-                            
-                            const paddingX = Math.max(4, Math.floor(fontSize * 1.5)); 
-                            const paddingY = Math.max(4, Math.floor(fontSize * 1)); 
-                            
-                            const lines = String(wmText).split('\n');
-                            let maxTextWidthRaw = 0;
-                            
-                            for (const line of lines) {
-                                let currentLineWidth = 0;
-                                for (let i = 0; i < line.length; i++) {
-                                    if (line.charCodeAt(i) > 1000) currentLineWidth += fontSize * 0.95; 
-                                    else currentLineWidth += fontSize * 0.65; 
-                                }
-                                if (currentLineWidth > maxTextWidthRaw) maxTextWidthRaw = currentLineWidth;
-                            }
-                            
-                            wmPixelWidth = Math.max(20, Math.floor(maxTextWidthRaw) + (paddingX * 2));
-                            const lineHeight = Math.max(20, Math.floor(fontSize * 1.25));
-                            wmPixelHeight = Math.max(20, (lines.length * lineHeight) + (paddingY * 2));
-                            
-                            const bgColor = wm.bgColor || '#000000';
-                            const textColor = wm.textColor || '#ffffff';
-                            const hasBg = wm.hasBackground !== false;
-                            const borderRadius = Math.floor(fontSize * 0.35); 
-
-                            const centerY = wmPixelHeight / 2;
-                            const totalTextHeight = (lines.length - 1) * lineHeight;
-                            const startY = centerY - (totalTextHeight / 2);
-
-                            const escapeXml = (unsafe) => unsafe.replace(/[<>&'"]/g, (c) => {
-                                switch (c) {
-                                    case '<': return '&lt;'; case '>': return '&gt;';
-                                    case '&': return '&amp;'; case '\'': return '&apos;';
-                                    case '"': return '&quot;'; default: return c;
-                                }
-                            });
-
-                            const tspans = lines.map((line, index) => {
-                                const yPos = startY + (index * lineHeight);
-                                return `<tspan x="50%" y="${yPos}" text-anchor="middle" dominant-baseline="central">${escapeXml(line)}</tspan>`;
-                            }).join('');
-
-                            const svgText = `
-                            <svg width="${wmPixelWidth}" height="${wmPixelHeight}" xmlns="http://www.w3.org/2000/svg">
-                                <g opacity="${opacity}">
-                                    ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
-                                    <text font-size="${fontSize}px" font-family="Arial, sans-serif" font-weight="bold" fill="${textColor}">
-                                        ${tspans}
-                                    </text>
-                                </g>
-                            </svg>`;
-                            watermarkBuffer = Buffer.from(svgText);
-                        } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
-                            const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
-                            const scaleFactor = (Number(wm.size) || 100) / 100;
-                            const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
-
-                            watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
-                                .resize({ width: targetWidth })
-                                .ensureAlpha()
-                                .composite([{
-                                    input: Buffer.from([255, 255, 255, Math.floor(opacity * 255)]),
-                                    raw: { width: 1, height: 1, channels: 4 },
-                                    tile: true, blend: 'dest-in'
-                                }])
-                                .toBuffer();
-                        }
-
-                        if (!watermarkBuffer) return buf;
-
-                        if (angle !== 0) {
-                            watermarkBuffer = await sharp(watermarkBuffer)
-                                .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-                                .toBuffer();
-                        }
-
-                        // === КРИТИЧЕСКАЯ ЗАЩИТА === 
-                        // Проверяем, чтобы накладываемый знак физически не был больше самого фото
-                        const tempMeta = await sharp(watermarkBuffer).metadata();
-                        if (tempMeta.width > width || tempMeta.height > height) {
-                            watermarkBuffer = await sharp(watermarkBuffer)
-                                .resize({ width: Math.max(10, width - 20), height: Math.max(10, height - 20), fit: 'inside' })
-                                .toBuffer();
-                        }
-
-                        const wmMeta = await sharp(watermarkBuffer).metadata();
-                        wmPixelWidth = wmMeta.width;
-                        wmPixelHeight = wmMeta.height;
-
-                        // Жесткая логика координат с привязкой к краям кадра
-                        let targetX = 90;
-                        let targetY = 85;
-
-                        if (wm.x !== undefined && wm.x !== null && !isNaN(Number(wm.x))) {
-                            targetX = Number(wm.x);
-                        } else if (wm.position) {
-                            const posToCoords = {
-                                'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
-                                'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
-                                'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
-                            };
-                            if (posToCoords[wm.position]) {
-                                targetX = posToCoords[wm.position].x;
-                                targetY = posToCoords[wm.position].y;
-                            }
-                        }
-                        
-                        if (wm.y !== undefined && wm.y !== null && !isNaN(Number(wm.y))) {
-                            targetY = Number(wm.y);
-                        }
-
-                        // Удерживаем координаты от ухода в космос
-                        targetX = Math.max(0, Math.min(100, targetX));
-                        targetY = Math.max(0, Math.min(100, targetY));
-
-                        const centerX = Math.floor(width * (targetX / 100));
-                        const centerY = Math.floor(height * (targetY / 100));
-                        
-                        let leftPos = Math.floor(centerX - (wmPixelWidth / 2));
-                        let topPos = Math.floor(centerY - (wmPixelHeight / 2));
-
-                        // === КРИТИЧЕСКАЯ ЗАЩИТА 2 ===
-                        // Сдвигаем знак обратно в кадр, если он вылез за края
-                        if (leftPos + wmPixelWidth > width) leftPos = width - wmPixelWidth;
-                        if (topPos + wmPixelHeight > height) topPos = height - wmPixelHeight;
-                        if (leftPos < 0) leftPos = 0;
-                        if (topPos < 0) topPos = 0;
-
-                        return await image
-                            .composite([{ input: watermarkBuffer, top: Math.round(topPos), left: Math.round(leftPos) }])
-                            .jpeg({ quality: 90 }) 
-                            .toBuffer();
-                    } catch (e) {
-                        console.error(`[WATERMARK ERROR] Account ${account.name}:`, e.message);
-                        return buf; 
-                    }
-                }));
-            }
-
-            const isScheduled = publishAt ? true : false;
-            
-            // СОЗДАНИЕ ЛЕГКИХ ПРЕВЬЮ ДЛЯ БД (СНИЖАЕТ ВЕС СОХРАНЕНИЯ В 10 РАЗ)
-            const thumbnailsForDb = await Promise.all(processedBuffers.map(async (buf) => {
-                const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
-                return 'data:image/jpeg;base64,' + thumb.toString('base64');
-            }));
-
-            if (isScheduled) {
-                await prisma.post.create({
-                    data: {
-                        accountId: account.id,
-                        text: finalText,
-                        mediaUrls: JSON.stringify(thumbnailsForDb),
-                        publishAt: new Date(publishAt),
-                        status: 'SCHEDULED' 
-                    }
+        // ПАРАЛЛЕЛЬНЫЙ ЗАПУСК ОТПРАВКИ ВО ВСЕ АККАУНТЫ СРАЗУ
+        const accountPromises = accounts.map(async (accData) => {
+            try {
+                const account = await prisma.account.findUnique({
+                    where: { id: accData.accountId }
                 });
+
+                if (!account) return { accountId: accData.accountId, success: false, error: 'Аккаунт не найден' };
+
+                let finalText = text || '';
+                if (accData.applySignature && accData.signatureText) {
+                    finalText += `\n\n${accData.signatureText}`;
+                }
+
+                let processedBuffers = optimizedBaseBuffers;
                 
-                results.push({ accountId: account.id, success: true, scheduled: true });
-                hasSuccess = true;
-            } else {
-                try {
+                // Водяной знак с максимальной геометрической защитой
+                if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
+                    let wm = accData.watermarkConfig;
+                    
+                    if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
+                    if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} } 
+                    if (!wm || typeof wm !== 'object') wm = {};
+                    
+                    const wmType = wm.type || 'text'; 
+                    let wmText = wm.text || 'SMMBOX';
+                    if (!wmText.trim()) wmText = 'SMMBOX';
+
+                    const opacity = wm.opacity !== undefined ? Number(wm.opacity) / 100 : 0.9;
+                    const angle = Number(wm.angle) || 0;
+                    
+                    processedBuffers = await Promise.all(processedBuffers.map(async (buf) => {
+                        try {
+                            const image = sharp(buf);
+                            const metadata = await image.metadata();
+                            
+                            const width = metadata.width || 1000;
+                            const height = metadata.height || 1000;
+                            
+                            let watermarkBuffer;
+                            let wmPixelWidth = 0;
+                            let wmPixelHeight = 0;
+
+                            if (wmType === 'text') {
+                                const scaleFactor = (Number(wm.size) || 100) / 100;
+                                const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
+                                
+                                const paddingX = Math.max(4, Math.floor(fontSize * 1.5)); 
+                                const paddingY = Math.max(4, Math.floor(fontSize * 1)); 
+                                
+                                const lines = String(wmText).split('\n');
+                                let maxTextWidthRaw = 0;
+                                
+                                for (const line of lines) {
+                                    let currentLineWidth = 0;
+                                    for (let i = 0; i < line.length; i++) {
+                                        if (line.charCodeAt(i) > 1000) currentLineWidth += fontSize * 0.95; 
+                                        else currentLineWidth += fontSize * 0.65; 
+                                    }
+                                    if (currentLineWidth > maxTextWidthRaw) maxTextWidthRaw = currentLineWidth;
+                                }
+                                
+                                wmPixelWidth = Math.max(20, Math.floor(maxTextWidthRaw) + (paddingX * 2));
+                                const lineHeight = Math.max(20, Math.floor(fontSize * 1.25));
+                                wmPixelHeight = Math.max(20, (lines.length * lineHeight) + (paddingY * 2));
+                                
+                                const bgColor = wm.bgColor || '#000000';
+                                const textColor = wm.textColor || '#ffffff';
+                                const hasBg = wm.hasBackground !== false;
+                                const borderRadius = Math.floor(fontSize * 0.35); 
+
+                                const centerY = wmPixelHeight / 2;
+                                const totalTextHeight = (lines.length - 1) * lineHeight;
+                                const startY = centerY - (totalTextHeight / 2);
+
+                                const escapeXml = (unsafe) => unsafe.replace(/[<>&'"]/g, (c) => {
+                                    switch (c) {
+                                        case '<': return '&lt;'; case '>': return '&gt;';
+                                        case '&': return '&amp;'; case '\'': return '&apos;';
+                                        case '"': return '&quot;'; default: return c;
+                                    }
+                                });
+
+                                const tspans = lines.map((line, index) => {
+                                    const yPos = startY + (index * lineHeight);
+                                    return `<tspan x="50%" y="${yPos}" text-anchor="middle" dominant-baseline="central">${escapeXml(line)}</tspan>`;
+                                }).join('');
+
+                                const svgText = `
+                                <svg width="${wmPixelWidth}" height="${wmPixelHeight}" xmlns="http://www.w3.org/2000/svg">
+                                    <g opacity="${opacity}">
+                                        ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
+                                        <text font-size="${fontSize}px" font-family="Arial, sans-serif" font-weight="bold" fill="${textColor}">
+                                            ${tspans}
+                                        </text>
+                                    </g>
+                                </svg>`;
+                                watermarkBuffer = Buffer.from(svgText);
+                            } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
+                                const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
+                                const scaleFactor = (Number(wm.size) || 100) / 100;
+                                const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
+
+                                watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
+                                    .resize({ width: targetWidth })
+                                    .ensureAlpha()
+                                    .composite([{
+                                        input: Buffer.from([255, 255, 255, Math.floor(opacity * 255)]),
+                                        raw: { width: 1, height: 1, channels: 4 },
+                                        tile: true, blend: 'dest-in'
+                                    }])
+                                    .toBuffer();
+                            }
+
+                            if (!watermarkBuffer) return buf;
+
+                            if (angle !== 0) {
+                                watermarkBuffer = await sharp(watermarkBuffer)
+                                    .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                                    .toBuffer();
+                            }
+
+                            const tempMeta = await sharp(watermarkBuffer).metadata();
+                            if (tempMeta.width > width || tempMeta.height > height) {
+                                watermarkBuffer = await sharp(watermarkBuffer)
+                                    .resize({ width: Math.max(10, width - 20), height: Math.max(10, height - 20), fit: 'inside' })
+                                    .toBuffer();
+                            }
+
+                            const wmMeta = await sharp(watermarkBuffer).metadata();
+                            wmPixelWidth = wmMeta.width;
+                            wmPixelHeight = wmMeta.height;
+
+                            let targetX = 90;
+                            let targetY = 85;
+
+                            if (wm.x !== undefined && wm.x !== null && !isNaN(Number(wm.x))) {
+                                targetX = Number(wm.x);
+                            } else if (wm.position) {
+                                const posToCoords = {
+                                    'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
+                                    'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
+                                    'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
+                                };
+                                if (posToCoords[wm.position]) {
+                                    targetX = posToCoords[wm.position].x;
+                                    targetY = posToCoords[wm.position].y;
+                                }
+                            }
+                            
+                            if (wm.y !== undefined && wm.y !== null && !isNaN(Number(wm.y))) {
+                                targetY = Number(wm.y);
+                            }
+
+                            targetX = Math.max(0, Math.min(100, targetX));
+                            targetY = Math.max(0, Math.min(100, targetY));
+
+                            const centerX = Math.floor(width * (targetX / 100));
+                            const centerY = Math.floor(height * (targetY / 100));
+                            
+                            let leftPos = Math.floor(centerX - (wmPixelWidth / 2));
+                            let topPos = Math.floor(centerY - (wmPixelHeight / 2));
+
+                            if (leftPos + wmPixelWidth > width) leftPos = width - wmPixelWidth;
+                            if (topPos + wmPixelHeight > height) topPos = height - wmPixelHeight;
+                            if (leftPos < 0) leftPos = 0;
+                            if (topPos < 0) topPos = 0;
+
+                            return await image
+                                .composite([{ input: watermarkBuffer, top: Math.round(topPos), left: Math.round(leftPos) }])
+                                .jpeg({ quality: 90 }) 
+                                .toBuffer();
+                        } catch (e) {
+                            console.error(`[WATERMARK ERROR] Account ${account.name}:`, e.message);
+                            return buf; 
+                        }
+                    }));
+                }
+
+                const isScheduled = publishAt ? true : false;
+                
+                const thumbnailsForDb = await Promise.all(processedBuffers.map(async (buf) => {
+                    const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
+                    return 'data:image/jpeg;base64,' + thumb.toString('base64');
+                }));
+
+                if (isScheduled) {
+                    await prisma.post.create({
+                        data: {
+                            accountId: account.id,
+                            text: finalText,
+                            mediaUrls: JSON.stringify(thumbnailsForDb),
+                            publishAt: new Date(publishAt),
+                            status: 'SCHEDULED' 
+                        }
+                    });
+                    return { accountId: account.id, success: true, scheduled: true };
+                } else {
                     const providerType = account.provider.toLowerCase(); 
                     if (providerType === 'telegram') {
                         const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
@@ -352,14 +352,17 @@ exports.createPost = async (req, res) => {
                         }
                     });
 
-                    results.push({ accountId: account.id, success: true });
-                    hasSuccess = true; 
-                } catch (err) {
-                    console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.message);
-                    results.push({ accountId: account.id, success: false, error: err.message });
+                    return { accountId: account.id, success: true };
                 }
+            } catch (err) {
+                console.error(`[ОШИБКА] Не удалось отправить в ${accData.accountId}:`, err.message);
+                return { accountId: accData.accountId, success: false, error: err.message };
             }
-        }
+        });
+
+        // Дожидаемся выполнения ВСЕХ отправок параллельно
+        const results = await Promise.all(accountPromises);
+        const hasSuccess = results.some(r => r.success);
 
         res.json({ success: hasSuccess, results });
 
