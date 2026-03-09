@@ -304,11 +304,11 @@ export default function Onboarding() {
                     </button>
                     {/* Обернули текст загрузки и кнопки в SPAN */}
                     <button onClick={handleAddVkGroup} disabled={vkLoading || !vkTokenInput} className="flex-1 bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors">
-                      {vkLoading ? (
+                    {vkLoading ? (
                         <span className="flex items-center gap-2"><Loader2 className="animate-spin" /> Проверка...</span>
-                      ) : (
+                    ) : (
                         <span>Подключить группу</span>
-                      )}
+                    )}
                     </button>
                   </div>
                 </div>
@@ -338,7 +338,13 @@ export default function Onboarding() {
               <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">Добавьте неограниченное количество каналов.</p>
             </div>
             
-            {error && <p className="text-red-400 bg-red-400/10 py-3 px-4 rounded-xl border border-red-400/20 text-xs sm:text-sm text-left mb-4">{error}</p>}
+            <div className="min-h-[48px] mb-2">
+            {error ? (
+                <p className="text-red-400 bg-red-400/10 py-3 px-4 rounded-xl border border-red-400/20 text-xs sm:text-sm text-left animate-in fade-in">
+                {error}
+                </p>
+            ) : null}
+            </div>
             
             <div className="bg-[#0088CC]/10 border border-[#0088CC]/20 rounded-2xl p-4 sm:p-5 space-y-3">
               <h3 className="text-[#0088CC] font-bold flex items-center gap-2 mb-2 text-sm sm:text-base">
