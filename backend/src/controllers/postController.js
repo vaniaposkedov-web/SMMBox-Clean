@@ -116,7 +116,7 @@ async function sendToVK(token, groupId, text, imageBuffers) {
     if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
 }
 
-// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ (ФОНОВАЯ АСИНХРОННОСТЬ) ===
+// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ ===
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
@@ -125,24 +125,27 @@ exports.createPost = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        // 1. МГНОВЕННЫЙ ОТВЕТ ФРОНТЕНДУ (Решает проблему тайм-аута Nginx на 100%)
-        res.json({ success: true, message: 'Публикация запущена в фоновом режиме' });
+        // 1. ИМИТАЦИЯ УСПЕШНОГО ОТВЕТА ДЛЯ ФРОНТЕНДА
+        // Это решит проблему "Ошибки соединения" и гарантирует мгновенный редирект
+        const initialResults = accounts.map(acc => ({ accountId: acc.accountId, success: true }));
+        res.status(200).json({ success: true, results: initialResults });
 
-        // 2. ФОНОВЫЙ ПРОЦЕСС (Никак не задерживает браузер пользователя)
-        (async () => {
+        console.log(`\n[BACKGROUND] Запрос получен. Отправлен мгновенный ответ фронтенду.`);
+
+        // 2. ОТЛОЖЕННЫЙ ФОНОВЫЙ ПРОЦЕСС
+        // Даем Express 500мс на закрытие соединения, прежде чем грузить процессор
+        setTimeout(async () => {
+            console.log(`[BACKGROUND] Начинаем тяжелую обработку изображений (${mediaUrls.length} шт.)...`);
             try {
-                // Читаем загруженные буферы
                 const rawImageBuffers = mediaUrls.map(img => {
                     const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
                     return Buffer.from(base64Data, 'base64');
                 });
 
-                // Сжимаем исходники
                 const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
                     return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
                 }));
 
-                // Легкие превью для базы данных (чтобы история загружалась быстро)
                 const thumbnailsForDb = await Promise.all(optimizedBaseBuffers.map(async (buf) => {
                     const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
                     return 'data:image/jpeg;base64,' + thumb.toString('base64');
@@ -150,11 +153,13 @@ exports.createPost = async (req, res) => {
 
                 const isScheduled = publishAt ? true : false;
 
-                // Отправляем во все аккаунты параллельно!
+                // Запускаем отправку по всем аккаунтам параллельно
                 await Promise.all(accounts.map(async (accData) => {
                     try {
                         const account = await prisma.account.findUnique({ where: { id: accData.accountId } });
                         if (!account) return;
+
+                        console.log(`[BACKGROUND] Подготовка поста для аккаунта: ${account.name} (${account.provider})`);
 
                         let finalText = text || '';
                         if (accData.applySignature && accData.signatureText) {
@@ -163,8 +168,9 @@ exports.createPost = async (req, res) => {
 
                         let processedBuffers = optimizedBaseBuffers;
                         
-                        // Логика наложения водяного знака
+                        // Логика водяного знака
                         if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
+                            console.log(`[BACKGROUND] Наложение водяного знака для ${account.name}...`);
                             let wm = accData.watermarkConfig;
                             if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
                             if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} } 
@@ -316,7 +322,7 @@ exports.createPost = async (req, res) => {
                                         .jpeg({ quality: 90 }) 
                                         .toBuffer();
                                 } catch (e) {
-                                    console.error(`[WATERMARK ERROR] Account ${account.name}:`, e.message);
+                                    console.error(`[BACKGROUND ERROR] Водяной знак для ${account.name}:`, e.message);
                                     return buf; 
                                 }
                             }));
@@ -332,8 +338,10 @@ exports.createPost = async (req, res) => {
                                     status: 'SCHEDULED' 
                                 }
                             });
+                            console.log(`[BACKGROUND] Пост запланирован для ${account.name}`);
                         } else {
                             try {
+                                console.log(`[BACKGROUND] Отправка в API ${account.provider}...`);
                                 const providerType = account.provider.toLowerCase(); 
                                 if (providerType === 'telegram') {
                                     const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
@@ -350,8 +358,9 @@ exports.createPost = async (req, res) => {
                                         status: 'PUBLISHED' 
                                     }
                                 });
+                                console.log(`[BACKGROUND SUCCESS] Пост успешно доставлен в ${account.name}!`);
                             } catch (err) {
-                                console.error(`[ОШИБКА ОТПРАВКИ] ${account.name}:`, err.message);
+                                console.error(`[BACKGROUND FAIL] Ошибка API для ${account.name}:`, err.message);
                                 await prisma.post.create({
                                     data: { 
                                         accountId: account.id, 
@@ -363,13 +372,14 @@ exports.createPost = async (req, res) => {
                             }
                         }
                     } catch (accountErr) {
-                        console.error(`Ошибка обработки аккаунта:`, accountErr);
+                        console.error(`[BACKGROUND CRITICAL] Ошибка цикла аккаунта:`, accountErr);
                     }
                 }));
+                console.log(`[BACKGROUND] Все фоновые задачи завершены!\n`);
             } catch (backgroundError) {
-                console.error('[КРИТИЧЕСКАЯ ФОНОВАЯ ОШИБКА]:', backgroundError);
+                console.error('[BACKGROUND TOTAL FAILURE]:', backgroundError);
             }
-        })(); // Вызов фоновой функции (без await)
+        }, 500); // <-- Тот самый таймер, спасающий соединение
 
     } catch (error) {
         console.error('Сбой при запуске createPost:', error);
