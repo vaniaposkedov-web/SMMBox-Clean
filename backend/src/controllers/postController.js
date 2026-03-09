@@ -16,9 +16,7 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         const form = new FormData();
         form.append('chat_id', chatId);
         if (text) form.append('caption', text);
-        
         form.append('photo', imageBuffers[0], { filename: 'image.jpg', contentType: 'image/jpeg' });
-        
         await axios.post(`${baseUrl}/sendPhoto`, form, { headers: form.getHeaders() });
     } else {
         const form = new FormData();
@@ -116,276 +114,259 @@ async function sendToVK(token, groupId, text, imageBuffers) {
     if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
 }
 
-// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ ===
+// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ (ИДЕАЛЬНАЯ АРХИТЕКТУРА) ===
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
+        const isScheduled = publishAt ? true : false;
         
         if (!accounts || accounts.length === 0) {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        // 1. ИМИТАЦИЯ УСПЕШНОГО ОТВЕТА ДЛЯ ФРОНТЕНДА
-        // Это решит проблему "Ошибки соединения" и гарантирует мгновенный редирект
-        const initialResults = accounts.map(acc => ({ accountId: acc.accountId, success: true }));
-        res.status(200).json({ success: true, results: initialResults });
+        // 1. ОПТИМИЗАЦИЯ ИСХОДНИКОВ (СИНХРОННО)
+        const rawImageBuffers = mediaUrls.map(img => Buffer.from(img.replace(/^data:image\/\w+;base64,/, ""), 'base64'));
+        const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
+            return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+        }));
 
-        console.log(`\n[BACKGROUND] Запрос получен. Отправлен мгновенный ответ фронтенду.`);
+        const accountJobs = [];
 
-        // 2. ОТЛОЖЕННЫЙ ФОНОВЫЙ ПРОЦЕСС
-        // Даем Express 500мс на закрытие соединения, прежде чем грузить процессор
-        setTimeout(async () => {
-            console.log(`[BACKGROUND] Начинаем тяжелую обработку изображений (${mediaUrls.length} шт.)...`);
-            try {
-                const rawImageBuffers = mediaUrls.map(img => {
-                    const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
-                    return Buffer.from(base64Data, 'base64');
-                });
+        // 2. СИНХРОННОЕ НАЛОЖЕНИЕ ВОДЯНЫХ ЗНАКОВ ДЛЯ ВСЕХ АККАУНТОВ
+        for (const accData of accounts) {
+            const account = await prisma.account.findUnique({ where: { id: accData.accountId } });
+            if (!account) continue;
 
-                const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
-                    return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+            let finalText = text || '';
+            if (accData.applySignature && accData.signatureText) {
+                finalText += `\n\n${accData.signatureText}`;
+            }
+
+            let processedBuffers = optimizedBaseBuffers;
+            
+            if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
+                let wm = accData.watermarkConfig;
+                if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
+                if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} } 
+                if (!wm || typeof wm !== 'object') wm = {};
+                
+                const wmType = wm.type || 'text'; 
+                let wmText = wm.text || 'SMMBOX';
+                if (!wmText || !String(wmText).trim()) wmText = 'SMMBOX';
+
+                const opacity = wm.opacity !== undefined ? Number(wm.opacity) / 100 : 0.9;
+                const angle = Number(wm.angle) || 0;
+                
+                processedBuffers = await Promise.all(processedBuffers.map(async (buf) => {
+                    try {
+                        const image = sharp(buf);
+                        const metadata = await image.metadata();
+                        const width = metadata.width || 1000;
+                        const height = metadata.height || 1000;
+                        
+                        let watermarkBuffer;
+                        let wmPixelWidth = 0;
+                        let wmPixelHeight = 0;
+
+                        if (wmType === 'text') {
+                            const scaleFactor = (Number(wm.size) || 100) / 100;
+                            const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
+                            const paddingX = Math.max(4, Math.floor(fontSize * 1.5)); 
+                            const paddingY = Math.max(4, Math.floor(fontSize * 1)); 
+                            
+                            const lines = String(wmText).split('\n');
+                            let maxTextWidthRaw = 0;
+                            for (const line of lines) {
+                                let currentLineWidth = 0;
+                                for (let i = 0; i < line.length; i++) {
+                                    currentLineWidth += (line.charCodeAt(i) > 1000) ? fontSize * 0.95 : fontSize * 0.65; 
+                                }
+                                if (currentLineWidth > maxTextWidthRaw) maxTextWidthRaw = currentLineWidth;
+                            }
+                            
+                            wmPixelWidth = Math.max(20, Math.floor(maxTextWidthRaw) + (paddingX * 2));
+                            const lineHeight = Math.max(20, Math.floor(fontSize * 1.25));
+                            wmPixelHeight = Math.max(20, (lines.length * lineHeight) + (paddingY * 2));
+                            
+                            const bgColor = wm.bgColor || '#000000';
+                            const textColor = wm.textColor || '#ffffff';
+                            const hasBg = wm.hasBackground !== false;
+                            const borderRadius = Math.floor(fontSize * 0.35); 
+
+                            const centerY = wmPixelHeight / 2;
+                            const totalTextHeight = (lines.length - 1) * lineHeight;
+                            const startY = centerY - (totalTextHeight / 2);
+
+                            const escapeXml = (unsafe) => unsafe.replace(/[<>&'"]/g, (c) => {
+                                switch (c) {
+                                    case '<': return '&lt;'; case '>': return '&gt;';
+                                    case '&': return '&amp;'; case '\'': return '&apos;';
+                                    case '"': return '&quot;'; default: return c;
+                                }
+                            });
+
+                            const tspans = lines.map((line, index) => {
+                                const yPos = startY + (index * lineHeight);
+                                return `<tspan x="50%" y="${yPos}" text-anchor="middle" dominant-baseline="central">${escapeXml(line)}</tspan>`;
+                            }).join('');
+
+                            const svgText = `
+                            <svg width="${wmPixelWidth}" height="${wmPixelHeight}" xmlns="http://www.w3.org/2000/svg">
+                                <g opacity="${opacity}">
+                                    ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
+                                    <text font-size="${fontSize}px" font-family="Arial, sans-serif" font-weight="bold" fill="${textColor}">
+                                        ${tspans}
+                                    </text>
+                                </g>
+                            </svg>`;
+                            watermarkBuffer = Buffer.from(svgText);
+                        } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
+                            const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
+                            const scaleFactor = (Number(wm.size) || 100) / 100;
+                            const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
+
+                            watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
+                                .resize({ width: targetWidth })
+                                .ensureAlpha()
+                                .composite([{
+                                    input: Buffer.from([255, 255, 255, Math.floor(opacity * 255)]),
+                                    raw: { width: 1, height: 1, channels: 4 },
+                                    tile: true, blend: 'dest-in'
+                                }])
+                                .toBuffer();
+                        }
+
+                        if (!watermarkBuffer) return buf;
+
+                        if (angle !== 0) {
+                            watermarkBuffer = await sharp(watermarkBuffer)
+                                .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                                .toBuffer();
+                        }
+
+                        const tempMeta = await sharp(watermarkBuffer).metadata();
+                        if (tempMeta.width > width || tempMeta.height > height) {
+                            watermarkBuffer = await sharp(watermarkBuffer)
+                                .resize({ width: Math.max(10, width - 20), height: Math.max(10, height - 20), fit: 'inside' })
+                                .toBuffer();
+                        }
+
+                        const wmMeta = await sharp(watermarkBuffer).metadata();
+                        wmPixelWidth = wmMeta.width;
+                        wmPixelHeight = wmMeta.height;
+
+                        let targetX = 90;
+                        let targetY = 85;
+
+                        if (wm.x !== undefined && wm.x !== null && !isNaN(Number(wm.x))) {
+                            targetX = Number(wm.x);
+                        } else if (wm.position) {
+                            const posToCoords = {
+                                'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
+                                'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
+                                'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
+                            };
+                            if (posToCoords[wm.position]) {
+                                targetX = posToCoords[wm.position].x;
+                                targetY = posToCoords[wm.position].y;
+                            }
+                        }
+
+                        if (wm.y !== undefined && wm.y !== null && !isNaN(Number(wm.y))) {
+                            targetY = Number(wm.y);
+                        }
+
+                        targetX = Math.max(0, Math.min(100, targetX));
+                        targetY = Math.max(0, Math.min(100, targetY));
+
+                        const centerX = Math.floor(width * (targetX / 100));
+                        const centerY = Math.floor(height * (targetY / 100));
+                        
+                        let leftPos = Math.floor(centerX - (wmPixelWidth / 2));
+                        let topPos = Math.floor(centerY - (wmPixelHeight / 2));
+
+                        if (leftPos + wmPixelWidth > width) leftPos = width - wmPixelWidth;
+                        if (topPos + wmPixelHeight > height) topPos = height - wmPixelHeight;
+                        if (leftPos < 0) leftPos = 0;
+                        if (topPos < 0) topPos = 0;
+
+                        return await image
+                            .composite([{ input: watermarkBuffer, top: Math.round(topPos), left: Math.round(leftPos) }])
+                            .jpeg({ quality: 90 }) 
+                            .toBuffer();
+                    } catch (e) {
+                        console.error(`[WATERMARK ERROR] Account ${account.name}:`, e.message);
+                        return buf; 
+                    }
                 }));
+            }
 
-                const thumbnailsForDb = await Promise.all(optimizedBaseBuffers.map(async (buf) => {
+            accountJobs.push({
+                account,
+                finalText,
+                processedBuffers
+            });
+        }
+
+        // 3. ОТПРАВКА ДАННЫХ В ЗАВИСИМОСТИ ОТ ТИПА ПОСТА
+        if (isScheduled) {
+            // Для отложенных: СРАЗУ сохраняем качественные фото в базу данных
+            for (const job of accountJobs) {
+                const finalImagesToSave = job.processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
+                await prisma.post.create({
+                    data: {
+                        accountId: job.account.id,
+                        text: job.finalText,
+                        mediaUrls: JSON.stringify(finalImagesToSave),
+                        publishAt: new Date(publishAt),
+                        status: 'SCHEDULED' 
+                    }
+                });
+            }
+            // Гарантированно отдаем ответ фронтенду ТОЛЬКО после сохранения
+            return res.status(200).json({ success: true, message: 'Запланировано' });
+        } else {
+            // Для мгновенных: Сохраняем ТОЛЬКО легкие миниатюры для истории (экономия места)
+            for (const job of accountJobs) {
+                const thumbnailsForDb = await Promise.all(job.processedBuffers.map(async (buf) => {
                     const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
                     return 'data:image/jpeg;base64,' + thumb.toString('base64');
                 }));
 
-                const isScheduled = publishAt ? true : false;
-
-                // Запускаем отправку по всем аккаунтам параллельно
-                await Promise.all(accounts.map(async (accData) => {
-                    try {
-                        const account = await prisma.account.findUnique({ where: { id: accData.accountId } });
-                        if (!account) return;
-
-                        console.log(`[BACKGROUND] Подготовка поста для аккаунта: ${account.name} (${account.provider})`);
-
-                        let finalText = text || '';
-                        if (accData.applySignature && accData.signatureText) {
-                            finalText += `\n\n${accData.signatureText}`;
-                        }
-
-                        let processedBuffers = optimizedBaseBuffers;
-                        
-                        // Логика водяного знака
-                        if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
-                            console.log(`[BACKGROUND] Наложение водяного знака для ${account.name}...`);
-                            let wm = accData.watermarkConfig;
-                            if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
-                            if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} } 
-                            if (!wm || typeof wm !== 'object') wm = {};
-                            
-                            const wmType = wm.type || 'text'; 
-                            let wmText = wm.text || 'SMMBOX';
-                            if (!wmText.trim()) wmText = 'SMMBOX';
-
-                            const opacity = wm.opacity !== undefined ? Number(wm.opacity) / 100 : 0.9;
-                            const angle = Number(wm.angle) || 0;
-                            
-                            processedBuffers = await Promise.all(processedBuffers.map(async (buf) => {
-                                try {
-                                    const image = sharp(buf);
-                                    const metadata = await image.metadata();
-                                    const width = metadata.width || 1000;
-                                    const height = metadata.height || 1000;
-                                    
-                                    let watermarkBuffer;
-                                    let wmPixelWidth = 0;
-                                    let wmPixelHeight = 0;
-
-                                    if (wmType === 'text') {
-                                        const scaleFactor = (Number(wm.size) || 100) / 100;
-                                        const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
-                                        const paddingX = Math.max(4, Math.floor(fontSize * 1.5)); 
-                                        const paddingY = Math.max(4, Math.floor(fontSize * 1)); 
-                                        
-                                        const lines = String(wmText).split('\n');
-                                        let maxTextWidthRaw = 0;
-                                        for (const line of lines) {
-                                            let currentLineWidth = 0;
-                                            for (let i = 0; i < line.length; i++) {
-                                                if (line.charCodeAt(i) > 1000) currentLineWidth += fontSize * 0.95; 
-                                                else currentLineWidth += fontSize * 0.65; 
-                                            }
-                                            if (currentLineWidth > maxTextWidthRaw) maxTextWidthRaw = currentLineWidth;
-                                        }
-                                        
-                                        wmPixelWidth = Math.max(20, Math.floor(maxTextWidthRaw) + (paddingX * 2));
-                                        const lineHeight = Math.max(20, Math.floor(fontSize * 1.25));
-                                        wmPixelHeight = Math.max(20, (lines.length * lineHeight) + (paddingY * 2));
-                                        
-                                        const bgColor = wm.bgColor || '#000000';
-                                        const textColor = wm.textColor || '#ffffff';
-                                        const hasBg = wm.hasBackground !== false;
-                                        const borderRadius = Math.floor(fontSize * 0.35); 
-
-                                        const centerY = wmPixelHeight / 2;
-                                        const totalTextHeight = (lines.length - 1) * lineHeight;
-                                        const startY = centerY - (totalTextHeight / 2);
-
-                                        const escapeXml = (unsafe) => unsafe.replace(/[<>&'"]/g, (c) => {
-                                            switch (c) {
-                                                case '<': return '&lt;'; case '>': return '&gt;';
-                                                case '&': return '&amp;'; case '\'': return '&apos;';
-                                                case '"': return '&quot;'; default: return c;
-                                            }
-                                        });
-
-                                        const tspans = lines.map((line, index) => {
-                                            const yPos = startY + (index * lineHeight);
-                                            return `<tspan x="50%" y="${yPos}" text-anchor="middle" dominant-baseline="central">${escapeXml(line)}</tspan>`;
-                                        }).join('');
-
-                                        const svgText = `
-                                        <svg width="${wmPixelWidth}" height="${wmPixelHeight}" xmlns="http://www.w3.org/2000/svg">
-                                            <g opacity="${opacity}">
-                                                ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
-                                                <text font-size="${fontSize}px" font-family="Arial, sans-serif" font-weight="bold" fill="${textColor}">
-                                                    ${tspans}
-                                                </text>
-                                            </g>
-                                        </svg>`;
-                                        watermarkBuffer = Buffer.from(svgText);
-                                    } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
-                                        const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
-                                        const scaleFactor = (Number(wm.size) || 100) / 100;
-                                        const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
-
-                                        watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
-                                            .resize({ width: targetWidth })
-                                            .ensureAlpha()
-                                            .composite([{
-                                                input: Buffer.from([255, 255, 255, Math.floor(opacity * 255)]),
-                                                raw: { width: 1, height: 1, channels: 4 },
-                                                tile: true, blend: 'dest-in'
-                                            }])
-                                            .toBuffer();
-                                    }
-
-                                    if (!watermarkBuffer) return buf;
-
-                                    if (angle !== 0) {
-                                        watermarkBuffer = await sharp(watermarkBuffer)
-                                            .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-                                            .toBuffer();
-                                    }
-
-                                    const tempMeta = await sharp(watermarkBuffer).metadata();
-                                    if (tempMeta.width > width || tempMeta.height > height) {
-                                        watermarkBuffer = await sharp(watermarkBuffer)
-                                            .resize({ width: Math.max(10, width - 20), height: Math.max(10, height - 20), fit: 'inside' })
-                                            .toBuffer();
-                                    }
-
-                                    const wmMeta = await sharp(watermarkBuffer).metadata();
-                                    wmPixelWidth = wmMeta.width;
-                                    wmPixelHeight = wmMeta.height;
-
-                                    let targetX = 90;
-                                    let targetY = 85;
-
-                                    if (wm.x !== undefined && wm.x !== null && !isNaN(Number(wm.x))) {
-                                        targetX = Number(wm.x);
-                                    } else if (wm.position) {
-                                        const posToCoords = {
-                                            'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
-                                            'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
-                                            'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
-                                        };
-                                        if (posToCoords[wm.position]) {
-                                            targetX = posToCoords[wm.position].x;
-                                            targetY = posToCoords[wm.position].y;
-                                        }
-                                    }
-                                    
-                                    if (wm.y !== undefined && wm.y !== null && !isNaN(Number(wm.y))) {
-                                        targetY = Number(wm.y);
-                                    }
-
-                                    targetX = Math.max(0, Math.min(100, targetX));
-                                    targetY = Math.max(0, Math.min(100, targetY));
-
-                                    const centerX = Math.floor(width * (targetX / 100));
-                                    const centerY = Math.floor(height * (targetY / 100));
-                                    
-                                    let leftPos = Math.floor(centerX - (wmPixelWidth / 2));
-                                    let topPos = Math.floor(centerY - (wmPixelHeight / 2));
-
-                                    if (leftPos + wmPixelWidth > width) leftPos = width - wmPixelWidth;
-                                    if (topPos + wmPixelHeight > height) topPos = height - wmPixelHeight;
-                                    if (leftPos < 0) leftPos = 0;
-                                    if (topPos < 0) topPos = 0;
-
-                                    return await image
-                                        .composite([{ input: watermarkBuffer, top: Math.round(topPos), left: Math.round(leftPos) }])
-                                        .jpeg({ quality: 90 }) 
-                                        .toBuffer();
-                                } catch (e) {
-                                    console.error(`[BACKGROUND ERROR] Водяной знак для ${account.name}:`, e.message);
-                                    return buf; 
-                                }
-                            }));
-                        }
-
-                        if (isScheduled) {
-                            await prisma.post.create({
-                                data: {
-                                    accountId: account.id,
-                                    text: finalText,
-                                    mediaUrls: JSON.stringify(thumbnailsForDb),
-                                    publishAt: new Date(publishAt),
-                                    status: 'SCHEDULED' 
-                                }
-                            });
-                            console.log(`[BACKGROUND] Пост запланирован для ${account.name}`);
-                        } else {
-                            try {
-                                console.log(`[BACKGROUND] Отправка в API ${account.provider}...`);
-                                const providerType = account.provider.toLowerCase(); 
-                                if (providerType === 'telegram') {
-                                    const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
-                                    await sendToTelegram(botToken, account.providerId, finalText, processedBuffers);
-                                } else if (providerType === 'vk') {
-                                    await sendToVK(account.accessToken, account.providerId, finalText, processedBuffers);
-                                }
-                                
-                                await prisma.post.create({
-                                    data: { 
-                                        accountId: account.id, 
-                                        text: finalText, 
-                                        mediaUrls: JSON.stringify(thumbnailsForDb), 
-                                        status: 'PUBLISHED' 
-                                    }
-                                });
-                                console.log(`[BACKGROUND SUCCESS] Пост успешно доставлен в ${account.name}!`);
-                            } catch (err) {
-                                console.error(`[BACKGROUND FAIL] Ошибка API для ${account.name}:`, err.message);
-                                await prisma.post.create({
-                                    data: { 
-                                        accountId: account.id, 
-                                        text: finalText, 
-                                        mediaUrls: JSON.stringify(thumbnailsForDb), 
-                                        status: 'FAILED' 
-                                    }
-                                });
-                            }
-                        }
-                    } catch (accountErr) {
-                        console.error(`[BACKGROUND CRITICAL] Ошибка цикла аккаунта:`, accountErr);
+                await prisma.post.create({
+                    data: {
+                        accountId: job.account.id,
+                        text: job.finalText,
+                        mediaUrls: JSON.stringify(thumbnailsForDb),
+                        status: 'PUBLISHED' 
                     }
-                }));
-                console.log(`[BACKGROUND] Все фоновые задачи завершены!\n`);
-            } catch (backgroundError) {
-                console.error('[BACKGROUND TOTAL FAILURE]:', backgroundError);
+                });
             }
-        }, 500); // <-- Тот самый таймер, спасающий соединение
+
+            // Отпускаем пользователя (перекидываем на зеленый экран)
+            res.status(200).json({ success: true, message: 'Отправка запущена' });
+
+            // А сами тяжелые файлы отправляем в ВК/ТГ в фоновом режиме
+            setTimeout(async () => {
+                for (const job of accountJobs) {
+                    try {
+                        const providerType = job.account.provider.toLowerCase(); 
+                        if (providerType === 'telegram') {
+                            const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
+                            await sendToTelegram(botToken, job.account.providerId, job.finalText, job.processedBuffers);
+                        } else if (providerType === 'vk') {
+                            await sendToVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
+                        }
+                    } catch (err) {
+                        console.error(`[BACKGROUND ERROR] ${job.account.name}:`, err.message);
+                    }
+                }
+            }, 100);
+        }
 
     } catch (error) {
-        console.error('Сбой при запуске createPost:', error);
-        if (!res.headersSent) {
-            res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
-        }
+        console.error('[FATAL ERROR] Сбой createPost:', error);
+        if (!res.headersSent) res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
     }
 };
 
@@ -404,6 +385,7 @@ exports.initCron = () => {
                     const account = post.account;
                     const mediaUrls = JSON.parse(post.mediaUrls || '[]');
                     
+                    // Берем уже ИДЕАЛЬНО ГОТОВЫЕ фото с водяным знаком прямо из базы
                     const imageBuffers = mediaUrls.map(img => {
                         const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
                         return Buffer.from(base64Data, 'base64');
@@ -417,9 +399,15 @@ exports.initCron = () => {
                         await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
                     }
 
+                    // ПОСЛЕ успешной публикации, сжимаем эти фото до миниатюр (чтобы БД не распухла)
+                    const thumbnailsForDb = await Promise.all(imageBuffers.map(async (buf) => {
+                        const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
+                        return 'data:image/jpeg;base64,' + thumb.toString('base64');
+                    }));
+
                     await prisma.post.update({
                         where: { id: post.id },
-                        data: { status: 'PUBLISHED' } 
+                        data: { status: 'PUBLISHED', mediaUrls: JSON.stringify(thumbnailsForDb) } 
                     });
                 } catch (err) {
                     await prisma.post.update({ where: { id: post.id }, data: { status: 'FAILED' } });
@@ -444,7 +432,14 @@ exports.getScheduledPosts = async (req, res) => {
             orderBy: { publishAt: 'asc' },
             take: 150
         });
-        res.json({ success: true, posts });
+
+        // ЗАЩИТА: Не отдаем тяжелые Base64-картинки фронтенду, чтобы не вызвать ошибку QuotaExceededError
+        const lightweightPosts = posts.map(p => {
+            const { mediaUrls, ...rest } = p;
+            return { ...rest, mediaUrls: '[]' };
+        });
+
+        res.json({ success: true, posts: lightweightPosts });
     } catch (error) {
         res.status(500).json({ success: false });
     }
