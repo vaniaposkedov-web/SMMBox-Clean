@@ -5,25 +5,20 @@ const prisma = new PrismaClient();
 exports.vkCallback = async (req, res) => {
   const { code, error, error_description } = req.query;
   if (error) return res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: '${error_description}' }, '*'); window.close();</script>`);
-
   try {
     const clientId = process.env.VK_APP_ID;
     const clientSecret = process.env.VK_SECURE_KEY;
     const redirectUri = process.env.VK_REDIRECT_URI;
-
     const tokenRes = await fetch(`https://oauth.vk.com/access_token?client_id=${clientId}&client_secret=${clientSecret}&redirect_uri=${redirectUri}&code=${code}`);
     const tokenData = await tokenRes.json();
     if (tokenData.error) return res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: '${tokenData.error_description}' }, '*'); window.close();</script>`);
-
     const access_token = tokenData.access_token;
     const userRes = await fetch(`https://api.vk.com/method/users.get?fields=photo_100&access_token=${access_token}&v=5.199`);
     const userData = await userRes.json();
     const vkUser = userData.response[0];
-
     const groupsRes = await fetch(`https://api.vk.com/method/groups.get?extended=1&filter=admin,editor&access_token=${access_token}&v=5.199`);
     const groupsData = await groupsRes.json();
     const groups = groupsData.response ? groupsData.response.items : [];
-
     const html = `<script>window.opener.postMessage({ type: 'VK_GROUPS_LOADED', payload: { accessToken: '${access_token}', groups: ${JSON.stringify(groups)}, profile: ${JSON.stringify(vkUser)} } }, '*'); window.close();</script>`;
     res.send(html);
   } catch (err) { res.send(`<script>window.opener.postMessage({ type: 'VK_AUTH_ERROR', error: 'Internal Server Error' }, '*'); window.close();</script>`); }
@@ -44,33 +39,26 @@ exports.linkSocialProfile = async (req, res) => {
 exports.getProfiles = async (req, res) => {
   const { userId } = req.query;
   try {
-    const profiles = await prisma.socialProfile.findMany({
-      where: { userId: String(userId) }, include: { accounts: { include: { watermark: true } } }, orderBy: { createdAt: 'asc' }
-    });
+    const profiles = await prisma.socialProfile.findMany({ where: { userId: String(userId) }, include: { accounts: { include: { watermark: true } } }, orderBy: { createdAt: 'asc' } });
     res.json({ success: true, profiles });
   } catch (error) { res.status(500).json({ error: 'Ошибка загрузки' }); }
 };
 
+// --- ИСПРАВЛЕНО: БОЛЬШЕ НЕ ТРЕБУЕТ ЛИЧНЫЙ ПРОФИЛЬ ВК ---
 exports.saveVkGroupWithToken = async (req, res) => {
   const { userId, groupLink, accessToken } = req.body;
   try {
     if (!userId || !groupLink || !accessToken) return res.status(400).json({ error: 'Заполните поля' });
     let groupId = groupLink.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?vk\.com\//i, '').split('/')[0].split('?')[0].split('#')[0].trim();
 
+    // Проверяем валидность токена самой группы напрямую
     const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, { params: { group_id: groupId, access_token: accessToken, v: '5.131' } });
-    if (vkRes.data.error) return res.status(400).json({ error: `Ошибка ВК: ${vkRes.data.error.error_msg}` });
+    if (vkRes.data.error) return res.status(400).json({ error: `Ошибка ключа ВК: ${vkRes.data.error.error_msg}` });
+    
     const group = vkRes.data.response[0];
     if (!group || !group.id) return res.status(400).json({ error: 'Группа не найдена' });
 
     const safeProviderId = String(group.id);
-    const userProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'VK' }, orderBy: { createdAt: 'desc' } });
-    if (!userProfile || !userProfile.accessToken) return res.status(403).json({ error: 'Привяжите личный профиль ВК!' });
-
-    try {
-      const checkAdminRes = await axios.get(`https://api.vk.com/method/groups.getById`, { params: { group_id: safeProviderId, fields: 'admin_level', access_token: userProfile.accessToken, v: '5.199' } });
-      const groupCheck = checkAdminRes.data.response[0];
-      if (!groupCheck || !groupCheck.admin_level || groupCheck.admin_level < 1) return res.status(403).json({ error: `Вы не администратор этой группы!` });
-    } catch (e) { return res.status(403).json({ error: 'Не удалось подтвердить права' }); }
 
     const isTaken = await prisma.account.findFirst({ where: { provider: 'VK', providerId: safeProviderId } });
     if (isTaken && isTaken.userId !== String(userId)) return res.status(400).json({ error: `Сообщество привязано к другому пользователю!` });
@@ -79,10 +67,13 @@ exports.saveVkGroupWithToken = async (req, res) => {
     const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
     if (!isTaken && !currentUser.isPro && currentAccountsCount >= 10) return res.status(403).json({ error: 'Лимит 10 аккаунтов. Нужен PRO.' });
 
+    // Ищем профиль, если он есть, чтобы привязать к нему (но НЕ обрываем логику, если его нет)
+    const userProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'VK' } });
+
     if (isTaken) {
-      await prisma.account.update({ where: { id: isTaken.id }, data: { accessToken, avatarUrl: group.photo_50, name: group.name, isValid: true, errorMsg: null, profileId: userProfile.id } });
+      await prisma.account.update({ where: { id: isTaken.id }, data: { accessToken, avatarUrl: group.photo_50, name: group.name, isValid: true, errorMsg: null, profileId: userProfile ? userProfile.id : null } });
     } else {
-      await prisma.account.create({ data: { userId: String(userId), profileId: userProfile.id, provider: 'VK', providerId: safeProviderId, name: group.name, accessToken, avatarUrl: group.photo_50 } });
+      await prisma.account.create({ data: { userId: String(userId), profileId: userProfile ? userProfile.id : null, provider: 'VK', providerId: safeProviderId, name: group.name, accessToken, avatarUrl: group.photo_50 } });
     }
     res.json({ success: true, group: { name: group.name, avatar: group.photo_50 } });
   } catch (error) { res.status(500).json({ error: 'Внутренняя ошибка сервера' }); }
@@ -92,20 +83,16 @@ exports.saveTgAccounts = async (req, res) => {
   const { userId, channels } = req.body;
   try {
     if (!userId || !channels || channels.length === 0) return res.status(400).json({ error: 'Нет данных' });
-
     let tgProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'TELEGRAM' } });
     if (!tgProfile) tgProfile = await prisma.socialProfile.create({ data: { userId: String(userId), provider: 'TELEGRAM', providerAccountId: String(userId), name: 'Telegram Профиль' } });
-
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
     const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
     if (!currentUser.isPro && (currentAccountsCount + channels.length) > 10) return res.status(403).json({ error: `Лимит 10 аккаунтов.` });
-
     for (const channel of channels) {
       const safeProviderId = String(channel.chatId);
       const isTaken = await prisma.account.findFirst({ where: { provider: 'TELEGRAM', providerId: safeProviderId } });
       if (isTaken && isTaken.userId !== String(userId)) return res.status(400).json({ error: `Канал уже привязан к другому пользователю!` });
     }
-
     const savedAccounts = await Promise.all(channels.map(async (channel) => {
       const safeProviderId = String(channel.chatId); 
       const existing = await prisma.account.findFirst({ where: { userId: String(userId), provider: 'TELEGRAM', providerId: safeProviderId } });
@@ -126,9 +113,7 @@ exports.saveVkGroups = async (req, res) => {
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
     const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
     if (!currentUser.isPro && (currentAccountsCount + groups.length) > 10) return res.status(403).json({ error: `Лимит 10 аккаунтов.` });
-    
     let vkProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'VK' } });
-
     const savedAccounts = await Promise.all(groups.map(async (group) => {
       const safeProviderId = String(group.id); 
       const existing = await prisma.account.findFirst({ where: { userId: String(userId), provider: 'VK', providerId: safeProviderId } });
@@ -153,10 +138,7 @@ exports.getAccounts = async (req, res) => {
 
 exports.deleteAccount = async (req, res) => {
   const { id } = req.params;
-  try {
-    await prisma.account.delete({ where: { id: id } });
-    res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+  try { await prisma.account.delete({ where: { id: id } }); res.json({ success: true }); } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };
 
 exports.verifyTgAccountsStatus = async (req, res) => {
@@ -165,12 +147,10 @@ exports.verifyTgAccountsStatus = async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'Не указан userId' });
     const tgAccounts = await prisma.account.findMany({ where: { userId: String(userId), provider: 'TELEGRAM' } });
     if (tgAccounts.length === 0) return res.json({ success: true });
-
     let botToken = process.env.TELEGRAM_BOT_TOKEN || '';
     botToken = botToken.replace(/['"]/g, '').trim();
     if (!botToken) return res.status(500).json({ error: 'Бот не настроен на сервере' });
     const botId = botToken.split(':')[0];
-
     const updates = await Promise.all(tgAccounts.map(async (acc) => {
       try {
         if (!acc.providerId) throw new Error('Фантомный аккаунт');
@@ -225,7 +205,7 @@ exports.saveGlobalSettings = async (req, res) => {
       });
     }
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сохранения' }); }
+  } catch (error) { res.status(500).json({ error: 'Ошибка' }); }
 };
 
 exports.scanTgChannels = async (req, res) => {
