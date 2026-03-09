@@ -223,10 +223,13 @@ export default function Auth() {
 
         <div className="mt-8 pt-6 border-t border-gray-800">
           <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase tracking-wider">Быстрый вход через соцсети</p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
+          
+          {/* ИЗМЕНЕНИЕ ЗДЕСЬ: Убрали flex-col, чтобы кнопки всегда были рядом горизонтально */}
+          <div className="flex flex-row items-center justify-center gap-4 sm:gap-6">
              <CustomTelegramButton onAuthCallback={handleTelegramResponse} />
              <CustomVkButton onAuthCallback={handleVkResponse} />
           </div>
+          
         </div>
       </div>
     </div>
