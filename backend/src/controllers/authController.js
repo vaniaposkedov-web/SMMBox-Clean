@@ -5,6 +5,7 @@ const prisma = new PrismaClient();
 const axios = require('axios');
 const crypto = require('crypto');
 
+// === 1. БЕЗОПАСНАЯ РЕГИСТРАЦИЯ (ПОЧТА) ===
 exports.register = async (req, res) => {
   try {
     const { email, password, name, phone } = req.body;
@@ -23,6 +24,7 @@ exports.register = async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Внутренняя ошибка сервера' }); }
 };
 
+// === 2. ВХОД (ПОЧТА) ===
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -45,48 +47,59 @@ exports.login = async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Ошибка сервера при входе' }); }
 };
 
+// === 3. АВТОРИЗАЦИЯ ЧЕРЕЗ TELEGRAM ===
 exports.telegramAuth = async (req, res) => {
   try {
     const { id, first_name, last_name, username, photo_url } = req.body;
     if (!id) return res.status(400).json({ error: 'Нет данных Telegram' });
 
     let user = await prisma.user.findUnique({ where: { telegramId: String(id) } });
-    let isNewUser = false;
 
     if (!user) {
-      isNewUser = true;
+      const fullName = [first_name, last_name].filter(Boolean).join(' ') || username || 'Пользователь Telegram';
       user = await prisma.user.create({
-        data: { telegramId: String(id), name: [first_name, last_name].filter(Boolean).join(' ') || username || 'TG Юзер', avatarUrl: photo_url || null, isOnboardingCompleted: false }
+        data: { telegramId: String(id), name: fullName, avatarUrl: photo_url || null, isOnboardingCompleted: false, isEmailVerified: true }
+      });
+      // АВТО-ПРИВЯЗКА ПРОФИЛЯ
+      await prisma.socialProfile.create({
+        data: { userId: user.id, provider: 'TELEGRAM', providerAccountId: String(id), name: fullName, avatarUrl: photo_url || null, accessToken: '' }
       });
     }
+
     const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-    res.json({ success: true, token, user, isNewUser });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+    res.json({ success: true, token, user });
+  } catch (error) { res.status(500).json({ error: 'Ошибка сервера при входе через Telegram' }); }
 };
 
+// === 4. АВТОРИЗАЦИЯ ЧЕРЕЗ ВКОНТАКТЕ ===
 exports.vkAuth = async (req, res) => {
   try {
     const { id, first_name, last_name, photo_100 } = req.body;
     if (!id) return res.status(400).json({ error: 'Нет данных VK' });
 
     let user = await prisma.user.findUnique({ where: { vkId: String(id) } });
-    let isNewUser = false;
 
     if (!user) {
-      isNewUser = true;
+      const fullName = [first_name, last_name].filter(Boolean).join(' ') || 'Пользователь VK';
       user = await prisma.user.create({
-        data: { vkId: String(id), name: [first_name, last_name].filter(Boolean).join(' ') || 'VK Юзер', avatarUrl: photo_100 || null, isOnboardingCompleted: false }
+        data: { vkId: String(id), name: fullName, avatarUrl: photo_100 || null, isOnboardingCompleted: false, isEmailVerified: true }
+      });
+      // АВТО-ПРИВЯЗКА БАЗОВОГО ПРОФИЛЯ
+      await prisma.socialProfile.create({
+        data: { userId: user.id, provider: 'VK', providerAccountId: String(id), name: fullName, avatarUrl: photo_100 || null, accessToken: '' }
       });
     }
+
     const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-    res.json({ success: true, token, user, isNewUser });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+    res.json({ success: true, token, user });
+  } catch (error) { res.status(500).json({ error: 'Ошибка сервера при входе через VK' }); }
 };
 
+// === 5. ИНФО О ТЕЛЕГРАМ КАНАЛЕ ===
 exports.getTgChatInfo = async (req, res) => {
   try {
     const { channel } = req.body;
-    if (!channel) return res.status(400).json({ error: 'Укажите ссылку' });
+    if (!channel) return res.status(400).json({ error: 'Укажите ссылку на канал' });
 
     let channelName = channel.replace('https://t.me/', '').replace('t.me/', '').replace('@', '').split('/')[0].split('?')[0].trim();
     if (!channelName.startsWith('@') && !channelName.startsWith('-100')) channelName = '@' + channelName;
@@ -101,15 +114,16 @@ exports.getTgChatInfo = async (req, res) => {
         avatarUrl = `https://api.telegram.org/file/bot${botToken}/${fileRes.data.result.file_path}`;
     }
     res.json({ success: true, chatId: String(chat.id), title: chat.title, username: chat.username ? `@${chat.username}` : '', avatar: avatarUrl });
-  } catch (error) { res.status(400).json({ success: false, error: 'Бот не админ или канал неверен' }); }
+  } catch (error) { res.status(400).json({ success: false, error: 'Бот не является администратором в этом канале' }); }
 };
 
+// === 6. ЗАВЕРШЕНИЕ ОНБОРДИНГА ===
 exports.completeOnboarding = async (req, res) => {
   try {
     const { userId } = req.body;
     const user = await prisma.user.update({ where: { id: String(userId) }, data: { isOnboardingCompleted: true } });
     res.json({ success: true, user });
-  } catch (error) { res.status(500).json({ error: 'Ошибка завершения' }); }
+  } catch (error) { res.status(500).json({ error: 'Ошибка завершения настройки' }); }
 };
 
 exports.requestLinkEmail = async (req, res) => {
@@ -117,7 +131,6 @@ exports.requestLinkEmail = async (req, res) => {
     const { userId, email } = req.body;
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing && existing.id !== String(userId)) return res.status(400).json({ error: 'Email занят' });
-    
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await prisma.user.update({ where: { id: String(userId) }, data: { emailVerificationCode: code } });
     res.json({ success: true });
@@ -129,10 +142,7 @@ exports.verifyLinkEmail = async (req, res) => {
     const { userId, email, code, phone } = req.body;
     const user = await prisma.user.findUnique({ where: { id: String(userId) } });
     if (user.emailVerificationCode !== code) return res.status(400).json({ error: 'Неверный код' });
-    
-    const updated = await prisma.user.update({
-      where: { id: String(userId) }, data: { email, phone, isEmailVerified: true, emailVerificationCode: null }
-    });
+    const updated = await prisma.user.update({ where: { id: String(userId) }, data: { email, phone, isEmailVerified: true, emailVerificationCode: null } });
     res.json({ success: true, user: updated });
   } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };
@@ -145,7 +155,6 @@ exports.forgotPassword = async (req, res) => {
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(400).json({ error: 'Не найден' });
-
     const token = crypto.randomBytes(32).toString('hex');
     await prisma.user.update({ where: { email }, data: { resetPasswordToken: token, resetPasswordExpires: new Date(Date.now() + 3600000) } });
     res.json({ success: true });
@@ -158,7 +167,6 @@ exports.resetPassword = async (req, res) => {
     const { password } = req.body;
     const user = await prisma.user.findFirst({ where: { resetPasswordToken: token, resetPasswordExpires: { gt: new Date() } } });
     if (!user) return res.status(400).json({ error: 'Ссылка недействительна' });
-
     const hash = await bcrypt.hash(password, 10);
     await prisma.user.update({ where: { id: user.id }, data: { password: hash, resetPasswordToken: null, resetPasswordExpires: null } });
     res.json({ success: true });
@@ -172,7 +180,6 @@ exports.updateProfile = async (req, res) => {
     let avatarUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
     const data = { name, pavilion, phone };
     if (avatarUrl) data.avatarUrl = avatarUrl;
-    
     const updated = await prisma.user.update({ where: { id: String(userId) }, data });
     res.json({ success: true, user: updated });
   } catch (error) { res.status(500).json({ error: 'Ошибка обновления' }); }
