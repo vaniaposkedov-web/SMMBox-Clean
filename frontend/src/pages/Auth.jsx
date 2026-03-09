@@ -40,7 +40,8 @@ export default function Auth() {
 
   const handleAuth = async (e) => {
     e.preventDefault();
-    setError(''); setIsLoading(true);
+    setError(''); 
+    setIsLoading(true);
 
     try {
       if (isLogin) {
@@ -66,13 +67,16 @@ export default function Auth() {
           setError(result.error || 'Ошибка регистрации');
         }
       }
-    } catch (err) { setError('Ошибка соединения с сервером'); }
+    } catch (err) { 
+      setError('Ошибка соединения с сервером'); 
+    }
     setIsLoading(false);
   };
 
   const handleVerifySubmit = async (e) => {
     e.preventDefault();
-    setError(''); setIsLoading(true);
+    setError(''); 
+    setIsLoading(true);
     try {
       const verifyEmailCode = useStore.getState().verifyEmailCode;
       const result = await verifyEmailCode(email, code);
@@ -81,7 +85,9 @@ export default function Auth() {
       } else {
         setError(result.error || 'Неверный код');
       }
-    } catch(err) { setError('Ошибка соединения'); }
+    } catch(err) { 
+      setError('Ошибка соединения'); 
+    }
     setIsLoading(false);
   };
 
@@ -144,8 +150,8 @@ export default function Auth() {
         </div>
 
         <div className="flex bg-gray-900 border border-gray-800 p-1 rounded-xl mb-6">
-          <button onClick={() => { setIsLogin(true); setError(''); }} className={`flex-1 py-3 text-sm font-bold rounded-lg ${isLogin ? 'bg-gray-800 text-white border border-gray-700' : 'text-gray-500'}`}><span>Вход</span></button>
-          <button onClick={() => { setIsLogin(false); setError(''); }} className={`flex-1 py-3 text-sm font-bold rounded-lg ${!isLogin ? 'bg-gray-800 text-white border border-gray-700' : 'text-gray-500'}`}><span>Регистрация</span></button>
+          <button onClick={() => { setIsLogin(true); setError(''); }} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${isLogin ? 'bg-gray-800 text-white border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}><span>Вход</span></button>
+          <button onClick={() => { setIsLogin(false); setError(''); }} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${!isLogin ? 'bg-gray-800 text-white border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}><span>Регистрация</span></button>
         </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
@@ -173,7 +179,7 @@ export default function Auth() {
 
           <div className="min-h-[40px]">{error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20"><span>{error}</span></div>}</div>
           
-          <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">
+          <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors">
             {isLoading ? <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin"/><span>Загрузка...</span></div> : <span>{isLogin ? 'Войти' : 'Создать аккаунт'}</span>}
           </button>
         </form>

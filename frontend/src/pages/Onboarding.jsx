@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, ArrowRight, X, Send, Info, CheckCircle2, Plus, Trash2, Copy, Check, Loader2, UserCircle } from 'lucide-react';
+import { ShieldCheck, ArrowRight, X, Send, Info, CheckCircle2, Plus, Trash2, Copy, Check, Loader2 } from 'lucide-react';
 import CustomTelegramButton from '../components/CustomTelegramButton';
 
 export default function Onboarding() {
@@ -25,7 +25,6 @@ export default function Onboarding() {
   const [vkTokenInput, setVkTokenInput] = useState('');
   const [vkLoading, setVkLoading] = useState(false);
   const [vkConnectedGroups, setVkConnectedGroups] = useState([]);
-  const [isVkProfileLoading, setIsVkProfileLoading] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -35,9 +34,7 @@ export default function Onboarding() {
   const isPro = user?.isPro || false;
   const limits = isPro ? 100 : 10;
 
-  // Жесткая проверка: наличие токена значит, что ВК полностью авторизован
-  const hasVkToken = profiles.some(p => p.provider === 'VK' && p.accessToken && p.accessToken.length > 5);
-  const vkProfile = profiles.find(p => p.provider === 'VK');
+  // Проверяем, авторизовался ли человек изначально через ТГ
   const hasTgProfile = profiles.some(p => p.provider === 'TELEGRAM');
 
   useEffect(() => {
@@ -50,7 +47,9 @@ export default function Onboarding() {
     try {
       const token = localStorage.getItem('token');
       const res = await fetch('/api/auth/complete-onboarding', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ userId: user?.id }) 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, 
+        body: JSON.stringify({ userId: user?.id }) 
       });
       const data = await res.json();
       if (data.success) {
@@ -59,68 +58,100 @@ export default function Onboarding() {
       } else {
         setError('Ошибка при завершении');
       }
-    } catch (err) {}
+    } catch (err) {
+      setError('Ошибка соединения');
+    }
     setLoading(false);
   };
 
-  const handleVkConnectProfile = () => {
-    setIsVkProfileLoading(true); setError('');
-    const cleanAppId = String(import.meta.env.VITE_VK_APP_ID || '54471878').replace(/['"]/g, '').trim();
-    const cleanRedirectUri = String(import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback').replace(/['"]/g, '').trim();
-    const url = `https://oauth.vk.com/authorize?client_id=${cleanAppId}&display=popup&redirect_uri=${encodeURIComponent(cleanRedirectUri)}&scope=groups,wall,photos,video,docs,offline&response_type=code&v=5.199`;
-
-    const popup = window.open(url, 'vk_auth', `width=600,height=700,top=${window.screen.height/2-350},left=${window.screen.width/2-300},status=yes,scrollbars=yes`);
-    
-    const messageListener = async (event) => {
-      if (event.data?.type === 'VK_GROUPS_LOADED') {
-        const { accessToken, profile } = event.data.payload;
-        const name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Профиль ВК';
-        const res = await linkSocialProfile(user.id, 'VK', profile.id, name, profile.photo_100, accessToken);
-        if (res.success) { setVkStep(1); } else { setError(res.error || 'Ошибка привязки'); }
-        setIsVkProfileLoading(false); window.removeEventListener('message', messageListener);
-      } else if (event.data?.type === 'VK_AUTH_ERROR') {
-        setError('Ошибка ВК: ' + event.data.error);
-        setIsVkProfileLoading(false); window.removeEventListener('message', messageListener);
-      }
-    };
-    window.addEventListener('message', messageListener);
-    const checkClosed = setInterval(() => {
-      if (popup?.closed) { clearInterval(checkClosed); setIsVkProfileLoading(false); window.removeEventListener('message', messageListener); }
-    }, 1000);
-  };
-
+  // --- ЛОГИКА ВКОНТАКТЕ (Без личного профиля, только группа) ---
   const handleAddVkGroup = async () => {
     if (!vkLinkInput.trim() || !vkTokenInput.trim()) return setError('Заполните оба поля');
-    setVkLoading(true); setError('');
+    if (vkConnectedGroups.length >= limits) return setError(`Лимит: ${limits} групп.`);
+    
+    setVkLoading(true); 
+    setError('');
+    
     const res = await saveVkGroupWithToken(user.id, vkLinkInput, vkTokenInput);
     if (res.success) {
-      setVkConnectedGroups(prev => [...prev, { name: res.group?.name, avatar: res.group?.avatar, link: vkLinkInput }]);
-      setVkLinkInput(''); setVkTokenInput(''); setVkStep(1); 
-    } else { setError(res.error || 'Ошибка при добавлении'); }
+      setVkConnectedGroups(prev => [...prev, { 
+        id: Math.random().toString(), // Временный ID для списка
+        name: res.group?.name || 'Группа ВК', 
+        avatar: res.group?.avatar, 
+        link: vkLinkInput 
+      }]);
+      setVkLinkInput(''); 
+      setVkTokenInput(''); 
+      setVkStep(1); 
+    } else { 
+      setError(res.error || 'Ошибка при добавлении группы'); 
+    }
     setVkLoading(false);
   };
 
-  // ЕСЛИ ЮЗЕР ПРИВЯЗЫВАЕТ ТГ ЧЕРЕЗ КНОПКУ (ЕСЛИ РЕГАЛСЯ ПО ПОЧТЕ)
+  const removeVkGroupFromList = (idToRemove) => {
+    setVkConnectedGroups(vkConnectedGroups.filter(g => g.id !== idToRemove));
+    // Примечание: Это удаляет визуально, на бэкенде она уже сохранилась. 
+    // В идеале в онбординге мы только собираем массив, а сохраняем в конце, но для ВК мы сохраняем сразу для проверки токена.
+  };
+
+  // --- ЛОГИКА TELEGRAM ---
   const handleLinkTg = async (tgUser) => {
-    setTgLoading(true); setError('');
+    setTgLoading(true); 
+    setError('');
     const name = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'TG User';
     const res = await linkSocialProfile(user.id, 'TELEGRAM', String(tgUser.id), name, tgUser.photo_url, '');
-    if (res.success) { await fetchProfiles(user.id); } else { setError('Ошибка привязки Telegram'); }
+    if (res.success) { 
+      await fetchProfiles(user.id); 
+    } else { 
+      setError('Ошибка привязки Telegram'); 
+    }
     setTgLoading(false);
   };
 
   const handleAddTgChannel = async () => {
     if (!tgInput.trim() || tgLoading) return;
-    setTgLoading(true); setError('');
+    if (tgChannels.length >= limits) return setError(`Лимит: ${limits} каналов.`);
+    if (tgChannels.some(c => c.originalInput === tgInput.trim())) { setTgInput(''); return; }
+
+    setTgLoading(true); 
+    setError('');
     try {
-      const res = await fetch('/api/auth/tg-chat-info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: tgInput }) });
+      const res = await fetch('/api/auth/tg-chat-info', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ channel: tgInput }) 
+      });
       const data = await res.json();
       if (data.success) {
-        setTgChannels([...tgChannels, { chatId: data.chatId || data.username, title: data.title, username: data.username, avatar: data.avatar }]);
+        setTgChannels([...tgChannels, { 
+          originalInput: tgInput.trim(),
+          chatId: data.chatId || data.username, 
+          title: data.title, 
+          username: data.username, 
+          avatar: data.avatar 
+        }]);
         setTgInput('');
-      } else { setError(data.error); }
-    } catch (err) { setError('Ошибка сервера'); }
+      } else { 
+        setError(data.error); 
+      }
+    } catch (err) { 
+      setError('Ошибка сервера'); 
+    }
     setTgLoading(false);
+  };
+
+  const removeTgChannel = (channelToRemove) => {
+    setTgChannels(tgChannels.filter(c => c !== channelToRemove));
+  };
+
+  const saveTgAndContinue = async () => {
+    if (tgChannels.length > 0) { 
+      setLoading(true);
+      await saveTgAccounts(user?.id, tgChannels); 
+      setLoading(false);
+    }
+    firstChoice === 'tg' ? setStep('offer_second') : handleSkipAll();
   };
 
   return (
@@ -133,131 +164,176 @@ export default function Onboarding() {
 
       <div className="w-full max-w-xl bg-admin-card border border-gray-800/60 p-6 sm:p-10 rounded-[2rem] shadow-2xl relative z-10">
         
+        {/* --- ЭКРАН ВЫБОРА --- */}
         {step === 'welcome' && (
           <div className="text-center space-y-6 animate-in fade-in">
             <h1 className="text-3xl font-bold text-white">Добро пожаловать! 👋</h1>
             <p className="text-gray-400">Давайте подключим ваши первые каналы для публикации постов.</p>
             <div className="grid grid-cols-2 gap-4 mt-6">
-               <button onClick={() => { setFirstChoice('vk'); setStep('vk_setup'); }} className="group bg-[#0077FF]/10 hover:bg-[#0077FF]/20 border border-[#0077FF]/30 p-6 rounded-2xl text-[#0077FF] font-bold text-lg flex flex-col items-center gap-4 transition-all">
+               <button onClick={() => { setFirstChoice('vk'); setStep('vk_setup'); }} className="group bg-[#0077FF]/10 hover:bg-[#0077FF]/20 border border-[#0077FF]/30 p-6 rounded-2xl text-[#0077FF] font-bold text-lg flex flex-col items-center gap-4 transition-all active:scale-95">
                  <div className="w-12 h-12 bg-[#0077FF] text-white rounded-xl flex items-center justify-center shadow-lg"><span className="text-2xl font-black">K</span></div>ВКонтакте
                </button>
-               <button onClick={() => { setFirstChoice('tg'); setStep('tg_setup'); }} className="group bg-[#0088CC]/10 hover:bg-[#0088CC]/20 border border-[#0088CC]/30 p-6 rounded-2xl text-[#0088CC] font-bold text-lg flex flex-col items-center gap-4 transition-all">
+               <button onClick={() => { setFirstChoice('tg'); setStep('tg_setup'); }} className="group bg-[#0088CC]/10 hover:bg-[#0088CC]/20 border border-[#0088CC]/30 p-6 rounded-2xl text-[#0088CC] font-bold text-lg flex flex-col items-center gap-4 transition-all active:scale-95">
                  <div className="w-12 h-12 bg-[#0088CC] text-white rounded-xl flex items-center justify-center shadow-lg"><Send size={22} /></div>Telegram
                </button>
             </div>
           </div>
         )}
 
+        {/* --- ЭКРАН ВКОНТАКТЕ --- */}
         {step === 'vk_setup' && (
           <div className="space-y-6 animate-in fade-in">
-            <div className="text-center"><h2 className="text-2xl font-bold text-white">ВКонтакте</h2><p className="text-gray-400 mt-2">Добавление групп для постинга</p></div>
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+                <span className="w-6 h-6 bg-[#0077FF] rounded-md flex items-center justify-center font-bold text-xs text-white">K</span> ВКонтакте
+              </h2>
+              <p className="text-gray-400 mt-2">Добавление групп для постинга</p>
+            </div>
+            
             <div className="min-h-[40px]">{error && <div className="text-red-400 bg-red-400/10 p-3 rounded-xl border border-red-400/20 text-sm">{error}</div>}</div>
             
-            {/* ТРЕБУЕТСЯ АВТОРИЗАЦИЯ */}
-            {!hasVkToken ? (
-              <div className="flex flex-col gap-4 text-center">
-                 <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-2xl p-5">
-                    <UserCircle size={40} className="mx-auto text-[#0077FF] mb-3" />
-                    <h3 className="text-white font-bold">Нужен доступ к API</h3>
-                    <p className="text-sm text-gray-300 mt-2">Для публикации в группы необходимо дать разрешение приложению ВКонтакте.</p>
-                 </div>
-                 <button onClick={handleVkConnectProfile} disabled={isVkProfileLoading} className="w-full bg-[#0077FF] hover:bg-[#0066DD] text-white py-4 rounded-xl font-bold text-base shadow-lg">
-                  {isVkProfileLoading ? 'Привязка...' : 'Авторизовать ВКонтакте'}
-                </button>
-              </div>
-            ) : (
-              /* АВТОРИЗОВАН -> ДОБАВЛЕНИЕ ГРУПП */
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 bg-gray-900 border border-gray-800 p-4 rounded-2xl">
-                   <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center"><CheckCircle2 className="text-emerald-500" size={20} /></div>
-                   <div>
-                     <p className="text-white font-bold">{vkProfile?.name || 'Профиль ВК'}</p>
-                     <p className="text-gray-400 text-xs">Доступ к API получен</p>
-                   </div>
+            <div className="space-y-4">
+              {vkStep === 1 ? (
+                <div className="flex flex-col gap-3">
+                  <input type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)} placeholder="Ссылка на группу (vk.com/public...)" className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-4 outline-none focus:border-[#0077FF] transition-colors" />
+                  <button onClick={() => { if (!vkLinkInput) return setError('Укажите ссылку на группу'); setError(''); setVkStep(2); }} className="w-full bg-gray-800 hover:bg-gray-700 text-white p-4 rounded-xl font-bold transition-colors">Далее</button>
                 </div>
+              ) : (
+                <div className="flex flex-col gap-3 animate-in slide-in-from-right-4">
+                  <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 p-4 rounded-xl text-sm text-gray-300">
+                    <p className="font-bold text-white mb-2">Группа найдена! Инструкция:</p>
+                    <ol className="list-decimal list-inside space-y-1">
+                      <li>В настройках вашей группы ВК откройте <b>Работа с API</b>.</li>
+                      <li>Нажмите <b>Создать ключ</b>.</li>
+                      <li>Выберите галочки: <b>Управление, Фотографии, Стена</b>.</li>
+                      <li>Скопируйте ключ и вставьте его ниже.</li>
+                    </ol>
+                  </div>
+                  <input type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)} placeholder="Ключ доступа (Токен)" className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-4 outline-none focus:border-[#0077FF]" />
+                  <div className="flex gap-2">
+                    <button onClick={() => setVkStep(1)} className="bg-gray-800 hover:bg-gray-700 px-6 py-4 rounded-xl text-white font-bold transition-colors">Назад</button>
+                    <button onClick={handleAddVkGroup} disabled={vkLoading || !vkTokenInput} className="flex-1 bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white py-4 rounded-xl font-bold transition-colors">{vkLoading ? 'Проверка...' : 'Подключить группу'}</button>
+                  </div>
+                </div>
+              )}
+            </div>
 
-                {vkStep === 1 ? (
-                  <div className="flex flex-col gap-3">
-                    <input type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)} placeholder="Ссылка на группу (vk.com/public...)" className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-4 outline-none focus:border-[#0077FF]" />
-                    <button onClick={() => { if (!vkLinkInput) return setError('Укажите ссылку'); setError(''); setVkStep(2); }} className="w-full bg-gray-800 hover:bg-gray-700 text-white p-4 rounded-xl font-bold">Далее</button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    <div className="bg-[#0077FF]/10 p-4 rounded-xl text-sm text-gray-300">В настройках группы создайте API-ключ (Управление, Фото, Стена) и вставьте ниже.</div>
-                    <input type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)} placeholder="Ключ доступа (Токен)" className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl p-4 outline-none" />
-                    <div className="flex gap-2">
-                      <button onClick={() => setVkStep(1)} className="bg-gray-800 px-6 py-4 rounded-xl text-white font-bold">Назад</button>
-                      <button onClick={handleAddVkGroup} disabled={vkLoading} className="flex-1 bg-[#0077FF] text-white py-4 rounded-xl font-bold">{vkLoading ? 'Проверка...' : 'Подключить'}</button>
+            {/* ВИЗУАЛИЗАЦИЯ ДОБАВЛЕННЫХ ГРУПП ВК */}
+            {vkConnectedGroups.length > 0 && (
+              <div className="mt-6 pt-6 border-t border-gray-800">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase">Подключено групп</h3>
+                  <span className="text-xs font-mono bg-gray-800 text-gray-300 px-2 py-1 rounded-md">{vkConnectedGroups.length} / {limits}</span>
+                </div>
+                <div className="space-y-2 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
+                  {vkConnectedGroups.map((group) => (
+                    <div key={group.id} className="flex items-center justify-between bg-gray-900 border border-gray-800 p-3 rounded-xl animate-in fade-in zoom-in-95">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {group.avatar ? <img src={group.avatar} alt="avatar" className="w-10 h-10 rounded-full object-cover shrink-0" /> : <div className="w-10 h-10 rounded-full bg-[#0077FF]/20 flex items-center justify-center shrink-0"><span className="text-[#0077FF] font-bold">K</span></div>}
+                        <span className="text-white text-sm font-medium truncate">{group.name}</span>
+                      </div>
+                      <button onClick={() => removeVkGroupFromList(group.id)} className="text-gray-500 hover:text-red-400 p-2 rounded-lg hover:bg-gray-800 transition-colors"><Trash2 size={18} /></button>
                     </div>
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
             )}
 
-            {vkConnectedGroups.length > 0 && (
-              <div className="mt-4"><h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">Подключены ({vkConnectedGroups.length})</h3></div>
-            )}
-
-            {hasVkToken && (
-              <button onClick={() => { firstChoice === 'vk' ? setStep('offer_second') : handleSkipAll(); }} className="mt-6 w-full bg-white text-black font-bold py-4 rounded-xl flex items-center justify-center gap-2">
-                <span>{vkConnectedGroups.length > 0 ? 'Продолжить' : 'Сделать позже'}</span> <ArrowRight size={18} />
-              </button>
-            )}
+            <button onClick={() => { firstChoice === 'vk' ? setStep('offer_second') : handleSkipAll(); }} className="mt-6 w-full bg-white hover:bg-gray-200 text-black font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors active:scale-95">
+              <span>{vkConnectedGroups.length > 0 ? 'Продолжить' : 'Сделать позже'}</span> <ArrowRight size={18} />
+            </button>
           </div>
         )}
 
+        {/* --- ЭКРАН TELEGRAM --- */}
         {step === 'tg_setup' && (
           <div className="space-y-6 animate-in fade-in">
-            <div className="text-center"><h2 className="text-2xl font-bold text-white">Telegram</h2><p className="text-gray-400 mt-2">Добавление каналов для постинга</p></div>
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+                <Send size={24} className="text-[#0088CC]" /> Telegram
+              </h2>
+              <p className="text-gray-400 mt-2">Добавление каналов для постинга</p>
+            </div>
+
             <div className="min-h-[40px]">{error && <div className="text-red-400 bg-red-400/10 p-3 rounded-xl border border-red-400/20 text-sm">{error}</div>}</div>
             
-            {/* ЕСЛИ НЕТ ТГ-ПРОФИЛЯ (Регистрация по почте) */}
             {!hasTgProfile ? (
               <div className="flex flex-col gap-4 text-center items-center">
-                 <div className="bg-[#0088CC]/10 border border-[#0088CC]/20 rounded-2xl p-5 w-full">
-                    <Send size={40} className="mx-auto text-[#0088CC] mb-3" />
-                    <h3 className="text-white font-bold">Привязка аккаунта</h3>
-                    <p className="text-sm text-gray-300 mt-2 mb-4">Для управления каналами нужно привязать ваш Telegram-профиль.</p>
+                 <div className="bg-[#0088CC]/10 border border-[#0088CC]/20 rounded-2xl p-6 w-full">
+                    <Info size={40} className="mx-auto text-[#0088CC] mb-4" />
+                    <h3 className="text-white font-bold text-lg">Нужна авторизация</h3>
+                    <p className="text-sm text-gray-300 mt-2 mb-6">Для управления каналами, пожалуйста, подтвердите свой Telegram-профиль.</p>
                     <div className="flex justify-center">
                       <CustomTelegramButton onAuthCallback={handleLinkTg} />
                     </div>
                  </div>
               </div>
             ) : (
-              /* ЕСЛИ ТГ ПРИВЯЗАН (Или регались через ТГ) */
               <div className="space-y-4">
-                <div className="bg-[#0088CC]/10 border border-[#0088CC]/20 rounded-2xl p-4 text-sm text-gray-300">
-                  <p className="font-bold text-white mb-2">Добавьте нашего бота:</p>
-                  <button onClick={() => { navigator.clipboard.writeText('@smmbox_auth_bot'); setCopied(true); setTimeout(()=>setCopied(false),2000); }} className="bg-gray-800 px-3 py-2 rounded-lg font-mono text-white flex items-center gap-2">
-                    {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />} @smmbox_auth_bot
-                  </button>
-                  <p className="mt-2">Дайте ему права на публикацию и вставьте ссылку на канал ниже.</p>
+                <div className="bg-[#0088CC]/10 border border-[#0088CC]/20 rounded-2xl p-5 text-sm text-gray-300">
+                  <p className="font-bold text-white mb-3 text-base">Как подключить канал:</p>
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>Откройте настройки вашего канала.</li>
+                    <li>Перейдите в раздел <b>Администраторы</b>.</li>
+                    <li className="flex flex-wrap items-center gap-2 mt-1">
+                      <span>Добавьте в админы бота:</span>
+                      <button onClick={() => { navigator.clipboard.writeText('@smmbox_auth_bot'); setCopied(true); setTimeout(()=>setCopied(false),2000); }} className="bg-gray-800 border border-gray-700 px-3 py-1.5 rounded-lg font-mono text-white flex items-center gap-1.5 transition-colors active:scale-95">
+                        {copied ? <><Check size={14} className="text-green-500" /> Скопировано</> : <><Copy size={14} /> @smmbox_auth_bot</>}
+                      </button>
+                    </li>
+                    <li>Дайте боту права на <b>публикацию сообщений</b>.</li>
+                    <li>Вставьте ссылку на канал ниже.</li>
+                  </ol>
                 </div>
+
                 <div className="flex gap-2">
-                  <input type="text" value={tgInput} onChange={(e) => setTgInput(e.target.value)} placeholder="t.me/канал" className="flex-1 bg-gray-900 border border-gray-700 text-white rounded-xl p-4 outline-none" />
-                  <button onClick={handleAddTgChannel} disabled={tgLoading} className="bg-gray-800 text-white px-6 rounded-xl font-bold">{tgLoading ? '...' : <Plus size={20}/>}</button>
+                  <input type="text" value={tgInput} onChange={(e) => setTgInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddTgChannel()} placeholder="t.me/вашканал или @username" className="flex-1 bg-gray-900 border border-gray-700 text-white rounded-xl p-4 outline-none focus:border-[#0088CC] transition-colors" />
+                  <button onClick={handleAddTgChannel} disabled={tgLoading || !tgInput} className="bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-6 rounded-xl font-bold transition-colors">
+                    {tgLoading ? <Loader2 size={20} className="animate-spin"/> : <Plus size={20}/>}
+                  </button>
                 </div>
-                {tgChannels.length > 0 && <div className="text-sm text-gray-400 mt-2">Добавлено каналов: {tgChannels.length}</div>}
+
+                {/* ВИЗУАЛИЗАЦИЯ ДОБАВЛЕННЫХ КАНАЛОВ ТГ */}
+                {tgChannels.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-gray-800">
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase">Подключено каналов</h3>
+                      <span className="text-xs font-mono bg-gray-800 text-gray-300 px-2 py-1 rounded-md">{tgChannels.length} / {limits}</span>
+                    </div>
+                    <div className="space-y-2 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
+                      {tgChannels.map((channel, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gray-900 border border-gray-800 p-3 rounded-xl animate-in fade-in zoom-in-95">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {channel.avatar ? <img src={channel.avatar} alt="avatar" className="w-10 h-10 rounded-full object-cover shrink-0" /> : <div className="w-10 h-10 rounded-full bg-[#0088CC]/20 flex items-center justify-center shrink-0"><Send size={16} className="text-[#0088CC]" /></div>}
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-white text-sm font-medium truncate">{channel.title}</span>
+                              <span className="text-gray-500 text-xs truncate">{channel.username}</span>
+                            </div>
+                          </div>
+                          <button onClick={() => removeTgChannel(channel)} className="text-gray-500 hover:text-red-400 p-2 rounded-lg hover:bg-gray-800 transition-colors"><Trash2 size={18} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
-                <button onClick={async () => {
-                  if (tgChannels.length > 0) { await saveTgAccounts(user?.id, tgChannels); }
-                  firstChoice === 'tg' ? setStep('offer_second') : handleSkipAll();
-                }} className="mt-6 w-full bg-[#0088CC] text-white font-bold py-4 rounded-xl flex justify-center gap-2">
-                  <span>Продолжить</span> <ArrowRight size={18} />
+                <button onClick={saveTgAndContinue} disabled={loading} className="mt-6 w-full bg-[#0088CC] hover:bg-[#0077B3] disabled:opacity-50 text-white font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-colors shadow-lg shadow-[#0088CC]/20 active:scale-95">
+                  {loading ? <Loader2 size={20} className="animate-spin" /> : <><span>{tgChannels.length > 0 ? 'Сохранить и продолжить' : 'Сделать позже'}</span> <ArrowRight size={18} /></>}
                 </button>
               </div>
             )}
           </div>
         )}
 
+        {/* --- ЭКРАН УСПЕХА --- */}
         {step === 'offer_second' && (
           <div className="text-center space-y-6 animate-in fade-in">
-            <div className="w-20 h-20 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mx-auto"><CheckCircle2 size={32} /></div>
+            <div className="w-20 h-20 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.2)]"><CheckCircle2 size={40} /></div>
             <h2 className="text-3xl font-bold text-white">Супер!</h2>
-            <p className="text-gray-400">Настроить сообщества для {firstChoice === 'vk' ? 'Telegram' : 'ВКонтакте'} прямо сейчас?</p>
-            <div className="flex gap-3 pt-4">
-              <button onClick={() => setStep(firstChoice === 'vk' ? 'tg_setup' : 'vk_setup')} className="flex-1 bg-blue-600 text-white font-bold py-4 rounded-xl">Да, настроить</button>
-              <button onClick={handleSkipAll} className="flex-1 bg-gray-800 text-white font-bold py-4 rounded-xl">В профиль</button>
+            <p className="text-gray-400">Первая соцсеть подключена. Хотите сразу настроить сообщества для {firstChoice === 'vk' ? 'Telegram' : 'ВКонтакте'}?</p>
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              <button onClick={() => setStep(firstChoice === 'vk' ? 'tg_setup' : 'vk_setup')} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-colors shadow-lg">Да, настроить</button>
+              <button onClick={handleSkipAll} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-4 rounded-xl transition-colors border border-gray-700">В профиль</button>
             </div>
           </div>
         )}
