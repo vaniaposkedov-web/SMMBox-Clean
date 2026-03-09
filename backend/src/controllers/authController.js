@@ -11,7 +11,7 @@ exports.register = async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: 'Email и пароль обязательны' });
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) return res.status(400).json({ error: 'Email уже существует' });
+    if (existingUser) return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -42,7 +42,7 @@ exports.login = async (req, res) => {
 
     const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
     res.json({ success: true, token, user });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+  } catch (error) { res.status(500).json({ error: 'Ошибка сервера при входе' }); }
 };
 
 exports.telegramAuth = async (req, res) => {
@@ -111,7 +111,7 @@ exports.getTgChatInfo = async (req, res) => {
         avatarUrl = `https://api.telegram.org/file/bot${botToken}/${fileRes.data.result.file_path}`;
     }
     res.json({ success: true, chatId: String(chat.id), title: chat.title, username: chat.username ? `@${chat.username}` : '', avatar: avatarUrl });
-  } catch (error) { res.status(400).json({ success: false, error: 'Бот не является администратором в этом канале' }); }
+  } catch (error) { res.status(400).json({ success: false, error: 'Бот не админ или канал неверен' }); }
 };
 
 exports.completeOnboarding = async (req, res) => {
@@ -119,7 +119,7 @@ exports.completeOnboarding = async (req, res) => {
     const { userId } = req.body;
     const user = await prisma.user.update({ where: { id: String(userId) }, data: { isOnboardingCompleted: true } });
     res.json({ success: true, user });
-  } catch (error) { res.status(500).json({ error: 'Ошибка завершения настройки' }); }
+  } catch (error) { res.status(500).json({ error: 'Ошибка завершения' }); }
 };
 
 exports.requestLinkEmail = async (req, res) => {

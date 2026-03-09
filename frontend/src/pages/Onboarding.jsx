@@ -16,33 +16,27 @@ export default function Onboarding() {
   const saveTgAccounts = useStore(state => state.saveTgAccounts);
   const removeAccount = useStore(state => state.removeAccount);
   
-  const navigate = useNavigate();
-  
   const [step, setStep] = useState('welcome');
   const [firstChoice, setFirstChoice] = useState(null);
   
   const [tgInput, setTgInput] = useState('');
-  const [tgChannels, setTgChannels] = useState([]); 
-  
   const [vkStep, setVkStep] = useState(1);
   const [vkLinkInput, setVkLinkInput] = useState('');
   const [vkTokenInput, setVkTokenInput] = useState('');
   const [vkLoading, setVkLoading] = useState(false);
-
+  const [tgLoading, setTgLoading] = useState(false);
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
-  const [tgLoading, setTgLoading] = useState(false);
 
   const isPro = user?.isPro || false;
   const limits = isPro ? 100 : 10;
-
-  // --- ГЛОБАЛЬНЫЙ СЧЕТЧИК (Считает реальные аккаунты в БД + новые ТГ каналы, которые еще не сохранены) ---
-  const currentTotalAccounts = accounts.length + tgChannels.length;
+  const currentTotalAccounts = accounts.length;
 
   const hasTgProfile = profiles.some(p => p.provider === 'TELEGRAM');
-  // Фильтруем реальные ВК группы прямо из базы
   const vkConnectedGroups = accounts.filter(a => a.provider === 'VK');
+  const tgConnectedChannels = accounts.filter(a => a.provider === 'TELEGRAM');
 
   useEffect(() => {
     if (user?.id) {
@@ -51,15 +45,12 @@ export default function Onboarding() {
     }
   }, [user]);
 
-  // ПРОПУСТИТЬ ВСЁ И В ПРОФИЛЬ
   const handleSkipAll = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
       const res = await fetch('/api/auth/complete-onboarding', {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, 
-        body: JSON.stringify({ userId: user?.id }) 
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ userId: user?.id }) 
       });
       const data = await res.json();
       if (data.success) {
@@ -70,7 +61,12 @@ export default function Onboarding() {
     setLoading(false);
   };
 
-  // --- ЛОГИКА ВКОНТАКТЕ ---
+  const handleRemoveAccount = async (accountId) => {
+    await removeAccount(accountId);
+    await fetchAccounts(user.id);
+  };
+
+  // --- ВК ---
   const handleAddVkGroup = async () => {
     if (!vkLinkInput.trim() || !vkTokenInput.trim()) return setError('Заполните оба поля');
     if (currentTotalAccounts >= limits) return setError(`Достигнут глобальный лимит: ${limits} аккаунтов.`);
@@ -79,77 +75,42 @@ export default function Onboarding() {
     const res = await saveVkGroupWithToken(user.id, vkLinkInput, vkTokenInput);
     
     if (res.success) {
-      setVkLinkInput(''); 
-      setVkTokenInput(''); 
-      setVkStep(1); 
-      await fetchAccounts(user.id); // Сразу обновляем БД, группа появится в списке ниже
+      setVkLinkInput(''); setVkTokenInput(''); setVkStep(1); 
+      await fetchAccounts(user.id); 
     } else { 
       setError(res.error || 'Ошибка при добавлении'); 
     }
     setVkLoading(false);
   };
 
-  const handleRemoveVkGroup = async (accountId) => {
-    await removeAccount(accountId);
-    await fetchAccounts(user.id);
-  };
-
-  // --- ЛОГИКА TELEGRAM ---
+  // --- ТЕЛЕГРАМ ---
   const handleLinkTg = async (tgUser) => {
     setTgLoading(true); setError('');
     const name = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ') || tgUser.username || 'TG User';
     const res = await linkSocialProfile(user.id, 'TELEGRAM', String(tgUser.id), name, tgUser.photo_url, '');
-    if (res.success) {
-      await fetchProfiles(user.id); 
-    } else { 
-      setError('Ошибка привязки Telegram'); 
-    }
+    if (res.success) await fetchProfiles(user.id); else setError('Ошибка привязки Telegram'); 
     setTgLoading(false);
   };
 
   const handleAddTgChannel = async () => {
     if (!tgInput.trim() || tgLoading) return;
     if (currentTotalAccounts >= limits) return setError(`Достигнут глобальный лимит: ${limits} аккаунтов.`);
-    if (tgChannels.some(c => c.originalInput === tgInput.trim())) { setTgInput(''); return; }
 
     setTgLoading(true); setError('');
     try {
-      const res = await fetch('/api/auth/tg-chat-info', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ channel: tgInput }) 
-      });
-      const data = await res.json();
-      if (data.success) {
-        setTgChannels([...tgChannels, { 
-          originalInput: tgInput.trim(), 
-          chatId: data.chatId || data.username, 
-          title: data.title, 
-          username: data.username, 
-          avatar: data.avatar 
-        }]);
-        setTgInput('');
-      } else { 
-        setError(data.error); 
-      }
-    } catch (err) { 
-      setError('Ошибка сервера'); 
-    }
+      const infoRes = await fetch('/api/auth/tg-chat-info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: tgInput }) });
+      const infoData = await infoRes.json();
+      
+      if (infoData.success) {
+        const channelToSave = { chatId: infoData.chatId || infoData.username, title: infoData.title, avatar: infoData.avatar };
+        const saveRes = await saveTgAccounts(user.id, [channelToSave]);
+        if (saveRes.success) {
+          setTgInput('');
+          await fetchAccounts(user.id);
+        } else { setError(saveRes.error || 'Ошибка сохранения'); }
+      } else { setError(infoData.error); }
+    } catch (err) { setError('Ошибка сервера'); }
     setTgLoading(false);
-  };
-
-  // ФУНКЦИЯ УДАЛЕНИЯ, ИЗ-ЗА КОТОРОЙ БЫЛА ОШИБКА - ТЕПЕРЬ ОНА ЕСТЬ!
-  const removeTgChannel = (channelToRemove) => {
-    setTgChannels(tgChannels.filter(c => c.chatId !== channelToRemove.chatId));
-  };
-
-  const saveTgAndContinue = async () => {
-    if (tgChannels.length > 0) { 
-      setLoading(true);
-      await saveTgAccounts(user?.id, tgChannels); 
-      setLoading(false);
-    }
-    firstChoice === 'tg' ? setStep('offer_second') : handleSkipAll();
   };
 
   return (
@@ -160,7 +121,6 @@ export default function Onboarding() {
 
       <div className="w-full max-w-xl bg-admin-card border border-gray-800/60 p-6 sm:p-10 rounded-[2rem] shadow-2xl relative z-10">
         
-        {/* --- ЭКРАН ВЫБОРА --- */}
         {step === 'welcome' && (
           <div className="text-center space-y-6 animate-in fade-in">
             <h1 className="text-3xl font-bold text-white">Добро пожаловать! 👋</h1>
@@ -176,7 +136,6 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* --- ЭКРАН ВКОНТАКТЕ --- */}
         {step === 'vk_setup' && (
           <div className="space-y-6 animate-in fade-in">
             <div className="text-center">
@@ -216,7 +175,6 @@ export default function Onboarding() {
               )}
             </div>
 
-            {/* ВИЗУАЛИЗАЦИЯ И УДАЛЕНИЕ ДОБАВЛЕННЫХ ГРУПП ВК */}
             <div className="mt-6 pt-6 border-t border-gray-800">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase">Всего аккаунтов (ВК + ТГ)</h3>
@@ -233,7 +191,7 @@ export default function Onboarding() {
                         {group.avatarUrl ? <img src={group.avatarUrl} alt="avatar" className="w-10 h-10 rounded-full object-cover shrink-0" /> : <div className="w-10 h-10 rounded-full bg-[#0077FF]/20 flex items-center justify-center shrink-0"><span className="text-[#0077FF] font-bold">K</span></div>}
                         <span className="text-white text-sm font-medium truncate">{group.name}</span>
                       </div>
-                      <button onClick={() => handleRemoveVkGroup(group.id)} className="text-gray-500 hover:text-red-400 p-2 rounded-lg hover:bg-gray-800 transition-colors">
+                      <button onClick={() => handleRemoveAccount(group.id)} className="text-gray-500 hover:text-red-400 p-2 rounded-lg hover:bg-gray-800 transition-colors">
                         <Trash2 size={18} />
                       </button>
                     </div>
@@ -248,7 +206,6 @@ export default function Onboarding() {
           </div>
         )}
 
-        {/* --- ЭКРАН TELEGRAM --- */}
         {step === 'tg_setup' && (
           <div className="space-y-6 animate-in fade-in">
             <div className="text-center">
@@ -294,7 +251,6 @@ export default function Onboarding() {
                   </button>
                 </div>
 
-                {/* ВИЗУАЛИЗАЦИЯ И УДАЛЕНИЕ ДОБАВЛЕННЫХ КАНАЛОВ ТГ */}
                 <div className="mt-6 pt-6 border-t border-gray-800">
                   <div className="flex justify-between items-center mb-3">
                     <h3 className="text-sm font-semibold text-gray-500 uppercase">Всего аккаунтов (ВК + ТГ)</h3>
@@ -303,19 +259,18 @@ export default function Onboarding() {
                     </span>
                   </div>
                   
-                  {tgChannels.length > 0 && (
+                  {tgConnectedChannels.length > 0 && (
                     <div className="space-y-2 max-h-[180px] overflow-y-auto custom-scrollbar pr-1 mt-4">
-                      {tgChannels.map((channel, idx) => (
-                        <div key={idx} className="flex items-center justify-between bg-gray-900 border border-gray-800 p-3 rounded-xl animate-in fade-in zoom-in-95">
+                      {tgConnectedChannels.map((channel) => (
+                        <div key={channel.id} className="flex items-center justify-between bg-gray-900 border border-gray-800 p-3 rounded-xl animate-in fade-in zoom-in-95">
                           <div className="flex items-center gap-3 min-w-0">
-                            {channel.avatar ? <img src={channel.avatar} alt="avatar" className="w-10 h-10 rounded-full object-cover shrink-0" /> : <div className="w-10 h-10 rounded-full bg-[#0088CC]/20 flex items-center justify-center shrink-0"><Send size={16} className="text-[#0088CC]" /></div>}
+                            {channel.avatarUrl ? <img src={channel.avatarUrl} alt="avatar" className="w-10 h-10 rounded-full object-cover shrink-0" /> : <div className="w-10 h-10 rounded-full bg-[#0088CC]/20 flex items-center justify-center shrink-0"><Send size={16} className="text-[#0088CC]" /></div>}
                             <div className="flex flex-col min-w-0">
-                              <span className="text-white text-sm font-medium truncate">{channel.title}</span>
-                              <span className="text-gray-500 text-xs truncate">{channel.username}</span>
+                              <span className="text-white text-sm font-medium truncate">{channel.name}</span>
+                              <span className="text-gray-500 text-xs truncate">Канал</span>
                             </div>
                           </div>
-                          {/* КНОПКА УДАЛЕНИЯ, КОТОРАЯ ТЕПЕРЬ РАБОТАЕТ */}
-                          <button onClick={() => removeTgChannel(channel)} className="text-gray-500 hover:text-red-400 p-2 rounded-lg hover:bg-gray-800 transition-colors">
+                          <button onClick={() => handleRemoveAccount(channel.id)} className="text-gray-500 hover:text-red-400 p-2 rounded-lg hover:bg-gray-800 transition-colors">
                             <Trash2 size={18} />
                           </button>
                         </div>
@@ -324,15 +279,14 @@ export default function Onboarding() {
                   )}
                 </div>
                 
-                <button onClick={saveTgAndContinue} disabled={loading} className="mt-6 w-full bg-[#0088CC] hover:bg-[#0077B3] disabled:opacity-50 text-white font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-colors shadow-lg shadow-[#0088CC]/20 active:scale-95">
-                  {loading ? <Loader2 size={20} className="animate-spin" /> : <><span>{tgChannels.length > 0 ? 'Сохранить и продолжить' : 'Сделать позже'}</span> <ArrowRight size={18} /></>}
+                <button onClick={() => { firstChoice === 'tg' ? setStep('offer_second') : handleSkipAll(); }} className="mt-6 w-full bg-[#0088CC] hover:bg-[#0077B3] text-white font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-colors shadow-lg shadow-[#0088CC]/20 active:scale-95">
+                  <span>{tgConnectedChannels.length > 0 ? 'Продолжить' : 'Сделать позже'}</span> <ArrowRight size={18} />
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {/* --- ЭКРАН УСПЕХА --- */}
         {step === 'offer_second' && (
           <div className="text-center space-y-6 animate-in fade-in">
             <div className="w-20 h-20 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mx-auto shadow-[0_0_30px_rgba(34,197,94,0.2)]"><CheckCircle2 size={40} /></div>
