@@ -44,14 +44,12 @@ exports.getProfiles = async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Ошибка загрузки' }); }
 };
 
-// --- ИСПРАВЛЕНО: БОЛЬШЕ НЕ ТРЕБУЕТ ЛИЧНЫЙ ПРОФИЛЬ ВК ---
 exports.saveVkGroupWithToken = async (req, res) => {
   const { userId, groupLink, accessToken } = req.body;
   try {
     if (!userId || !groupLink || !accessToken) return res.status(400).json({ error: 'Заполните поля' });
     let groupId = groupLink.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?vk\.com\//i, '').split('/')[0].split('?')[0].split('#')[0].trim();
 
-    // Проверяем валидность токена самой группы напрямую
     const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, { params: { group_id: groupId, access_token: accessToken, v: '5.131' } });
     if (vkRes.data.error) return res.status(400).json({ error: `Ошибка ключа ВК: ${vkRes.data.error.error_msg}` });
     
@@ -59,7 +57,6 @@ exports.saveVkGroupWithToken = async (req, res) => {
     if (!group || !group.id) return res.status(400).json({ error: 'Группа не найдена' });
 
     const safeProviderId = String(group.id);
-
     const isTaken = await prisma.account.findFirst({ where: { provider: 'VK', providerId: safeProviderId } });
     if (isTaken && isTaken.userId !== String(userId)) return res.status(400).json({ error: `Сообщество привязано к другому пользователю!` });
 
@@ -67,7 +64,6 @@ exports.saveVkGroupWithToken = async (req, res) => {
     const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
     if (!isTaken && !currentUser.isPro && currentAccountsCount >= 10) return res.status(403).json({ error: 'Лимит 10 аккаунтов. Нужен PRO.' });
 
-    // Ищем профиль, если он есть, чтобы привязать к нему (но НЕ обрываем логику, если его нет)
     const userProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'VK' } });
 
     if (isTaken) {
@@ -133,7 +129,7 @@ exports.getAccounts = async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'Не указан ID пользователя' });
     const accounts = await prisma.account.findMany({ where: { userId: userId }, include: { watermark: true }, orderBy: { createdAt: 'desc' } });
     res.json(accounts);
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+  } catch (error) { res.status(500).json({ error: 'Ошибка сервера при загрузке групп' }); }
 };
 
 exports.deleteAccount = async (req, res) => {
