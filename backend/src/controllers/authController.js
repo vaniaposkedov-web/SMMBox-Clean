@@ -119,6 +119,27 @@ exports.login = async (req, res) => {
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) return res.status(401).json({ error: 'Неверный email или пароль' });
 
+    // === ЗАКРЫВАЕМ ЛАЗЕЙКУ: Если почта не подтверждена ===
+    // (Делаем исключение для тех, кто авторизовался через ВК или ТГ)
+    if (!user.isEmailVerified && !user.vkId && !user.telegramId) {
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { 
+          emailVerificationCode: verificationCode, 
+          emailVerificationExpires: new Date(Date.now() + 15 * 60 * 1000) 
+        }
+      });
+      await sendEmail({
+        email: user.email,
+        subject: '🔐 Код подтверждения SMMBOX',
+        message: `Ваш новый код для завершения регистрации: ${verificationCode}. Код действителен 15 минут.`
+      });
+      
+      // Возвращаем специальный статус, чтобы фронтенд понял, что нужно показать окно кода
+      return res.status(403).json({ error: 'EMAIL_NOT_VERIFIED' });
+    }
+
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
     const { password: _, ...userWithoutPassword } = user;
     res.json({ user: userWithoutPassword, token });

@@ -54,41 +54,51 @@ export default function Auth() {
 
     try {
       if (isLogin) {
-        // ЛОГИН
         const result = await login(email, password);
         if (result.success) {
           navigate('/profile');
         } else {
-          setError(result.error || 'Ошибка входа');
+          // ЕСЛИ СЕРВЕР ТРЕБУЕТ ПОДТВЕРЖДЕНИЯ
+          if (result.error === 'EMAIL_NOT_VERIFIED') {
+            setIsVerification(true);
+            setError('Почта не подтверждена. Мы отправили вам новый код.');
+          } else {
+            setError(result.error || 'Ошибка входа');
+          }
         }
       } else {
-        // РЕГИСТРАЦИЯ
-        if (!isAccepted) {
-          setError('Необходимо согласие с политикой конфиденциальности');
-          setIsLoading(false);
-          return;
-        }
-        if (password.length < 6) {
-          setError('Пароль должен быть не менее 6 символов');
-          setIsLoading(false);
-          return;
-        }
-        // Проверяем, что номер телефона введен полностью (18 символов: +7 (999) 000-00-00)
-        if (phone && phone.length < 18) {
-          setError('Пожалуйста, введите номер телефона полностью');
-          setIsLoading(false);
-          return;
-        }
+        if (!isAccepted) return setError('Необходимо согласие с политикой конфиденциальности') || setIsLoading(false);
+        if (password.length < 6) return setError('Пароль должен быть не менее 6 символов') || setIsLoading(false);
+        if (phone && phone.length < 18) return setError('Пожалуйста, введите номер телефона полностью') || setIsLoading(false);
 
         const result = await register(email, password, name, phone);
         if (result.success) {
-          navigate('/onboarding');
+          // ИСПРАВЛЕНИЕ: Теперь мы показываем окно кода, а не пускаем дальше!
+          setIsVerification(true); 
         } else {
           setError(result.error || 'Ошибка регистрации');
         }
       }
     } catch (err) {
       setError('Ошибка соединения с сервером');
+    }
+    setIsLoading(false);
+  };
+
+  const handleVerifySubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+    try {
+      const verifyEmailCode = useStore.getState().verifyEmailCode;
+      const result = await verifyEmailCode(email, code);
+      if (result.success) {
+        navigate('/onboarding'); // Код верный! Пускаем в систему
+      } else {
+        setError(result.error || 'Неверный код');
+      }
+    } catch(err) {
+      setError('Ошибка соединения');
     }
     setIsLoading(false);
   };
@@ -135,7 +145,7 @@ export default function Auth() {
             Мы отправили код на вашу почту <span className="text-white font-medium">{email}</span>
           </p>
 
-          <form className="space-y-4">
+          <form onSubmit={handleVerifySubmit} className="space-y-4">
             <div className="relative">
               <input 
                 type="text" 
@@ -146,8 +156,9 @@ export default function Auth() {
                 maxLength="6"
               />
             </div>
-            <button type="button" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 sm:py-4 rounded-xl transition-all shadow-lg shadow-blue-500/20 min-h-[52px] active:scale-95 flex justify-center items-center gap-2">
-              Подтвердить
+            {error && <p className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20">{error}</p>}
+            <button type="submit" disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 sm:py-4 rounded-xl transition-all shadow-lg shadow-blue-500/20 min-h-[52px] active:scale-95 flex justify-center items-center gap-2">
+              {isLoading ? <Loader2 size={20} className="animate-spin"/> : 'Подтвердить'}
             </button>
           </form>
         </div>

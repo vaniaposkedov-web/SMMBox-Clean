@@ -89,6 +89,27 @@ export const useStore = create(
         }
       },
 
+      verifyEmailCode: async (email, code) => {
+        try {
+          const res = await fetch('/api/auth/verify-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, code })
+          });
+          const data = await res.json();
+          
+          if (res.ok && data.success) {
+            // Только после верного кода мы авторизуем пользователя в системе
+            set({ user: data.user, token: data.token });
+            localStorage.setItem('token', data.token);
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети' };
+        }
+      },
+
 
 
       deleteScheduledPostAction: async (id) => {
