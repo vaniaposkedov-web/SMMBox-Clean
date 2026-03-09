@@ -6,7 +6,7 @@ import {
   ChevronDown, Copy, Check, LayoutTemplate,
   Settings2, Image as ImageIcon, Type, X,
   Sliders, Type as TypeIcon, Upload, RotateCw, Palette,
-  ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move, Loader2
+  ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move, Loader2, CheckCircle2
 } from 'lucide-react';
 
 export default function AccountsManager() {
@@ -37,6 +37,7 @@ export default function AccountsManager() {
   const [vkTokenInput, setVkTokenInput] = useState('');
   const [isAddingVk, setIsAddingVk] = useState(false);
   const [isVerifyingVk, setIsVerifyingVk] = useState(false);
+  const [vkSuccessMsg, setVkSuccessMsg] = useState('');
 
   const [savingSignature, setSavingSignature] = useState({});
   const [savingWatermark, setSavingWatermark] = useState({});
@@ -334,7 +335,9 @@ export default function AccountsManager() {
     if (res.success) {
       setVkLinkInput('');
       setVkTokenInput('');
-      setVkStep(1);
+      setVkStep(1); // Автоматически возвращаем на Шаг 1 для добавления следующей группы
+      setVkSuccessMsg(`Группа "${res.group?.name || 'ВК'}" подключена!`);
+      setTimeout(() => setVkSuccessMsg(''), 4000); // Плавно убираем уведомление
     } else {
       alert(res.error || 'Ошибка при добавлении группы');
     }
@@ -585,15 +588,23 @@ export default function AccountsManager() {
           
           <div className="mt-auto pt-2 flex flex-col gap-3">
             {vkStep === 1 ? (
-              <div className="flex flex-col sm:flex-row gap-3">
-                <input 
-                  type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
-                  placeholder="Ссылка: vk.com/public123" disabled={isLimitReached}
-                  className="flex-1 w-full bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 min-h-[48px]"
-                />
-                <button onClick={handleVkNextStep} disabled={!vkLinkInput || isLimitReached} className="shrink-0 bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg shadow-[#0077FF]/20">
-                  Найти группу
-                </button>
+              <div className="flex flex-col gap-3">
+                {vkSuccessMsg && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-xl text-sm animate-in fade-in flex items-center gap-2">
+                    <CheckCircle2 size={16} className="shrink-0" />
+                    <span>{vkSuccessMsg}</span>
+                  </div>
+                )}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input 
+                    type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
+                    placeholder="Ссылка: vk.com/public123" disabled={isLimitReached}
+                    className="flex-1 w-full bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 min-h-[48px]"
+                  />
+                  <button onClick={handleVkNextStep} disabled={!vkLinkInput || isLimitReached} className="shrink-0 bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg shadow-[#0077FF]/20">
+                    Найти группу
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row gap-3 animate-in fade-in slide-in-from-right-4">
@@ -607,14 +618,16 @@ export default function AccountsManager() {
                     Назад
                   </button>
                   <button 
-                  onClick={handleAddVk} 
-                  disabled={isAddingVk || !vkTokenInput} 
-                  className="bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg flex items-center justify-center"
-                >
-                  {isAddingVk && <RefreshCw className="animate-spin mr-2" size={18} />}
-                  {!isAddingVk && <Check className="mr-2" size={18} />}
-                  <span>{isAddingVk ? 'Проверка...' : 'Подключить'}</span>
-                </button>
+                    onClick={handleAddVk} 
+                    disabled={isAddingVk || !vkTokenInput} 
+                    className="bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg"
+                  >
+                    {isAddingVk ? (
+                      <div className="flex items-center justify-center gap-2"><RefreshCw className="animate-spin" size={18} /><span>Проверка...</span></div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2"><Check size={18} /><span>Подключить</span></div>
+                    )}
+                  </button>
                 </div>
               </div>
             )}

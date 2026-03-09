@@ -31,7 +31,6 @@ export default function Onboarding() {
   const [copied, setCopied] = useState(false);
   const [tgLoading, setTgLoading] = useState(false);
 
-  // Вместо vkGroupsFetched и selectedVkGroups добавьте:
   const [vkStep, setVkStep] = useState(1);
   const [vkLinkInput, setVkLinkInput] = useState('');
   const [vkTokenInput, setVkTokenInput] = useState('');
@@ -54,18 +53,25 @@ export default function Onboarding() {
   };
 
   const handleAddVkGroup = async () => {
-  if (!vkLinkInput.trim() || !vkTokenInput.trim()) return setError('Заполните оба поля');
-  setVkLoading(true); setError('');
-  
-  const res = await saveVkGroupWithToken(user.id, vkLinkInput, vkTokenInput);
-  if (res.success) {
-    setVkConnectedGroups([...vkConnectedGroups, vkLinkInput]);
-    setVkLinkInput(''); setVkTokenInput('');
-  } else {
-    setError(res.error || 'Ошибка при добавлении');
-  }
-  setVkLoading(false);
-};
+    if (!vkLinkInput.trim() || !vkTokenInput.trim()) return setError('Заполните оба поля');
+    setVkLoading(true); setError('');
+    
+    const res = await saveVkGroupWithToken(user.id, vkLinkInput, vkTokenInput);
+    if (res.success) {
+      setVkConnectedGroups(prev => [...prev, {
+        name: res.group?.name || 'Без названия',
+        avatar: res.group?.avatar || null,
+        link: vkLinkInput
+      }]);
+      // Очищаем форму и возвращаем на Шаг 1 для добавления следующей группы
+      setVkLinkInput(''); 
+      setVkTokenInput('');
+      setVkStep(1); 
+    } else {
+      setError(res.error || 'Ошибка при добавлении');
+    }
+    setVkLoading(false);
+  };
 
   // === ЛОГИКА АВТОРИЗАЦИИ И ВЫБОРА ГРУПП ВК ===
   const handleVkConnect = () => {
@@ -164,11 +170,10 @@ export default function Onboarding() {
   };
 
   const handleContactsOrFinish = () => {
-    // Проверяем: если почта нормальная (не .local) и уже подтверждена — пропускаем 'contacts'
     if (user?.email && !user.email.includes('.local') && user?.isEmailVerified) {
-      finishOnboarding(); // Сразу завершаем онбординг
+      finishOnboarding(); 
     } else {
-      setStep('contacts'); // Иначе просим ввести почту
+      setStep('contacts'); 
     }
   };
 
@@ -258,13 +263,12 @@ export default function Onboarding() {
               <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">Подключение групп по API-ключу (без паролей).</p>
             </div>
             
-            {/* ЗАЩИЩЕННЫЙ КОНТЕЙНЕР ДЛЯ ОШИБКИ (Предотвращает краш) */}
-            <div className="min-h-[48px]">
-              {error ? (
-                <p className="text-red-400 bg-red-400/10 py-3 px-4 rounded-xl border border-red-400/20 text-xs sm:text-sm text-left animate-in fade-in">
-                  {error}
-                </p>
-              ) : null}
+            <div className="min-h-[48px] mb-2 w-full">
+              {error && (
+                <div className="text-red-400 bg-red-400/10 py-3 px-4 rounded-xl border border-red-400/20 text-xs sm:text-sm text-left animate-in fade-in">
+                  <span>{error}</span>
+                </div>
+              )}
             </div>
             
             <div className="space-y-3 mt-1 text-left">
@@ -275,12 +279,11 @@ export default function Onboarding() {
                     placeholder="Ссылка на группу (vk.com/public123)" 
                     className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 outline-none focus:border-[#0077FF] min-h-[48px]"
                   />
-                  {/* Обернули текст в SPAN */}
                   <button onClick={() => {
                     if (!vkLinkInput.trim()) return setError('Укажите ссылку на группу');
                     setError(''); setVkStep(2);
-                  }} disabled={!vkLinkInput} className="w-full bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold disabled:opacity-50 transition-colors">
-                    <span>Далее: Инструкция по ключу</span>
+                  }} disabled={!vkLinkInput} className="w-full bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold disabled:opacity-50 transition-colors min-h-[48px]">
+                    <div className="flex justify-center items-center gap-2"><span>Далее: Инструкция по ключу</span></div>
                   </button>
                 </div>
               ) : (
@@ -299,30 +302,49 @@ export default function Onboarding() {
                     className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 outline-none focus:border-[#0077FF] min-h-[48px]"
                   />
                   <div className="flex gap-3">
-                    <button onClick={() => setVkStep(1)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-6 py-3.5 rounded-xl font-bold transition-colors">
+                    <button onClick={() => setVkStep(1)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-6 py-3.5 rounded-xl font-bold transition-colors min-h-[48px]">
                       <span>Назад</span>
                     </button>
-                    {/* Обернули текст загрузки и кнопки в SPAN */}
                     <button 
-                        onClick={handleAddVkGroup} 
-                        disabled={vkLoading || !vkTokenInput} 
-                        className="flex-1 bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold transition-colors min-h-[48px]"
-                        >
-                        {vkLoading ? (
-                            <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin" size={20} /><span>Проверка...</span></div>
-                        ) : (
-                            <div className="flex justify-center items-center gap-2"><span>Подключить группу</span></div>
-                        )}
-                        </button>
+                      onClick={handleAddVkGroup} 
+                      disabled={vkLoading || !vkTokenInput} 
+                      className="flex-1 bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold transition-colors min-h-[48px] disabled:opacity-50"
+                    >
+                      {vkLoading ? (
+                        <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin" size={20} /><span>Проверка...</span></div>
+                      ) : (
+                        <div className="flex justify-center items-center gap-2"><span>Подключить группу</span></div>
+                      )}
+                    </button>
                   </div>
                 </div>
               )}
             </div>
 
+            {/* СПИСОК УСПЕШНО ДОБАВЛЕННЫХ ГРУПП (ВК) */}
             {vkConnectedGroups.length > 0 && (
-              <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-2xl mt-4 text-center">
-                <CheckCircle2 className="mx-auto text-green-500 mb-1" size={24} />
-                <p className="text-green-500 font-bold text-sm">Добавлено групп: {vkConnectedGroups.length}</p>
+              <div className="space-y-2 mt-4 max-h-[30vh] overflow-y-auto pr-1 custom-scrollbar">
+                <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest mb-3">Подключенные сообщества</h3>
+                {vkConnectedGroups.map((group, idx) => (
+                  <div key={idx} className="flex items-center justify-between bg-gray-900/50 border border-gray-800 p-3 sm:p-4 rounded-xl animate-in fade-in slide-in-from-bottom-2 min-h-[56px]">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0 pr-2">
+                      {group.avatar ? (
+                        <img src={group.avatar} alt="avatar" className="w-10 h-10 rounded-full object-cover border border-gray-700 shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-[#0077FF]/20 flex items-center justify-center shrink-0">
+                          <span className="text-[#0077FF] font-bold">K</span>
+                        </div>
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-gray-200 text-sm font-medium truncate">{group.name}</span>
+                        <span className="text-gray-500 text-xs truncate">Подключено по API</span>
+                      </div>
+                    </div>
+                    <div className="text-emerald-500 bg-emerald-500/10 w-10 h-10 sm:w-11 sm:h-11 rounded-lg flex items-center justify-center shrink-0 cursor-default">
+                      <CheckCircle2 size={18} />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -330,7 +352,7 @@ export default function Onboarding() {
               onClick={() => { firstChoice === 'vk' ? setStep('offer_second') : handleContactsOrFinish(); }} 
               className="mt-6 w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors text-base min-h-[48px] active:scale-95"
             >
-              <span>{vkConnectedGroups.length > 0 ? 'Продолжить' : 'Пропустить шаг'}</span> <ArrowRight size={18} />
+              <span>{vkConnectedGroups.length > 0 ? `Продолжить (${vkConnectedGroups.length})` : 'Пропустить шаг'}</span> <ArrowRight size={18} />
             </button>
           </div>
         )}
@@ -381,6 +403,7 @@ export default function Onboarding() {
 
               {tgChannels.length > 0 && (
                 <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1 custom-scrollbar">
+                  <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest mb-3">Подключенные каналы</h3>
                   {tgChannels.map((channel, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-gray-900/50 border border-gray-800 p-3 sm:p-4 rounded-xl animate-in fade-in slide-in-from-bottom-2 min-h-[56px]">
                       <div className="flex items-center gap-3 sm:gap-4 min-w-0 pr-2">
