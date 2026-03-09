@@ -16,7 +16,10 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         const form = new FormData();
         form.append('chat_id', chatId);
         if (text) form.append('caption', text);
-        form.append('photo', imageBuffers[0], 'image.jpg');
+        
+        // ИСПРАВЛЕНИЕ 1: Жестко задаем формат файла (MIME-type) для Telegram
+        form.append('photo', imageBuffers[0], { filename: 'image.jpg', contentType: 'image/jpeg' });
+        
         await axios.post(`${baseUrl}/sendPhoto`, form, { headers: form.getHeaders() });
     } else {
         const form = new FormData();
@@ -30,7 +33,8 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         
         form.append('media', JSON.stringify(media));
         imageBuffers.forEach((buf, i) => {
-            form.append(`photo${i}`, buf, `photo${i}.jpg`);
+            // ИСПРАВЛЕНИЕ 2: Жестко задаем формат файлов для альбомов Telegram
+            form.append(`photo${i}`, buf, { filename: `photo${i}.jpg`, contentType: 'image/jpeg' });
         });
         
         await axios.post(`${baseUrl}/sendMediaGroup`, form, { headers: form.getHeaders() });
@@ -70,7 +74,8 @@ async function sendToVK(token, groupId, text, imageBuffers) {
 
         for (let i = 0; i < imageBuffers.length; i++) {
             const form = new FormData();
-            form.append('file1', imageBuffers[i], `image${i}.jpg`);
+            // ИСПРАВЛЕНИЕ 3: Жестко задаем формат для серверов ВКонтакте
+            form.append('file1', imageBuffers[i], { filename: `image${i}.jpg`, contentType: 'image/jpeg' });
             
             const uploadRes = await axios.post(uploadUrl, form, { headers: form.getHeaders() });
 
@@ -138,6 +143,7 @@ exports.createPost = async (req, res) => {
 
             let processedBuffers = rawImageBuffers;
             
+            // Водяной знак
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
                 const wm = accData.watermarkConfig;
                 const wmType = wm.type || 'text'; 
@@ -272,10 +278,11 @@ exports.createPost = async (req, res) => {
             }
 
             const isScheduled = publishAt ? true : false;
+            
+            // ИСПРАВЛЕНИЕ 4: Формируем картинки для сохранения в БД в любом случае
+            const base64ImagesToSave = processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
 
             if (isScheduled) {
-                const base64ImagesToSave = processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
-                
                 await prisma.post.create({
                     data: {
                         accountId: account.id,
@@ -288,7 +295,6 @@ exports.createPost = async (req, res) => {
                 
                 results.push({ accountId: account.id, success: true, scheduled: true });
                 hasSuccess = true;
-                console.log(`[ПЛАН] Пост запланирован в ${account.name} на ${publishAt}`);
             } else {
                 try {
                     const providerType = account.provider.toLowerCase(); 
@@ -299,13 +305,18 @@ exports.createPost = async (req, res) => {
                         await sendToVK(account.accessToken, account.providerId, finalText, processedBuffers);
                     }
                     
+                    // ИСПРАВЛЕНИЕ 5: Сохраняем картинки в БД, чтобы они отображались в истории профиля на сайте
                     await prisma.post.create({
-                        data: { accountId: account.id, text: finalText, mediaUrls: JSON.stringify([]), status: 'PUBLISHED' }
+                        data: { 
+                            accountId: account.id, 
+                            text: finalText, 
+                            mediaUrls: JSON.stringify(base64ImagesToSave), 
+                            status: 'PUBLISHED' 
+                        }
                     });
 
                     results.push({ accountId: account.id, success: true });
                     hasSuccess = true; 
-                    console.log(`[УСПЕХ] Пост отправлен в ${account.provider} (${account.name})`);
                 } catch (err) {
                     console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.response?.data || err.message);
                     results.push({ accountId: account.id, success: false, error: err.message });
@@ -349,9 +360,10 @@ exports.initCron = () => {
                         await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
                     }
 
+                    // ИСПРАВЛЕНИЕ 6: Оставляем картинки в БД после отправки планировщиком
                     await prisma.post.update({
                         where: { id: post.id },
-                        data: { status: 'PUBLISHED', mediaUrls: JSON.stringify([]) }
+                        data: { status: 'PUBLISHED' } 
                     });
                     console.log(`[CRON] Отложенный пост ${post.id} успешно отправлен в ${account.name}`);
                 } catch (err) {
@@ -379,7 +391,7 @@ exports.getScheduledPosts = async (req, res) => {
             },
             include: { account: { select: { name: true, provider: true } } },
             orderBy: { publishAt: 'asc' },
-            take: 150 // Ограничение, чтобы не грузить миллион постов за год
+            take: 150
         });
         res.json({ success: true, posts });
     } catch (error) {
