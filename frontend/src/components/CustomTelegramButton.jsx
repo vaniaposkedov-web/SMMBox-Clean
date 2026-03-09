@@ -1,82 +1,56 @@
-import { useState, useEffect, useRef } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Send } from 'lucide-react';
 
 export default function CustomTelegramButton({ onAuthCallback }) {
-  const widgetRef = useRef(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const containerRef = useRef(null);
 
   useEffect(() => {
-    if (widgetRef.current) {
-      widgetRef.current.innerHTML = '';
+    // Очищаем контейнер при ререндере
+    if (containerRef.current) {
+      containerRef.current.innerHTML = '';
     }
 
+    // Имя бота (из файла .env или запасной вариант)
+    const botName = import.meta.env.VITE_TG_BOT_NAME || 'smmbox_auth_bot';
+
+    // ВОЗВРАЩАЕМ РАБОЧИЙ ОФИЦИАЛЬНЫЙ СКРИПТ
     const script = document.createElement('script');
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
+    script.setAttribute('data-telegram-login', botName);
+    script.setAttribute('data-size', 'large'); 
+    script.setAttribute('data-request-access', 'write');
+    script.setAttribute('data-userpic', 'false');
     script.async = true;
 
-    if (widgetRef.current) {
-      widgetRef.current.appendChild(script);
+    // Глобальная функция обратного вызова
+    window.onTelegramAuth = (user) => {
+      if (onAuthCallback) onAuthCallback(user);
+    };
+    script.setAttribute('data-onauth', 'onTelegramAuth(user)');
+
+    if (containerRef.current) {
+      containerRef.current.appendChild(script);
     }
 
     return () => {
-      if (window.onTelegramAuth) {
-        delete window.onTelegramAuth;
-      }
+      delete window.onTelegramAuth;
     };
-  }, []);
-
-  const handleCustomClick = async () => {
-    setIsLoading(true);
-    
-    const botName = import.meta.env.VITE_TG_BOT_NAME || 'smmbox_auth_bot';
-
-    if (!window.Telegram || !window.Telegram.Login || !window.Telegram.Login.open) {
-      alert('Ошибка загрузки виджета Telegram. Пожалуйста, обновите страницу.');
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const user = await new Promise((resolve, reject) => {
-        window.Telegram.Login.open(
-          botName,
-          { request_access: 'write' },
-          (user) => {
-            if (user) resolve(user);
-            else reject(new Error('Авторизация отменена пользователем.'));
-          }
-        );
-      });
-
-      if (onAuthCallback) {
-        onAuthCallback(user);
-      }
-    } catch (err) {
-      console.error('Ошибка авторизации через Telegram:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [onAuthCallback]);
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={handleCustomClick}
-        disabled={isLoading}
-        title="Войти через Telegram"
-        // Классы 1 в 1 как у кнопки ВКонтакте, только цвет #0088CC
-        className="w-14 h-14 min-w-[56px] min-h-[56px] shrink-0 flex items-center justify-center rounded-full bg-[#0088CC]/10 text-[#0088CC] hover:bg-[#0088CC] hover:text-white border border-[#0088CC]/20 transition-all duration-300 shadow-lg hover:scale-105 disabled:opacity-50"
-      >
-        {isLoading ? (
-          <Loader2 className="animate-spin w-7 h-7 shrink-0" />
-        ) : (
-          <Send className="w-6 h-6 shrink-0 -ml-0.5" />
-        )}
-      </button>
+    <div 
+      className="relative w-14 h-14 min-w-[56px] min-h-[56px] shrink-0 rounded-full overflow-hidden group shadow-lg hover:scale-105 transition-all duration-300"
+      title="Войти через Telegram"
+    >
+      {/* 1. ВИЗУАЛЬНЫЙ ДИЗАЙН (КРУГЛАЯ КНОПКА, ТОЧНАЯ КОПИЯ ВК) */}
+      <div className="absolute inset-0 flex items-center justify-center bg-[#0088CC]/10 text-[#0088CC] group-hover:bg-[#0088CC] group-hover:text-white border border-[#0088CC]/20 transition-colors duration-300 pointer-events-none">
+        <Send className="w-6 h-6 shrink-0 -ml-0.5" />
+      </div>
 
-      {/* Скрытый контейнер для скрипта, чтобы он не ломал верстку */}
-      <div ref={widgetRef} style={{ display: 'none' }} />
-    </>
+      {/* 2. НЕВИДИМАЯ ОФИЦИАЛЬНАЯ КНОПКА ПОВЕРХ (ОНА ЛОВИТ КЛИК) */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[60px] z-10 opacity-0 flex items-center justify-center cursor-pointer">
+        <div ref={containerRef} className="cursor-pointer" />
+      </div>
+    </div>
   );
 }
