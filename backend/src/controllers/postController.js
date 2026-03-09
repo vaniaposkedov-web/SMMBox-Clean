@@ -52,9 +52,7 @@ const getUserId = (req) => {
             const decoded = jwt.decode(token); 
             if (decoded) return decoded.id || decoded.userId;
         }
-    } catch (e) {
-        console.error("Ошибка при ручной расшифровке токена:", e);
-    }
+    } catch (e) {}
     return null;
 };
 
@@ -112,7 +110,6 @@ async function sendToVK(token, groupId, text, imageBuffers) {
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
-        const images = mediaUrls; 
         
         if (!accounts || accounts.length === 0) {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
@@ -121,10 +118,16 @@ exports.createPost = async (req, res) => {
         const results = [];
         let hasSuccess = false;
 
-        const rawImageBuffers = images.map(img => {
+        // Читаем загруженные буферы
+        const rawImageBuffers = mediaUrls.map(img => {
             const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
             return Buffer.from(base64Data, 'base64');
         });
+
+        // Ужимаем оригиналы для отправки в соцсети, чтобы API не зависало на тяжелых фото
+        const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
+            return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+        }));
 
         for (const accData of accounts) {
             const account = await prisma.account.findUnique({
@@ -138,22 +141,26 @@ exports.createPost = async (req, res) => {
                 finalText += `\n\n${accData.signatureText}`;
             }
 
-            let processedBuffers = rawImageBuffers;
+            let processedBuffers = optimizedBaseBuffers;
             
-            // Водяной знак с жесткой типизацией параметров
+            // Водяной знак с максимальной защитой от крашей
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
                 let wm = accData.watermarkConfig;
-                // Защита на случай, если фронт или БД отдали строку вместо объекта
+                
                 if (typeof wm === 'string') {
                     try { wm = JSON.parse(wm); } catch(e) {}
                 }
+                if (typeof wm === 'string') {
+                    try { wm = JSON.parse(wm); } catch(e) {} // Двойной парсинг на случай вложенности
+                }
+                if (!wm || typeof wm !== 'object') wm = {};
                 
                 const wmType = wm.type || 'text'; 
                 const wmText = wm.text || 'SMMBOX';
                 const opacity = wm.opacity !== undefined ? Number(wm.opacity) / 100 : 0.9;
                 const angle = Number(wm.angle) || 0;
                 
-                processedBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
+                processedBuffers = await Promise.all(processedBuffers.map(async (buf) => {
                     try {
                         const image = sharp(buf);
                         const metadata = await image.metadata();
@@ -169,8 +176,8 @@ exports.createPost = async (req, res) => {
                             const scaleFactor = (Number(wm.size) || 100) / 100;
                             const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
                             
-                            const paddingX = Math.floor(fontSize * 1.5); 
-                            const paddingY = Math.floor(fontSize * 1); 
+                            const paddingX = Math.max(2, Math.floor(fontSize * 1.5)); 
+                            const paddingY = Math.max(2, Math.floor(fontSize * 1)); 
                             
                             const lines = String(wmText).split('\n');
                             let maxTextWidthRaw = 0;
@@ -179,14 +186,14 @@ exports.createPost = async (req, res) => {
                                 let currentLineWidth = 0;
                                 for (let i = 0; i < line.length; i++) {
                                     if (line.charCodeAt(i) > 1000) currentLineWidth += fontSize * 0.95; 
-                                    else currentLineWidth += fontSize * 0.75; 
+                                    else currentLineWidth += fontSize * 0.65; 
                                 }
                                 if (currentLineWidth > maxTextWidthRaw) maxTextWidthRaw = currentLineWidth;
                             }
                             
-                            wmPixelWidth = Math.floor(maxTextWidthRaw) + (paddingX * 2);
-                            const lineHeight = Math.floor(fontSize * 1.25);
-                            wmPixelHeight = (lines.length * lineHeight) + (paddingY * 2);
+                            wmPixelWidth = Math.max(10, Math.floor(maxTextWidthRaw) + (paddingX * 2));
+                            const lineHeight = Math.max(10, Math.floor(fontSize * 1.25));
+                            wmPixelHeight = Math.max(10, (lines.length * lineHeight) + (paddingY * 2));
                             
                             const bgColor = wm.bgColor || '#000000';
                             const textColor = wm.textColor || '#ffffff';
@@ -214,14 +221,13 @@ exports.createPost = async (req, res) => {
                             <svg width="${wmPixelWidth}" height="${wmPixelHeight}" xmlns="http://www.w3.org/2000/svg">
                                 <g opacity="${opacity}">
                                     ${hasBg ? `<rect width="100%" height="100%" fill="${bgColor}" rx="${borderRadius}" />` : ''}
-                                    <text font-size="${fontSize}px" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="${textColor}">
+                                    <text font-size="${fontSize}px" font-family="Arial, sans-serif" font-weight="bold" fill="${textColor}">
                                         ${tspans}
                                     </text>
                                 </g>
                             </svg>`;
                             watermarkBuffer = Buffer.from(svgText);
-                        } else if (wmType === 'image' && wm.image) {
-                            // Безопасное извлечение Base64 для любого формата картинки
+                        } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
                             const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
                             const scaleFactor = (Number(wm.size) || 100) / 100;
                             const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
@@ -249,7 +255,6 @@ exports.createPost = async (req, res) => {
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
-                        // Жесткая логика координат с защитой от NaN и Null
                         let targetX = 90;
                         let targetY = 85;
 
@@ -277,7 +282,6 @@ exports.createPost = async (req, res) => {
                         let leftPos = Math.floor(centerX - (wmPixelWidth / 2));
                         let topPos = Math.floor(centerY - (wmPixelHeight / 2));
 
-                        // Если координаты каким-то образом ушли в жесткий минус, выравниваем по краям
                         if (leftPos < 0) leftPos = 0;
                         if (topPos < 0) topPos = 0;
 
@@ -286,22 +290,26 @@ exports.createPost = async (req, res) => {
                             .jpeg({ quality: 90 }) 
                             .toBuffer();
                     } catch (e) {
-                        // Логируем конкретную ошибку, чтобы знать причину, но не ломаем отправку поста
-                        console.error(`[WATERMARK ERROR] Ошибка наложения для аккаунта ${account.name}:`, e.message);
+                        console.error(`[WATERMARK ERROR] Account ${account.name}:`, e.message);
                         return buf; 
                     }
                 }));
             }
 
             const isScheduled = publishAt ? true : false;
-            const base64ImagesToSave = processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
+            
+            // СОЗДАНИЕ ЛЕГКИХ ПРЕВЬЮ ДЛЯ БД (РЕШАЕТ ПРОБЛЕМУ ТАЙМ-АУТА)
+            const thumbnailsForDb = await Promise.all(processedBuffers.map(async (buf) => {
+                const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
+                return 'data:image/jpeg;base64,' + thumb.toString('base64');
+            }));
 
             if (isScheduled) {
                 await prisma.post.create({
                     data: {
                         accountId: account.id,
                         text: finalText,
-                        mediaUrls: JSON.stringify(base64ImagesToSave),
+                        mediaUrls: JSON.stringify(thumbnailsForDb),
                         publishAt: new Date(publishAt),
                         status: 'SCHEDULED' 
                     }
@@ -323,7 +331,7 @@ exports.createPost = async (req, res) => {
                         data: { 
                             accountId: account.id, 
                             text: finalText, 
-                            mediaUrls: JSON.stringify(base64ImagesToSave), 
+                            mediaUrls: JSON.stringify(thumbnailsForDb), 
                             status: 'PUBLISHED' 
                         }
                     });
@@ -331,7 +339,7 @@ exports.createPost = async (req, res) => {
                     results.push({ accountId: account.id, success: true });
                     hasSuccess = true; 
                 } catch (err) {
-                    console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.response?.data || err.message);
+                    console.error(`[ОШИБКА] Не удалось отправить в ${account.provider}:`, err.message);
                     results.push({ accountId: account.id, success: false, error: err.message });
                 }
             }
@@ -377,17 +385,12 @@ exports.initCron = () => {
                         where: { id: post.id },
                         data: { status: 'PUBLISHED' } 
                     });
-                    console.log(`[CRON] Отложенный пост ${post.id} успешно отправлен в ${account.name}`);
                 } catch (err) {
-                    console.error(`[CRON ОШИБКА] Пост ${post.id}:`, err.message);
                     await prisma.post.update({ where: { id: post.id }, data: { status: 'FAILED' } });
                 }
             }
-        } catch (e) {
-            console.error('Ошибка в работе CRON:', e);
-        }
+        } catch (e) {}
     });
-    console.log('[CRON] Планировщик отложенных постов запущен!');
 };
 
 // === ПОЛУЧИТЬ ОТЛОЖЕННЫЕ И ОПУБЛИКОВАННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
@@ -430,7 +433,6 @@ exports.updateScheduledPost = async (req, res) => {
         });
         res.json({ success: true, post: updated });
     } catch (error) {
-        console.error('Ошибка редактирования:', error);
         res.status(500).json({ success: false });
     }
 };
