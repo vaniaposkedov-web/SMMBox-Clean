@@ -67,13 +67,24 @@ export default function Auth() {
           }
         }
       } else {
-        if (!isAccepted) return setError('Необходимо согласие с политикой конфиденциальности') || setIsLoading(false);
-        if (password.length < 6) return setError('Пароль должен быть не менее 6 символов') || setIsLoading(false);
-        if (phone && phone.length < 18) return setError('Пожалуйста, введите номер телефона полностью') || setIsLoading(false);
+        if (!isAccepted) {
+          setError('Необходимо согласие с политикой конфиденциальности');
+          setIsLoading(false);
+          return;
+        }
+        if (password.length < 6) {
+          setError('Пароль должен быть не менее 6 символов');
+          setIsLoading(false);
+          return;
+        }
+        if (phone && phone.length < 18) {
+          setError('Пожалуйста, введите номер телефона полностью');
+          setIsLoading(false);
+          return;
+        }
 
         const result = await register(email, password, name, phone);
         if (result.success) {
-          // ИСПРАВЛЕНИЕ: Теперь мы показываем окно кода, а не пускаем дальше!
           setIsVerification(true); 
         } else {
           setError(result.error || 'Ошибка регистрации');
@@ -156,10 +167,19 @@ export default function Auth() {
                 maxLength="6"
               />
             </div>
-            {error && <p className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20">{error}</p>}
-            <button type="submit" disabled={isLoading} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 sm:py-4 rounded-xl transition-all shadow-lg shadow-blue-500/20 min-h-[52px] active:scale-95 flex justify-center items-center gap-2">
-              {isLoading ? <Loader2 size={20} className="animate-spin"/> : 'Подтвердить'}
-            </button>
+            <div className="min-h-[48px] flex flex-col justify-end mt-2">
+            {error ? (
+              <p className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20 animate-in fade-in">{error}</p>
+            ) : null}
+          </div>
+          
+          <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-3.5 sm:py-4 rounded-xl transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 disabled:opacity-50 active:scale-95 flex justify-center items-center gap-2 min-h-[52px]">
+            {isLoading ? (
+              <span className="flex items-center gap-2"><Loader2 size={20} className="animate-spin"/> Загрузка...</span>
+            ) : (
+              <span>{isLogin ? 'Войти по паролю' : 'Создать аккаунт'}</span>
+            )}
+          </button>
           </form>
         </div>
       </div>
