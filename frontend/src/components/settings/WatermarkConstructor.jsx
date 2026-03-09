@@ -49,11 +49,10 @@ export default function WatermarkConstructor() {
     }
   }, [globalSettings]);
 
-  // Умная логика появления нижней плавающей кнопки на мобильных
+  // Умная логика появления верхней плавающей панели на мобильных
   useEffect(() => {
     const handleScroll = () => {
       if (mainContainerRef.current) {
-        // Показываем плавающую кнопку, если проскроллили шапку страницы
         setShowMobileSticky(window.scrollY > 150); 
       }
     };
@@ -94,7 +93,7 @@ export default function WatermarkConstructor() {
     updateSettings({ angle: val });
   };
 
-  // Drag & Drop с жесткими границами и блокировкой скролла страницы (touch-none)
+  // Drag & Drop: жесткие границы и блокировка скролла ТОЛЬКО при захвате элемента
   const handlePointerDown = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -107,7 +106,6 @@ export default function WatermarkConstructor() {
     const startWY = settings.y ?? 85;
 
     const handlePointerMove = (moveEvent) => {
-      // Блокируем скролл на мобилках при драге
       if (moveEvent.cancelable) moveEvent.preventDefault(); 
       
       const clientX = moveEvent.clientX || moveEvent.touches?.[0]?.clientX;
@@ -134,6 +132,7 @@ export default function WatermarkConstructor() {
     window.addEventListener('touchend', handlePointerUp);
   };
 
+  // Клик по фону холста
   const handleBackgroundClick = (e) => {
     if (e.target !== previewRef.current) return;
     const rect = previewRef.current.getBoundingClientRect();
@@ -193,7 +192,6 @@ export default function WatermarkConstructor() {
   };
 
   const WatermarkElement = ({ isMiniature = false }) => {
-    // На мобилках холст меньше, поэтому визуально немного уменьшаем водяной знак, чтобы он не казался гигантским
     const visualScale = isMiniature ? 0.3 : (window.innerWidth < 640 ? 0.8 : 1);
     
     return (
@@ -217,7 +215,7 @@ export default function WatermarkConstructor() {
   };
 
   return (
-    <div className="w-full space-y-6 sm:space-y-8 pb-8 font-sans" ref={mainContainerRef}>
+    <div className="w-full space-y-6 sm:space-y-8 font-sans" ref={mainContainerRef}>
       
       {/* === ГЛАВНЫЙ ЗАГОЛОВОК === */}
       <div className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 border border-blue-500/20 rounded-3xl p-5 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 shadow-lg">
@@ -254,10 +252,10 @@ export default function WatermarkConstructor() {
             </div>
           </div>
           
-          {/* ОБЛАСТЬ ХОЛСТА (Адаптивные пропорции) */}
+          {/* ОБЛАСТЬ ХОЛСТА: убран класс touch-none, onClick вместо onPointerDown */}
           <div 
-            ref={previewRef} onPointerDown={handleBackgroundClick}
-            className="relative w-full xl:w-1/2 aspect-square sm:aspect-[4/3] bg-gray-800 bg-cover bg-center cursor-crosshair touch-none overflow-hidden"
+            ref={previewRef} onClick={handleBackgroundClick}
+            className="relative w-full xl:w-1/2 aspect-square sm:aspect-[4/3] bg-gray-800 bg-cover bg-center cursor-crosshair overflow-hidden"
             style={{ backgroundImage: `url('${SAMPLE_IMG}')` }}
           >
             <WatermarkElement />
@@ -358,7 +356,8 @@ export default function WatermarkConstructor() {
       </div>
 
       {/* === 3. ОБЩАЯ ПОДПИСЬ === */}
-      <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-8 shadow-xl mb-24 md:mb-0">
+      {/* Убран mb-24, чтобы не было пустой дыры снизу */}
+      <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-8 shadow-xl">
         <div className="flex flex-col lg:flex-row gap-5 sm:gap-6 lg:items-start">
           <div className="lg:w-1/3 space-y-2 sm:space-y-3">
             <label className="text-base sm:text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wide">
@@ -378,8 +377,8 @@ export default function WatermarkConstructor() {
         </div>
       </div>
 
-      {/* === BOTTOM ACTION BAR ДЛЯ МОБИЛЬНЫХ === */}
-      <div className={`fixed bottom-[72px] left-0 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] z-40 transition-transform duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] flex items-center justify-between sm:hidden ${showMobileSticky ? 'translate-y-0' : 'translate-y-[150%]'}`}>
+      {/* === TOP ACTION BAR ДЛЯ МОБИЛЬНЫХ (ВЕРХНЯЯ ПАНЕЛЬ) === */}
+      <div className={`fixed top-0 left-0 right-0 bg-admin-card/95 backdrop-blur-xl border-b border-gray-800 p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] z-[60] transition-transform duration-300 shadow-[0_10px_30px_rgba(0,0,0,0.5)] flex items-center justify-between sm:hidden ${showMobileSticky ? 'translate-y-0' : '-translate-y-[150%]'}`}>
         <div className="flex items-center gap-3 pr-2 min-w-0">
           <div className="w-10 h-10 rounded-lg bg-gray-800 bg-cover bg-center relative overflow-hidden shadow-inner border border-gray-700/50 shrink-0" style={{ backgroundImage: `url('${SAMPLE_IMG}')` }}>
              <WatermarkElement isMiniature={true} />
@@ -389,7 +388,7 @@ export default function WatermarkConstructor() {
             <span className="text-sm font-bold text-white truncate">В редактировании</span>
           </div>
         </div>
-        <button onClick={handleSave} disabled={isSaving} className={`shrink-0 px-5 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all min-h-[48px] active:scale-95 ${saveSuccess ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-blue-600 text-white shadow-blue-500/20 disabled:opacity-50'}`}>
+        <button onClick={handleSave} disabled={isSaving} className={`shrink-0 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg transition-all min-h-[44px] active:scale-95 ${saveSuccess ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20 disabled:opacity-50'}`}>
           {isSaving ? <Loader2 size={18} className="animate-spin"/> : saveSuccess ? <Check size={18}/> : <Save size={18}/>}
         </button>
       </div>
