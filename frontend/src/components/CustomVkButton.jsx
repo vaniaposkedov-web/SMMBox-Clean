@@ -3,61 +3,42 @@ import * as VKID from '@vkid/sdk';
 
 export default function CustomVkButton({ onAuth }) {
   useEffect(() => {
+    // 1. Инициализация SDK (как в вашем примере из документации)
     VKID.Config.init({
-      app: import.meta.env.VITE_VK_APP_ID || 54471878,
-      redirectUrl: import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback',
+      app: 54471878, 
+      redirectUrl: 'https://smmdeck.ru/auth', // СТРОГО URL фронтенда, где висит эта кнопка!
       responseMode: VKID.ConfigResponseMode.Callback,
     });
   }, []);
 
   const handleVkLogin = () => {
+    // 2. Вызываем всплывающее окно ВК по клику на вашу кастомную кнопку
     VKID.Auth.login()
-      .then(async (data) => {
-        // Достаем данные безопасно
-        const payload = data.payload || data;
-        
-        // ВАРИАНТ 1: ВК вернул временный код (новый безопасный протокол)
+      .then(async (payload) => {
+        // 3. Логика в точности как в вашем скрипте: VK возвращает code и device_id
         if (payload.code && payload.device_id) {
           try {
-            // Запрашиваем настоящий токен в обмен на код
+            // 4. Обмениваем их на токен доступа
             const authTokens = await VKID.Auth.exchangeCode(payload.code, payload.device_id);
             
-            // Собираем user_id из токена или запрашиваем его дополнительно, если ВК его спрятал
-            let userId = authTokens.user_id || authTokens.id || payload.user_id || payload.uuid;
-            if (!userId) {
-              const userInfo = await VKID.Auth.userInfo(authTokens.access_token);
-              userId = userInfo.user?.id || userInfo.id;
-            }
-
+            // 5. Собираем данные и отправляем в стор (authController)
             const vkData = {
               access_token: authTokens.access_token,
-              user_id: userId,
-              email: authTokens.email || payload.email || null,
+              user_id: authTokens.user_id,
+              email: authTokens.email || null,
             };
-
+            
             if (onAuth) onAuth(vkData);
 
           } catch (exchangeError) {
-            console.error('Ошибка при обмене кода ВК:', exchangeError);
+            console.error('Ошибка обмена кода ВК на токен:', exchangeError);
           }
-        } 
-        // ВАРИАНТ 2: ВК сразу вернул готовый токен (старый протокол)
-        else if (payload.token || payload.access_token) {
-          const vkData = {
-            access_token: payload.token || payload.access_token,
-            user_id: payload.uuid || payload.user_id,
-            email: payload.email || null,
-          };
-          
-          if (onAuth) onAuth(vkData);
-        } 
-        // Если что-то пошло совсем не так
-        else {
-          console.error('Токен или код не найден в ответе ВК. Проверьте консоль.', data);
+        } else {
+          console.error('ВК не вернул нужные данные авторизации', payload);
         }
       })
       .catch((error) => {
-        console.error('Ошибка окна авторизации ВК:', error);
+        console.error('Пользователь закрыл окно или произошла ошибка:', error);
       });
   };
 
@@ -68,8 +49,10 @@ export default function CustomVkButton({ onAuth }) {
       title="Войти через ВКонтакте"
       className="w-14 h-14 min-w-[56px] min-h-[56px] shrink-0 flex items-center justify-center rounded-full bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 transition-all duration-300 shadow-lg hover:scale-105"
     >
-      <svg viewBox="0 0 24 24" className="w-7 h-7 shrink-0" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path fillRule="evenodd" clipRule="evenodd" d="M12.443 18.067C5.035 18.067 1.017 12.986 0.854 4H4.722C4.83 10.519 7.498 13.264 9.593 13.813V4H13.295V9.584C15.361 9.359 17.545 6.892 18.267 4H21.97C21.402 7.481 18.794 9.948 16.883 10.933C18.794 11.73 21.728 13.9 22.639 18.067H18.567C17.846 15.269 15.744 13.167 13.295 12.894V18.067H12.443Z" fill="currentColor"/>
+      {/* Ваша оригинальная иконка */}
+      <svg viewBox="0 0 24 24" className="w-7 h-7 shrink-0" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+        <path d="M15.077 7.103c.5-.062 1.157-.105 1.705.105.434.166.77.568.868 1.018.156.714.156 1.84.156 2.923 0 1.083 0 2.21-.156 2.923-.098.45-.434.852-.868 1.018-.548.21-1.205.167-1.705.105-2.071-.257-2.618-.94-3.044-1.616-.217-.343-.39-.708-.57-1.071-.143-.289-.282-.574-.465-.828-.275-.38-.63-.615-1.078-.615H9.68v2.96c0 .416-.307.755-.718.775H7.72c-.41 0-.74-.338-.74-.755V9.01c0-.417.33-.755.74-.755h1.242c.41 0 .717.339.717.755v2.914c0 .063.023.123.064.168.041.045.097.071.156.071h.122c.21 0 .39-.126.495-.315.118-.214.22-.44.316-.653.167-.37.336-.74.557-1.085.424-.666.963-1.325 3.018-1.57.17-.021.343-.032.518-.032h.15z"/>
+        <path fillRule="evenodd" clipRule="evenodd" d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm4.212-14.93c-2.316-.287-6.108-.287-8.424 0-1.125.139-2.062 1.053-2.228 2.167-.22 1.488-.22 4.038 0 5.526.166 1.114 1.103 2.028 2.228 2.167 2.316.287 6.108.287 8.424 0 1.125-.139 2.062-1.053 2.228-2.167.22-1.488.22-4.038 0-5.526-.166-1.114-1.103-2.028-2.228-2.167z"/>
       </svg>
     </button>
   );
