@@ -17,7 +17,6 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         form.append('chat_id', chatId);
         if (text) form.append('caption', text);
         
-        // ИСПРАВЛЕНИЕ 1: Жестко задаем формат файла (MIME-type) для Telegram
         form.append('photo', imageBuffers[0], { filename: 'image.jpg', contentType: 'image/jpeg' });
         
         await axios.post(`${baseUrl}/sendPhoto`, form, { headers: form.getHeaders() });
@@ -33,7 +32,6 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         
         form.append('media', JSON.stringify(media));
         imageBuffers.forEach((buf, i) => {
-            // ИСПРАВЛЕНИЕ 2: Жестко задаем формат файлов для альбомов Telegram
             form.append(`photo${i}`, buf, { filename: `photo${i}.jpg`, contentType: 'image/jpeg' });
         });
         
@@ -74,7 +72,6 @@ async function sendToVK(token, groupId, text, imageBuffers) {
 
         for (let i = 0; i < imageBuffers.length; i++) {
             const form = new FormData();
-            // ИСПРАВЛЕНИЕ 3: Жестко задаем формат для серверов ВКонтакте
             form.append('file1', imageBuffers[i], { filename: `image${i}.jpg`, contentType: 'image/jpeg' });
             
             const uploadRes = await axios.post(uploadUrl, form, { headers: form.getHeaders() });
@@ -143,13 +140,18 @@ exports.createPost = async (req, res) => {
 
             let processedBuffers = rawImageBuffers;
             
-            // Водяной знак
+            // Водяной знак с жесткой типизацией параметров
             if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
-                const wm = accData.watermarkConfig;
+                let wm = accData.watermarkConfig;
+                // Защита на случай, если фронт или БД отдали строку вместо объекта
+                if (typeof wm === 'string') {
+                    try { wm = JSON.parse(wm); } catch(e) {}
+                }
+                
                 const wmType = wm.type || 'text'; 
                 const wmText = wm.text || 'SMMBOX';
-                const opacity = wm.opacity !== undefined ? wm.opacity / 100 : 0.9;
-                const angle = wm.angle || 0;
+                const opacity = wm.opacity !== undefined ? Number(wm.opacity) / 100 : 0.9;
+                const angle = Number(wm.angle) || 0;
                 
                 processedBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
                     try {
@@ -164,13 +166,13 @@ exports.createPost = async (req, res) => {
                         let wmPixelHeight = 0;
 
                         if (wmType === 'text') {
-                            const scaleFactor = (wm.size || 100) / 100;
+                            const scaleFactor = (Number(wm.size) || 100) / 100;
                             const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
                             
                             const paddingX = Math.floor(fontSize * 1.5); 
                             const paddingY = Math.floor(fontSize * 1); 
                             
-                            const lines = wmText.split('\n');
+                            const lines = String(wmText).split('\n');
                             let maxTextWidthRaw = 0;
                             
                             for (const line of lines) {
@@ -219,8 +221,9 @@ exports.createPost = async (req, res) => {
                             </svg>`;
                             watermarkBuffer = Buffer.from(svgText);
                         } else if (wmType === 'image' && wm.image) {
-                            const imgBase64 = wm.image.replace(/^data:image\/\w+;base64,/, "");
-                            const scaleFactor = (wm.size || 100) / 100;
+                            // Безопасное извлечение Base64 для любого формата картинки
+                            const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
+                            const scaleFactor = (Number(wm.size) || 100) / 100;
                             const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
 
                             watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
@@ -246,40 +249,51 @@ exports.createPost = async (req, res) => {
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
-                        let leftPos = 0;
-                        let topPos = 0;
+                        // Жесткая логика координат с защитой от NaN и Null
+                        let targetX = 90;
+                        let targetY = 85;
 
-                        if (wm.position === 'custom' || (wm.x !== undefined && wm.y !== undefined)) {
-                            const centerX = Math.floor(width * (wm.x / 100));
-                            const centerY = Math.floor(height * (wm.y / 100));
-                            leftPos = centerX - Math.floor(wmPixelWidth / 2);
-                            topPos = centerY - Math.floor(wmPixelHeight / 2);
-                        } else {
+                        if (wm.x !== undefined && wm.x !== null && !isNaN(Number(wm.x))) {
+                            targetX = Number(wm.x);
+                        } else if (wm.position) {
                             const posToCoords = {
                                 'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
                                 'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
                                 'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
                             };
-                            const fallbackCoord = posToCoords[wm.position] || posToCoords['br'];
-                            const centerX = Math.floor(width * (fallbackCoord.x / 100));
-                            const centerY = Math.floor(height * (fallbackCoord.y / 100));
-                            leftPos = centerX - Math.floor(wmPixelWidth / 2);
-                            topPos = centerY - Math.floor(wmPixelHeight / 2);
+                            const fallbackCoord = posToCoords[wm.position];
+                            if (fallbackCoord) {
+                                targetX = fallbackCoord.x;
+                                targetY = fallbackCoord.y;
+                            }
                         }
+                        
+                        if (wm.y !== undefined && wm.y !== null && !isNaN(Number(wm.y))) {
+                            targetY = Number(wm.y);
+                        }
+
+                        const centerX = Math.floor(width * (targetX / 100));
+                        const centerY = Math.floor(height * (targetY / 100));
+                        let leftPos = Math.floor(centerX - (wmPixelWidth / 2));
+                        let topPos = Math.floor(centerY - (wmPixelHeight / 2));
+
+                        // Если координаты каким-то образом ушли в жесткий минус, выравниваем по краям
+                        if (leftPos < 0) leftPos = 0;
+                        if (topPos < 0) topPos = 0;
 
                         return await image
                             .composite([{ input: watermarkBuffer, top: Math.round(topPos), left: Math.round(leftPos) }])
                             .jpeg({ quality: 90 }) 
                             .toBuffer();
                     } catch (e) {
+                        // Логируем конкретную ошибку, чтобы знать причину, но не ломаем отправку поста
+                        console.error(`[WATERMARK ERROR] Ошибка наложения для аккаунта ${account.name}:`, e.message);
                         return buf; 
                     }
                 }));
             }
 
             const isScheduled = publishAt ? true : false;
-            
-            // ИСПРАВЛЕНИЕ 4: Формируем картинки для сохранения в БД в любом случае
             const base64ImagesToSave = processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
 
             if (isScheduled) {
@@ -305,7 +319,6 @@ exports.createPost = async (req, res) => {
                         await sendToVK(account.accessToken, account.providerId, finalText, processedBuffers);
                     }
                     
-                    // ИСПРАВЛЕНИЕ 5: Сохраняем картинки в БД, чтобы они отображались в истории профиля на сайте
                     await prisma.post.create({
                         data: { 
                             accountId: account.id, 
@@ -360,7 +373,6 @@ exports.initCron = () => {
                         await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
                     }
 
-                    // ИСПРАВЛЕНИЕ 6: Оставляем картинки в БД после отправки планировщиком
                     await prisma.post.update({
                         where: { id: post.id },
                         data: { status: 'PUBLISHED' } 
