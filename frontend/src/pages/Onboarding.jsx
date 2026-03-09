@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../store';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, ArrowRight, X, Mail, Phone, Send, Info, CheckCircle2, Plus, Trash2, Copy, Check, Loader2, CheckSquare, Square } from 'lucide-react';
+import { ShieldCheck, ArrowRight, X, Mail, Phone, Send, Info, CheckCircle2, Plus, Trash2, Copy, Check, Loader2, UserCircle } from 'lucide-react';
 
 export default function Onboarding() {
   const user = useStore(state => state.user);
-  const saveVkAccounts = useStore(state => state.saveVkAccounts);
+  const profiles = useStore(state => state.profiles) || [];
+  const fetchProfiles = useStore(state => state.fetchProfiles);
+  const linkSocialProfile = useStore(state => state.linkSocialProfile);
+  const saveVkGroupWithToken = useStore(state => state.saveVkGroupWithToken);
+  const saveTgAccounts = useStore(state => state.saveTgAccounts);
+  
   const navigate = useNavigate();
   
   const [step, setStep] = useState('welcome');
@@ -13,13 +18,13 @@ export default function Onboarding() {
   
   const [tgInput, setTgInput] = useState('');
   const [tgChannels, setTgChannels] = useState([]); 
-  const [vkConnected, setVkConnected] = useState(false);
-
-  const [vkGroupsFetched, setVkGroupsFetched] = useState([]);
-  const [selectedVkGroups, setSelectedVkGroups] = useState([]);
-  const [vkAccessToken, setVkAccessToken] = useState('');
-  const [isVkLoading, setIsVkLoading] = useState(false);
-  const [isVkSaving, setIsVkSaving] = useState(false);
+  
+  const [vkStep, setVkStep] = useState(1);
+  const [vkLinkInput, setVkLinkInput] = useState('');
+  const [vkTokenInput, setVkTokenInput] = useState('');
+  const [vkLoading, setVkLoading] = useState(false);
+  const [vkConnectedGroups, setVkConnectedGroups] = useState([]);
+  const [isVkProfileLoading, setIsVkProfileLoading] = useState(false);
 
   const [email, setEmail] = useState(user?.email && !user.email.includes('.local') ? user.email : '');
   const [phone, setPhone] = useState(user?.phone || '');
@@ -30,16 +35,16 @@ export default function Onboarding() {
   const [copied, setCopied] = useState(false);
   const [tgLoading, setTgLoading] = useState(false);
 
-  const [vkStep, setVkStep] = useState(1);
-  const [vkLinkInput, setVkLinkInput] = useState('');
-  const [vkTokenInput, setVkTokenInput] = useState('');
-  const [vkLoading, setVkLoading] = useState(false);
-  const [vkConnectedGroups, setVkConnectedGroups] = useState([]);
-
-  const saveVkGroupWithToken = useStore(state => state.saveVkGroupWithToken);
-
   const isPro = user?.isPro || false;
   const limits = isPro ? 100 : 10;
+
+  const hasVkProfile = profiles.some(p => p.provider === 'VK');
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchProfiles(user.id);
+    }
+  }, [user]);
 
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/\D/g, '');
@@ -54,6 +59,59 @@ export default function Onboarding() {
     setPhone(formatted);
   };
 
+  // === АВТОРИЗАЦИЯ И ПРИВЯЗКА ПРОФИЛЯ ВК ===
+  const handleVkConnectProfile = () => {
+    setIsVkProfileLoading(true);
+    setError('');
+
+    const cleanAppId = String(import.meta.env.VITE_VK_APP_ID || '54471878').replace(/['"]/g, '').trim();
+    const cleanRedirectUri = String(import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback').replace(/['"]/g, '').trim();
+    const scope = 'groups,wall,photos,video,docs,offline';
+    const url = `https://oauth.vk.com/authorize?client_id=${cleanAppId}&display=popup&redirect_uri=${encodeURIComponent(cleanRedirectUri)}&scope=${scope}&response_type=code&v=5.199`;
+
+    const width = 600;
+    const height = 700;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+    const popup = window.open(url, 'vk_auth', `width=${width},height=${height},top=${top},left=${left},status=yes,scrollbars=yes`);
+    
+    const messageListener = async (event) => {
+      if (event.data?.type === 'VK_GROUPS_LOADED') {
+        const { accessToken, profile } = event.data.payload;
+        
+        // Сохраняем профиль
+        const name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Профиль ВК';
+        const res = await linkSocialProfile(user.id, 'VK', profile.id, name, profile.photo_100, accessToken);
+        
+        if (res.success) {
+           setVkStep(1); // Переходим к добавлению группы
+        } else {
+           setError(res.error || 'Ошибка привязки профиля');
+        }
+        
+        setIsVkProfileLoading(false);
+        window.removeEventListener('message', messageListener);
+      } else if (event.data?.type === 'VK_AUTH_ERROR') {
+        setError('Ошибка авторизации ВК: ' + event.data.error);
+        setIsVkProfileLoading(false);
+        window.removeEventListener('message', messageListener);
+      }
+    };
+
+    window.addEventListener('message', messageListener);
+
+    const checkClosed = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(checkClosed);
+        if (isVkProfileLoading) {
+          setIsVkProfileLoading(false);
+          window.removeEventListener('message', messageListener);
+        }
+      }
+    }, 1000);
+  };
+
+  // === ДОБАВЛЕНИЕ ГРУППЫ ВК ===
   const handleAddVkGroup = async () => {
     if (!vkLinkInput.trim() || !vkTokenInput.trim()) return setError('Заполните оба поля');
     if (!isPro && vkConnectedGroups.length >= limits) return setError('Достигнут лимит в 10 групп для бесплатной версии.');
@@ -74,70 +132,6 @@ export default function Onboarding() {
       setError(res.error || 'Ошибка при добавлении');
     }
     setVkLoading(false);
-  };
-
-  const handleVkConnect = () => {
-    setIsVkLoading(true);
-    setError('');
-
-    const cleanAppId = String(import.meta.env.VITE_VK_APP_ID || '54471878').replace(/['"]/g, '').trim();
-    const cleanRedirectUri = String(import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback').replace(/['"]/g, '').trim();
-    const scope = 'groups,wall,photos,video,docs,offline';
-    const url = `https://oauth.vk.com/authorize?client_id=${cleanAppId}&display=popup&redirect_uri=${encodeURIComponent(cleanRedirectUri)}&scope=${scope}&response_type=code&v=5.199`;
-
-    const width = 600;
-    const height = 700;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
-    const popup = window.open(url, 'vk_auth', `width=${width},height=${height},top=${top},left=${left},status=yes,scrollbars=yes`);
-    
-    const messageListener = (event) => {
-      if (event.data?.type === 'VK_GROUPS_LOADED') {
-        const { accessToken, groups } = event.data.payload;
-        setVkAccessToken(accessToken);
-        setVkGroupsFetched(groups);
-        setSelectedVkGroups(groups.map(g => g.id));
-        setIsVkLoading(false);
-        window.removeEventListener('message', messageListener);
-      } else if (event.data?.type === 'VK_AUTH_ERROR') {
-        setError('Ошибка авторизации ВК: ' + event.data.error);
-        setIsVkLoading(false);
-        window.removeEventListener('message', messageListener);
-      }
-    };
-
-    window.addEventListener('message', messageListener);
-
-    const checkClosed = setInterval(() => {
-      if (popup?.closed) {
-        clearInterval(checkClosed);
-        if (isVkLoading) {
-          setIsVkLoading(false);
-          window.removeEventListener('message', messageListener);
-        }
-      }
-    }, 1000);
-  };
-
-  const toggleVkGroup = (id) => {
-    setSelectedVkGroups(prev => prev.includes(id) ? prev.filter(gId => gId !== id) : [...prev, id]);
-  };
-
-  const handleSaveVkGroups = async () => {
-    if (selectedVkGroups.length === 0) return setError('Выберите хотя бы одну группу');
-    setIsVkSaving(true);
-    setError('');
-
-    const groupsToSave = vkGroupsFetched.filter(g => selectedVkGroups.includes(g.id));
-    const result = await saveVkAccounts(user.id, vkAccessToken, groupsToSave);
-    
-    if (result.success) {
-      setVkConnected(true);
-      setVkGroupsFetched([]); 
-    } else {
-      setError(result.error);
-    }
-    setIsVkSaving(false);
   };
 
   const handleAddTgChannel = async () => {
@@ -188,7 +182,7 @@ export default function Onboarding() {
       if (!token) { setError('Сессия истекла. Пожалуйста, войдите заново.'); setLoading(false); return; }
       
       if (tgChannels.length > 0) {
-        const res = await useStore.getState().saveTgAccounts(user?.id, tgChannels);
+        const res = await saveTgAccounts(user?.id, tgChannels);
         if (!res.success) {
           setError(res.error); 
           setLoading(false);
@@ -263,9 +257,9 @@ export default function Onboarding() {
         {step === 'vk_setup' && (
           <div className="space-y-5 sm:space-y-6 text-left animate-in fade-in slide-in-from-right-8 duration-500">
             <div className="text-center mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold text-white">Сообщества ВКонтакте</h2>
+              <h2 className="text-xl sm:text-2xl font-bold text-white">ВКонтакте</h2>
               <p className="text-gray-400 text-xs sm:text-sm mt-1 sm:mt-2">
-                Подключение по API-ключу ({user?.isPro ? 'без лимитов' : 'до 10 групп в бесплатной версии'}).
+                Сначала привяжите свой личный профиль, а затем добавьте группы, в которых вы являетесь администратором.
               </p>
             </div>
             
@@ -277,55 +271,83 @@ export default function Onboarding() {
               )}
             </div>
             
-            <div className="space-y-3 mt-1 text-left">
-              {vkStep === 1 ? (
-                <div className="flex flex-col gap-3 animate-in fade-in">
-                  <input 
-                    type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
-                    placeholder="Ссылка на группу (vk.com/public123)" 
-                    className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 outline-none focus:border-[#0077FF] min-h-[48px]"
-                  />
-                  <button onClick={() => {
-                    if (!vkLinkInput.trim()) return setError('Укажите ссылку на группу');
-                    setError(''); setVkStep(2);
-                  }} disabled={!vkLinkInput} className="w-full bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold disabled:opacity-50 transition-colors min-h-[48px]">
-                    <div className="flex justify-center items-center gap-2"><span>Далее: Инструкция по ключу</span></div>
-                  </button>
+            {!hasVkProfile ? (
+              <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4">
+                 <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-2xl p-4 sm:p-5 text-center space-y-3">
+                    <UserCircle size={40} className="mx-auto text-[#0077FF]" />
+                    <h3 className="text-white font-bold">Шаг 1. Личный профиль</h3>
+                    <p className="text-sm text-gray-300">Для безопасной публикации нам необходимо убедиться, что вы являетесь владельцем групп.</p>
+                 </div>
+                 <button 
+                  onClick={handleVkConnectProfile} 
+                  disabled={isVkProfileLoading} 
+                  className="w-full bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-6 py-3.5 sm:py-4 rounded-xl font-bold transition-all text-base min-h-[48px] shadow-lg shadow-[#0077FF]/20 flex justify-center items-center gap-2"
+                >
+                  {isVkProfileLoading ? <Loader2 className="animate-spin" size={20} /> : <span className="font-black text-xl mr-1">K</span>}
+                  <span>{isVkProfileLoading ? 'Привязка...' : 'Авторизоваться ВКонтакте'}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4 text-left">
+                <div className="flex items-center gap-3 bg-gray-900 border border-gray-800 p-3 sm:p-4 rounded-2xl mb-2">
+                   <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="text-emerald-500" size={20} />
+                   </div>
+                   <div>
+                     <p className="text-white font-bold text-sm sm:text-base">Профиль привязан!</p>
+                     <p className="text-gray-400 text-xs sm:text-sm">Теперь вы можете добавлять группы.</p>
+                   </div>
                 </div>
-              ) : (
-                <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-right-4">
-                  <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-2xl p-4 text-sm text-gray-300">
-                    <p className="font-bold text-white mb-2">Группа найдена! Теперь нужен API-ключ:</p>
-                    <ol className="list-decimal list-inside space-y-1">
-                      <li>Зайдите в настройки вашей группы → <b>Работа с API</b></li>
-                      <li>Нажмите <b>Создать ключ</b></li>
-                      <li>Выберите права: <b>Управление, Фотографии, Стена</b></li>
-                    </ol>
-                  </div>
-                  <input 
-                    type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)}
-                    placeholder="Ключ доступа (Токен)" 
-                    className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3 px-4 outline-none focus:border-[#0077FF] min-h-[48px]"
-                  />
-                  <div className="flex gap-3">
-                    <button onClick={() => setVkStep(1)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-6 py-3.5 rounded-xl font-bold transition-colors min-h-[48px]">
-                      <span>Назад</span>
-                    </button>
-                    <button 
-                      onClick={handleAddVkGroup} 
-                      disabled={vkLoading || !vkTokenInput} 
-                      className="flex-1 bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold transition-colors min-h-[48px] disabled:opacity-50"
-                    >
-                      {vkLoading ? (
-                        <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin" size={20} /><span>Проверка...</span></div>
-                      ) : (
-                        <div className="flex justify-center items-center gap-2"><span>Подключить группу</span></div>
-                      )}
+
+                {vkStep === 1 ? (
+                  <div className="flex flex-col gap-3 animate-in fade-in">
+                    <input 
+                      type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
+                      placeholder="Ссылка на группу (vk.com/public123)" 
+                      className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 px-4 outline-none focus:border-[#0077FF] min-h-[48px]"
+                    />
+                    <button onClick={() => {
+                      if (!vkLinkInput.trim()) return setError('Укажите ссылку на группу');
+                      setError(''); setVkStep(2);
+                    }} disabled={!vkLinkInput} className="w-full bg-gray-800 hover:bg-gray-700 text-white px-6 py-3.5 rounded-xl font-bold disabled:opacity-50 transition-colors min-h-[48px]">
+                      <div className="flex justify-center items-center gap-2"><span>Далее: Инструкция по ключу</span></div>
                     </button>
                   </div>
-                </div>
-              )}
-            </div>
+                ) : (
+                  <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-right-4">
+                    <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-2xl p-4 text-sm text-gray-300">
+                      <p className="font-bold text-white mb-2">Группа найдена! Теперь нужен API-ключ:</p>
+                      <ol className="list-decimal list-inside space-y-1">
+                        <li>Зайдите в настройки вашей группы → <b>Работа с API</b></li>
+                        <li>Нажмите <b>Создать ключ</b></li>
+                        <li>Выберите права: <b>Управление, Фотографии, Стена</b></li>
+                      </ol>
+                    </div>
+                    <input 
+                      type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)}
+                      placeholder="Ключ доступа (Токен)" 
+                      className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 px-4 outline-none focus:border-[#0077FF] min-h-[48px]"
+                    />
+                    <div className="flex gap-2 sm:gap-3">
+                      <button onClick={() => setVkStep(1)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 sm:px-6 py-3.5 rounded-xl font-bold transition-colors min-h-[48px] shrink-0">
+                        <span>Назад</span>
+                      </button>
+                      <button 
+                        onClick={handleAddVkGroup} 
+                        disabled={vkLoading || !vkTokenInput} 
+                        className="flex-1 bg-[#0077FF] hover:bg-[#0066DD] text-white px-4 sm:px-6 py-3.5 rounded-xl font-bold transition-colors min-h-[48px] disabled:opacity-50 shadow-lg shadow-[#0077FF]/20"
+                      >
+                        {vkLoading ? (
+                          <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin" size={20} /><span>Проверка...</span></div>
+                        ) : (
+                          <div className="flex justify-center items-center gap-2"><span>Подключить</span></div>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* СПИСОК УСПЕШНО ДОБАВЛЕННЫХ ГРУПП (ВК) */}
             {vkConnectedGroups.length > 0 && (
@@ -343,7 +365,7 @@ export default function Onboarding() {
                       )}
                       <div className="flex flex-col min-w-0">
                         <span className="text-gray-200 text-sm font-medium truncate">{group.name}</span>
-                        <span className="text-gray-500 text-xs truncate">Подключено по API</span>
+                        <span className="text-gray-500 text-xs truncate">Защита включена</span>
                       </div>
                     </div>
                     <div className="text-emerald-500 bg-emerald-500/10 w-10 h-10 sm:w-11 sm:h-11 rounded-lg flex items-center justify-center shrink-0 cursor-default">
@@ -358,8 +380,9 @@ export default function Onboarding() {
               onClick={() => { firstChoice === 'vk' ? setStep('offer_second') : handleContactsOrFinish(); }} 
               className="mt-6 w-full bg-white text-black font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors text-base min-h-[48px] active:scale-95"
             >
-              <span>{vkConnectedGroups.length > 0 ? `Продолжить (${vkConnectedGroups.length})` : 'Пропустить шаг'}</span> <ArrowRight size={18} />
+              <span>{vkConnectedGroups.length > 0 ? `Продолжить (${vkConnectedGroups.length})` : 'Сделать это позже'}</span> <ArrowRight size={18} />
             </button>
+            <p className="text-center text-xs text-gray-500 mt-3">Добавить другие профили можно будет в настройках</p>
           </div>
         )}
 
@@ -402,9 +425,9 @@ export default function Onboarding() {
                 <input 
                   type="text" value={tgInput} onChange={(e) => setTgInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddTgChannel()}
                   placeholder="t.me/канал или @username" 
-                  className="flex-1 w-full min-w-0 bg-gray-900 border border-gray-700 text-white rounded-xl py-3 sm:py-3.5 px-4 outline-none focus:border-[#0088CC] transition-colors placeholder:text-gray-500 text-base sm:text-sm min-h-[48px]"
+                  className="flex-1 w-full min-w-0 bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 px-4 outline-none focus:border-[#0088CC] transition-colors placeholder:text-gray-500 text-base sm:text-sm min-h-[48px]"
                 />
-                <button onClick={handleAddTgChannel} disabled={!tgInput.trim() || tgLoading} className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-5 sm:px-6 py-3 rounded-xl border border-gray-700 transition-colors flex items-center justify-center shrink-0 min-h-[48px] active:scale-95 font-bold text-sm">
+                <button onClick={handleAddTgChannel} disabled={!tgInput.trim() || tgLoading} className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-5 sm:px-6 py-3.5 rounded-xl border border-gray-700 transition-colors flex items-center justify-center shrink-0 min-h-[48px] active:scale-95 font-bold text-sm">
                   {tgLoading ? <Loader2 size={18} className="animate-spin" /> : <><Plus size={18} className="mr-1"/> Добавить</>}
                 </button>
               </div>
@@ -434,7 +457,7 @@ export default function Onboarding() {
                 if (tgChannels.length > 0) {
                   setTgLoading(true);
                   setError('');
-                  const res = await useStore.getState().saveTgAccounts(user?.id, tgChannels);
+                  const res = await saveTgAccounts(user?.id, tgChannels);
                   setTgLoading(false);
                   if (!res.success) { setError(res.error); return; }
                 }
