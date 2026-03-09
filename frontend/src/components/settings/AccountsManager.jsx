@@ -606,9 +606,15 @@ export default function AccountsManager() {
                   <button onClick={() => setVkStep(1)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px]">
                     Назад
                   </button>
-                  <button onClick={handleAddVk} disabled={isAddingVk || !vkTokenInput} className="bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg flex items-center gap-2">
-                    {isAddingVk ? <RefreshCw className="animate-spin" size={18} /> : <Check size={18} />} Подключить
-                  </button>
+                  <button 
+                  onClick={handleAddVk} 
+                  disabled={isAddingVk || !vkTokenInput} 
+                  className="bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg flex items-center justify-center"
+                >
+                  {isAddingVk && <RefreshCw className="animate-spin mr-2" size={18} />}
+                  {!isAddingVk && <Check className="mr-2" size={18} />}
+                  <span>{isAddingVk ? 'Проверка...' : 'Подключить'}</span>
+                </button>
                 </div>
               </div>
             )}
