@@ -14,24 +14,33 @@ export default function AccountsManager() {
   const user = useStore((state) => state.user);
   const accounts = useStore((state) => state.accounts) || [];
   const fetchAccounts = useStore((state) => state.fetchAccounts);
+  
+  // Функции ТГ
   const verifyAccountsStatus = useStore((state) => state.verifyAccountsStatus);
+  
+  // Функции ВК
+  const saveVkGroupWithToken = useStore((state) => state.saveVkGroupWithToken);
+  const verifyVkAccountsStatus = useStore((state) => state.verifyVkAccountsStatus);
+
   const removeAccount = useStore((state) => state.removeAccount);
   const saveAccountDesign = useStore((state) => state.saveAccountDesign);
   const token = useStore((state) => state.token);
 
+  // === ТГ СТЕЙТЫ ===
   const [tgInput, setTgInput] = useState('');
   const [isAddingTg, setIsAddingTg] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [savingSignature, setSavingSignature] = useState({});
-  const [savingWatermark, setSavingWatermark] = useState({});
-  const [isModalSaving, setIsModalSaving] = useState(false);
 
-  const saveVkGroupWithToken = useStore((state) => state.saveVkGroupWithToken);
-  
   // === ВК СТЕЙТЫ ===
+  const [vkStep, setVkStep] = useState(1);
   const [vkLinkInput, setVkLinkInput] = useState('');
   const [vkTokenInput, setVkTokenInput] = useState('');
   const [isAddingVk, setIsAddingVk] = useState(false);
+  const [isVerifyingVk, setIsVerifyingVk] = useState(false);
+
+  const [savingSignature, setSavingSignature] = useState({});
+  const [savingWatermark, setSavingWatermark] = useState({});
+  const [isModalSaving, setIsModalSaving] = useState(false);
   
   const [expandedId, setExpandedId] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -63,6 +72,7 @@ export default function AccountsManager() {
     if (user?.id) {
       fetchAccounts(user.id).then(() => {
         if (verifyAccountsStatus) verifyAccountsStatus();
+        if (verifyVkAccountsStatus) verifyVkAccountsStatus();
       });
     }
   }, [user]);
@@ -84,6 +94,13 @@ export default function AccountsManager() {
     setIsVerifying(false);
   };
 
+  const handleManualVerifyVk = async (e) => {
+    if (e) e.stopPropagation();
+    setIsVerifyingVk(true);
+    if (verifyVkAccountsStatus) await verifyVkAccountsStatus();
+    setIsVerifyingVk(false);
+  };
+
   const toggleExpand = (acc) => {
     if (expandedId === acc.id) {
       setExpandedId(null);
@@ -97,7 +114,6 @@ export default function AccountsManager() {
     setLocalSignatures(prev => ({ ...prev, [id]: value }));
   };
 
-  // --- ЛОГИКА ПОДПИСИ ---
   const saveSignatureOnly = async (acc) => {
     setSavingSignature(prev => ({ ...prev, [acc.id]: true }));
     await saveAccountDesign(acc.id, localSignatures[acc.id] || "", undefined);
@@ -116,7 +132,6 @@ export default function AccountsManager() {
     setSavingSignature(prev => ({ ...prev, [acc.id]: false }));
   };
 
-  // --- ЛОГИКА ВОДЯНОГО ЗНАКА ---
   const setGlobalWatermark = async (acc) => {
     setSavingWatermark(prev => ({ ...prev, [acc.id]: true }));
     await saveAccountDesign(acc.id, undefined, null);
@@ -169,10 +184,9 @@ export default function AccountsManager() {
     setLocalWatermark({...localWatermark, angle: val});
   };
 
-  // Изолированная логика перетаскивания (отключает скролл только при захвате элемента)
   const handlePointerDown = (e) => {
     e.preventDefault();
-    e.stopPropagation(); // Не дает клику провалиться на фон холста
+    e.stopPropagation(); 
     setIsDragging(true);
     
     const rect = previewRef.current.getBoundingClientRect();
@@ -182,7 +196,6 @@ export default function AccountsManager() {
     const startWY = localWatermark.y ?? 50;
 
     const handlePointerMove = (moveEvent) => {
-      // Блокируем скролл страницы только во время перетаскивания
       if (moveEvent.cancelable) moveEvent.preventDefault(); 
       
       const clientX = moveEvent.clientX || moveEvent.touches?.[0]?.clientX;
@@ -208,7 +221,6 @@ export default function AccountsManager() {
     window.addEventListener('touchend', handlePointerUp);
   };
 
-  // Клик по фону для быстрого перемещения (не реагирует на скролл-свайпы)
   const handleBackgroundClick = (e) => {
     if (e.target !== previewRef.current) return;
     const rect = previewRef.current.getBoundingClientRect();
@@ -272,6 +284,7 @@ export default function AccountsManager() {
     );
   };
 
+  // === ОБРАБОТЧИКИ ДОБАВЛЕНИЯ ТГ ===
   const handleAddTg = async () => {
     if (isLimitReached) return alert('Лимит аккаунтов исчерпан! Оформите PRO.');
     if (!tgInput.trim()) return alert('Введите ссылку канала!');
@@ -305,9 +318,15 @@ export default function AccountsManager() {
     setIsAddingTg(false);
   };
 
+  // === ОБРАБОТЧИКИ ДОБАВЛЕНИЯ ВК ===
+  const handleVkNextStep = () => {
+    if (!vkLinkInput.trim()) return alert('Пожалуйста, укажите ссылку на группу');
+    setVkStep(2);
+  };
+
   const handleAddVk = async () => {
     if (isLimitReached) return alert('Лимит аккаунтов исчерпан! Оформите PRO.');
-    if (!vkLinkInput.trim() || !vkTokenInput.trim()) return alert('Заполните ссылку и токен!');
+    if (!vkLinkInput.trim() || !vkTokenInput.trim()) return alert('Заполните токен!');
     
     setIsAddingVk(true);
     const res = await saveVkGroupWithToken(user.id, vkLinkInput, vkTokenInput);
@@ -315,24 +334,27 @@ export default function AccountsManager() {
     if (res.success) {
       setVkLinkInput('');
       setVkTokenInput('');
+      setVkStep(1);
     } else {
       alert(res.error || 'Ошибка при добавлении группы');
     }
     setIsAddingVk(false);
   };
 
+  // Рендер отдельной карточки аккаунта
   const renderAccountCard = (acc, providerIcon, providerColor, providerName) => {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
     const hasCustomSignature = acc.signature !== null;
 
+    // ДИНАМИЧЕСКИЕ ГРАДИЕНТЫ ДЛЯ СТАТУСА КАРТОЧКИ
     const borderClasses = acc.isValid
       ? isExpanded
-        ? 'border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)] bg-emerald-500/10'
-        : 'border-emerald-500/30 hover:border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)] bg-emerald-500/10'
+        ? 'bg-gradient-to-r from-emerald-500/20 to-gray-900/50 border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.15)]'
+        : 'bg-gradient-to-r from-emerald-500/10 to-gray-900/40 border-emerald-500/30 hover:border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]'
       : isExpanded
-        ? 'border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.15)] bg-rose-500/5'
-        : 'border-rose-500/30 hover:border-rose-500/50 shadow-lg bg-gray-900/60';
+        ? 'bg-gradient-to-r from-rose-500/20 to-gray-900/50 border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.15)]'
+        : 'bg-gradient-to-r from-rose-500/10 to-gray-900/40 border-rose-500/30 hover:border-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.1)]';
 
     return (
       <div key={acc.id} className={`flex flex-col transition-all duration-300 rounded-2xl overflow-hidden border ${borderClasses}`}>
@@ -368,19 +390,29 @@ export default function AccountsManager() {
           <div className="overflow-hidden">
             <div className="p-3 sm:p-4 border-t border-gray-800/50 bg-gray-950/40 space-y-5 sm:space-y-6">
               
-              {!acc.isValid && acc.provider === 'TELEGRAM' && (
+              {!acc.isValid && (
                 <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4">
                   <p className="font-bold text-rose-400 flex items-center gap-2 mb-2 text-sm"><ShieldAlert size={16} /> Требуется настройка</p>
-                  <p className="text-gray-300 text-xs sm:text-sm mb-3">{acc.errorMsg || 'Бот удален или не имеет прав администратора.'}</p>
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-gray-400 bg-black/30 p-2.5 rounded-lg mb-3 gap-2">
-                    <span className="truncate w-full sm:w-auto">Бот: <span className="font-mono text-white">@smmbox_auth_bot</span></span>
-                    <button onClick={copyBotName} className="shrink-0 w-full sm:w-auto text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-2.5 sm:py-1.5 rounded-md flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0">
-                      {copied ? <><Check size={14} className="text-emerald-500" /> Сохранено</> : <><Copy size={14} /> Копировать</>}
+                  <p className="text-gray-300 text-xs sm:text-sm mb-3">{acc.errorMsg || 'Ошибка подключения.'}</p>
+                  
+                  {acc.provider === 'TELEGRAM' && (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-gray-400 bg-black/30 p-2.5 rounded-lg mb-3 gap-2">
+                      <span className="truncate w-full sm:w-auto">Бот: <span className="font-mono text-white">@smmbox_auth_bot</span></span>
+                      <button onClick={copyBotName} className="shrink-0 w-full sm:w-auto text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-2.5 sm:py-1.5 rounded-md flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0">
+                        {copied ? <><Check size={14} className="text-emerald-500" /> Сохранено</> : <><Copy size={14} /> Копировать</>}
+                      </button>
+                    </div>
+                  )}
+
+                  {acc.provider === 'VK' ? (
+                    <button onClick={handleManualVerifyVk} disabled={isVerifyingVk} className="w-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px]">
+                      <RefreshCw size={16} className={isVerifyingVk ? "animate-spin" : ""} /> Проверить ключ ВК
                     </button>
-                  </div>
-                  <button onClick={handleManualVerify} disabled={isVerifying} className="w-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px]">
-                    <RefreshCw size={16} className={isVerifying ? "animate-spin" : ""} /> Проверить статус
-                  </button>
+                  ) : (
+                    <button onClick={handleManualVerify} disabled={isVerifying} className="w-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px]">
+                      <RefreshCw size={16} className={isVerifying ? "animate-spin" : ""} /> Проверить статус бота
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -474,7 +506,7 @@ export default function AccountsManager() {
 
               <div className="pt-4 border-t border-gray-800/50 flex justify-end">
                 <button onClick={() => removeAccount(acc.id)} className="w-full sm:w-auto flex items-center justify-center gap-1.5 text-xs font-medium text-rose-500 hover:text-rose-400 transition-colors py-3 sm:py-2 px-3 bg-rose-500/5 hover:bg-rose-500/10 rounded-lg min-h-[44px] sm:min-h-0">
-                  <Trash2 size={16} /> Отключить группу
+                  <Trash2 size={16} /> Отключить
                 </button>
               </div>
 
@@ -491,7 +523,6 @@ export default function AccountsManager() {
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight px-1 sm:px-0">Мои группы</h1>
       </div>
 
-      {/* === ПЛАШКА ЛИМИТОВ (ТОЛЬКО ДЛЯ БЕСПЛАТНОЙ ВЕРСИИ) === */}
       {!isPro && (
         <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors ${isLimitReached ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/10' : 'bg-gray-900 border-gray-800'}`}>
           <div>
@@ -531,33 +562,65 @@ export default function AccountsManager() {
           </div>
         </div>
 
-        {/* ВКОНТАКТЕ */}
-        <div className="mt-auto pt-2 flex flex-col gap-3">
-            <input 
-              type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
-              placeholder="Ссылка: vk.com/public123" 
-              disabled={isLimitReached}
-              className="w-full bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
-            />
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input 
-                type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)}
-                placeholder="Ключ доступа (токен)" 
-                disabled={isLimitReached}
-                className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
-              />
-              <button onClick={handleAddVk} disabled={isAddingVk || isLimitReached || !vkLinkInput || !vkTokenInput} className="shrink-0 bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap min-h-[48px] shadow-lg shadow-[#0077FF]/20 active:scale-95">
-                {isAddingVk ? <RefreshCw className="animate-spin shrink-0" size={18} /> : <Plus size={18} className="shrink-0"/>} Добавить
-              </button>
-            </div>
+        {/* ДИНАМИЧЕСКИЙ БЛОК ВКОНТАКТЕ */}
+        <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col h-full transition-all">
+          <div className="absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 bg-[#0077FF]/10 blur-[40px] sm:blur-[50px] rounded-full pointer-events-none"></div>
+          <div>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 bg-[#0077FF] rounded-md flex items-center justify-center font-bold text-[10px] text-white shrink-0">K</span> ВКонтакте
+            </h2>
+            {vkStep === 1 ? (
+              <p className="text-xs sm:text-sm text-gray-400 mb-5">Укажите ссылку на ваше сообщество, чтобы начать процесс подключения.</p>
+            ) : (
+              <div className="text-xs sm:text-sm text-gray-300 mb-4 bg-[#0077FF]/10 p-3 rounded-xl border border-[#0077FF]/20">
+                <p className="font-bold text-white mb-1">Группа найдена! Следующий шаг:</p>
+                <ol className="list-decimal list-inside space-y-1 ml-1">
+                  <li>Зайдите в настройки группы → <b>Работа с API</b></li>
+                  <li>Создайте ключ с правами: <b>Управление, Фото, Стена</b></li>
+                  <li>Вставьте полученный ключ ниже</li>
+                </ol>
+              </div>
+            )}
           </div>
+          
+          <div className="mt-auto pt-2 flex flex-col gap-3">
+            {vkStep === 1 ? (
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input 
+                  type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
+                  placeholder="Ссылка: vk.com/public123" disabled={isLimitReached}
+                  className="flex-1 w-full bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 min-h-[48px]"
+                />
+                <button onClick={handleVkNextStep} disabled={!vkLinkInput || isLimitReached} className="shrink-0 bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg shadow-[#0077FF]/20">
+                  Найти группу
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-3 animate-in fade-in slide-in-from-right-4">
+                <input 
+                  type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)}
+                  placeholder="Вставьте API ключ сюда..." disabled={isLimitReached}
+                  className="flex-1 w-full min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 min-h-[48px]"
+                />
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => setVkStep(1)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px]">
+                    Назад
+                  </button>
+                  <button onClick={handleAddVk} disabled={isAddingVk || !vkTokenInput} className="bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg flex items-center gap-2">
+                    {isAddingVk ? <RefreshCw className="animate-spin" size={18} /> : <Check size={18} />} Подключить
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
       </div>
 
       {/* ШАГ 2: НИЖНИЕ СПИСКИ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mt-6 sm:mt-8">
         
-        {/* ЛЕВАЯ КОЛОНКА (ТГ) */}
+        {/* СПИСОК ТГ */}
         <div className="space-y-3 sm:space-y-4">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
             <Send size={14} className="text-sky-500 shrink-0"/> Подключенные каналы
@@ -572,7 +635,7 @@ export default function AccountsManager() {
           </div>
         </div>
 
-        {/* ПРАВАЯ КОЛОНКА (ВК) */}
+        {/* СПИСОК ВК */}
         <div className="space-y-3 sm:space-y-4">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
             <span className="w-4 h-4 rounded bg-[#0077FF] flex items-center justify-center text-[9px] text-white font-bold shrink-0">K</span> Сообщества ВКонтакте
@@ -589,7 +652,7 @@ export default function AccountsManager() {
 
       </div>
 
-      {/* --- МОДАЛЬНОЕ ОКНО ДИЗАЙНА (BOTTOM SHEET И ЕДИНЫЙ СКРОЛЛ КОНТЕЙНЕР) --- */}
+      {/* --- МОДАЛЬНОЕ ОКНО ДИЗАЙНА --- */}
       {designModal.isOpen && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeDesignModal}></div>
@@ -603,19 +666,18 @@ export default function AccountsManager() {
               </button>
             </div>
 
-            {/* ГЛАВНЫЙ СКРОЛЛЯЩИЙСЯ КОНТЕЙНЕР (внутри превью и все настройки) */}
+            {/* ГЛАВНЫЙ СКРОЛЛЯЩИЙСЯ КОНТЕЙНЕР */}
             <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#111318] flex flex-col">
               
-              {/* ПРЕВЬЮ - Больше не имеет touch-none на фоне! */}
+              {/* ПРЕВЬЮ */}
               <div className="p-4 sm:p-5 bg-black/50 border-b border-gray-800 shrink-0">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-[10px] sm:text-xs text-gray-500 uppercase flex items-center gap-1"><Move size={12}/> Перетаскивайте мышью/пальцем</span>
                 </div>
                 
-                {/* ИСПОЛЬЗУЕМ onClick вместо onPointerDown для фона, чтобы разрешить свайп-скролл */}
                 <div ref={previewRef} onClick={handleBackgroundClick} className="relative w-full aspect-[16/9] rounded-xl shadow-inner border border-gray-800 overflow-hidden bg-cover bg-center cursor-crosshair" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop')" }}>
                   
-                  {/* САМ ВОДЯНОЙ ЗНАК - Имеет touch-none для перетаскивания без скролла */}
+                  {/* САМ ВОДЯНОЙ ЗНАК */}
                   <div 
                     onPointerDown={handlePointerDown}
                     className={`absolute px-2.5 py-1 flex items-center justify-center whitespace-nowrap cursor-move select-none touch-none ${isDragging ? 'transition-none' : 'transition-all duration-200 ease-out'}`}

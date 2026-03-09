@@ -448,19 +448,22 @@ exports.saveVkGroupWithToken = async (req, res) => {
     }
 
     // Очищаем ссылку, достаем ID или короткое имя
-    let groupId = groupLink.replace('https://vk.com/', '').replace('http://vk.com/', '').replace('/', '').trim();
+    let groupId = groupLink.replace(/^(?:https?:\/\/)?(?:www\.|m\.)?vk\.com\//i, '')
+                       .split('/')[0].split('?')[0].split('#')[0].trim();
 
     // Стучимся в ВК для проверки ключа
     const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
-      params: { group_id: groupId, access_token: accessToken, v: '5.131' }
+    params: { group_id: groupId, access_token: accessToken, v: '5.131' }
     });
 
-    const vkData = vkRes.data;
-    if (vkData.error) {
-      return res.status(400).json({ error: `Ошибка ВК: ${vkData.error.error_msg}` });
+    if (vkRes.data.error) {
+    return res.status(400).json({ error: `Ошибка ВК: ${vkRes.data.error.error_msg}` });
     }
 
-    const group = vkData.response[0];
+    const group = vkRes.data.response[0];
+    if (!group || !group.id) {
+      return res.status(400).json({ error: 'Группа не найдена. Проверьте ссылку.' });
+    }
     const safeProviderId = String(group.id);
 
     // Проверка лимитов (как у Telegram)
@@ -493,5 +496,103 @@ exports.saveVkGroupWithToken = async (req, res) => {
   } catch (error) {
     console.error('Ошибка ВК:', error);
     res.status(500).json({ error: 'Ошибка сервера при проверке ключа ВК' });
+  }
+};
+
+// === ИЗОЛИРОВАННАЯ ЛОГИКА ВКОНТАКТЕ ===
+
+// 1. Сохранение группы ВК по токену
+exports.saveVkGroupWithToken = async (req, res) => {
+  const { userId, groupLink, accessToken } = req.body;
+
+  try {
+    if (!userId || !groupLink || !accessToken) {
+      return res.status(400).json({ error: 'Укажите ссылку на группу и ключ доступа' });
+    }
+
+    let groupId = groupLink.replace('https://vk.com/', '').replace('http://vk.com/', '').replace('/', '').trim();
+
+    const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
+      params: { group_id: groupId, access_token: accessToken, v: '5.131' }
+    });
+
+    if (vkRes.data.error) {
+      return res.status(400).json({ error: `Ошибка ВК: ${vkRes.data.error.error_msg}` });
+    }
+
+    const group = vkRes.data.response[0];
+    const safeProviderId = String(group.id);
+
+    const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
+    const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
+    const existing = await prisma.account.findFirst({
+      where: { userId: String(userId), provider: 'VK', providerId: safeProviderId }
+    });
+
+    if (!existing && !currentUser.isPro && currentAccountsCount >= 10) {
+      return res.status(403).json({ error: 'Лимит бесплатной версии — 10 аккаунтов. Оформите PRO!' });
+    }
+
+    if (existing) {
+      await prisma.account.update({
+        where: { id: existing.id },
+        data: { accessToken, avatarUrl: group.photo_50, name: group.name, isValid: true, errorMsg: null }
+      });
+    } else {
+      await prisma.account.create({
+        data: {
+          userId: String(userId), provider: 'VK', providerId: safeProviderId,
+          name: group.name, accessToken, avatarUrl: group.photo_50
+        }
+      });
+    }
+
+    res.json({ success: true, group: { name: group.name, avatar: group.photo_50 } });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка сервера при проверке ключа ВК' });
+  }
+};
+
+// 2. Отдельная проверка статусов только для ВК
+exports.verifyVkAccountsStatus = async (req, res) => {
+  const userId = req.user?.userId || req.user?.id || req.body?.userId;
+
+  try {
+    if (!userId) return res.status(400).json({ error: 'Не указан userId' });
+
+    const vkAccounts = await prisma.account.findMany({
+      where: { userId: String(userId), provider: 'VK' }
+    });
+
+    if (vkAccounts.length === 0) return res.json({ success: true, message: 'Нет ВК аккаунтов' });
+
+    const updates = await Promise.all(vkAccounts.map(async (acc) => {
+      try {
+        const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
+          params: { group_id: acc.providerId, access_token: acc.accessToken, v: '5.131' }
+        });
+        
+        if (vkRes.data.error) {
+          return await prisma.account.update({
+            where: { id: acc.id },
+            data: { isValid: false, errorMsg: 'Ключ доступа недействителен. Обновите его.' }
+          });
+        } else {
+          return await prisma.account.update({
+            where: { id: acc.id },
+            data: { isValid: true, errorMsg: null }
+          });
+        }
+      } catch (error) {
+        return await prisma.account.update({
+          where: { id: acc.id },
+          data: { isValid: false, errorMsg: 'Ошибка проверки соединения с ВК' }
+        });
+      }
+    }));
+
+    res.json({ success: true, updated: updates.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка сервера при проверке ВК' });
   }
 };

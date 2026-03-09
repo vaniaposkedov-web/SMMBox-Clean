@@ -89,6 +89,8 @@ export const useStore = create(
         }
       },
 
+
+
       deleteScheduledPostAction: async (id) => {
         try {
           const token = localStorage.getItem('token') || get().token;
@@ -523,6 +525,40 @@ export const useStore = create(
           }
           return { success: false, error: data.error };
         } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
+      },
+
+      // === ИЗОЛИРОВАННЫЕ ФУНКЦИИ ВКОНТАКТЕ ===
+      saveVkGroupWithToken: async (userId, groupLink, accessToken) => {
+        try {
+          const res = await fetch('/api/accounts/vk/save-by-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
+            body: JSON.stringify({ userId, groupLink, accessToken })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            get().fetchAccounts(userId); 
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения с сервером' };
+        }
+      },
+
+      verifyVkAccountsStatus: async () => {
+        try {
+          const user = get().user;
+          if (!user?.id) return;
+          const res = await fetch('/api/accounts/vk/verify-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
+            body: JSON.stringify({ userId: user.id })
+          });
+          if (res.ok) {
+            get().fetchAccounts(user.id); 
+          }
+        } catch (error) {}
       },
 
       deleteSharedPostAction: async (id) => {
