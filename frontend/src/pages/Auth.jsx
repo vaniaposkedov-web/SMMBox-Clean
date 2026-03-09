@@ -27,7 +27,26 @@ export default function Auth() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
 
-  // === НОВАЯ ЛОГИКА АВТОРИЗАЦИИ ЧЕРЕЗ STATE ===
+  // === ФУНКЦИЯ ФОРМАТИРОВАНИЯ НОМЕРА ТЕЛЕФОНА ===
+  const handlePhoneChange = (e) => {
+    const val = e.target.value.replace(/\D/g, '');
+    if (!val) { 
+      setPhone(''); 
+      return; 
+    }
+    let num = val;
+    if (val.startsWith('7') || val.startsWith('8')) num = val.slice(1);
+    
+    let formatted = '+7';
+    if (num.length > 0) formatted += ' (' + num.substring(0, 3);
+    if (num.length >= 4) formatted += ') ' + num.substring(3, 6);
+    if (num.length >= 7) formatted += '-' + num.substring(6, 8);
+    if (num.length >= 9) formatted += '-' + num.substring(8, 10);
+    
+    setPhone(formatted);
+  };
+
+  // === ЛОГИКА АВТОРИЗАЦИИ ЧЕРЕЗ STATE ===
   const handleAuth = async (e) => {
     e.preventDefault();
     setError('');
@@ -51,6 +70,12 @@ export default function Auth() {
         }
         if (password.length < 6) {
           setError('Пароль должен быть не менее 6 символов');
+          setIsLoading(false);
+          return;
+        }
+        // Проверяем, что номер телефона введен полностью (18 символов: +7 (999) 000-00-00)
+        if (phone && phone.length < 18) {
+          setError('Пожалуйста, введите номер телефона полностью');
           setIsLoading(false);
           return;
         }
@@ -173,7 +198,14 @@ export default function Auth() {
               </div>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Phone size={18} className="sm:w-5 sm:h-5" /></span>
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Номер телефона" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 sm:py-3.5 pl-11 sm:pl-12 pr-4 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500 transition-colors min-h-[48px]" />
+                <input 
+                  type="tel" 
+                  value={phone} 
+                  onChange={handlePhoneChange} 
+                  placeholder="+7 (___) ___-__-__" 
+                  required 
+                  className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 sm:py-3.5 pl-11 sm:pl-12 pr-4 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500 transition-colors min-h-[48px]" 
+                />
               </div>
             </>
           )}
@@ -223,13 +255,10 @@ export default function Auth() {
 
         <div className="mt-8 pt-6 border-t border-gray-800">
           <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase tracking-wider">Быстрый вход через соцсети</p>
-          
-          {/* ИЗМЕНЕНИЕ ЗДЕСЬ: Убрали flex-col, чтобы кнопки всегда были рядом горизонтально */}
           <div className="flex flex-row items-center justify-center gap-4 sm:gap-6">
              <CustomTelegramButton onAuthCallback={handleTelegramResponse} />
              <CustomVkButton onAuthCallback={handleVkResponse} />
           </div>
-          
         </div>
       </div>
     </div>
