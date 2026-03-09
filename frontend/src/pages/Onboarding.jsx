@@ -162,6 +162,15 @@ export default function Onboarding() {
     setTimeout(() => setCopied(false), 2000); 
   };
 
+  const handleContactsOrFinish = () => {
+    // Проверяем: если почта нормальная (не .local) и уже подтверждена — пропускаем 'contacts'
+    if (user?.email && !user.email.includes('.local') && user?.isEmailVerified) {
+      finishOnboarding(); // Сразу завершаем онбординг
+    } else {
+      setStep('contacts'); // Иначе просим ввести почту
+    }
+  };
+
   const finishOnboarding = async () => {
     setLoading(true); setError('');
     try {
@@ -288,7 +297,7 @@ export default function Onboarding() {
             )}
 
             <button 
-              onClick={() => { setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts'); }} 
+              onClick={() => { firstChoice === 'vk' ? setStep('offer_second') : handleContactsOrFinish(); }}
               className="mt-6 w-full bg-[#0077FF] text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0066DD] transition-colors shadow-lg shadow-[#0077FF]/20 text-base min-h-[48px] active:scale-95"
             >
               <span>{vkConnectedGroups.length > 0 ? 'Продолжить' : 'Пропустить шаг'}</span> <ArrowRight size={18} />
@@ -362,7 +371,7 @@ export default function Onboarding() {
                   setTgLoading(false);
                   if (!res.success) { setError(res.error); return; }
                 }
-                setStep(firstChoice === 'tg' ? 'offer_second' : 'contacts');
+                firstChoice === 'tg' ? setStep('offer_second') : handleContactsOrFinish();
               }} 
               className="mt-6 w-full bg-[#0088CC] disabled:opacity-50 text-white font-bold py-3.5 sm:py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-[#0077b3] transition-colors shadow-lg shadow-[#0088CC]/20 text-base min-h-[48px] active:scale-95"
             >
@@ -380,7 +389,7 @@ export default function Onboarding() {
             <p className="text-gray-400 text-sm sm:text-base leading-relaxed max-w-sm mx-auto">Хотите сразу настроить сообщества для {firstChoice === 'vk' ? 'Telegram' : 'ВКонтакте'}?</p>
             <div className="flex flex-col sm:flex-row gap-3 pt-4">
               <button onClick={() => setStep(firstChoice === 'vk' ? 'tg_setup' : 'vk_setup')} className="flex-1 bg-blue-600 hover:bg-blue-500 transition-colors text-white font-bold py-3.5 sm:py-4 rounded-xl shadow-lg shadow-blue-500/20 text-base min-h-[48px] active:scale-95">Да, настроить</button>
-              <button onClick={() => setStep('contacts')} className="flex-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors text-white font-bold py-3.5 sm:py-4 rounded-xl text-base min-h-[48px] active:scale-95">Сделаю позже</button>
+              <button onClick={handleContactsOrFinish} className="flex-1 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors text-white font-bold py-3.5 sm:py-4 rounded-xl text-base min-h-[48px] active:scale-95">Сделаю позже</button>
             </div>
           </div>
         )}
