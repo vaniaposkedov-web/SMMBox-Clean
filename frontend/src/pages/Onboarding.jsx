@@ -304,13 +304,16 @@ export default function Onboarding() {
                     </button>
                     {/* Обернули текст загрузки и кнопки в SPAN */}
                     <button 
-                    onClick={handleAddVkGroup} 
-                    disabled={vkLoading || !vkTokenInput} 
-                    className="flex-1 bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold flex justify-center items-center transition-colors min-h-[48px]"
-                    >
-                    {vkLoading && <Loader2 className="animate-spin mr-2" size={20} />}
-                    <span>{vkLoading ? 'Проверка...' : 'Подключить группу'}</span>
-                    </button>
+                        onClick={handleAddVkGroup} 
+                        disabled={vkLoading || !vkTokenInput} 
+                        className="flex-1 bg-[#0077FF] hover:bg-[#0066DD] text-white px-6 py-3.5 rounded-xl font-bold transition-colors min-h-[48px]"
+                        >
+                        {vkLoading ? (
+                            <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin" size={20} /><span>Проверка...</span></div>
+                        ) : (
+                            <div className="flex justify-center items-center gap-2"><span>Подключить группу</span></div>
+                        )}
+                        </button>
                   </div>
                 </div>
               )}
