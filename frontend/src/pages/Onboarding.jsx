@@ -32,6 +32,7 @@ export default function Onboarding() {
   const [tgLoading, setTgLoading] = useState(false);
 
   // Вместо vkGroupsFetched и selectedVkGroups добавьте:
+  const [vkStep, setVkStep] = useState(1);
   const [vkLinkInput, setVkLinkInput] = useState('');
   const [vkTokenInput, setVkTokenInput] = useState('');
   const [vkLoading, setVkLoading] = useState(false);
