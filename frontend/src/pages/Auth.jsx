@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../store';
-import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft, Loader2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 // ИМПОРТИРУЕМ НАШИ КНОПКИ СОЦСЕТЕЙ
@@ -27,76 +27,40 @@ export default function Auth() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
 
-  // === НОВАЯ ЛОГИКА АВТОРИЗАЦИИ ВКОНТАКТЕ ===
-  const handleVkAuth = async (vkData) => {
-    setIsLoading(true);
-    setError('');
-    
-    // Передаем данные, полученные от CustomVkButton, в store
-    const result = await vkLogin(vkData);
-    
-    if (result.success) {
-      if (result.requiresEmailVerification) {
-        setIsVerification(true);
-      } else {
-        navigate('/');
-      }
-    } else {
-      setError(result.error || 'Ошибка авторизации через ВКонтакте');
-    }
-    setIsLoading(false);
-  };
-
-  // === ЛОГИКА TELEGRAM ===
-  const handleTelegramAuth = async (telegramData) => {
-    setIsLoading(true);
-    setError('');
-    const result = await telegramLogin(telegramData);
-    if (result.success) navigate('/');
-    else setError(result.error || 'Ошибка авторизации через Telegram');
-    setIsLoading(false);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!isLogin && !isAccepted) return;
-    setError('');
-    setIsLoading(true);
-
-    if (isLogin) {
-      const result = await login(email, password);
-      if (!result.success) setError(result.error);
-      else navigate('/');
-    } else {
-      const result = await register(email, password, name, phone);
-      if (!result.success) {
-        setError(result.error);
-      } else {
-        setIsVerification(true);
-      }
-    }
-    setIsLoading(false);
-  };
-
-  const handleVerify = async (e) => {
+  // === НОВАЯ ЛОГИКА АВТОРИЗАЦИИ ЧЕРЕЗ STATE ===
+  const handleAuth = async (e) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
-      const res = await fetch('/api/auth/verify-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Ошибка проверки кода');
+      if (isLogin) {
+        // ЛОГИН
+        const result = await login(email, password);
+        if (result.success) {
+          navigate('/profile');
+        } else {
+          setError(result.error || 'Ошибка входа');
+        }
       } else {
-        useStore.setState({ user: data.user, token: data.token });
-        localStorage.setItem('token', data.token);
-        navigate('/');
+        // РЕГИСТРАЦИЯ
+        if (!isAccepted) {
+          setError('Необходимо согласие с политикой конфиденциальности');
+          setIsLoading(false);
+          return;
+        }
+        if (password.length < 6) {
+          setError('Пароль должен быть не менее 6 символов');
+          setIsLoading(false);
+          return;
+        }
+
+        const result = await register(email, password, name, phone);
+        if (result.success) {
+          navigate('/onboarding');
+        } else {
+          setError(result.error || 'Ошибка регистрации');
+        }
       }
     } catch (err) {
       setError('Ошибка соединения с сервером');
@@ -104,85 +68,166 @@ export default function Auth() {
     setIsLoading(false);
   };
 
-  // === ИНТЕРФЕЙС ПРОВЕРКИ КОДА ===
+  // === ОБРАБОТКА ВХОДА ЧЕРЕЗ СОЦСЕТИ ===
+  const handleTelegramResponse = async (tgUser) => {
+    setIsLoading(true);
+    const result = await telegramLogin(tgUser);
+    setIsLoading(false);
+    if (result.success) {
+       navigate(result.isNewUser ? '/onboarding' : '/profile');
+    } else {
+       setError(result.error || 'Ошибка авторизации через Telegram');
+    }
+  };
+
+  const handleVkResponse = async (vkData) => {
+    setIsLoading(true);
+    const result = await vkLogin(vkData);
+    setIsLoading(false);
+    if (result.success) {
+       navigate(result.isNewUser ? '/onboarding' : '/profile');
+    } else {
+       setError(result.error || 'Ошибка авторизации через ВКонтакте');
+    }
+  };
+
   if (isVerification) {
     return (
-      <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-4 relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-blue-500/10 blur-[100px] rounded-full pointer-events-none"></div>
-        <div className="w-full max-w-md bg-admin-card border border-gray-800 p-6 sm:p-8 rounded-2xl shadow-2xl relative z-10 text-center">
-          <ShieldCheck className="mx-auto text-blue-500 mb-4" size={48} />
-          <h2 className="text-2xl font-bold text-white mb-2">Подтверждение Email</h2>
-          <p className="text-gray-400 text-sm mb-6">Мы отправили 6-значный код на <br/><span className="text-white font-medium">{email}</span></p>
+      <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 sm:p-6 font-sans relative overflow-y-auto">
+        {/* Фоновые эффекты */}
+        <div className="absolute top-1/4 left-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-blue-600/20 rounded-full blur-[80px] sm:blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-48 sm:w-96 h-48 sm:h-96 bg-purple-600/20 rounded-full blur-[80px] sm:blur-[120px] pointer-events-none"></div>
 
-          <form onSubmit={handleVerify} className="space-y-4">
-            <input type="text" maxLength="6" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" required className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-4 text-center text-xl tracking-widest outline-none focus:border-blue-500 transition-colors" />
-            {error && <p className="text-red-500 text-sm bg-red-500/10 py-2 rounded-lg">{error}</p>}
-            <button type="submit" disabled={isLoading || code.length !== 6} className="w-full font-bold py-4 rounded-xl transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-lg disabled:opacity-50">
-              {isLoading ? 'Проверка...' : 'Завершить регистрацию'}
+        <div className="w-full max-w-md bg-admin-card border border-gray-800 rounded-[2rem] sm:rounded-3xl p-6 sm:p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in-95 duration-300">
+          <button onClick={() => setIsVerification(false)} className="flex items-center gap-2 text-gray-500 hover:text-white mb-6 transition-colors min-h-[44px] -ml-2 px-2 rounded-lg">
+            <ArrowLeft size={20} /> <span className="text-sm font-medium">Назад</span>
+          </button>
+          <div className="w-14 h-14 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center mb-6">
+            <ShieldCheck size={28} />
+          </div>
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">Подтверждение</h2>
+          <p className="text-sm text-gray-400 mb-6 sm:mb-8 leading-relaxed">
+            Мы отправили код на вашу почту <span className="text-white font-medium">{email}</span>
+          </p>
+
+          <form className="space-y-4">
+            <div className="relative">
+              <input 
+                type="text" 
+                value={code} 
+                onChange={(e) => setCode(e.target.value)} 
+                placeholder="Введите 6-значный код" 
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 sm:py-4 px-4 text-center tracking-[0.5em] text-base sm:text-lg text-white focus:outline-none focus:border-blue-500 transition-colors min-h-[52px]"
+                maxLength="6"
+              />
+            </div>
+            <button type="button" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 sm:py-4 rounded-xl transition-all shadow-lg shadow-blue-500/20 min-h-[52px] active:scale-95 flex justify-center items-center gap-2">
+              Подтвердить
             </button>
-            <button type="button" onClick={() => setIsVerification(false)} className="text-gray-400 hover:text-white text-sm mt-4 flex items-center justify-center gap-2 w-full"><ArrowLeft size={16} /> Вернуться назад</button>
           </form>
         </div>
       </div>
     );
   }
 
-  // === ОСНОВНОЙ ИНТЕРФЕЙС ===
   return (
-    <div className="min-h-[100dvh] bg-admin-bg flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] bg-blue-500/10 blur-[100px] sm:blur-[120px] rounded-full pointer-events-none"></div>
+    <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 sm:p-6 font-sans relative overflow-y-auto py-[max(2rem,env(safe-area-inset-bottom))]">
+      {/* Декоративные блюр-пятна на фоне */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none flex items-center justify-center">
+         <div className="absolute top-[10%] left-[10%] w-[300px] sm:w-[500px] h-[300px] sm:h-[500px] bg-blue-600/10 rounded-full blur-[100px] sm:blur-[150px]"></div>
+         <div className="absolute bottom-[10%] right-[10%] w-[300px] sm:w-[500px] h-[300px] sm:h-[500px] bg-purple-600/10 rounded-full blur-[100px] sm:blur-[150px]"></div>
+      </div>
 
-      <div className="w-full max-w-md bg-admin-card border border-gray-800 p-5 sm:p-8 rounded-2xl sm:rounded-3xl shadow-2xl relative z-10">
-        <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-wide text-white mb-1">SMM<span className="text-blue-500">BOXSS</span></h1>
-          <p className="text-xs sm:text-sm text-gray-400">Панель управления автопостингом</p>
+      <div className="w-full max-w-md bg-admin-card border border-gray-800 rounded-[2rem] sm:rounded-3xl p-6 sm:p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in-95 duration-300">
+        
+        <div className="flex justify-center mb-6 sm:mb-8">
+           <div className="flex items-center gap-3">
+             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+               <ShieldCheck size={24} className="sm:w-7 sm:h-7" />
+             </div>
+             <span className="text-2xl sm:text-3xl font-black tracking-tight text-white">SMM<span className="text-blue-500">BOX</span></span>
+           </div>
         </div>
 
-        <div className="flex bg-gray-900 rounded-xl p-1 mb-5 sm:mb-6 border border-gray-800">
-          <button type="button" onClick={() => { setIsLogin(true); setError(''); }} className={`flex-1 py-3 sm:py-2.5 rounded-lg text-sm font-bold transition-all ${isLogin ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Вход</button>
-          <button type="button" onClick={() => { setIsLogin(false); setError(''); }} className={`flex-1 py-3 sm:py-2.5 rounded-lg text-sm font-bold transition-all ${!isLogin ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>Регистрация</button>
+        <div className="flex bg-gray-900 border border-gray-800 p-1 rounded-xl sm:rounded-2xl mb-6 sm:mb-8">
+          <button 
+            onClick={() => { setIsLogin(true); setError(''); }} 
+            className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl transition-all min-h-[44px] ${isLogin ? 'bg-gray-800 text-white shadow-sm border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            Вход
+          </button>
+          <button 
+            onClick={() => { setIsLogin(false); setError(''); }} 
+            className={`flex-1 py-2.5 sm:py-3 text-xs sm:text-sm font-bold rounded-lg sm:rounded-xl transition-all min-h-[44px] ${!isLogin ? 'bg-gray-800 text-white shadow-sm border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            Регистрация
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+        <form onSubmit={handleAuth} className="space-y-4">
           {!isLogin && (
             <>
-              <div className="relative"><User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} /><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ваше Имя" required className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-3.5 pl-12 pr-4 outline-none focus:border-blue-500 transition-colors" /></div>
-              <div className="relative"><Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} /><input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Номер телефона" className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-3.5 pl-12 pr-4 outline-none focus:border-blue-500 transition-colors" /></div>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><User size={18} className="sm:w-5 sm:h-5" /></span>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя и Фамилия" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 sm:py-3.5 pl-11 sm:pl-12 pr-4 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500 transition-colors min-h-[48px]" />
+              </div>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Phone size={18} className="sm:w-5 sm:h-5" /></span>
+                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Номер телефона" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 sm:py-3.5 pl-11 sm:pl-12 pr-4 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500 transition-colors min-h-[48px]" />
+              </div>
             </>
           )}
-          <div className="relative"><Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-3.5 pl-12 pr-4 outline-none focus:border-blue-500 transition-colors" /></div>
-          <div className="relative"><Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} /><input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Пароль" required className="w-full bg-gray-900 border border-gray-800 text-white rounded-xl py-3.5 pl-12 pr-12 outline-none focus:border-blue-500 transition-colors" />
-            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white p-2 transition-colors">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
+
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Mail size={18} className="sm:w-5 sm:h-5" /></span>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Электронная почта" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 sm:py-3.5 pl-11 sm:pl-12 pr-4 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500 transition-colors min-h-[48px]" />
+          </div>
+
+          <div className="relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Lock size={18} className="sm:w-5 sm:h-5" /></span>
+            <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Пароль" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 sm:py-3.5 pl-11 sm:pl-12 pr-12 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500 transition-colors min-h-[48px]" />
+            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors">
+              {showPassword ? <EyeOff size={18} className="sm:w-5 sm:h-5"/> : <Eye size={18} className="sm:w-5 sm:h-5"/>}
+            </button>
           </div>
 
           {!isLogin && (
-            <div className="flex items-start gap-3 mt-4 p-3 bg-gray-900/60 rounded-xl border border-gray-800">
-              <input type="checkbox" id="privacy" checked={isAccepted} onChange={(e) => setIsAccepted(e.target.checked)} className="w-5 h-5 accent-blue-500 mt-0.5" required />
-              <label htmlFor="privacy" className="text-xs text-gray-400 cursor-pointer select-none">Я согласен(на) с <Link to="/privacy" target="_blank" className="text-blue-500 hover:text-blue-400 underline">политикой конфиденциальности</Link>.</label>
+            <div className="flex items-start gap-3 mt-4 pt-2">
+              <div className="flex items-center justify-center min-w-[24px] min-h-[24px] mt-0.5">
+                <input 
+                  type="checkbox" 
+                  checked={isAccepted} 
+                  onChange={(e) => setIsAccepted(e.target.checked)} 
+                  id="privacy" 
+                  className="w-5 h-5 accent-blue-600 rounded cursor-pointer" 
+                />
+              </div>
+              <label htmlFor="privacy" className="text-xs sm:text-sm text-gray-400 cursor-pointer select-none leading-relaxed">
+                Я согласен(на) с <Link to="/privacy" target="_blank" className="text-blue-500 hover:text-blue-400 underline">политикой конфиденциальности</Link>.
+              </label>
             </div>
           )}
 
-          {isLogin && <div className="text-right mt-1 mb-2"><Link to="/forgot-password" title="forgot" className="text-sm text-blue-500 hover:text-blue-400 font-medium">Забыли пароль?</Link></div>}
-          {error && <p className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20">{error}</p>}
+          {isLogin && (
+            <div className="text-right mt-2 mb-2">
+              <Link to="/forgot-password" title="forgot" className="text-xs sm:text-sm text-blue-500 hover:text-blue-400 font-medium py-2 px-1 rounded-lg">Забыли пароль?</Link>
+            </div>
+          )}
           
-          <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-4 rounded-xl transition-all mt-2 bg-blue-600 hover:bg-blue-500 text-white shadow-lg disabled:opacity-50">
-            {isLoading ? 'Загрузка...' : (isLogin ? 'Войти по паролю' : 'Создать аккаунт')}
+          {error && <p className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20 animate-in fade-in">{error}</p>}
+          
+          <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-3.5 sm:py-4 rounded-xl transition-all mt-4 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 disabled:opacity-50 active:scale-95 flex justify-center items-center gap-2 min-h-[52px]">
+            {isLoading ? <><Loader2 size={20} className="animate-spin"/> Загрузка...</> : (isLogin ? 'Войти по паролю' : 'Создать аккаунт')}
           </button>
         </form>
 
         <div className="mt-8 pt-6 border-t border-gray-800">
-          <p className="text-center text-xs text-gray-500 mb-5">Быстрый вход через соцсети</p>
-          <div className="flex items-center justify-center gap-8">
-            
-            {/* НОВЫЙ КОМПОНЕНТ ВК */}
-            <CustomVkButton onAuth={handleVkAuth} />
-            
-            {/* СУЩЕСТВУЮЩИЙ КОМПОНЕНТ TELEGRAM */}
-            <CustomTelegramButton botId={import.meta.env.VITE_TELEGRAM_BOT_ID} onAuth={handleTelegramAuth} />
-
+          <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase tracking-wider">Быстрый вход через соцсети</p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
+             <CustomTelegramButton onAuthCallback={handleTelegramResponse} />
+             <CustomVkButton onAuthCallback={handleVkResponse} />
           </div>
         </div>
-
       </div>
     </div>
   );
