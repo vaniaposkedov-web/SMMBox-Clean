@@ -210,7 +210,7 @@ exports.saveTgAccounts = async (req, res) => {
   }
 };
 
-// === 5. ОСТАЛЬНЫЕ ФУНКЦИИ (БЕЗ ИЗМЕНЕНИЙ) ===
+// === 5. ОСТАЛЬНЫЕ ФУНКЦИИ ===
 exports.saveVkGroups = async (req, res) => {
   const { userId, accessToken, groups } = req.body;
   try {
