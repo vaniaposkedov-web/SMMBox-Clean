@@ -437,3 +437,61 @@ exports.scanTgChannels = async (req, res) => {
     res.status(500).json({ error: 'Не удалось просканировать Telegram. Проверьте токен бота.' });
   }
 };
+
+// === НОВЫЙ МЕТОД СОХРАНЕНИЯ ГРУППЫ ВК ПО КЛЮЧУ ДОСТУПА ===
+exports.saveVkGroupWithToken = async (req, res) => {
+  const { userId, groupLink, accessToken } = req.body;
+
+  try {
+    if (!userId || !groupLink || !accessToken) {
+      return res.status(400).json({ error: 'Укажите ссылку на группу и ключ доступа' });
+    }
+
+    // Очищаем ссылку, достаем ID или короткое имя
+    let groupId = groupLink.replace('https://vk.com/', '').replace('http://vk.com/', '').replace('/', '').trim();
+
+    // Стучимся в ВК для проверки ключа
+    const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
+      params: { group_id: groupId, access_token: accessToken, v: '5.131' }
+    });
+
+    const vkData = vkRes.data;
+    if (vkData.error) {
+      return res.status(400).json({ error: `Ошибка ВК: ${vkData.error.error_msg}` });
+    }
+
+    const group = vkData.response[0];
+    const safeProviderId = String(group.id);
+
+    // Проверка лимитов (как у Telegram)
+    const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
+    const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
+    const existing = await prisma.account.findFirst({
+      where: { userId: String(userId), provider: 'VK', providerId: safeProviderId }
+    });
+
+    if (!existing && !currentUser.isPro && currentAccountsCount >= 10) {
+      return res.status(403).json({ error: 'Лимит бесплатной версии — 10 аккаунтов. Оформите PRO!' });
+    }
+
+    // Сохраняем или обновляем
+    if (existing) {
+      await prisma.account.update({
+        where: { id: existing.id },
+        data: { accessToken, avatarUrl: group.photo_50, name: group.name, isValid: true, errorMsg: null }
+      });
+    } else {
+      await prisma.account.create({
+        data: {
+          userId: String(userId), provider: 'VK', providerId: safeProviderId,
+          name: group.name, accessToken, avatarUrl: group.photo_50
+        }
+      });
+    }
+
+    res.json({ success: true, group: { name: group.name, avatar: group.photo_50 } });
+  } catch (error) {
+    console.error('Ошибка ВК:', error);
+    res.status(500).json({ error: 'Ошибка сервера при проверке ключа ВК' });
+  }
+};
