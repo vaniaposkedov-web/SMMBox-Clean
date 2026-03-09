@@ -62,9 +62,6 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
-      // === ДЛЯ КАЛЕНДАРЯ ===
-      scheduledPosts: [],
-
       fetchScheduledPosts: async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
@@ -484,8 +481,6 @@ export const useStore = create(
           const data = await res.json();
           
           if (res.ok && data.success) {
-            // === ИСПРАВЛЕНИЕ ЗДЕСЬ ===
-            // Если пост отложенный, запрашиваем обновленный список с сервера
             if (publishAt) {
               get().fetchScheduledPosts();
             }
@@ -542,6 +537,16 @@ export const useStore = create(
     }),
     {
       name: 'smmbox-storage',
+      // === ИСПРАВЛЕНИЕ: ФИЛЬТР СОХРАНЕНИЯ ===
+      // Указываем, какие именно данные можно писать на диск (localStorage).
+      // Все тяжелые массивы (картинки, посты, черновики) исключены и остаются в ОЗУ.
+      partialize: (state) => ({
+        user: state.user,
+        token: state.token,
+        watermarkSettings: state.watermarkSettings,
+        globalSettings: state.globalSettings,
+        presets: state.presets,
+      }),
     }
   )
 );
