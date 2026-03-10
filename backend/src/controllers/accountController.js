@@ -260,3 +260,37 @@ exports.verifyVkAccountsStatus = async (req, res) => {
     res.json({ success: true, updated: updates.length });
   } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };
+
+exports.deleteSocialProfile = async (req, res) => {
+  try {
+    // Получаем ID пользователя из токена (защита от удаления чужих профилей)
+    const userId = req.user?.userId || req.user?.id;
+    const profileId = req.params.id;
+
+    if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+    // 1. Ищем профиль в базе
+    const profile = await prisma.socialProfile.findUnique({
+      where: { id: profileId }
+    });
+
+    if (!profile) {
+      return res.status(404).json({ error: 'Профиль не найден' });
+    }
+
+    // 2. Проверяем, принадлежит ли профиль текущему пользователю
+    if (profile.userId !== String(userId)) {
+      return res.status(403).json({ error: 'У вас нет прав на удаление этого профиля' });
+    }
+
+    // 3. Удаляем профиль. (Благодаря Cascade все его группы и каналы удалятся сами)
+    await prisma.socialProfile.delete({
+      where: { id: profileId }
+    });
+
+    res.json({ success: true, message: 'Профиль успешно отключен' });
+  } catch (error) {
+    console.error('Ошибка при удалении профиля:', error);
+    res.status(500).json({ success: false, error: 'Ошибка сервера при удалении' });
+  }
+};

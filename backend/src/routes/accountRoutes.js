@@ -6,6 +6,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 // === МАРШРУТЫ ПРОФИЛЕЙ (НОВОЕ) ===
 router.post('/profiles/link', authMiddleware, accountController.linkSocialProfile);
 router.get('/profiles', accountController.getProfiles);
+router.delete('/profiles/:id', authMiddleware, accountController.deleteSocialProfile);
 
 // === МАРШРУТЫ ГРУПП И КАНАЛОВ ===
 router.get('/', accountController.getAccounts);

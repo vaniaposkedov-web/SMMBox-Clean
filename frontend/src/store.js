@@ -74,6 +74,44 @@ export const useStore = create(
         }
       },
 
+
+      // === ФУНКЦИЯ УДАЛЕНИЯ ПРОФИЛЯ ===
+      removeSocialProfile: async (profileId) => {
+        try {
+          const { token, fetchProfiles, fetchAccounts, user } = get();
+          
+          const response = await fetch(`/api/accounts/profiles/${profileId}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            // Мгновенно убираем профиль и его аккаунты с экрана
+            set((state) => ({
+              profiles: state.profiles.filter(p => p.id !== profileId),
+              accounts: state.accounts.filter(a => a.socialProfileId !== profileId)
+            }));
+            
+            // Обновляем данные с сервера для надежности
+            await fetchProfiles(user.id);
+            await fetchAccounts(user.id);
+            
+            return { success: true };
+          } else {
+            throw new Error(data.error || 'Ошибка при удалении профиля');
+          }
+        } catch (error) {
+          console.error('Ошибка removeSocialProfile:', error);
+          alert('Не удалось отключить профиль: ' + error.message);
+          return { success: false, error: error.message };
+        }
+      },
+
       
 
       linkSocialProfile: async (userId, provider, providerAccountId, name, avatarUrl, accessToken) => {
