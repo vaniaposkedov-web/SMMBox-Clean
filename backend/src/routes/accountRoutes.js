@@ -24,6 +24,7 @@ router.put('/global/settings', authMiddleware, accountController.saveGlobalSetti
 router.get('/vk/managed-groups', authMiddleware, accountController.getVkManagedGroups);
 router.get('/vk/group-callback', accountController.vkGroupCallback);
 router.get('/vk/fetch-groups-callback', accountController.vkFetchGroupsCallback);
+router.post('/vk/save-group-tokens', authMiddleware, accountController.saveVkGroupTokens);
 
 
 module.exports = router;

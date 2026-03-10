@@ -79,6 +79,49 @@ export default function AccountsManager() {
     }
   }, [user]);
 
+
+  // --- ПЕРЕХВАТЧИК ТОКЕНОВ ИЗ ВСПЛЫВАЮЩИХ ОКОН ВК ---
+  useEffect(() => {
+    if (window.opener && window.location.hash) {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+
+      if (params.has('access_token') && !hash.includes('access_token_')) {
+        // Поймали токен пользователя
+        window.opener.postMessage({ type: 'VK_USER_TOKEN', token: params.get('access_token') }, '*');
+        window.close();
+      } else if (hash.includes('access_token_')) {
+        // Поймали токены групп
+        const groupTokens = {};
+        for (const [key, value] of params.entries()) {
+          if (key.startsWith('access_token_')) {
+            groupTokens[key.replace('access_token_', '')] = value;
+          }
+        }
+        window.opener.postMessage({ type: 'VK_GROUP_TOKENS', tokens: groupTokens }, '*');
+        window.close();
+      } else if (params.has('error')) {
+        window.opener.postMessage({ type: 'VK_ERROR', error: params.get('error_description') }, '*');
+        window.close();
+      }
+    }
+  }, []);
+
+  // Вспомогательная функция для JSONP
+  const fetchGroupsViaJsonp = (token) => {
+    return new Promise((resolve) => {
+      const callbackName = 'vkcb_' + Math.round(Math.random() * 1000000);
+      window[callbackName] = (data) => {
+        delete window[callbackName];
+        if (data.error) resolve({ error: data.error.error_msg });
+        else resolve({ groups: data.response.items });
+      };
+      const script = document.createElement('script');
+      script.src = `https://api.vk.com/method/groups.get?extended=1&filter=admin,editor&access_token=${token}&v=5.199&callback=${callbackName}`;
+      document.body.appendChild(script);
+    });
+  };
+
   const tgProfiles = profiles.filter(p => p.provider === 'TELEGRAM');
   const vkProfiles = profiles.filter(p => p.provider === 'VK');
 
@@ -98,61 +141,96 @@ export default function AccountsManager() {
   const [vkSelectedGroups, setVkSelectedGroups] = useState([]);
   const [isFetchingGroups, setIsFetchingGroups] = useState(false);
 
-  const handleFetchVkCommunities = async (profileId) => {
+  const handleFetchVkCommunities = (profileId) => {
     setIsFetchingGroups(true);
-    setVkModal({ isOpen: true, profileId }); 
+    setVkModal({ isOpen: true, profileId });
     setVkSelectedGroups([]);
-    
-    // Вызываем JSONP запрос из стора
-    const res = await fetchVkManagedGroupsClient(profileId);
 
-    if (res.success) {
-      // Убираем группы, которые уже подключены к сервису
-      const existingAccountIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
-      const availableGroups = res.groups.filter(g => !existingAccountIds.includes(String(g.id)));
-      
-      setVkGroupsList(availableGroups);
-    } else {
-      alert(res.error || 'Не удалось загрузить список сообществ');
-      setVkModal({ isOpen: false, profileId: null });
-    }
+    const clientId = import.meta.env.VITE_VK_APP_ID || 54471878;
+    // Используем БАЗОВЫЙ адрес, чтобы не было Security Error!
+    const redirectUri = `${window.location.protocol}//${window.location.host}/settings`; 
     
-    setIsFetchingGroups(false);
+    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&display=popup&redirect_uri=${redirectUri}&scope=groups&response_type=token&v=5.199`;
+
+    const width = 600; const height = 600;
+    const left = window.screenX + (window.innerWidth - width) / 2;
+    const top = window.screenY + (window.innerHeight - height) / 2;
+    window.open(authUrl, 'vkAuthUser', `width=${width},height=${height},left=${left},top=${top}`);
+
+    const handleMessage = async (event) => {
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.type === 'VK_USER_TOKEN') {
+        window.removeEventListener('message', handleMessage);
+        
+        // Получили нормальный токен! Загружаем группы через JSONP
+        const res = await fetchGroupsViaJsonp(event.data.token);
+        if (res.error) {
+          alert(`Ошибка ВК: ${res.error}`);
+          setVkModal({ isOpen: false, profileId: null });
+        } else {
+          const existingIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
+          setVkGroupsList(res.groups.filter(g => !existingIds.includes(String(g.id))));
+        }
+        setIsFetchingGroups(false);
+      } else if (event.data?.type === 'VK_ERROR') {
+        window.removeEventListener('message', handleMessage);
+        alert('Авторизация отменена');
+        setVkModal({ isOpen: false, profileId: null });
+        setIsFetchingGroups(false);
+      }
+    };
+    window.addEventListener('message', handleMessage);
   };
 
   const closeVkModal = () => setVkModal({ isOpen: false, profileId: null });
   const toggleVkGroupSelection = (groupId) => setVkSelectedGroups(prev => prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]);
 
-  // 3. Открываем второе окно (передаем выбранные группы и получаем ключи)
   const handleSaveSelectedVkGroups = () => {
     if (vkSelectedGroups.length === 0) return;
-    
     const profileId = vkModal.profileId;
-    const groupIdsStr = vkSelectedGroups.join(','); // Передаем жестко ID групп!
-    
+    const groupIdsStr = vkSelectedGroups.join(',');
+
     const clientId = import.meta.env.VITE_VK_APP_ID || 54471878;
-    const redirectUri = `${window.location.protocol}//${window.location.host}/api/accounts/vk/group-callback`;
-    const stateStr = `${user.id}_${profileId}`;
-    
-    // Теперь запрашиваем wall, но ВК разрешит, так как мы указали group_ids!
-    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&group_ids=${groupIdsStr}&display=popup&redirect_uri=${redirectUri}&scope=manage,wall,photos&response_type=code&state=${stateStr}&v=5.199`;
+    const redirectUri = `${window.location.protocol}//${window.location.host}/settings`;
+
+    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&group_ids=${groupIdsStr}&display=popup&redirect_uri=${redirectUri}&scope=manage,wall,photos&response_type=token&v=5.199`;
 
     const width = 600; const height = 600;
     const left = window.screenX + (window.innerWidth - width) / 2;
     const top = window.screenY + (window.innerHeight - height) / 2;
-    window.open(authUrl, 'vkGroupAuth', `width=${width},height=${height},left=${left},top=${top}`);
+    window.open(authUrl, 'vkAuthGroup', `width=${width},height=${height},left=${left},top=${top}`);
 
     closeVkModal();
+    setLoadingStates(prev => ({...prev, [profileId]: true}));
 
     const handleMessage = async (event) => {
       if (event.origin !== window.location.origin) return;
-      if (event.data?.type === 'VK_GROUP_SUCCESS') {
+
+      if (event.data?.type === 'VK_GROUP_TOKENS') {
         window.removeEventListener('message', handleMessage);
-        await fetchAccounts(user.id);
-        alert('Сообщества успешно подключены!');
-      } else if (event.data?.type === 'VK_GROUP_ERROR') {
+        
+        // Отправляем вытянутые токены на бэкенд
+        try {
+          const res = await fetch('/api/accounts/vk/save-group-tokens', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ profileId, tokens: event.data.tokens })
+          });
+          const data = await res.json();
+          if (data.success) {
+            await fetchAccounts(user.id);
+            alert('Сообщества успешно подключены!');
+          } else {
+            alert(data.error || 'Ошибка при сохранении');
+          }
+        } catch (e) {
+          alert('Ошибка соединения с сервером');
+        }
+        setLoadingStates(prev => ({...prev, [profileId]: false}));
+      } else if (event.data?.type === 'VK_ERROR') {
         window.removeEventListener('message', handleMessage);
-        alert(`Ошибка подключения: ${event.data.error}`);
+        setLoadingStates(prev => ({...prev, [profileId]: false}));
       }
     };
     window.addEventListener('message', handleMessage);
