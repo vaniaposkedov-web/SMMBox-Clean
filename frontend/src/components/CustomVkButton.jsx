@@ -5,7 +5,12 @@ export default function CustomVkButton({ onAuth }) {
   useEffect(() => {
     VKID.Config.init({
       app: import.meta.env.VITE_VK_APP_ID || 54471878,
-      redirectUrl: 'https://smmdeck.ru/auth',
+      
+      // КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: 
+      // Эта команда сама определит, на какой странице сейчас пользователь
+      // (на /auth или /settings) и подставит правильную ссылку
+      redirectUrl: window.location.origin + window.location.pathname, 
+      
       responseMode: VKID.ConfigResponseMode.Callback,
       mode: VKID.ConfigAuthMode.InNewWindow,
     });
