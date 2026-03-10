@@ -874,66 +874,65 @@ export default function AccountsManager() {
         {vkProfiles.map(profile => (
           <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
             
-            {/* Шапка профиля ВК (Кликабельная) */}
+            {/* Шапка профиля ВК (Идеальный адаптив для мобильных) */}
             <div 
               className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors" 
               onClick={() => toggleProfileCollapse(profile.id)}
             >
-              <div className="flex items-center gap-3 min-w-0 flex-1">
+              {/* Левая часть: Аватарка + Имя (с жестким обрезанием текста) */}
+              <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
                 <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="VK" />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
                 </div>
               </div>
               
-              {/* === КНОПКА ПОСТИНГА НА ЛИЧНУЮ СТРАНИЦУ === */}
-              {(() => {
-                const personalAcc = accounts.find(a => a.provider === 'VK' && a.providerId === profile.providerAccountId);
-                const isPersonalActive = personalAcc && personalAcc.isValid;
+              {/* Правая часть: Стена + Иконки (Жестко зафиксированы, чтобы не плющились) */}
+              <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                 
-                return (
-                  <div className="flex items-center ml-auto mr-2 sm:mr-4 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {isPersonalActive ? (
-                      <span className="flex flex-col items-end sm:items-center sm:flex-row gap-0.5 sm:gap-2">
-                        <span className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-semibold">Стена:</span>
-                        <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-500/20 px-2 py-1 rounded-md uppercase tracking-wider">
-                          АКТИВНЫ
-                        </span>
+                {/* === АДАПТИВНАЯ КНОПКА ПОСТИНГА НА СТЕНУ === */}
+                <div onClick={(e) => e.stopPropagation()}>
+                  {(() => {
+                    const personalAcc = accounts.find(a => a.provider === 'VK' && a.providerId === profile.providerAccountId);
+                    const isPersonalActive = personalAcc && personalAcc.isValid;
+                    
+                    return isPersonalActive ? (
+                      <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-500/20 px-2 py-1.5 rounded-md uppercase tracking-wider">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse hidden sm:block"></span>
+                        <span className="hidden sm:inline">Стена активна</span>
+                        <span className="sm:hidden">Активна</span>
                       </span>
                     ) : (
-                      <span className="flex flex-col items-end sm:items-center sm:flex-row gap-0.5 sm:gap-2">
-                        <span className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-semibold">Стена:</span>
-                        <button 
-                          onClick={() => startVkHackAuth(profile.id, 'personal', profile)}
-                          className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 hover:text-rose-300 border border-rose-500/20 px-2 py-1 rounded-md uppercase tracking-wider transition-all"
-                        >
-                          ПОДКЛЮЧИТЬ
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
+                      <button 
+                        onClick={() => startVkHackAuth(profile.id, 'personal', profile)}
+                        className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-2 py-1.5 rounded-md uppercase tracking-wider transition-all active:scale-95"
+                      >
+                        <span className="hidden sm:inline">Подключить стену</span>
+                        <span className="sm:hidden">+ Стена</span>
+                      </button>
+                    );
+                  })()}
+                </div>
 
-              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-                {/* Кнопка сворачивания */}
-                <button className="p-2 text-gray-400 hover:text-white rounded-lg transition-all">
-                  <ChevronDown size={20} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
-                </button>
+                {/* Группа иконок (Сворачивание и Удаление) */}
+                <div className="flex items-center gap-0.5 sm:gap-1 border-l border-gray-700/50 pl-2 sm:pl-3">
+                  <button className="p-1.5 text-gray-400 hover:text-white rounded-lg transition-all">
+                    <ChevronDown size={20} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
+                  </button>
 
-                {/* Кнопка отключения профиля ВК */}
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation(); // Блокируем сворачивание
-                    if (window.confirm(`Отключить профиль ВКонтакте "${profile.name}" и все связанные группы?`)) {
-                      await removeSocialProfile(profile.id);
-                    }
-                  }}
-                  className="p-2 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                  title="Отключить профиль"
-                >
-                  <Trash2 size={18} />
-                </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Отключить профиль ВКонтакте "${profile.name}" и все связанные группы?`)) {
+                        await removeSocialProfile(profile.id);
+                      }
+                    }}
+                    className="p-1.5 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                    title="Отключить профиль"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
               </div>
             </div>
 
