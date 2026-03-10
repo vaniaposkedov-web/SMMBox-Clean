@@ -767,22 +767,26 @@ export default function AccountsManager() {
                     </div>
                   ))}
                   
-                  {/* Форма добавления (Плоская, без вылета) */}
-                  <div className="relative flex flex-col sm:flex-row gap-3 w-full">
-                    <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                    <input 
-                      type="text" placeholder="Ссылка на канал (@channel)" 
-                      value={inputs[`${profile.id}_tgLink`] || ''} 
-                      onChange={e => handleInputChange(profile.id, 'tgLink', e.target.value)}
-                      disabled={isLimitReached}
-                      className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0088CC] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
-                    />
-                    <button 
-                      onClick={() => handleAddTgChannel(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
-                      className="shrink-0 w-full sm:w-auto bg-[#0088CC] hover:bg-[#0077B3] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex justify-center items-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0088CC]/20 active:scale-95"
+                  {/* === НОВАЯ МАГИЧЕСКАЯ КНОПКА TELEGRAM === */}
+                  <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
+                    <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                    
+                    <a 
+                      href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 w-full bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-6 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-center"
                     >
-                      {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                      <span>Добавить канал</span>
+                      <Plus size={18} />
+                      <span>Добавить бота в канал</span>
+                    </a>
+
+                    <button 
+                      onClick={() => fetchAccounts(user.id)}
+                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-white px-5 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95"
+                    >
+                      <RefreshCw size={18} />
+                      <span className="sm:hidden">Обновить</span>
                     </button>
                   </div>
                 </div>

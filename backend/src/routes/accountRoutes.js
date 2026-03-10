@@ -25,6 +25,6 @@ router.get('/vk/managed-groups', authMiddleware, accountController.getVkManagedG
 router.get('/vk/group-callback', accountController.vkGroupCallback);
 router.get('/vk/fetch-groups-callback', accountController.vkFetchGroupsCallback);
 router.post('/vk/save-group-tokens', authMiddleware, accountController.saveVkGroupTokens);
-
+router.post('/telegram/webhook', accountController.telegramWebhook);
 
 module.exports = router;

@@ -484,3 +484,76 @@ exports.saveVkGroupTokens = async (req, res) => {
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 };
+
+// === АВТОМАТИЧЕСКОЕ ДОБАВЛЕНИЕ КАНАЛОВ TELEGRAM (WEBHOOK) ===
+exports.telegramWebhook = async (req, res) => {
+  try {
+    const update = req.body;
+    
+    // 1. МГНОВЕННО отвечаем Telegram, что всё ок, чтобы он не спамил запросами
+    res.sendStatus(200);
+
+    // 2. Проверяем, что это событие изменения статуса бота в чате/канале
+    if (update.my_chat_member) {
+      const chat = update.my_chat_member.chat; // Инфа о канале
+      const from = update.my_chat_member.from; // Инфа о человеке, который добавил бота
+      const newStatus = update.my_chat_member.new_chat_member.status;
+
+      // Если бота сделали администратором
+      if (newStatus === 'administrator') {
+        const telegramUserId = String(from.id);
+        const chatId = String(chat.id);
+        const chatTitle = chat.title || 'Без названия';
+
+        // Ищем в базе профиль человека, который привязал этот Telegram
+        const tgProfile = await prisma.socialProfile.findFirst({
+          where: { provider: 'TELEGRAM', providerAccountId: telegramUserId }
+        });
+
+        // Если нашли — сохраняем канал в его аккаунт!
+        if (tgProfile) {
+          // Получаем аватарку канала (если есть)
+          let avatarUrl = null;
+          try {
+            const token = process.env.TELEGRAM_BOT_TOKEN;
+            const chatRes = await axios.get(`https://api.telegram.org/bot${token}/getChat?chat_id=${chatId}`);
+            if (chatRes.data.result.photo?.small_file_id) {
+              const fileRes = await axios.get(`https://api.telegram.org/bot${token}/getFile?file_id=${chatRes.data.result.photo.small_file_id}`);
+              avatarUrl = `https://api.telegram.org/file/bot${token}/${fileRes.data.result.file_path}`;
+            }
+          } catch (e) { /* Игнорируем ошибку загрузки фото */ }
+
+          await prisma.account.upsert({
+            where: { provider_providerId: { provider: 'TELEGRAM', providerId: chatId } },
+            update: {
+              name: chatTitle,
+              avatarUrl: avatarUrl,
+              isValid: true,
+              errorMsg: null,
+              profileId: tgProfile.id,
+              userId: tgProfile.userId
+            },
+            create: {
+              userId: tgProfile.userId,
+              provider: 'TELEGRAM',
+              providerId: chatId,
+              name: chatTitle,
+              accessToken: '',
+              avatarUrl: avatarUrl,
+              profileId: tgProfile.id
+            }
+          });
+        }
+      } 
+      // Если бота удалили из канала — помечаем канал как неактивный
+      else if (newStatus === 'left' || newStatus === 'kicked') {
+        await prisma.account.updateMany({
+          where: { provider: 'TELEGRAM', providerId: String(chat.id) },
+          data: { isValid: false, errorMsg: 'Бот удален из канала' }
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка в Webhook Telegram:', error);
+  }
+};
