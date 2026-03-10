@@ -6,8 +6,11 @@ import {
   ChevronDown, Copy, Check, LayoutTemplate,
   Settings2, Image as ImageIcon, Type, X,
   Sliders, Type as TypeIcon, Upload, RotateCw, Palette,
-  ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move, Loader2, CheckCircle2, UserCircle
+  ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move, Loader2, CheckCircle2, UserCircle, UserPlus, Users, UserSquare2
 } from 'lucide-react';
+
+import CustomTelegramButton from '../components/CustomTelegramButton';
+import CustomVkButton from '../components/CustomVkButton';
 
 export default function AccountsManager() {
   const navigate = useNavigate();
@@ -26,18 +29,14 @@ export default function AccountsManager() {
   const saveAccountDesign = useStore((state) => state.saveAccountDesign);
   const token = useStore((state) => state.token);
 
-  const [tgInput, setTgInput] = useState('');
-  const [isAddingTg, setIsAddingTg] = useState(false);
+  // Стейты для инпутов (привязанные к ID профиля)
+  const [inputs, setInputs] = useState({});
+  const [loadingStates, setLoadingStates] = useState({});
+
   const [isVerifying, setIsVerifying] = useState(false);
-
-  const [vkStep, setVkStep] = useState(1);
-  const [vkLinkInput, setVkLinkInput] = useState('');
-  const [vkTokenInput, setVkTokenInput] = useState('');
-  const [isAddingVk, setIsAddingVk] = useState(false);
   const [isVerifyingVk, setIsVerifyingVk] = useState(false);
-  const [vkSuccessMsg, setVkSuccessMsg] = useState('');
-  const [isVkProfileLoading, setIsVkProfileLoading] = useState(false);
 
+  // Стейты для дизайна и модалок
   const [savingSignature, setSavingSignature] = useState({});
   const [savingWatermark, setSavingWatermark] = useState({});
   const [isModalSaving, setIsModalSaving] = useState(false);
@@ -77,46 +76,13 @@ export default function AccountsManager() {
     }
   }, [user]);
 
-  const tgAccounts = accounts.filter(a => a.provider === 'TELEGRAM');
-  const vkAccounts = accounts.filter(a => a.provider === 'VK');
+  // Фильтруем профили
+  const tgProfiles = profiles.filter(p => p.provider === 'TELEGRAM');
   const vkProfiles = profiles.filter(p => p.provider === 'VK');
-  const hasVkProfile = vkProfiles.length > 0;
 
-  const handleVkConnectProfile = () => {
-    setIsVkProfileLoading(true);
-
-    const cleanAppId = String(import.meta.env.VITE_VK_APP_ID || '54471878').replace(/['"]/g, '').trim();
-    const cleanRedirectUri = String(import.meta.env.VITE_VK_REDIRECT_URI || 'https://smmdeck.ru/api/accounts/vk/callback').replace(/['"]/g, '').trim();
-    const scope = 'groups,wall,photos,video,docs,offline';
-    const url = `https://oauth.vk.com/authorize?client_id=${cleanAppId}&display=popup&redirect_uri=${encodeURIComponent(cleanRedirectUri)}&scope=${scope}&response_type=code&v=5.199`;
-
-    const width = 600; const height = 700;
-    const left = window.screen.width / 2 - width / 2; const top = window.screen.height / 2 - height / 2;
-    const popup = window.open(url, 'vk_auth', `width=${width},height=${height},top=${top},left=${left},status=yes,scrollbars=yes`);
-    
-    const messageListener = async (event) => {
-      if (event.data?.type === 'VK_GROUPS_LOADED') {
-        const { accessToken, profile } = event.data.payload;
-        const name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Профиль ВК';
-        
-        await linkSocialProfile(user.id, 'VK', profile.id, name, profile.photo_100, accessToken);
-        setIsVkProfileLoading(false);
-        window.removeEventListener('message', messageListener);
-      } else if (event.data?.type === 'VK_AUTH_ERROR') {
-        alert('Ошибка авторизации: ' + event.data.error);
-        setIsVkProfileLoading(false);
-        window.removeEventListener('message', messageListener);
-      }
-    };
-
-    window.addEventListener('message', messageListener);
-
-    const checkClosed = setInterval(() => {
-      if (popup?.closed) {
-        clearInterval(checkClosed);
-        if (isVkProfileLoading) { setIsVkProfileLoading(false); window.removeEventListener('message', messageListener); }
-      }
-    }, 1000);
+  // Универсальный обработчик изменения инпутов
+  const handleInputChange = (profileId, field, value) => {
+    setInputs(prev => ({ ...prev, [`${profileId}_${field}`]: value }));
   };
 
   const copyBotName = (e) => {
@@ -133,6 +99,7 @@ export default function AccountsManager() {
 
   const handleSignatureChange = (id, value) => { setLocalSignatures(prev => ({ ...prev, [id]: value })); };
 
+  // Логика сохранения дизайна
   const saveSignatureOnly = async (acc) => { setSavingSignature(prev => ({ ...prev, [acc.id]: true })); await saveAccountDesign(acc.id, localSignatures[acc.id] || "", undefined); setSavingSignature(prev => ({ ...prev, [acc.id]: false })); };
   const setGlobalSignature = async (acc) => { setSavingSignature(prev => ({ ...prev, [acc.id]: true })); await saveAccountDesign(acc.id, null, undefined); setSavingSignature(prev => ({ ...prev, [acc.id]: false })); };
   const enableCustomSignature = async (acc) => { setSavingSignature(prev => ({ ...prev, [acc.id]: true })); await saveAccountDesign(acc.id, acc.signature || "", undefined); setSavingSignature(prev => ({ ...prev, [acc.id]: false })); };
@@ -259,30 +226,32 @@ export default function AccountsManager() {
     );
   };
 
-  const handleAddTg = async () => {
+  // Логика добавления каналов/групп
+  const handleAddTgChannel = async (profileId) => {
     if (isLimitReached) return alert('Лимит аккаунтов исчерпан! Оформите PRO.');
-    if (!tgInput.trim()) return alert('Введите ссылку канала!');
+    const link = inputs[`${profileId}_tgLink`];
+    if (!link?.trim()) return alert('Введите ссылку канала!');
     
-    setIsAddingTg(true);
+    setLoadingStates(prev => ({...prev, [profileId]: true}));
     try {
       const infoRes = await fetch(`/api/auth/tg-chat-info`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: tgInput })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: link })
       });
       const infoData = await infoRes.json();
 
       if (!infoData.success) {
         alert(infoData.error || 'Канал не найден. Бот назначен администратором?');
-        setIsAddingTg(false); return;
+        setLoadingStates(prev => ({...prev, [profileId]: false})); return;
       }
 
       const saveRes = await fetch(`/api/accounts/tg/save`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ userId: user.id, channels: [{ chatId: infoData.chatId || infoData.username, title: infoData.title, avatar: infoData.avatar }] })
+        body: JSON.stringify({ userId: user.id, socialProfileId: profileId, channels: [{ chatId: infoData.chatId || infoData.username, title: infoData.title, avatar: infoData.avatar }] })
       });
       const saveData = await saveRes.json();
 
       if (saveData.success) {
-        setTgInput('');
+        handleInputChange(profileId, 'tgLink', '');
         await fetchProfiles(user.id); 
         await fetchAccounts(user.id); 
         if (verifyAccountsStatus) verifyAccountsStatus(); 
@@ -290,31 +259,30 @@ export default function AccountsManager() {
         alert(saveData.error || 'Ошибка сохранения аккаунта');
       }
     } catch (error) { alert('Ошибка соединения с сервером'); }
-    setIsAddingTg(false);
+    setLoadingStates(prev => ({...prev, [profileId]: false}));
   };
 
-  const handleVkNextStep = () => {
-    if (!vkLinkInput.trim()) return alert('Пожалуйста, укажите ссылку на группу');
-    setVkStep(2);
-  };
-
-  const handleAddVk = async () => {
+  const handleAddVkGroup = async (profileId) => {
     if (isLimitReached) return alert('Лимит аккаунтов исчерпан! Оформите PRO.');
-    if (!vkLinkInput.trim() || !vkTokenInput.trim()) return alert('Заполните токен!');
+    const link = inputs[`${profileId}_vkLink`];
+    const vkToken = inputs[`${profileId}_vkToken`];
+    if (!link?.trim() || !vkToken?.trim()) return alert('Заполните ссылку и токен API!');
     
-    setIsAddingVk(true);
-    const res = await saveVkGroupWithToken(user.id, vkLinkInput, vkTokenInput);
+    setLoadingStates(prev => ({...prev, [profileId]: true}));
+    const res = await saveVkGroupWithToken(user.id, link, vkToken, profileId);
     
     if (res.success) {
-      setVkLinkInput(''); setVkTokenInput(''); setVkStep(1); 
-      setVkSuccessMsg(`Сообщество "${res.group?.name || 'ВКонтакте'}" успешно подключено!`);
-      setTimeout(() => setVkSuccessMsg(''), 4000); 
+      handleInputChange(profileId, 'vkLink', '');
+      handleInputChange(profileId, 'vkToken', '');
+      await fetchAccounts(user.id);
     } else {
       alert(res.error || 'Ошибка при добавлении группы');
     }
-    setIsAddingVk(false);
+    setLoadingStates(prev => ({...prev, [profileId]: false}));
   };
 
+
+  // Отрисовка карточки аккаунта (дизайн и настройки)
   const renderAccountCard = (acc, providerIcon, providerColor) => {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
@@ -486,7 +454,7 @@ export default function AccountsManager() {
   return (
     <div className="space-y-6 sm:space-y-8 pb-10 max-w-7xl mx-auto px-2 sm:px-4 w-full font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight px-1 sm:px-0">Мои группы</h1>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight px-1 sm:px-0">Мои социальные сети</h1>
       </div>
 
       {!isPro && (
@@ -503,151 +471,157 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* ШАГ 1 и 2: ДОБАВЛЕНИЕ */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-stretch">
-        
-        {/* ТЕЛЕГРАМ */}
-        <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col h-full">
-          <div className="absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 bg-sky-500/10 blur-[40px] sm:blur-[50px] rounded-full pointer-events-none"></div>
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
-              <Send size={20} className="text-sky-400 shrink-0" /> Telegram
-            </h2>
-            <p className="text-xs sm:text-sm text-gray-400 mb-5">Добавьте бота <span className="text-gray-300 font-mono select-all">@smmbox_auth_bot</span> в админы канала и вставьте ссылку.</p>
+      {/* ================= БЛОК 1: ТЕЛЕГРАМ ================= */}
+      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5">
+        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
+          <div className="w-10 h-10 rounded-full bg-[#0088CC]/10 flex items-center justify-center text-[#0088CC]">
+            <Send size={20} />
           </div>
-          <div className="mt-auto pt-2 flex flex-col sm:flex-row gap-3">
-            <input 
-              type="text" value={tgInput} onChange={(e) => setTgInput(e.target.value)}
-              placeholder="t.me/channel" disabled={isLimitReached}
-              className="flex-1 min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-sky-500 transition-all placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
-            />
-            <button onClick={handleAddTg} disabled={isAddingTg || isLimitReached} className="shrink-0 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm whitespace-nowrap min-h-[48px] shadow-lg shadow-sky-500/20 active:scale-95">
-              {isAddingTg ? <RefreshCw className="animate-spin shrink-0" size={18} /> : <Plus size={18} className="shrink-0"/>} Добавить
-            </button>
-          </div>
+          <h2 className="text-lg font-bold text-white">Telegram</h2>
         </div>
 
-        {/* ВКОНТАКТЕ */}
-        <div className="bg-gradient-to-br from-gray-900 to-gray-900/50 border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden flex flex-col h-full transition-all">
-          <div className="absolute top-0 right-0 w-24 h-24 sm:w-32 sm:h-32 bg-[#0077FF]/10 blur-[40px] sm:blur-[50px] rounded-full pointer-events-none"></div>
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 bg-[#0077FF] rounded-md flex items-center justify-center font-bold text-[10px] text-white shrink-0">K</span> ВКонтакте
-            </h2>
-            
-            {!hasVkProfile ? (
-              <p className="text-xs sm:text-sm text-gray-400 mb-5">
-                Для добавления сообществ необходимо подтвердить ваши права. Привяжите личную страницу ВКонтакте.
-              </p>
-            ) : vkStep === 1 ? (
-              <div className="flex items-center gap-3 mb-5">
-                {vkProfiles[0]?.avatarUrl ? <img src={vkProfiles[0].avatarUrl} alt="VK" className="w-8 h-8 rounded-full border border-gray-700"/> : <UserCircle size={32} className="text-gray-500"/>}
-                <div className="flex flex-col min-w-0">
-                   <span className="text-sm font-bold text-white truncate">{vkProfiles[0]?.name || 'Мой профиль'}</span>
-                   <span className="text-[10px] text-[#0077FF] font-medium uppercase tracking-wider">Профиль активен</span>
+        {tgProfiles.map(profile => (
+          <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col gap-4">
+            {/* Шапка профиля */}
+            <div className="flex items-center gap-3 p-3 bg-gray-800/60 rounded-xl border border-[#0088CC]/30">
+              <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0088CC&color=fff`} className="w-10 h-10 rounded-full object-cover" alt="TG" />
+              <div>
+                <div className="text-white font-medium text-sm">{profile.name}</div>
+                <div className="text-emerald-500 text-xs font-semibold">Профиль верифицирован</div>
+              </div>
+            </div>
+
+            {/* Список каналов */}
+            <div className="flex flex-col gap-3 relative before:content-[''] before:absolute before:left-5 before:top-0 before:bottom-6 before:w-px before:bg-gray-700 ml-2">
+              {accounts.filter(a => a.provider === 'TELEGRAM' && a.socialProfileId === profile.id).map(acc => (
+                <div key={acc.id} className="relative before:content-[''] before:absolute before:-left-4 before:top-6 before:w-4 before:h-px before:bg-gray-700 ml-4">
+                  {renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-[#0088CC]')}
                 </div>
-              </div>
-            ) : (
-              <div className="text-xs sm:text-sm text-gray-300 mb-4 bg-[#0077FF]/10 p-3 rounded-xl border border-[#0077FF]/20">
-                <p className="font-bold text-white mb-1">Группа найдена! Следующий шаг:</p>
-                <ol className="list-decimal list-inside space-y-1 ml-1">
-                  <li>Зайдите в настройки группы → <b>Работа с API</b></li>
-                  <li>Создайте ключ с правами: <b>Управление, Фото, Стена</b></li>
-                  <li>Вставьте полученный ключ ниже</li>
-                </ol>
-              </div>
-            )}
-          </div>
-          
-          <div className="mt-auto pt-2 flex flex-col gap-3">
-            {!hasVkProfile ? (
-               <button 
-                 onClick={handleVkConnectProfile} disabled={isVkProfileLoading}
-                 className="w-full bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-sm min-h-[48px] shadow-lg shadow-[#0077FF]/20 active:scale-95"
-               >
-                 {isVkProfileLoading ? <Loader2 className="animate-spin shrink-0" size={18} /> : <span className="font-black text-lg leading-none shrink-0 mr-1">K</span>}
-                 <span>{isVkProfileLoading ? 'Привязка...' : 'Авторизоваться ВКонтакте'}</span>
-               </button>
-            ) : vkStep === 1 ? (
-              <div className="flex flex-col gap-3">
-                {vkSuccessMsg && (
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-xl text-sm animate-in fade-in flex items-center gap-2">
-                    <CheckCircle2 size={16} className="shrink-0" />
-                    <span>{vkSuccessMsg}</span>
-                  </div>
-                )}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input 
-                    type="text" value={vkLinkInput} onChange={(e) => setVkLinkInput(e.target.value)}
-                    placeholder="Ссылка: vk.com/public123" disabled={isLimitReached}
-                    className="flex-1 w-full bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 min-h-[48px]"
-                  />
-                  <button onClick={handleVkNextStep} disabled={!vkLinkInput || isLimitReached} className="shrink-0 bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg shadow-[#0077FF]/20">
-                    Далее
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row gap-3 animate-in fade-in slide-in-from-right-4">
+              ))}
+              
+              {/* Форма добавления канала */}
+              <div className="flex flex-col sm:flex-row gap-2 ml-4 mt-2 relative before:content-[''] before:absolute before:-left-4 before:top-6 sm:before:top-1/2 before:w-4 before:h-px before:bg-gray-700">
                 <input 
-                  type="text" value={vkTokenInput} onChange={(e) => setVkTokenInput(e.target.value)}
-                  placeholder="Вставьте API ключ сюда..." disabled={isLimitReached}
-                  className="flex-1 w-full min-w-0 bg-black/50 border border-gray-700 rounded-xl py-3 px-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-all placeholder:text-gray-600 min-h-[48px]"
+                  type="text" placeholder="Ссылка на канал (@channel)" 
+                  value={inputs[`${profile.id}_tgLink`] || ''} 
+                  onChange={e => handleInputChange(profile.id, 'tgLink', e.target.value)}
+                  disabled={isLimitReached}
+                  className="flex-1 bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0088CC] focus:outline-none placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
                 />
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={() => setVkStep(1)} className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px]">
-                    Назад
-                  </button>
-                  <button 
-                    onClick={handleAddVk} 
-                    disabled={isAddingVk || !vkTokenInput} 
-                    className="bg-[#0077FF] hover:bg-[#0066DD] disabled:opacity-50 text-white px-5 py-3 rounded-xl font-bold transition-all text-sm min-h-[48px] shadow-lg"
-                  >
-                    {isAddingVk ? (
-                      <div className="flex items-center justify-center gap-2"><RefreshCw className="animate-spin" size={18} /><span>Проверка...</span></div>
-                    ) : (
-                      <div className="flex items-center justify-center gap-2"><Check size={18} /><span>Подключить</span></div>
-                    )}
-                  </button>
-                </div>
+                <button 
+                  onClick={() => handleAddTgChannel(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
+                  className="bg-[#0088CC] hover:bg-[#0077B3] text-white px-5 py-3 rounded-xl disabled:opacity-50 transition-colors flex justify-center items-center gap-2 font-bold min-h-[48px]"
+                >
+                  {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                  <span className="sm:hidden">Добавить канал</span>
+                </button>
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        ))}
 
+        {/* Кнопка добавления НОВОГО профиля */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 bg-gray-800/30 rounded-xl border border-gray-700/50 border-dashed hover:bg-gray-800/50 transition-colors gap-4">
+          <span className="text-gray-400 text-sm flex items-center gap-2"><UserPlus size={18}/> Подключить {tgProfiles.length > 0 ? 'еще один ' : ''}профиль</span>
+          <CustomTelegramButton onAuthCallback={(data) => linkSocialProfile('TELEGRAM', data)} />
+        </div>
       </div>
 
-      {/* НИЖНИЕ СПИСКИ (ГРУППЫ) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start mt-6 sm:mt-8">
-        
-        <div className="space-y-3 sm:space-y-4">
-          <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
-            <Send size={14} className="text-sky-500 shrink-0"/> Подключенные каналы
-          </h3>
-          <div className="flex flex-col gap-3 sm:gap-4">
-            {tgAccounts.map(acc => renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-sky-500'))}
-            {tgAccounts.length === 0 && (
-              <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
-                <p className="text-gray-500 text-sm px-4">Нет подключенных каналов Telegram</p>
-              </div>
-            )}
+      {/* ================= БЛОК 2: ВКОНТАКТЕ СООБЩЕСТВА ================= */}
+      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5">
+        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
+          <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF]">
+            <Users size={20} />
           </div>
+          <h2 className="text-lg font-bold text-white">ВКонтакте (Сообщества)</h2>
         </div>
 
-        <div className="space-y-3 sm:space-y-4">
-          <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-widest flex items-center gap-2 ml-1">
-            <span className="w-4 h-4 rounded bg-[#0077FF] flex items-center justify-center text-[9px] text-white font-bold shrink-0">K</span> Сообщества ВКонтакте
-          </h3>
-          <div className="flex flex-col gap-3 sm:gap-4">
-            {vkAccounts.map(acc => renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]'))}
-            {vkAccounts.length === 0 && (
-              <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
-                <p className="text-gray-500 text-sm px-4">Нет подключенных сообществ ВКонтакте</p>
+        {vkProfiles.map(profile => (
+          <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col gap-4">
+            <div className="flex items-center gap-3 p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30">
+              <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover" alt="VK" />
+              <div>
+                <div className="text-white font-medium text-sm">{profile.name}</div>
+                <div className="text-emerald-500 text-xs font-semibold">Профиль верифицирован</div>
               </div>
-            )}
+            </div>
+
+            <div className="flex flex-col gap-3 relative before:content-[''] before:absolute before:left-5 before:top-0 before:bottom-6 before:w-px before:bg-gray-700 ml-2">
+              {accounts.filter(a => a.provider === 'VK' && a.socialProfileId === profile.id).map(acc => (
+                <div key={acc.id} className="relative before:content-[''] before:absolute before:-left-4 before:top-6 before:w-4 before:h-px before:bg-gray-700 ml-4">
+                   {renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]')}
+                </div>
+              ))}
+              
+              {/* Форма добавления по API */}
+              <div className="flex flex-col xl:flex-row gap-2 ml-4 mt-2 relative before:content-[''] before:absolute before:-left-4 before:top-6 xl:before:top-1/2 before:w-4 before:h-px before:bg-gray-700">
+                <input 
+                  type="text" placeholder="Ссылка (vk.com/public123)" 
+                  value={inputs[`${profile.id}_vkLink`] || ''} 
+                  onChange={e => handleInputChange(profile.id, 'vkLink', e.target.value)}
+                  disabled={isLimitReached}
+                  className="flex-1 bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] focus:outline-none placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
+                />
+                <div className="flex flex-col sm:flex-row gap-2 xl:flex-[1.5]">
+                  <input 
+                    type="text" placeholder="Токен API (Управление, Стена, Фото)" 
+                    value={inputs[`${profile.id}_vkToken`] || ''} 
+                    onChange={e => handleInputChange(profile.id, 'vkToken', e.target.value)}
+                    disabled={isLimitReached}
+                    className="flex-1 bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] focus:outline-none placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
+                  />
+                  <button 
+                    onClick={() => handleAddVkGroup(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
+                    className="bg-[#0077FF] hover:bg-[#0066CC] text-white px-5 py-3 rounded-xl disabled:opacity-50 transition-colors flex items-center justify-center gap-2 font-bold min-h-[48px]"
+                  >
+                    {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                    <span className="sm:hidden xl:hidden">Добавить</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
+        ))}
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 bg-gray-800/30 rounded-xl border border-gray-700/50 border-dashed hover:bg-gray-800/50 transition-colors gap-4">
+          <span className="text-gray-400 text-sm flex items-center gap-2"><UserPlus size={18}/> Подключить {vkProfiles.length > 0 ? 'еще один ' : ''}профиль</span>
+          <CustomVkButton onAuth={(data) => linkSocialProfile('VK', data)} />
+        </div>
+      </div>
+
+      {/* ================= БЛОК 3: ЛИЧНЫЕ СТРАНИЦЫ ВКОНТАКТЕ ================= */}
+      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5">
+        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
+          <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500">
+            <UserSquare2 size={20} />
+          </div>
+          <h2 className="text-lg font-bold text-white">ВКонтакте (Личные страницы)</h2>
         </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {vkProfiles.map(profile => (
+            <div key={`page_${profile.id}`} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-gray-900/50 rounded-xl border border-gray-800 gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}`} className="w-12 h-12 rounded-full object-cover shrink-0" alt="VK" />
+                <div className="min-w-0">
+                  <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
+                  <div className="text-gray-500 text-xs mt-0.5">Публикация на личную стену</div>
+                </div>
+              </div>
+              <div className="shrink-0 flex sm:justify-end">
+                <div className="text-purple-400 text-[10px] sm:text-xs font-bold px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg uppercase tracking-wider text-center">
+                  Автопостинг выкл
+                </div>
+              </div>
+            </div>
+          ))}
+          
+          {vkProfiles.length === 0 && (
+            <div className="col-span-full text-center p-8 border border-gray-800 border-dashed rounded-xl text-gray-500 text-sm bg-gray-900/20">
+              Сначала подключите профиль ВКонтакте в блоке выше, чтобы публиковать на личную стену.
+            </div>
+          )}
+        </div>
       </div>
 
       {/* МОДАЛЬНОЕ ОКНО ДИЗАЙНА */}
