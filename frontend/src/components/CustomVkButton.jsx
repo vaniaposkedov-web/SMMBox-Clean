@@ -3,7 +3,7 @@ import * as VKID from '@vkid/sdk';
 
 export default function CustomVkButton({ onAuth }) {
   useEffect(() => {
-    // 1. Инициализация (с правильным роутом)
+    // 1. Инициализация
     VKID.Config.init({
       app: import.meta.env.VITE_VK_APP_ID || 54471878,
       redirectUrl: 'https://smmdeck.ru/auth', 
@@ -11,63 +11,70 @@ export default function CustomVkButton({ onAuth }) {
       mode: VKID.ConfigAuthMode.InNewWindow,
     });
 
-    // 2. ПЕРЕХВАТЧИК: Ловим данные после жесткой перезагрузки страницы
+    // 2. ПЕРЕХВАТЧИК: Ловим параметры из ссылки после того, как ВК нас вернул
     const urlParams = new URLSearchParams(window.location.search);
+    let code = urlParams.get('code');
+    let deviceId = urlParams.get('device_id');
+
+    // На случай, если ВК все-таки упакует их в payload
     const payloadStr = urlParams.get('payload');
-    
     if (payloadStr) {
       try {
         const payload = JSON.parse(payloadStr);
-        // Очищаем адресную строку от мусора
-        window.history.replaceState({}, document.title, window.location.pathname);
-        // Выполняем вашу логику авторизации
-        processVkData(payload);
-      } catch (e) {
-        console.error('Ошибка парсинга payload от ВК:', e);
-      }
+        if (payload.code) code = payload.code;
+        if (payload.device_id) deviceId = payload.device_id;
+      } catch (e) {}
+    }
+
+    // Если данные пойманы (мы вернулись с авторизации ВК)
+    if (code && deviceId) {
+      // Мгновенно очищаем адресную строку, чтобы не было повторных срабатываний
+      window.history.replaceState({}, document.title, window.location.pathname);
+      
+      // Идем менять код на токен
+      VKID.Auth.exchangeCode(code, deviceId)
+        .then(async (authTokens) => {
+          let userId = authTokens.user_id || authTokens.id;
+          
+          // Если ВК не отдал ID пользователя сразу, запрашиваем отдельно
+          if (!userId) {
+            const userInfo = await VKID.Auth.userInfo(authTokens.access_token);
+            userId = userInfo.user?.id || userInfo.id;
+          }
+
+          const vkData = {
+            access_token: authTokens.access_token,
+            user_id: userId,
+            email: authTokens.email || null,
+          };
+          
+          // Отправляем в стор!
+          if (onAuth) onAuth(vkData);
+        })
+        .catch((err) => {
+          console.error('Ошибка обмена токена ВК после редиректа:', err);
+        });
     }
   }, [onAuth]);
-
-  // 3. ВАША ОРИГИНАЛЬНАЯ ЛОГИКА ОБРАБОТКИ
-  const processVkData = async (payload) => {
-    try {
-      if (payload.code && (payload.device_id || payload.uuid)) {
-        const deviceId = payload.device_id || payload.uuid;
-        const authTokens = await VKID.Auth.exchangeCode(payload.code, deviceId);
-        
-        let userId = authTokens.user_id || authTokens.id || payload.user_id || payload.uuid;
-        // Страховка на случай, если ВК спрятал user_id
-        if (!userId) {
-          const userInfo = await VKID.Auth.userInfo(authTokens.access_token);
-          userId = userInfo.user?.id || userInfo.id;
-        }
-        
-        const vkData = {
-          access_token: authTokens.access_token,
-          user_id: userId,
-          email: authTokens.email || null,
-        };
-        if (onAuth) onAuth(vkData);
-      } 
-      else if (payload.token || payload.access_token) {
-        const vkData = {
-          access_token: payload.token || payload.access_token,
-          user_id: payload.uuid || payload.user_id,
-          email: payload.email || null,
-        };
-        if (onAuth) onAuth(vkData);
-      }
-    } catch (error) {
-      console.error('Ошибка в процессе авторизации ВК:', error);
-    }
-  };
 
   const handleVkLogin = () => {
     VKID.Auth.login()
       .then(async (data) => {
-        // Если редиректа не было, обрабатываем прямо здесь
+        // Если авторизация прошла без перезагрузки страницы (в идеальном мире)
         const payload = data.payload || data;
-        await processVkData(payload);
+        if (payload.code && payload.device_id) {
+          try {
+            const authTokens = await VKID.Auth.exchangeCode(payload.code, payload.device_id);
+            const vkData = {
+              access_token: authTokens.access_token,
+              user_id: authTokens.user_id || authTokens.id,
+              email: authTokens.email || null,
+            };
+            if (onAuth) onAuth(vkData);
+          } catch (error) {
+            console.error('Ошибка обмена токена ВК внутри окна:', error);
+          }
+        }
       })
       .catch((error) => console.error('Ошибка окна авторизации ВК:', error));
   };
