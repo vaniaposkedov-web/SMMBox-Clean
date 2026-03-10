@@ -20,6 +20,7 @@ router.post('/vk/verify-status', authMiddleware, accountController.verifyVkAccou
 router.put('/:id/design', authMiddleware, accountController.saveAccountDesign);
 router.get('/global/settings', authMiddleware, accountController.getGlobalSettings);
 router.put('/global/settings', authMiddleware, accountController.saveGlobalSettings);
-
+// Добавь эту строку к остальным маршрутам /vk/
+router.get('/vk/managed-groups', authMiddleware, accountController.getVkManagedGroups);
 
 module.exports = router;
