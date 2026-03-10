@@ -10,6 +10,7 @@ export default function CustomVkButton({ onAuth }) {
       mode: VKID.ConfigAuthMode.InNewWindow,
     });
 
+    // 1. ПЕРЕХВАТЧИК: Читаем ссылку
     const params = new URLSearchParams(window.location.search);
     const payloadStr = params.get('payload');
     const codeStr = params.get('code');
@@ -27,10 +28,28 @@ export default function CustomVkButton({ onAuth }) {
       }
 
       if (code && deviceId) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        processTokens(code, deviceId);
+        // 2. ЕСЛИ МЫ ВО ВСПЛЫВАЮЩЕМ ОКНЕ (POPUP)
+        if (window.opener) {
+          window.opener.postMessage({ type: 'VK_POPUP_SUCCESS', code, deviceId }, '*');
+          window.close(); // Убиваем popup
+          return;
+        } else {
+          // Если обычный редирект
+          window.history.replaceState({}, document.title, window.location.pathname);
+          processTokens(code, deviceId);
+        }
       }
     }
+
+    // 3. СЛУШАТЕЛЬ В ГЛАВНОМ ОКНЕ: Ждем сообщение от popup
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'VK_POPUP_SUCCESS') {
+        processTokens(event.data.code, event.data.deviceId);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, [onAuth]);
 
   const processTokens = async (code, deviceId) => {
@@ -45,7 +64,6 @@ export default function CustomVkButton({ onAuth }) {
         } catch (e) {}
       }
 
-      // 1. ЗАБИРАЕМ АВАТАР И ИМЯ ПРЯМО НА ФРОНТЕНДЕ (Самый надежный способ)
       let firstName = '';
       let lastName = '';
       let avatar = '';
@@ -78,15 +96,11 @@ export default function CustomVkButton({ onAuth }) {
   };
 
   const handleVkLogin = () => {
-    VKID.Auth.login()
-      .then((res) => {
-        const code = res.code || res.payload?.code;
-        const deviceId = res.device_id || res.payload?.device_id;
-        if (code && deviceId) {
-          processTokens(code, deviceId);
-        }
-      })
-      .catch((err) => console.error('Ошибка окна авторизации ВК:', err));
+    VKID.Auth.login().then((res) => {
+      const code = res.code || res.payload?.code;
+      const deviceId = res.device_id || res.payload?.device_id;
+      if (code && deviceId) processTokens(code, deviceId);
+    }).catch((err) => console.error('Ошибка окна авторизации ВК:', err));
   };
 
   return (

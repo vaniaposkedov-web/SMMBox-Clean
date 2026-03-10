@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const axios = require('axios');
 const crypto = require('crypto');
+const sendEmail = require('../utils/sendEmail');
 
 exports.register = async (req, res) => {
   try {
@@ -14,11 +15,19 @@ exports.register = async (req, res) => {
     if (existingUser) return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString(); // Генерируем код
 
     await prisma.user.create({
       data: { email, password: hashedPassword, name: name || '', phone: phone || null, emailVerificationCode: verificationCode, isEmailVerified: false }
     });
+    
+    // ОТПРАВКА КОДА НА ПОЧТУ
+    try {
+      await sendEmail(email, 'Подтверждение регистрации', `Ваш код подтверждения: ${verificationCode}`);
+    } catch (e) {
+      console.error('Ошибка отправки email:', e);
+    }
+
     res.json({ success: true, message: 'Код подтверждения отправлен на почту' });
   } catch (error) { res.status(500).json({ error: 'Внутренняя ошибка сервера' }); }
 };
@@ -34,9 +43,15 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: 'Неверный email или пароль' });
 
+    // ЕСЛИ ПОЧТА НЕ ПОДТВЕРЖДЕНА - отправляем новый код и просим ввести
     if (user.isEmailVerified === false) {
        const newCode = Math.floor(100000 + Math.random() * 900000).toString();
        await prisma.user.update({ where: { id: user.id }, data: { emailVerificationCode: newCode } });
+       
+       try {
+         await sendEmail(email, 'Подтверждение входа', `Ваш новый код подтверждения: ${newCode}`);
+       } catch (e) { console.error('Ошибка отправки email:', e); }
+
        return res.status(400).json({ error: 'EMAIL_NOT_VERIFIED' });
     }
 
@@ -203,7 +218,29 @@ exports.verifyLinkEmail = async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };
 
-exports.verifyEmail = async (req, res) => { res.json({ success: true }); };
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ error: 'Email и код обязательны' });
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return res.status(400).json({ error: 'Пользователь не найден' });
+
+    if (user.emailVerificationCode !== code) return res.status(400).json({ error: 'Неверный код подтверждения' });
+
+    // Код верный! Подтверждаем почту
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { isEmailVerified: true, emailVerificationCode: null }
+    });
+
+    // Сразу авторизуем пользователя после успешного ввода кода
+    const token = jwt.sign({ userId: updatedUser.id, role: updatedUser.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    res.json({ success: true, token, user: updatedUser });
+  } catch (error) { 
+    res.status(500).json({ error: 'Ошибка сервера при проверке кода' }); 
+  }
+};
 exports.linkEmailAndSendCode = async (req, res) => { exports.requestLinkEmail(req, res); };
 
 exports.forgotPassword = async (req, res) => {
