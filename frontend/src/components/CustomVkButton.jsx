@@ -36,26 +36,47 @@ export default function CustomVkButton({ onAuth }) {
   }, [onAuth]);
 
   // Главная функция обработки и отправки на бэкенд
+  // Главная функция обработки и отправки на бэкенд
   const processTokens = async (code, deviceId) => {
     try {
       const tokens = await VKID.Auth.exchangeCode(code, deviceId);
       
       let userId = tokens.user_id || tokens.id;
+
+      // 1. Вскрываем id_token (JWT), куда ВК теперь прячет ID пользователя
+      if (!userId && tokens.id_token) {
+        try {
+          // Декодируем base64 payload из JWT-токена
+          const payloadBase64 = tokens.id_token.split('.')[1];
+          const decodedJwt = JSON.parse(atob(payloadBase64));
+          // По стандарту OpenID ID хранится в поле 'sub' или 'user_id'
+          userId = decodedJwt.user_id || decodedJwt.sub || decodedJwt.vk_account_id;
+        } catch (e) {
+          console.error('Ошибка распаковки id_token:', e);
+        }
+      }
       
-      // Страховка: если VK ID SDK спрятал user_id в новом протоколе
+      // 2. Крайняя страховка: запрос к API
       if (!userId) {
-        const userInfo = await VKID.Auth.userInfo(tokens.access_token);
-        userId = userInfo.user?.id || userInfo.id || userInfo.user_id;
+        try {
+          const userInfo = await VKID.Auth.userInfo(tokens.access_token);
+          userId = userInfo?.user?.id || userInfo?.id || userInfo?.user_id || userInfo?.response?.[0]?.id;
+        } catch (e) {}
       }
 
+      // Если ID так и не найден, не бьем бэкенд запросами, а выводим ошибку
+      if (!userId) {
+        alert('Ошибка: ВКонтакте не вернул ID пользователя. Повторите попытку позже.');
+        return;
+      }
+
+      // 3. Отправляем в стор идеальный объект, который ждет бэкенд
       if (onAuth) {
         onAuth({
           access_token: tokens.access_token,
           user_id: userId,
           email: tokens.email || null,
         });
-      } else {
-        console.error('Ошибка: проп onAuth не передан в компонент CustomVkButton!');
       }
     } catch (error) {
       console.error('Ошибка авторизации ВК:', error);
