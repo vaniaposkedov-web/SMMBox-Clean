@@ -874,50 +874,49 @@ export default function AccountsManager() {
         {vkProfiles.map(profile => (
           <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
             
-            {/* Шапка профиля ВК (Идеальный адаптив для мобильных) */}
+            {/* Шапка профиля ВК (ИСПРАВЛЕННЫЙ АДАПТИВ) */}
             <div 
-              className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors" 
+              className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors gap-2" 
               onClick={() => toggleProfileCollapse(profile.id)}
             >
-              {/* Левая часть: Аватарка + Имя (с жестким обрезанием текста) */}
-              <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
-                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="VK" />
+              {/* Левая часть: Аватарка + Имя (Теперь с приоритетом расширения) */}
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-[2]">
+                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="VK" />
                 <div className="min-w-0">
-                  <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
+                  <div className="text-white font-bold text-sm sm:text-base truncate leading-tight">
+                    {profile.name}
+                  </div>
                 </div>
               </div>
               
-              {/* Правая часть: Стена + Иконки (Жестко зафиксированы, чтобы не плющились) */}
-              <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+              {/* Правая часть: Стена + Иконки (Компактная группа) */}
+              <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 ml-auto">
                 
-                {/* === АДАПТИВНАЯ КНОПКА ПОСТИНГА НА СТЕНУ === */}
+                {/* КНОПКА СТЕНЫ (Минимальный размер на мобильных) */}
                 <div onClick={(e) => e.stopPropagation()}>
                   {(() => {
                     const personalAcc = accounts.find(a => a.provider === 'VK' && a.providerId === profile.providerAccountId);
                     const isPersonalActive = personalAcc && personalAcc.isValid;
                     
                     return isPersonalActive ? (
-                      <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-500/20 px-2 py-1.5 rounded-md uppercase tracking-wider">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse hidden sm:block"></span>
-                        <span className="hidden sm:inline">Стена активна</span>
-                        <span className="sm:hidden">Активна</span>
+                      <span className="inline-flex items-center gap-1 text-[9px] sm:text-[11px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-500/20 px-1.5 sm:px-2 py-1 rounded-md uppercase tracking-wider">
+                        <span className="sm:inline">Стена</span> Акт.
                       </span>
                     ) : (
                       <button 
                         onClick={() => startVkHackAuth(profile.id, 'personal', profile)}
-                        className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-2 py-1.5 rounded-md uppercase tracking-wider transition-all active:scale-95"
+                        className="inline-flex items-center gap-1 text-[9px] sm:text-[11px] font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-1.5 sm:px-2 py-1 rounded-md uppercase tracking-wider transition-all"
                       >
-                        <span className="hidden sm:inline">Подключить стену</span>
-                        <span className="sm:hidden">+ Стена</span>
+                        + Стена
                       </button>
                     );
                   })()}
                 </div>
 
-                {/* Группа иконок (Сворачивание и Удаление) */}
-                <div className="flex items-center gap-0.5 sm:gap-1 border-l border-gray-700/50 pl-2 sm:pl-3">
-                  <button className="p-1.5 text-gray-400 hover:text-white rounded-lg transition-all">
-                    <ChevronDown size={20} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
+                {/* Группа управления */}
+                <div className="flex items-center gap-0.5 border-l border-gray-700/50 pl-1.5 sm:pl-3">
+                  <button className="p-1 text-gray-400 hover:text-white rounded-md transition-all">
+                    <ChevronDown size={18} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
                   </button>
 
                   <button
@@ -927,10 +926,9 @@ export default function AccountsManager() {
                         await removeSocialProfile(profile.id);
                       }
                     }}
-                    className="p-1.5 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                    title="Отключить профиль"
+                    className="p-1 text-gray-500 hover:text-rose-500 rounded-md transition-all"
                   >
-                    <Trash2 size={18} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </div>
