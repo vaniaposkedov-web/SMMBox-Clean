@@ -235,41 +235,62 @@ export default function AccountsManager() {
   };
 
   // === УЛЬТИМАТИВНЫЙ ХАК ДЛЯ ОБХОДА БЛОКИРОВОК ВКОНТАКТЕ ===
-  const [vkHackModal, setVkHackModal] = useState({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '' });
+  const [vkHackModal, setVkHackModal] = useState({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '', mode: 'groups', profile: null });
 
-  const startVkHackAuth = (profileId) => {
-    setVkSelectedGroups([]);
-    setVkGroupsList([]);
-    setVkHackModal({ isOpen: true, profileId, step: 1, pastedUrl: '', tempToken: '' });
+  const startVkHackAuth = (profileId, mode = 'groups', profile = null) => {
+    setVkSelectedGroups([]); setVkGroupsList([]);
+    setVkHackModal({ isOpen: true, profileId, step: 1, pastedUrl: '', tempToken: '', mode, profile });
   };
 
   const openKateMobileAuth = () => {
-    // Используем ID Kate Mobile (2685278) - ВК ему доверяет на 100%, Security Error не будет!
-    const authUrl = `https://oauth.vk.com/authorize?client_id=2685278&scope=groups,manage,wall,photos,offline&response_type=token&redirect_uri=https://oauth.vk.com/blank.html&display=popup`;
-    window.open(authUrl, '_blank', 'width=600,height=500');
+    window.open(`https://oauth.vk.com/authorize?client_id=2685278&scope=groups,manage,wall,photos,offline&response_type=token&redirect_uri=https://oauth.vk.com/blank.html&display=popup`, '_blank', 'width=600,height=500');
   };
 
   const handlePasteUrl = async () => {
     const url = vkHackModal.pastedUrl;
-    // Ищем токен в вставленной ссылке
     const tokenMatch = url.match(/access_token=([^&]+)/);
     
-    if (!tokenMatch) {
-      return alert('Ссылка не содержит токен! Убедитесь, что вы скопировали ВСЮ адресную строку из окна ВКонтакте.');
-    }
+    if (!tokenMatch) return alert('Ссылка не содержит токен! Скопируйте всю адресную строку из окна ВК.');
     
-    const token = tokenMatch[1];
-    setVkHackModal(prev => ({ ...prev, tempToken: token, step: 2 }));
+    const extractedToken = tokenMatch[1];
+    setVkHackModal(prev => ({ ...prev, tempToken: extractedToken }));
     setIsFetchingGroups(true);
 
-    // Загружаем группы через JSONP (сработает 100%, так как токен полноценный)
-    const res = await fetchGroupsViaJsonp(token);
+    // ЕСЛИ ЭТО ПОДКЛЮЧЕНИЕ ЛИЧНОЙ СТРАНИЦЫ
+    if (vkHackModal.mode === 'personal') {
+      const profile = vkHackModal.profile;
+      const personalGroupToSave = [{
+        id: profile.providerAccountId, 
+        name: profile.name + ' (Стена)',
+        avatarUrl: profile.avatarUrl,
+        accessToken: extractedToken
+      }];
+
+      try {
+        const res = await fetch('/api/accounts/vk/save-group-tokens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ userId: user.id, profileId: profile.id, groups: personalGroupToSave })
+        });
+        const data = await res.json();
+        if (data.success) {
+          await fetchAccounts(user.id);
+          alert('Постинг на стену активирован!');
+          setVkHackModal({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '', mode: 'groups', profile: null });
+        } else { alert(data.error || 'Ошибка'); }
+      } catch (e) { alert('Ошибка сети'); }
+      setIsFetchingGroups(false);
+      return;
+    }
+
+    // ЕСЛИ ЭТО ПОДКЛЮЧЕНИЕ ГРУПП
+    setVkHackModal(prev => ({ ...prev, step: 2 }));
+    const res = await fetchGroupsViaJsonp(extractedToken);
     
     if (res.error) {
-      alert(`Ошибка ВКонтакте: ${res.error}`);
+      alert(`Ошибка ВК: ${res.error}`);
       setVkHackModal(prev => ({ ...prev, step: 1 }));
     } else {
-      // Убираем из списка группы, которые уже привязаны к сервису
       const existingIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
       setVkGroupsList(res.groups.filter(g => !existingIds.includes(String(g.id))));
     }
@@ -784,15 +805,46 @@ export default function AccountsManager() {
         {vkProfiles.map(profile => (
           <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
             <div className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10">
-              <div className="flex items-center gap-3 min-w-0">
-                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="VK" />
-                <div className="min-w-0">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="VK" />
+                <div className="min-w-0 flex-1">
                   <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
                   <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
                 </div>
               </div>
+              
+              {/* === НОВАЯ КНОПКА ПОСТИНГА НА ЛИЧНУЮ СТРАНИЦУ === */}
+              {(() => {
+                const personalAcc = accounts.find(a => a.provider === 'VK' && a.providerId === profile.providerAccountId);
+                const isPersonalActive = personalAcc && personalAcc.isValid;
+                
+                return (
+                  <div className="flex items-center ml-auto mr-2 sm:mr-4 shrink-0">
+                    {isPersonalActive ? (
+                      <span className="flex flex-col items-end sm:items-center sm:flex-row gap-0.5 sm:gap-2">
+                        <span className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-semibold">Стена:</span>
+                        <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-500/20 px-2 py-1 rounded-md uppercase tracking-wider">
+                          АКТИВНЫ
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="flex flex-col items-end sm:items-center sm:flex-row gap-0.5 sm:gap-2">
+                        <span className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-semibold">Стена:</span>
+                        <button 
+                          onClick={() => startVkHackAuth(profile.id, 'personal', profile)}
+                          className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 hover:text-rose-300 border border-rose-500/20 px-2 py-1 rounded-md uppercase tracking-wider transition-all"
+                        >
+                          ПОДКЛЮЧИТЬ
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+            
+
               {/* Кнопка отключения профиля ВК */}
-              <button 
+              <button
                 onClick={async () => {
                   if (window.confirm(`Отключить профиль ВКонтакте "${profile.name}" и все связанные группы?`)) {
                     await removeSocialProfile(profile.id);
@@ -818,7 +870,7 @@ export default function AccountsManager() {
               <div className="relative flex w-full mt-2">
                 <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                 <button 
-                  onClick={() => startVkHackAuth(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
+                  onClick={() => startVkHackAuth(profile.id, 'groups', profile)} disabled={loadingStates[profile.id] || isLimitReached} 
                   className="w-full bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3.5 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold shadow-sm active:scale-95"
                 >
                   {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
@@ -840,7 +892,6 @@ export default function AccountsManager() {
         </div>
       </div>
 
-      {/* ================= БЛОК 3: ЛИЧНЫЕ СТРАНИЦЫ ВКОНТАКТЕ ================= */}
       <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl">
         <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
           <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500">
@@ -992,7 +1043,8 @@ export default function AccountsManager() {
             
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Users size={20} className="text-[#0077FF]" /> Подключение сообществ
+                <Users size={20} className="text-[#0077FF]" /> 
+                  {vkHackModal.mode === 'personal' ? 'Постинг на личную стену' : 'Подключение сообществ'}
               </h3>
               <button onClick={() => setVkHackModal({isOpen: false, profileId: null})} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
                 <X size={18} />
@@ -1098,3 +1150,4 @@ export default function AccountsManager() {
     </div>
   );
 }
+
