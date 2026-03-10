@@ -656,9 +656,6 @@ export default function Publish() {
     );
   }
 
-  // ==========================================
-  // РЕНДЕР: ЭКРАН 3 - ВИЗАРД
-  // ==========================================
   return (
     <div className="min-h-[100dvh] bg-admin-bg pb-[120px] md:pb-24 font-sans relative animate-fade-in">
       <div className="p-4 sm:p-8 max-w-3xl mx-auto">
@@ -924,7 +921,7 @@ export default function Publish() {
 
       </div>
 
-      {/* МОДАЛКИ ПАРТНЕРОВ И ИИ... */}
+      {/* МОДАЛКИ ПАРТНЕРОВ И ИИ */}
       {showAiModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
           <div className="bg-admin-card w-full max-w-md border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">

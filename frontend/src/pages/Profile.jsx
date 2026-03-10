@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-// === ИКОНКИ СОЦСЕТЕЙ ===
+
 const IconVK = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
     <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2zm3.3 14.53h-1.55c-.52 0-.67-.41-1.58-1.33-.77-.79-1.07-.88-1.26-.88-.26 0-.34.08-.34.5v1.2c0 .32-.1.51-1.5.51-2.2 0-4.6-1.5-6.23-3.86C4.16 9.88 3.5 6.92 3.5 6.57c0-.28.1-.5.62-.5h1.56c.46 0 .61.22.8.72 1.25 3.5 2.92 5.51 3.73 5.51.21 0 .31-.1.31-.63V8.65c-.06-1.14-.34-1.25-1.08-1.25-.33 0-.15-.46.12-.64.41-.27 1.15-.29 1.76-.29.83 0 1.05.07 1.25.13.34.11.31.39.31 1.09v3.08c0 .41.18.51.3.51.25 0 .65-.18 1.48-1.02 1.22-1.34 2.1-3.64 2.4-4.57.14-.39.3-.57.77-.57h1.55c.61 0 .73.3.62.72-.25.86-1.74 3.12-2.51 4.14-.36.47-.46.61-.17 1 .23.33 1.05 1.02 1.5 1.58 1.01 1.23 1.3 1.77 1.48 2.05.21.31.06.63-.4.63z"/>
@@ -29,7 +29,7 @@ export default function Profile() {
   const requestEmailLink = useStore((state) => state.requestEmailLink);
   const verifyEmailLink = useStore((state) => state.verifyEmailLink);
 
-  // === ДАННЫЕ ИЗ СТОРА ===
+  
   const accounts = useStore((state) => state.accounts) || [];
   const fetchAccounts = useStore((state) => state.fetchAccounts);
   
@@ -42,23 +42,23 @@ export default function Profile() {
 
   const fileInputRef = useRef(null);
 
-  // === ПОДПИСКА PRO ===
+  
   const PRO_MANAGER_TG = 'bnbslow'; 
   const [showProModal, setShowProModal] = useState(false);
 
-  // === СОСТОЯНИЯ ВКЛАДОК И МОДАЛОК ===
+  
   const [activeTab, setActiveTab] = useState('overview'); 
   const [postFilter, setPostFilter] = useState('all'); 
   
   const [viewPostModal, setViewPostModal] = useState(null); 
   const [sharePostModal, setSharePostModal] = useState(null); 
   
-  // === СОСТОЯНИЯ ШЕРИНГА ===
+ 
   const [selectedPartners, setSelectedPartners] = useState([]);
   const [isSharing, setIsSharing] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
 
-  // === СОСТОЯНИЯ ФОРМЫ ПРОФИЛЯ ===
+  
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -69,11 +69,11 @@ export default function Profile() {
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(user?.avatarUrl || null);
 
-  // === СОСТОЯНИЯ БЕЗОПАСНОСТИ ===
+  
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [passwordResetSent, setPasswordResetSent] = useState(false);
 
-  // === СОСТОЯНИЯ ПРИВЯЗКИ (КРАСНАЯ ПЛАШКА) ===
+ 
   const [realEmail, setRealEmail] = useState('');
   const [realPhone, setRealPhone] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
@@ -300,7 +300,7 @@ export default function Profile() {
   return (
     <div className="w-full pt-6 lg:pt-10 pb-[calc(100px+env(safe-area-inset-bottom))] md:pb-12 px-4 md:px-8 font-sans">
       
-      {/* === УМНАЯ ПЛАШКА ЗАПРОСА ДАННЫХ === */}
+      {/* УМНАЯ ПЛАШКА ЗАПРОСА ДАННЫХ */}
       {isVulnerable && (
         <div className="bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/30 rounded-3xl p-5 sm:p-6 mb-6 shadow-xl relative overflow-hidden animate-fade-in">
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative z-10">
@@ -424,7 +424,7 @@ export default function Profile() {
       {/* СОДЕРЖИМОЕ ВКЛАДОК */}
       <div className="space-y-6">
         
-        {/* === ВКЛАДКА: ОБЗОР === */}
+        {/* ВКЛАДКА: ОБЗОР  */}
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             
@@ -488,7 +488,7 @@ export default function Profile() {
           </div>
         )}
 
-        {/* === ВКЛАДКА: МОИ ПОСТЫ === */}
+        {/* ВКЛАДКА: МОИ ПОСТЫ  */}
         {activeTab === 'posts' && (
           <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">

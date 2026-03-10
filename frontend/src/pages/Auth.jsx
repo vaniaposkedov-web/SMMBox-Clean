@@ -13,7 +13,7 @@ export default function Auth() {
 
   const [isLogin, setIsLogin] = useState(true);
   const [isVerification, setIsVerification] = useState(false);
-  const [isForgotPassword, setIsForgotPassword] = useState(false); // Новое состояние
+  const [isForgotPassword, setIsForgotPassword] = useState(false); 
   const [showPassword, setShowPassword] = useState(false);
   
   const [isLoading, setIsLoading] = useState(false);
@@ -45,7 +45,7 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      // 1. ЛОГИКА ВОССТАНОВЛЕНИЯ ПАРОЛЯ
+     
       if (isForgotPassword) {
         const res = await fetch('/api/auth/forgot-password', {
           method: 'POST',
@@ -63,7 +63,7 @@ export default function Auth() {
         return;
       }
 
-      // 2. ЛОГИКА ВВОДА КОДА ПОДТВЕРЖДЕНИЯ
+      
       if (isVerification) {
         const res = await fetch('/api/auth/verify-email', {
           method: 'POST',
@@ -72,7 +72,6 @@ export default function Auth() {
         });
         const data = await res.json();
         if (res.ok) {
-           // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ ТОКЕН В БРАУЗЕР!
            localStorage.setItem('token', data.token);
            useStore.setState({ user: data.user, token: data.token });
            navigate(data.user.isOnboardingCompleted ? '/' : '/onboarding');
@@ -83,7 +82,7 @@ export default function Auth() {
         return;
       }
 
-      // 3. ЛОГИКА РЕГИСТРАЦИИ И ВХОДА
+      
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
       const body = isLogin ? { email, password } : { email, password, name, phone };
       
@@ -96,7 +95,6 @@ export default function Auth() {
 
       if (res.ok && data.success) {
         if (isLogin) {
-          // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ ТОКЕН В БРАУЗЕР!
           localStorage.setItem('token', data.token);
           useStore.setState({ user: data.user, token: data.token });
           navigate(data.user.isOnboardingCompleted ? '/' : '/onboarding');

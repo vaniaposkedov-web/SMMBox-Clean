@@ -6,14 +6,14 @@ body {
   @apply bg-admin-bg text-admin-text m-0 p-0 font-sans;
 }
 
-/* Кастомный скроллбар для Webkit (Chrome, Safari, Edge) */
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #121212; /* admin-bg */
+  background: #121212; 
 }
 
 ::-webkit-scrollbar-thumb {
@@ -25,7 +25,7 @@ body {
   background: #3f3f3f;
 }
 
-/* Убираем скроллбар в горизонтальных списках (например, в календаре Planner) */
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }

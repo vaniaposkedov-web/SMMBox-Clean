@@ -14,16 +14,16 @@ export default function AdminDashboard() {
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Состояния интерфейса
+ 
   const [activeTab, setActiveTab] = useState('overview'); 
   const [searchQuery, setSearchQuery] = useState('');
   
-  // === СОСТОЯНИЯ ДОСЬЕ ===
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [userDetails, setUserDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
-  // Тема (День/Ночь)
+  
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem('adminTheme') !== 'light';
   });
@@ -112,7 +112,7 @@ export default function AdminDashboard() {
     (u?.phone && u.phone.includes(searchQuery))
   );
 
-  // --- СТИЛИ ТЕМЫ ---
+  
   const theme = {
     bg: isDark ? 'bg-[#0a0a0a]' : 'bg-gray-100',
     card: isDark ? 'bg-[#111318] border-gray-800' : 'bg-white border-gray-200 shadow-sm',
@@ -173,7 +173,7 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* === ВКЛАДКА: МОНИТОРИНГ === */}
+        {/*  ВКЛАДКА: МОНИТОРИНГ */}
         {activeTab === 'overview' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* СТАТИСТИКА (АДАПТИВНАЯ СЕТКА) */}
@@ -255,7 +255,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* === ВКЛАДКА: ПОЛЬЗОВАТЕЛИ (АДАПТИВНАЯ) === */}
+        {/* ВКЛАДКА: ПОЛЬЗОВАТЕЛИ (АДАПТИВНАЯ) */}
         {activeTab === 'users' && (
           <div className={`${theme.card} border rounded-2xl p-4 sm:p-6 animate-in fade-in duration-300`}>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
