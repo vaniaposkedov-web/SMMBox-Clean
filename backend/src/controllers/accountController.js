@@ -329,3 +329,69 @@ exports.getVkManagedGroups = async (req, res) => {
     res.status(500).json({ error: 'Внутренняя ошибка сервера при загрузке групп.' });
   }
 };
+
+
+exports.vkGroupCallback = async (req, res) => {
+  const { code, state, error, error_description } = req.query;
+  
+  // Если пользователь нажал "Отмена" в окне ВК
+  if (error) {
+    return res.send(`<script>window.opener.postMessage({ type: 'VK_GROUP_ERROR', error: '${error_description}' }, '*'); window.close();</script>`);
+  }
+
+  try {
+    const clientId = process.env.VK_APP_ID;
+    const clientSecret = process.env.VK_SECURE_KEY;
+    const redirectUri = `${process.env.BACKEND_URL || 'http://' + req.headers.host}/api/accounts/vk/group-callback`;
+    const userId = state; // Мы передадим ID пользователя через параметр state
+
+    // 1. Меняем код от ВК на токены сообществ
+    const tokenRes = await axios.get(`https://oauth.vk.com/access_token`, {
+      params: { client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code }
+    });
+
+    if (tokenRes.data.error) {
+      return res.send(`<script>window.opener.postMessage({ type: 'VK_GROUP_ERROR', error: '${tokenRes.data.error_description}' }, '*'); window.close();</script>`);
+    }
+
+    const tokensData = tokenRes.data; 
+    // ВК возвращает объект вида: { access_token_12345: "vk1.a...", access_token_67890: "vk1.a..." }
+
+    // 2. Ищем профиль ВК этого пользователя, чтобы привязать группы к нему
+    const vkProfile = await prisma.socialProfile.findFirst({
+      where: { userId: String(userId), provider: 'VK' }
+    });
+
+    // 3. Перебираем все полученные токены и сохраняем группы
+    const savedGroups = [];
+    for (const key in tokensData) {
+      if (key.startsWith('access_token_')) {
+        const groupId = key.replace('access_token_', '');
+        const groupToken = tokensData[key];
+
+        // Получаем информацию о группе (имя, аватарку)
+        const groupInfoRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
+          params: { group_id: groupId, access_token: groupToken, v: '5.199' }
+        });
+
+        const groupDetails = groupInfoRes.data.response?.[0];
+        if (groupDetails) {
+          // Сохраняем или обновляем группу в базе
+          await prisma.account.upsert({
+            where: { provider_providerId: { provider: 'VK', providerId: String(groupId) } },
+            update: { accessToken: groupToken, avatarUrl: groupDetails.photo_50, name: groupDetails.name, profileId: vkProfile?.id, isValid: true, errorMsg: null },
+            create: { userId: String(userId), provider: 'VK', providerId: String(groupId), name: groupDetails.name, accessToken: groupToken, avatarUrl: groupDetails.photo_50, profileId: vkProfile?.id }
+          });
+          savedGroups.push(groupDetails.name);
+        }
+      }
+    }
+
+    // 4. Успешно! Отправляем сообщение на фронтенд и закрываем окно
+    res.send(`<script>window.opener.postMessage({ type: 'VK_GROUP_SUCCESS' }, '*'); window.close();</script>`);
+
+  } catch (err) {
+    console.error('Ошибка в vkGroupCallback:', err);
+    res.send(`<script>window.opener.postMessage({ type: 'VK_GROUP_ERROR', error: 'Внутренняя ошибка сервера' }, '*'); window.close();</script>`);
+  }
+};

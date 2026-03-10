@@ -130,27 +130,46 @@ export default function AccountsManager() {
 
   const handleSaveSelectedVkGroups = async () => {
     if (vkSelectedGroups.length === 0) return;
-    const profileId = vkModal.profileId;
     
     if (!user?.isPro && (currentCount + vkSelectedGroups.length) > accountsLimit) {
-      return alert(`Лимит аккаунтов исчерпан! Вы можете добавить еще максимум ${Math.max(0, accountsLimit - currentCount)} акк.`);
+      return alert(`Лимит аккаунтов исчерпан!`);
     }
 
-    setLoadingStates(prev => ({...prev, [profileId]: true}));
+    // Формируем список ID групп через запятую (требование ВК)
+    const groupIdsStr = vkSelectedGroups.join(',');
+    
+    // Твой ID приложения ВК
+    const clientId = import.meta.env.VITE_VK_APP_ID || 54471878; 
+    const redirectUri = `${window.location.protocol}//${window.location.host}/api/accounts/vk/group-callback`;
+    
+    // Формируем ссылку для окна авторизации сообществ
+    // scope=manage,wall,photos - дает права на публикацию и загрузку фото!
+    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&group_ids=${groupIdsStr}&display=popup&redirect_uri=${redirectUri}&scope=manage,wall,photos&response_type=code&state=${user.id}&v=5.199`;
+
+    // Открываем всплывающее окно
+    const width = 600;
+    const height = 600;
+    const left = window.screenX + (window.innerWidth - width) / 2;
+    const top = window.screenY + (window.innerHeight - height) / 2;
+    window.open(authUrl, 'vkGroupAuth', `width=${width},height=${height},left=${left},top=${top}`);
+
     closeVkModal();
 
-    const profile = profiles.find(p => p.id === profileId);
-    const groupsToSave = vkGroupsList.filter(g => vkSelectedGroups.includes(g.id));
-
-    // Вызываем сохранение групп
-    const res = await saveVkAccounts(user.id, profile?.accessToken, groupsToSave);
-
-    if (res.success) {
-      await fetchAccounts(user.id);
-    } else {
-      alert(res.error || 'Ошибка при сохранении групп');
-    }
-    setLoadingStates(prev => ({...prev, [profileId]: false}));
+    // Слушаем ответ от всплывающего окна (успех или ошибка)
+    const handleMessage = async (event) => {
+      if (event.origin !== window.location.origin) return;
+      
+      if (event.data?.type === 'VK_GROUP_SUCCESS') {
+        window.removeEventListener('message', handleMessage);
+        await fetchAccounts(user.id); // Обновляем список аккаунтов на экране
+        alert('Сообщества успешно подключены!');
+      } else if (event.data?.type === 'VK_GROUP_ERROR') {
+        window.removeEventListener('message', handleMessage);
+        alert(`Ошибка подключения: ${event.data.error}`);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
   };
 
   const handleManualVerify = async (e) => { if (e) e.stopPropagation(); setIsVerifying(true); if (verifyAccountsStatus) await verifyAccountsStatus(); setIsVerifying(false); };

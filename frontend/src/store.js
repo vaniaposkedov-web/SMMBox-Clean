@@ -75,18 +75,49 @@ export const useStore = create(
       },
 
       fetchVkManagedGroups: async (profileId) => {
-        try {
-          const res = await fetch(`/api/accounts/vk/managed-groups?profileId=${profileId}`, {
-            headers: { 'Authorization': `Bearer ${get().token}` }
-          });
-          const data = await res.json();
-          if (res.ok && data.success) {
-            return { success: true, groups: data.groups };
+        return new Promise((resolve) => {
+          try {
+            const state = get();
+            const profile = state.profiles.find(p => p.id === profileId);
+
+            if (!profile || !profile.accessToken) {
+              return resolve({ success: false, error: 'Профиль ВК не найден или нет токена' });
+            }
+
+            // 1. Генерируем уникальное имя для callback-функции
+            const callbackName = 'vkCallback_' + Math.round(100000 * Math.random());
+
+            // 2. Создаем глобальную функцию, которую вызовет скрипт от ВК
+            window[callbackName] = function(data) {
+              // Убираем за собой мусор
+              delete window[callbackName];
+              document.body.removeChild(script);
+
+              if (data.error) {
+                return resolve({ success: false, error: `Ошибка VK: ${data.error.error_msg}` });
+              }
+
+              const groups = data.response ? data.response.items : [];
+              resolve({ success: true, groups });
+            };
+
+            // 3. Создаем тег <script> для обхода CORS (JSONP запрос)
+            const script = document.createElement('script');
+            script.src = `https://api.vk.com/method/groups.get?extended=1&filter=admin,editor&access_token=${profile.accessToken}&v=5.199&callback=${callbackName}`;
+            
+            script.onerror = () => {
+              delete window[callbackName];
+              document.body.removeChild(script);
+              resolve({ success: false, error: 'Ошибка сети при обращении к ВКонтакте' });
+            };
+
+            // 4. Добавляем скрипт на страницу (это выполнит запрос)
+            document.body.appendChild(script);
+
+          } catch (error) {
+            resolve({ success: false, error: 'Внутренняя ошибка при загрузке групп' });
           }
-          return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения при загрузке групп' };
-        }
+        });
       },
 
 
