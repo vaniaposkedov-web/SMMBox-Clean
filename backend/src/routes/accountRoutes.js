@@ -23,6 +23,7 @@ router.put('/global/settings', authMiddleware, accountController.saveGlobalSetti
 // Добавь эту строку к остальным маршрутам /vk/
 router.get('/vk/managed-groups', authMiddleware, accountController.getVkManagedGroups);
 router.get('/vk/group-callback', accountController.vkGroupCallback);
+router.get('/vk/fetch-groups-callback', accountController.vkFetchGroupsCallback);
 
 
 module.exports = router;
