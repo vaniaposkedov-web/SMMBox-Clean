@@ -26,6 +26,7 @@ export default function AccountsManager() {
   const linkSocialProfile = useStore((state) => state.linkSocialProfile);
 
   const removeAccount = useStore((state) => state.removeAccount);
+  const removeSocialProfile = useStore((state) => state.removeSocialProfile); // <--- ВОТ ЭТО БЫЛО УТЕРЯНО
   const saveAccountDesign = useStore((state) => state.saveAccountDesign);
   const token = useStore((state) => state.token);
 
@@ -554,12 +555,26 @@ export default function AccountsManager() {
         {tgProfiles.map(profile => (
           <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
             {/* Шапка профиля */}
-            <div className="flex items-center gap-3 p-3 bg-gray-800/60 rounded-xl border border-[#0088CC]/30 relative z-10">
-              <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0088CC&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="TG" />
-              <div className="min-w-0">
-                <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
-                <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
+            <div className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0088CC]/30 relative z-10">
+              <div className="flex items-center gap-3 min-w-0">
+                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0088CC&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="TG" />
+                <div className="min-w-0">
+                  <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
+                  <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
+                </div>
               </div>
+              {/* Кнопка отключения профиля ТГ */}
+              <button 
+                onClick={async () => {
+                  if (window.confirm(`Отключить профиль Telegram "${profile.name}" и все связанные каналы?`)) {
+                    await removeSocialProfile(profile.id);
+                  }
+                }}
+                className="p-2 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                title="Отключить профиль"
+              >
+                <Trash2 size={18} />
+              </button>
             </div>
 
             {/* Дерево элементов */}
@@ -626,12 +641,26 @@ export default function AccountsManager() {
 
         {vkProfiles.map(profile => (
           <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
-            <div className="flex items-center gap-3 p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10">
-              <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="VK" />
-              <div className="min-w-0">
-                <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
-                <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
+            <div className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10">
+              <div className="flex items-center gap-3 min-w-0">
+                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="VK" />
+                <div className="min-w-0">
+                  <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
+                  <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
+                </div>
               </div>
+              {/* Кнопка отключения профиля ВК */}
+              <button 
+                onClick={async () => {
+                  if (window.confirm(`Отключить профиль ВКонтакте "${profile.name}" и все связанные группы?`)) {
+                    await removeSocialProfile(profile.id);
+                  }
+                }}
+                className="p-2 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                title="Отключить профиль"
+              >
+                <Trash2 size={18} />
+              </button>
             </div>
 
             {/* Дерево элементов */}
@@ -687,38 +716,40 @@ export default function AccountsManager() {
         </div>
       </div>
 
-      {/* ================= МОДАЛЬНОЕ ОКНО-ПОМОЩНИК TELEGRAM (ДЛЯ 2+ АККАУНТОВ) ================= */}
-      {showTgHelperModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowTgHelperModal(false)}></div>
-          <div className="relative w-full max-w-md bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl flex flex-col z-10 overflow-hidden">
-            <div className="p-5 sm:p-6 border-b border-gray-800 bg-gray-900/50 flex justify-between items-center">
-               <h3 className="text-lg font-bold text-white flex items-center gap-2"><Send size={20} className="text-[#0088CC]"/> Добавление аккаунта</h3>
-               <button onClick={() => setShowTgHelperModal(false)} className="text-gray-400 hover:text-white p-1 transition-colors"><X size={20}/></button>
-            </div>
-            <div className="p-5 sm:p-6 space-y-4 text-sm text-gray-300 leading-relaxed">
-               <div className="bg-blue-500/10 border border-blue-500/20 text-blue-400 p-4 rounded-xl mb-4 text-xs font-medium">
-                 Telegram не позволяет выбрать аккаунт при нажатии на кнопку — он автоматически использует ту сессию, которая открыта в браузере.
-               </div>
-               <p className="font-bold text-white mb-2 text-base">Как добавить другой номер?</p>
-               <ol className="list-decimal list-inside space-y-3">
-                 <li>Скопируйте ссылку на эту страницу.</li>
-                 <li>Откройте новое окно браузера в <b className="text-white">Режиме Инкогнито</b> (Ctrl+Shift+N).</li>
-                 <li>Вставьте ссылку, авторизуйтесь на сайте и нажмите кнопку Telegram — он запросит новый номер.</li>
-               </ol>
-            </div>
-            <div className="p-5 border-t border-gray-800 bg-[#0d0f13] flex gap-3">
-               <button onClick={() => {
-                   navigator.clipboard.writeText(window.location.href);
-                   alert('Ссылка скопирована! Откройте окно Инкогнито и вставьте её в адресную строку.');
-                   setShowTgHelperModal(false);
-               }} className="flex-1 bg-[#0088CC] hover:bg-[#0077B3] text-white py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-[#0088CC]/20 flex justify-center items-center gap-2 active:scale-95">
-                 <Copy size={18}/> Скопировать ссылку
-               </button>
-            </div>
+      {/* ================= БЛОК 3: ЛИЧНЫЕ СТРАНИЦЫ ВКОНТАКТЕ ================= */}
+      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl">
+        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
+          <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500">
+            <UserSquare2 size={20} />
           </div>
+          <h2 className="text-lg font-bold text-white">ВКонтакте (Личные страницы)</h2>
         </div>
-      )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {vkProfiles.map(profile => (
+            <div key={`page_${profile.id}`} className="flex items-center justify-between p-3 sm:p-4 bg-gray-900/50 rounded-xl border border-gray-800 gap-3 hover:border-gray-700 transition-colors">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}`} className="w-10 h-10 sm:w-12 h-12 rounded-full object-cover shrink-0 border border-gray-700 shadow-inner" alt="VK" />
+                <div className="min-w-0 flex flex-col">
+                  <div className="text-white font-bold text-sm sm:text-base truncate leading-tight">{profile.name}</div>
+                  <div className="text-gray-500 text-[10px] sm:text-xs mt-1 truncate">Публикация на стену</div>
+                </div>
+              </div>
+              <div className="shrink-0">
+                <span className="inline-flex items-center justify-center text-purple-400 text-[10px] font-bold px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-500/10 border border-purple-500/20 rounded-lg uppercase tracking-wider whitespace-nowrap">
+                  Выкл
+                </span>
+              </div>
+            </div>
+          ))}
+          
+          {vkProfiles.length === 0 && (
+            <div className="col-span-full text-center p-8 border border-gray-800 border-dashed rounded-xl text-gray-500 text-sm bg-gray-900/20">
+              Сначала подключите профиль ВКонтакте в блоке выше.
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* МОДАЛЬНОЕ ОКНО ДИЗАЙНА */}
       {designModal.isOpen && (
