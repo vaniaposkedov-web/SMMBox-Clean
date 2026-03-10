@@ -1,49 +1,37 @@
 import { useEffect } from 'react';
+import * as VKID from '@vkid/sdk';
 
 export default function CustomVkButton({ onAuth }) {
   useEffect(() => {
-    // 1. Если этот код выполняется внутри всплывающего окна ВК после авторизации
-    if (window.location.hash.includes('access_token=')) {
-      const hashParams = new URLSearchParams(window.location.hash.substring(1));
-      const vkData = {
-        access_token: hashParams.get('access_token'),
-        user_id: hashParams.get('user_id'),
-        email: hashParams.get('email') || null,
-      };
-      
-      // Отправляем токен в основную вкладку и закрываем popup
-      if (window.opener) {
-        window.opener.postMessage({ type: 'VK_LOGIN_SUCCESS', payload: vkData }, '*');
-        window.close(); 
-      }
-    }
-
-    // 2. Слушаем сообщение от всплывающего окна в основной вкладке
-    const handleMessage = (event) => {
-      // Игнорируем чужие сообщения
-      if (event.origin !== window.location.origin) return;
-      
-      if (event.data?.type === 'VK_LOGIN_SUCCESS') {
-        if (onAuth) onAuth(event.data.payload);
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [onAuth]);
+    VKID.Config.init({
+      app: 54471878,
+      redirectUrl: 'https://smmdeck.ru/auth', // Строго URL фронтенда!
+      responseMode: VKID.ConfigResponseMode.Callback,
+    });
+  }, []);
 
   const handleVkLogin = () => {
-    const clientId = import.meta.env.VITE_VK_APP_ID || 54471878;
-    const redirectUri = 'https://smmdeck.ru/auth'; 
-    // Запрашиваем token напрямую, минуя сложные обмены кодами
-    const vkAuthUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&display=popup&redirect_uri=${redirectUri}&scope=email&response_type=token&v=5.199`;
-    
-    const width = 600;
-    const height = 600;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
-    
-    window.open(vkAuthUrl, 'vk_auth', `width=${width},height=${height},top=${top},left=${left}`);
+    // Вызываем авторизацию "под свой дизайн"
+    VKID.Auth.login()
+      .then(async (payload) => {
+        if (payload.code && payload.device_id) {
+          try {
+            // Тот самый обмен кода из документации
+            const authTokens = await VKID.Auth.exchangeCode(payload.code, payload.device_id);
+            
+            const vkData = {
+              access_token: authTokens.access_token,
+              user_id: authTokens.user_id,
+              email: authTokens.email || null,
+            };
+            
+            if (onAuth) onAuth(vkData);
+          } catch (error) {
+            console.error('Ошибка обмена кода ВК на токен:', error);
+          }
+        }
+      })
+      .catch((error) => console.error('Ошибка окна авторизации ВК:', error));
   };
 
   return (
