@@ -56,6 +56,9 @@ export default function AccountsManager() {
   const fileInputRef = useRef(null);
   const previewRef = useRef(null);
 
+  const [collapsedProfiles, setCollapsedProfiles] = useState({});
+  const toggleProfileCollapse = (id) => setCollapsedProfiles(prev => ({ ...prev, [id]: !prev[id] }));
+
   const presetColors = ['#FFFFFF', '#000000', '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
 
   const posToCoords = {
@@ -717,8 +720,12 @@ export default function AccountsManager() {
 
         {tgProfiles.map(profile => (
           <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
-            {/* Шапка профиля */}
-            <div className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0088CC]/30 relative z-10">
+            
+            {/* Шапка профиля ТГ (Теперь кликабельная) */}
+            <div 
+              className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0088CC]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors" 
+              onClick={() => toggleProfileCollapse(profile.id)}
+            >
               <div className="flex items-center gap-3 min-w-0">
                 <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0088CC&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="TG" />
                 <div className="min-w-0">
@@ -726,49 +733,62 @@ export default function AccountsManager() {
                   <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
                 </div>
               </div>
-              {/* Кнопка отключения профиля ТГ */}
-              <button 
-                onClick={async () => {
-                  if (window.confirm(`Отключить профиль Telegram "${profile.name}" и все связанные каналы?`)) {
-                    await removeSocialProfile(profile.id);
-                  }
-                }}
-                className="p-2 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                title="Отключить профиль"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
-
-            {/* Дерево элементов */}
-            <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
-              {accounts.filter(a => a.provider === 'TELEGRAM' && (a.profileId === profile.id || (!a.profileId && profile.id === tgProfiles[0]?.id))).map(acc => (
-                <div key={acc.id} className="relative">
-                  {/* Горизонтальная линия связи */}
-                  <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                  {renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-[#0088CC]')}
-                </div>
-              ))}
               
-              {/* Форма добавления (Плоская, без вылета) */}
-              <div className="relative flex flex-col sm:flex-row gap-3 w-full">
-                <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                <input 
-                  type="text" placeholder="Ссылка на канал (@channel)" 
-                  value={inputs[`${profile.id}_tgLink`] || ''} 
-                  onChange={e => handleInputChange(profile.id, 'tgLink', e.target.value)}
-                  disabled={isLimitReached}
-                  className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0088CC] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
-                />
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                {/* Кнопка сворачивания */}
+                <button className="p-2 text-gray-400 hover:text-white rounded-lg transition-all">
+                  <ChevronDown size={20} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
+                </button>
+                {/* Кнопка отключения профиля ТГ (с блокировкой сворачивания при клике) */}
                 <button 
-                  onClick={() => handleAddTgChannel(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
-                  className="shrink-0 w-full sm:w-auto bg-[#0088CC] hover:bg-[#0077B3] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex justify-center items-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0088CC]/20 active:scale-95"
+                  onClick={async (e) => {
+                    e.stopPropagation(); // Блокируем сворачивание при клике на удаление
+                    if (window.confirm(`Отключить профиль Telegram "${profile.name}" и все связанные каналы?`)) {
+                      await removeSocialProfile(profile.id);
+                    }
+                  }}
+                  className="p-2 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                  title="Отключить профиль"
                 >
-                  {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                  <span>Добавить канал</span>
+                  <Trash2 size={18} />
                 </button>
               </div>
             </div>
+
+            {/* Дерево элементов ТГ (Плавное скрытие) */}
+            <div className={`grid transition-all duration-300 ease-in-out ${collapsedProfiles[profile.id] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
+              <div className="overflow-hidden">
+                <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
+                  {accounts.filter(a => a.provider === 'TELEGRAM' && (a.profileId === profile.id || (!a.profileId && profile.id === tgProfiles[0]?.id))).map(acc => (
+                    <div key={acc.id} className="relative">
+                      {/* Горизонтальная линия связи */}
+                      <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                      {renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-[#0088CC]')}
+                    </div>
+                  ))}
+                  
+                  {/* Форма добавления (Плоская, без вылета) */}
+                  <div className="relative flex flex-col sm:flex-row gap-3 w-full">
+                    <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                    <input 
+                      type="text" placeholder="Ссылка на канал (@channel)" 
+                      value={inputs[`${profile.id}_tgLink`] || ''} 
+                      onChange={e => handleInputChange(profile.id, 'tgLink', e.target.value)}
+                      disabled={isLimitReached}
+                      className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0088CC] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
+                    />
+                    <button 
+                      onClick={() => handleAddTgChannel(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
+                      className="shrink-0 w-full sm:w-auto bg-[#0088CC] hover:bg-[#0077B3] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex justify-center items-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0088CC]/20 active:scale-95"
+                    >
+                      {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                      <span>Добавить канал</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         ))}
 
@@ -804,7 +824,12 @@ export default function AccountsManager() {
 
         {vkProfiles.map(profile => (
           <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
-            <div className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10">
+            
+            {/* Шапка профиля ВК (Кликабельная) */}
+            <div 
+              className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors" 
+              onClick={() => toggleProfileCollapse(profile.id)}
+            >
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="VK" />
                 <div className="min-w-0 flex-1">
@@ -813,13 +838,13 @@ export default function AccountsManager() {
                 </div>
               </div>
               
-              {/* === НОВАЯ КНОПКА ПОСТИНГА НА ЛИЧНУЮ СТРАНИЦУ === */}
+              {/* === КНОПКА ПОСТИНГА НА ЛИЧНУЮ СТРАНИЦУ === */}
               {(() => {
                 const personalAcc = accounts.find(a => a.provider === 'VK' && a.providerId === profile.providerAccountId);
                 const isPersonalActive = personalAcc && personalAcc.isValid;
                 
                 return (
-                  <div className="flex items-center ml-auto mr-2 sm:mr-4 shrink-0">
+                  <div className="flex items-center ml-auto mr-2 sm:mr-4 shrink-0" onClick={(e) => e.stopPropagation()}>
                     {isPersonalActive ? (
                       <span className="flex flex-col items-end sm:items-center sm:flex-row gap-0.5 sm:gap-2">
                         <span className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-semibold">Стена:</span>
@@ -841,43 +866,55 @@ export default function AccountsManager() {
                   </div>
                 );
               })()}
-            
 
-              {/* Кнопка отключения профиля ВК */}
-              <button
-                onClick={async () => {
-                  if (window.confirm(`Отключить профиль ВКонтакте "${profile.name}" и все связанные группы?`)) {
-                    await removeSocialProfile(profile.id);
-                  }
-                }}
-                className="p-2 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                title="Отключить профиль"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                {/* Кнопка сворачивания */}
+                <button className="p-2 text-gray-400 hover:text-white rounded-lg transition-all">
+                  <ChevronDown size={20} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
+                </button>
 
-            {/* Дерево элементов */}
-            <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
-              {accounts.filter(a => a.provider === 'VK' && (a.profileId === profile.id || (!a.profileId && profile.id === vkProfiles[0]?.id))).map(acc => (
-                <div key={acc.id} className="relative">
-                   <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                   {renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]')}
-                </div>
-              ))}
-              
-              {/* НОВАЯ КНОПКА ВЫБОРА СООБЩЕСТВ ИЗ СПИСКА */}
-              <div className="relative flex w-full mt-2">
-                <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                <button 
-                  onClick={() => startVkHackAuth(profile.id, 'groups', profile)} disabled={loadingStates[profile.id] || isLimitReached} 
-                  className="w-full bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3.5 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold shadow-sm active:scale-95"
+                {/* Кнопка отключения профиля ВК */}
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation(); // Блокируем сворачивание
+                    if (window.confirm(`Отключить профиль ВКонтакте "${profile.name}" и все связанные группы?`)) {
+                      await removeSocialProfile(profile.id);
+                    }
+                  }}
+                  className="p-2 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                  title="Отключить профиль"
                 >
-                  {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                  <span>Добавить сообщества</span>
+                  <Trash2 size={18} />
                 </button>
               </div>
             </div>
+
+            {/* Дерево элементов ВК (Плавное скрытие) */}
+            <div className={`grid transition-all duration-300 ease-in-out ${collapsedProfiles[profile.id] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
+              <div className="overflow-hidden">
+                <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
+                  {accounts.filter(a => a.provider === 'VK' && (a.profileId === profile.id || (!a.profileId && profile.id === vkProfiles[0]?.id))).map(acc => (
+                    <div key={acc.id} className="relative">
+                       <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                       {renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]')}
+                    </div>
+                  ))}
+                  
+                  {/* НОВАЯ КНОПКА ВЫБОРА СООБЩЕСТВ ИЗ СПИСКА */}
+                  <div className="relative flex w-full mt-2">
+                    <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                    <button 
+                      onClick={() => startVkHackAuth(profile.id, 'groups', profile)} disabled={loadingStates[profile.id] || isLimitReached} 
+                      className="w-full bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3.5 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold shadow-sm active:scale-95"
+                    >
+                      {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                      <span>Добавить сообщества</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
           </div>
         ))}
 
@@ -889,40 +926,6 @@ export default function AccountsManager() {
           <div className="shrink-0">
             <CustomVkButton onAuth={(data) => linkSocialProfile(user.id, 'VK', data.id || data.user_id, [data.first_name, data.last_name].filter(Boolean).join(' ') || 'VK Юзер', data.photo_100, data.access_token)} />
           </div>
-        </div>
-      </div>
-
-      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl">
-        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
-          <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500">
-            <UserSquare2 size={20} />
-          </div>
-          <h2 className="text-lg font-bold text-white">ВКонтакте (Личные страницы)</h2>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {vkProfiles.map(profile => (
-            <div key={`page_${profile.id}`} className="flex items-center justify-between p-3 sm:p-4 bg-gray-900/50 rounded-xl border border-gray-800 gap-3 hover:border-gray-700 transition-colors">
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}`} className="w-10 h-10 sm:w-12 h-12 rounded-full object-cover shrink-0 border border-gray-700 shadow-inner" alt="VK" />
-                <div className="min-w-0 flex flex-col">
-                  <div className="text-white font-bold text-sm sm:text-base truncate leading-tight">{profile.name}</div>
-                  <div className="text-gray-500 text-[10px] sm:text-xs mt-1 truncate">Публикация на стену</div>
-                </div>
-              </div>
-              <div className="shrink-0">
-                <span className="inline-flex items-center justify-center text-purple-400 text-[10px] font-bold px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-500/10 border border-purple-500/20 rounded-lg uppercase tracking-wider whitespace-nowrap">
-                  Выкл
-                </span>
-              </div>
-            </div>
-          ))}
-          
-          {vkProfiles.length === 0 && (
-            <div className="col-span-full text-center p-8 border border-gray-800 border-dashed rounded-xl text-gray-500 text-sm bg-gray-900/20">
-              Сначала подключите профиль ВКонтакте в блоке выше.
-            </div>
-          )}
         </div>
       </div>
 
