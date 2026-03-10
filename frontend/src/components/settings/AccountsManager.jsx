@@ -9,8 +9,8 @@ import {
   ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowLeft, Crosshair, ArrowRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move, Loader2, CheckCircle2, UserCircle, UserPlus, Users, UserSquare2
 } from 'lucide-react';
 
-import CustomTelegramButton from '../components/CustomTelegramButton';
-import CustomVkButton from '../components/CustomVkButton';
+import CustomTelegramButton from '../../components/CustomTelegramButton';
+import CustomVkButton from '../../components/CustomVkButton';
 
 export default function AccountsManager() {
   const navigate = useNavigate();
