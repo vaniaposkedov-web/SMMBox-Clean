@@ -294,3 +294,40 @@ exports.deleteSocialProfile = async (req, res) => {
     res.status(500).json({ success: false, error: 'Ошибка сервера при удалении' });
   }
 };
+
+exports.getVkManagedGroups = async (req, res) => {
+  const userId = req.user?.userId || req.user?.id;
+  
+  try {
+    // 1. Ищем привязанный профиль ВК пользователя
+    const profile = await prisma.socialProfile.findFirst({
+      where: { userId: String(userId), provider: 'VK' }
+    });
+
+    if (!profile || !profile.accessToken) {
+      return res.status(400).json({ error: 'Профиль ВК не привязан или отсутствует токен доступа.' });
+    }
+
+    // 2. Запрашиваем группы из ВК API (где пользователь админ или редактор)
+    const groupsRes = await axios.get('https://api.vk.com/method/groups.get', {
+      params: {
+        extended: 1,
+        filter: 'admin,editor',
+        access_token: profile.accessToken,
+        v: '5.199' // актуальная версия API
+      }
+    });
+
+    if (groupsRes.data.error) {
+      return res.status(400).json({ error: `Ошибка VK API: ${groupsRes.data.error.error_msg}` });
+    }
+
+    // 3. Отправляем список групп на фронтенд
+    const groups = groupsRes.data.response ? groupsRes.data.response.items : [];
+    res.json({ success: true, groups });
+
+  } catch (error) {
+    console.error('Ошибка при получении групп ВК:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера при загрузке групп.' });
+  }
+};
