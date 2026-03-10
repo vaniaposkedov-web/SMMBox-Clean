@@ -23,6 +23,7 @@ export default function AccountsManager() {
   const verifyAccountsStatus = useStore((state) => state.verifyAccountsStatus);
   const saveVkGroupWithToken = useStore((state) => state.saveVkGroupWithToken);
   const verifyVkAccountsStatus = useStore((state) => state.verifyVkAccountsStatus);
+  const fetchVkManagedGroupsClient = useStore((state) => state.fetchVkManagedGroupsClient);
   const linkSocialProfile = useStore((state) => state.linkSocialProfile);
 
   const removeAccount = useStore((state) => state.removeAccount);
@@ -97,42 +98,26 @@ export default function AccountsManager() {
   const [vkSelectedGroups, setVkSelectedGroups] = useState([]);
   const [isFetchingGroups, setIsFetchingGroups] = useState(false);
 
-  // 2. Открываем первое окно (запрашиваем только список групп)
-  const handleFetchVkCommunities = (profileId) => {
+  const handleFetchVkCommunities = async (profileId) => {
     setIsFetchingGroups(true);
-    setVkModal({ isOpen: true, profileId }); // Сразу показываем окно с загрузкой
+    setVkModal({ isOpen: true, profileId }); 
     setVkSelectedGroups([]);
     
-    const clientId = import.meta.env.VITE_VK_APP_ID || 54471878;
-    const redirectUri = `${window.location.protocol}//${window.location.host}/api/accounts/vk/fetch-groups-callback`;
-    
-    // Просим ТОЛЬКО scope=groups. Никакого wall, поэтому Security Error не будет!
-    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&display=popup&redirect_uri=${redirectUri}&scope=groups&response_type=code&v=5.199`;
+    // Вызываем JSONP запрос из стора
+    const res = await fetchVkManagedGroupsClient(profileId);
 
-    const width = 600; const height = 600;
-    const left = window.screenX + (window.innerWidth - width) / 2;
-    const top = window.screenY + (window.innerHeight - height) / 2;
-    window.open(authUrl, 'vkGroupFetch', `width=${width},height=${height},left=${left},top=${top}`);
-
-    const handleMessage = (event) => {
-      if (event.origin !== window.location.origin) return;
+    if (res.success) {
+      // Убираем группы, которые уже подключены к сервису
+      const existingAccountIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
+      const availableGroups = res.groups.filter(g => !existingAccountIds.includes(String(g.id)));
       
-      if (event.data?.type === 'VK_FETCH_SUCCESS') {
-        window.removeEventListener('message', handleMessage);
-        // Убираем группы, которые уже подключены к сервису
-        const existingAccountIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
-        const availableGroups = event.data.groups.filter(g => !existingAccountIds.includes(String(g.id)));
-        
-        setVkGroupsList(availableGroups);
-        setIsFetchingGroups(false);
-      } else if (event.data?.type === 'VK_FETCH_ERROR') {
-        window.removeEventListener('message', handleMessage);
-        alert(`Ошибка загрузки: ${event.data.error}`);
-        setVkModal({ isOpen: false, profileId: null });
-        setIsFetchingGroups(false);
-      }
-    };
-    window.addEventListener('message', handleMessage);
+      setVkGroupsList(availableGroups);
+    } else {
+      alert(res.error || 'Не удалось загрузить список сообществ');
+      setVkModal({ isOpen: false, profileId: null });
+    }
+    
+    setIsFetchingGroups(false);
   };
 
   const closeVkModal = () => setVkModal({ isOpen: false, profileId: null });

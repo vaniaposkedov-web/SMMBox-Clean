@@ -487,6 +487,49 @@ export const useStore = create(
         } catch (error) {}
       },
 
+
+      fetchVkManagedGroupsClient: async (profileId) => {
+        return new Promise((resolve) => {
+          try {
+            const state = get();
+            const profile = state.profiles.find(p => p.id === profileId);
+
+            if (!profile || !profile.accessToken) {
+              return resolve({ success: false, error: 'Профиль ВК не найден или нет токена' });
+            }
+
+            // Генерируем уникальное имя callback-функции
+            const callbackName = 'vkCallback_' + Math.round(100000 * Math.random());
+
+            // Создаем глобальную функцию
+            window[callbackName] = function(data) {
+              delete window[callbackName];
+              document.body.removeChild(script);
+
+              if (data.error) {
+                return resolve({ success: false, error: `Ошибка VK: ${data.error.error_msg}` });
+              }
+              const groups = data.response ? data.response.items : [];
+              resolve({ success: true, groups });
+            };
+
+            // Создаем скрипт для JSONP запроса
+            const script = document.createElement('script');
+            script.src = `https://api.vk.com/method/groups.get?extended=1&filter=admin,editor&access_token=${profile.accessToken}&v=5.199&callback=${callbackName}`;
+            
+            script.onerror = () => {
+              delete window[callbackName];
+              document.body.removeChild(script);
+              resolve({ success: false, error: 'Ошибка сети при обращении к ВКонтакте' });
+            };
+
+            document.body.appendChild(script);
+          } catch (error) {
+            resolve({ success: false, error: 'Внутренняя ошибка при загрузке групп' });
+          }
+        });
+      },
+
       deleteSharedPostAction: async (id) => {
         try {
           const res = await fetch(`/api/posts/shared/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` } });
