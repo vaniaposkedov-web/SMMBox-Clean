@@ -20,4 +20,5 @@ router.put('/:id/design', authMiddleware, accountController.saveAccountDesign);
 router.get('/global/settings', authMiddleware, accountController.getGlobalSettings);
 router.put('/global/settings', authMiddleware, accountController.saveGlobalSettings);
 
+
 module.exports = router;

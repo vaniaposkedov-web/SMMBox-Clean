@@ -74,6 +74,8 @@ export const useStore = create(
         }
       },
 
+      
+
       linkSocialProfile: async (userId, provider, providerAccountId, name, avatarUrl, accessToken) => {
         try {
           const res = await fetch('/api/accounts/profiles/link', {
