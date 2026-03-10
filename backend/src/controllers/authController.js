@@ -71,26 +71,56 @@ exports.telegramAuth = async (req, res) => {
 
 exports.vkAuth = async (req, res) => {
   try {
-    const { id, first_name, last_name, photo_100 } = req.body;
-    if (!id) return res.status(400).json({ error: 'Нет данных VK' });
+    // Поддерживаем и старый (id) и новый (user_id) формат от фронтенда
+    const vkIdStr = req.body.id || req.body.user_id;
+    const access_token = req.body.access_token;
+    
+    if (!vkIdStr) return res.status(400).json({ error: 'Нет данных VK (отсутствует ID)' });
 
-    let user = await prisma.user.findUnique({ where: { vkId: String(id) } });
+    let first_name = req.body.first_name || '';
+    let last_name = req.body.last_name || '';
+    let photo_100 = req.body.photo_100 || null;
+
+    // Если фронтенд прислал токен, но не прислал имя - получаем данные напрямую из ВК (Надежный способ)
+    if (access_token && (!first_name || !photo_100)) {
+      try {
+        const vkRes = await axios.get(`https://api.vk.com/method/users.get?fields=photo_100&access_token=${access_token}&v=5.131`);
+        if (vkRes.data && vkRes.data.response && vkRes.data.response[0]) {
+          first_name = vkRes.data.response[0].first_name || first_name;
+          last_name = vkRes.data.response[0].last_name || last_name;
+          photo_100 = vkRes.data.response[0].photo_100 || photo_100;
+        }
+      } catch (e) {
+        console.error('Ошибка получения профиля ВК на сервере:', e.message);
+      }
+    }
+
+    let user = await prisma.user.findUnique({ where: { vkId: String(vkIdStr) } });
     let isNewUser = false;
 
     if (!user) {
       isNewUser = true;
       const fullName = [first_name, last_name].filter(Boolean).join(' ') || 'VK Юзер';
       user = await prisma.user.create({
-        data: { vkId: String(id), name: fullName, avatarUrl: photo_100 || null, isOnboardingCompleted: false, isEmailVerified: true }
+        data: { vkId: String(vkIdStr), name: fullName, avatarUrl: photo_100, isOnboardingCompleted: false, isEmailVerified: true }
       });
       await prisma.socialProfile.create({
-        data: { userId: user.id, provider: 'VK', providerAccountId: String(id), name: fullName, avatarUrl: photo_100 || null, accessToken: '' }
+        data: { userId: user.id, provider: 'VK', providerAccountId: String(vkIdStr), name: fullName, avatarUrl: photo_100, accessToken: access_token || '' }
+      });
+    } else if (access_token) {
+      // Обновляем токен профиля при повторном входе
+      await prisma.socialProfile.updateMany({
+        where: { userId: user.id, provider: 'VK' },
+        data: { accessToken: access_token }
       });
     }
 
     const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
     res.json({ success: true, token, user, isNewUser });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+  } catch (error) { 
+    console.error('Ошибка в vkAuth:', error);
+    res.status(500).json({ error: 'Ошибка сервера' }); 
+  }
 };
 
 exports.getTgChatInfo = async (req, res) => {
