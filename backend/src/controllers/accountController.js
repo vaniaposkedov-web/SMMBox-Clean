@@ -297,32 +297,30 @@ exports.deleteSocialProfile = async (req, res) => {
 
 exports.getVkManagedGroups = async (req, res) => {
   const userId = req.user?.userId || req.user?.id;
-  
+  const { profileId } = req.query; // Получаем ID профиля из запроса
+
   try {
-    // 1. Ищем привязанный профиль ВК пользователя
+    if (!profileId) return res.status(400).json({ error: 'Не указан ID профиля' });
+
+    // 1. Ищем конкретный профиль ВК пользователя
     const profile = await prisma.socialProfile.findFirst({
-      where: { userId: String(userId), provider: 'VK' }
+      where: { id: profileId, userId: String(userId), provider: 'VK' }
     });
 
     if (!profile || !profile.accessToken) {
-      return res.status(400).json({ error: 'Профиль ВК не привязан или отсутствует токен доступа.' });
+      return res.status(400).json({ error: 'Профиль ВК не найден или отсутствует токен доступа.' });
     }
 
-    // 2. Запрашиваем группы из ВК API (где пользователь админ или редактор)
+    // 2. Запрашиваем группы из ВК API
     const groupsRes = await axios.get('https://api.vk.com/method/groups.get', {
-      params: {
-        extended: 1,
-        filter: 'admin,editor',
-        access_token: profile.accessToken,
-        v: '5.199' // актуальная версия API
-      }
+      params: { extended: 1, filter: 'admin,editor', access_token: profile.accessToken, v: '5.199' }
     });
 
     if (groupsRes.data.error) {
       return res.status(400).json({ error: `Ошибка VK API: ${groupsRes.data.error.error_msg}` });
     }
 
-    // 3. Отправляем список групп на фронтенд
+    // 3. Отправляем список
     const groups = groupsRes.data.response ? groupsRes.data.response.items : [];
     res.json({ success: true, groups });
 

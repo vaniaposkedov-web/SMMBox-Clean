@@ -29,6 +29,7 @@ export default function AccountsManager() {
   const removeSocialProfile = useStore((state) => state.removeSocialProfile);
   const saveAccountDesign = useStore((state) => state.saveAccountDesign);
   const token = useStore((state) => state.token);
+  
 
   const [inputs, setInputs] = useState({});
   const [loadingStates, setLoadingStates] = useState({});
@@ -87,6 +88,69 @@ export default function AccountsManager() {
   const copyBotName = (e) => {
     e.stopPropagation(); navigator.clipboard.writeText('@smmbox_auth_bot');
     setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+
+
+  // ДОБАВИТЬ ЭТИ 2 СТРОЧКИ К ИМПОРТАМ ИЗ STORE:
+  const fetchVkManagedGroups = useStore((state) => state.fetchVkManagedGroups);
+  const saveVkAccounts = useStore((state) => state.saveVkAccounts);
+
+  // ДОБАВИТЬ ЭТИ СТЕЙТЫ (например, после const [showTgHelperModal...]):
+  const [vkModal, setVkModal] = useState({ isOpen: false, profileId: null });
+  const [vkGroupsList, setVkGroupsList] = useState([]);
+  const [vkSelectedGroups, setVkSelectedGroups] = useState([]);
+  const [isFetchingGroups, setIsFetchingGroups] = useState(false);
+
+  // ДОБАВИТЬ ФУНКЦИИ УПРАВЛЕНИЯ МОДАЛКОЙ:
+  const openVkModal = async (profileId) => {
+    setVkModal({ isOpen: true, profileId });
+    setIsFetchingGroups(true);
+    setVkGroupsList([]);
+    setVkSelectedGroups([]);
+
+    const res = await fetchVkManagedGroups(profileId);
+    if (res.success) {
+      // Отфильтруем группы, которые уже добавлены в систему
+      const existingAccountIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
+      const availableGroups = res.groups.filter(g => !existingAccountIds.includes(String(g.id)));
+      setVkGroupsList(availableGroups);
+    } else {
+      alert(res.error || 'Не удалось загрузить список групп');
+      setVkModal({ isOpen: false, profileId: null });
+    }
+    setIsFetchingGroups(false);
+  };
+
+  const closeVkModal = () => setVkModal({ isOpen: false, profileId: null });
+
+  const toggleVkGroupSelection = (groupId) => {
+    setVkSelectedGroups(prev => prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]);
+  };
+
+  const handleSaveSelectedVkGroups = async () => {
+    if (vkSelectedGroups.length === 0) return;
+    const profileId = vkModal.profileId;
+    
+    if (!user?.isPro && (currentCount + vkSelectedGroups.length) > accountsLimit) {
+      return alert(`Лимит аккаунтов исчерпан! Вы можете добавить еще максимум ${Math.max(0, accountsLimit - currentCount)} акк.`);
+    }
+
+    setLoadingStates(prev => ({...prev, [profileId]: true}));
+    closeVkModal();
+
+    const profile = profiles.find(p => p.id === profileId);
+    const groupsToSave = vkGroupsList.filter(g => vkSelectedGroups.includes(g.id));
+
+    // Вызываем сохранение групп
+    const res = await saveVkAccounts(user.id, profile?.accessToken, groupsToSave);
+
+    if (res.success) {
+      await fetchAccounts(user.id);
+    } else {
+      alert(res.error || 'Ошибка при сохранении групп');
+    }
+    setLoadingStates(prev => ({...prev, [profileId]: false}));
   };
 
   const handleManualVerify = async (e) => { if (e) e.stopPropagation(); setIsVerifying(true); if (verifyAccountsStatus) await verifyAccountsStatus(); setIsVerifying(false); };
@@ -672,34 +736,16 @@ export default function AccountsManager() {
                 </div>
               ))}
               
-              {/* Исправленная форма ВКонтакте: Многоуровневый стек гарантирует, что кнопка не съедет */}
-              <div className="relative flex flex-col gap-3 w-full">
+              {/* НОВАЯ КНОПКА ВЫБОРА СООБЩЕСТВ ИЗ СПИСКА */}
+              <div className="relative flex w-full mt-2">
                 <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                
-                <input 
-                  type="text" placeholder="Ссылка на группу (vk.com/public123)" 
-                  value={inputs[`${profile.id}_vkLink`] || ''} 
-                  onChange={e => handleInputChange(profile.id, 'vkLink', e.target.value)}
-                  disabled={isLimitReached}
-                  className="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
-                />
-                
-                <div className="flex flex-col sm:flex-row gap-3 w-full">
-                  <input 
-                    type="text" placeholder="Токен API (Управление, Стена, Фото)" 
-                    value={inputs[`${profile.id}_vkToken`] || ''} 
-                    onChange={e => handleInputChange(profile.id, 'vkToken', e.target.value)}
-                    disabled={isLimitReached}
-                    className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
-                  />
-                  <button 
-                    onClick={() => handleAddVkGroup(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
-                    className="shrink-0 w-full sm:w-auto bg-[#0077FF] hover:bg-[#0066CC] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0077FF]/20 active:scale-95"
-                  >
-                    {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                    <span>Добавить группу</span>
-                  </button>
-                </div>
+                <button 
+                  onClick={() => openVkModal(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
+                  className="w-full bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3.5 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold shadow-sm active:scale-95"
+                >
+                  {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                  <span>Выбрать сообщества</span>
+                </button>
               </div>
             </div>
           </div>
@@ -856,6 +902,70 @@ export default function AccountsManager() {
                 <span>Сохранить настройки</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* МОДАЛЬНОЕ ОКНО ВЫБОРА ГРУПП ВК */}
+      {vkModal.isOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeVkModal}></div>
+          <div className="relative w-full max-w-lg bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] z-10">
+            
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Users size={20} className="text-[#0077FF]" /> Ваши сообщества
+              </h3>
+              <button onClick={closeVkModal} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 custom-scrollbar space-y-3 min-h-[200px]">
+              {isFetchingGroups ? (
+                <div className="flex flex-col items-center justify-center py-10 text-gray-400 gap-3">
+                  <Loader2 size={32} className="animate-spin text-[#0077FF]" />
+                  <span className="text-sm">Загрузка списка из ВКонтакте...</span>
+                </div>
+              ) : vkGroupsList.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 text-sm">
+                  Нет доступных сообществ или все они уже добавлены.
+                </div>
+              ) : (
+                vkGroupsList.map(group => (
+                  <div 
+                    key={group.id} 
+                    onClick={() => toggleVkGroupSelection(group.id)}
+                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                      vkSelectedGroups.includes(group.id) 
+                        ? 'bg-[#0077FF]/10 border-[#0077FF]/50 shadow-[0_0_10px_rgba(0,119,255,0.1)]' 
+                        : 'bg-gray-900/50 border-gray-800 hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img src={group.photo_50 || 'https://via.placeholder.com/50'} alt="group" className="w-10 h-10 rounded-full border border-gray-700 shrink-0" />
+                      <span className="text-white font-medium text-sm truncate">{group.name}</span>
+                    </div>
+                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                      vkSelectedGroups.includes(group.id) ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'
+                    }`}>
+                      {vkSelectedGroups.includes(group.id) && <Check size={14} className="text-white" />}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] rounded-b-2xl shrink-0">
+              <button 
+                onClick={handleSaveSelectedVkGroups} 
+                disabled={vkSelectedGroups.length === 0 || isFetchingGroups}
+                className="w-full bg-[#0077FF] hover:bg-[#0066CC] text-white py-3 rounded-xl font-bold disabled:opacity-50 transition-all flex justify-center items-center gap-2 active:scale-95"
+              >
+                Добавить выбранные ({vkSelectedGroups.length})
+              </button>
+            </div>
+
           </div>
         </div>
       )}
