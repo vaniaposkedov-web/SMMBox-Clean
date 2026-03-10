@@ -74,6 +74,21 @@ export const useStore = create(
         }
       },
 
+      fetchVkManagedGroups: async (profileId) => {
+        try {
+          const res = await fetch(`/api/accounts/vk/managed-groups?profileId=${profileId}`, {
+            headers: { 'Authorization': `Bearer ${get().token}` }
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            return { success: true, groups: data.groups };
+          }
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения при загрузке групп' };
+        }
+      },
+
 
       // === ФУНКЦИЯ УДАЛЕНИЯ ПРОФИЛЯ ===
       removeSocialProfile: async (profileId) => {
