@@ -3,7 +3,6 @@ import * as VKID from '@vkid/sdk';
 
 export default function CustomVkButton({ onAuth }) {
   useEffect(() => {
-    // Инициализация
     VKID.Config.init({
       app: import.meta.env.VITE_VK_APP_ID || 54471878,
       redirectUrl: 'https://smmdeck.ru/auth',
@@ -11,7 +10,6 @@ export default function CustomVkButton({ onAuth }) {
       mode: VKID.ConfigAuthMode.InNewWindow,
     });
 
-    // Перехватчик на случай жесткого редиректа страницы
     const params = new URLSearchParams(window.location.search);
     const payloadStr = params.get('payload');
     const codeStr = params.get('code');
@@ -35,46 +33,30 @@ export default function CustomVkButton({ onAuth }) {
     }
   }, [onAuth]);
 
-  // Главная функция обработки и отправки на бэкенд
-  // Главная функция обработки и отправки на бэкенд
   const processTokens = async (code, deviceId) => {
     try {
       const tokens = await VKID.Auth.exchangeCode(code, deviceId);
-      
       let userId = tokens.user_id || tokens.id;
-
-      // 1. Вскрываем id_token (JWT), куда ВК теперь прячет ID пользователя
+      
       if (!userId && tokens.id_token) {
         try {
-          // Декодируем base64 payload из JWT-токена
-          const payloadBase64 = tokens.id_token.split('.')[1];
-          const decodedJwt = JSON.parse(atob(payloadBase64));
-          // По стандарту OpenID ID хранится в поле 'sub' или 'user_id'
+          const decodedJwt = JSON.parse(atob(tokens.id_token.split('.')[1]));
           userId = decodedJwt.user_id || decodedJwt.sub || decodedJwt.vk_account_id;
-        } catch (e) {
-          console.error('Ошибка распаковки id_token:', e);
-        }
+        } catch (e) {}
       }
       
-      // 2. Крайняя страховка: запрос к API
       if (!userId) {
         try {
           const userInfo = await VKID.Auth.userInfo(tokens.access_token);
-          userId = userInfo?.user?.id || userInfo?.id || userInfo?.user_id || userInfo?.response?.[0]?.id;
+          userId = userInfo.user?.id || userInfo.id || userInfo.user_id;
         } catch (e) {}
       }
 
-      // Если ID так и не найден, не бьем бэкенд запросами, а выводим ошибку
-      if (!userId) {
-        alert('Ошибка: ВКонтакте не вернул ID пользователя. Повторите попытку позже.');
-        return;
-      }
-
-      // 3. Отправляем в стор идеальный объект, который ждет бэкенд
-      if (onAuth) {
+      if (onAuth && userId) {
         onAuth({
           access_token: tokens.access_token,
           user_id: userId,
+          id: userId, // Дублируем для совместимости со старым кодом
           email: tokens.email || null,
         });
       }
@@ -88,7 +70,6 @@ export default function CustomVkButton({ onAuth }) {
       .then((res) => {
         const code = res.code || res.payload?.code;
         const deviceId = res.device_id || res.payload?.device_id;
-        
         if (code && deviceId) {
           processTokens(code, deviceId);
         }
@@ -101,11 +82,16 @@ export default function CustomVkButton({ onAuth }) {
       type="button"
       onClick={handleVkLogin}
       title="Войти через ВКонтакте"
-      className="w-14 h-14 min-w-[56px] min-h-[56px] shrink-0 flex items-center justify-center rounded-full bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 transition-all duration-300 shadow-lg hover:scale-105"
+      className="w-14 h-14 min-w-[56px] min-h-[56px] shrink-0 flex items-center justify-center rounded-full bg-[#0077FF]/10 text-[#0077FF] hover:bg-[#0077FF] hover:text-white border border-[#0077FF]/20 transition-all duration-300 shadow-lg hover:scale-105 group"
     >
-      <svg viewBox="0 0 24 24" className="w-7 h-7 shrink-0" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-        <path d="M15.077 7.103c.5-.062 1.157-.105 1.705.105.434.166.77.568.868 1.018.156.714.156 1.84.156 2.923 0 1.083 0 2.21-.156 2.923-.098.45-.434.852-.868 1.018-.548.21-1.205.167-1.705.105-2.071-.257-2.618-.94-3.044-1.616-.217-.343-.39-.708-.57-1.071-.143-.289-.282-.574-.465-.828-.275-.38-.63-.615-1.078-.615H9.68v2.96c0 .416-.307.755-.718.775H7.72c-.41 0-.74-.338-.74-.755V9.01c0-.417.33-.755.74-.755h1.242c.41 0 .717.339.717.755v2.914c0 .063.023.123.064.168.041.045.097.071.156.071h.122c.21 0 .39-.126.495-.315.118-.214.22-.44.316-.653.167-.37.336-.74.557-1.085.424-.666.963-1.325 3.018-1.57.17-.021.343-.032.518-.032h.15z"/>
-        <path fillRule="evenodd" clipRule="evenodd" d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zm4.212-14.93c-2.316-.287-6.108-.287-8.424 0-1.125.139-2.062 1.053-2.228 2.167-.22 1.488-.22 4.038 0 5.526.166 1.114 1.103 2.028 2.228 2.167 2.316.287 6.108.287 8.424 0 1.125-.139 2.062-1.053 2.228-2.167.22-1.488.22-4.038 0-5.526-.166-1.114-1.103-2.028-2.228-2.167z"/>
+      {/* Идеально ровный и отцентрированный логотип ВК */}
+      <svg 
+        className="w-7 h-7 shrink-0 transition-transform group-hover:scale-110" 
+        viewBox="0 0 24 24" 
+        fill="currentColor" 
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path fillRule="evenodd" clipRule="evenodd" d="M23.45 5.948c.166-.546 0-.948-.795-.948H20.03c-.668 0-.976.347-1.143.73 0 0-1.335 3.196-3.226 5.272-.612.602-.89.793-1.224.793-.167 0-.418-.191-.418-.738V5.948c0-.656-.184-.948-.74-.948H9.151c-.417 0-.668.304-.668.593 0 .621.946.765 1.043 2.513v3.798c0 .833-.153.984-.487.984-.89 0-3.055-3.211-4.34-6.885-.259-.71-.537-1-1.205-1H1.865c-.75 0-.9.347-.9.73 0 .682.89 4.07 4.145 8.551 2.17 3.06 5.225 4.72 8.008 4.72 1.67 0 1.875-.368 1.875-1.004V15.34c0-.736.158-.884.687-.884.39 0 1.057.192 2.615 1.667 1.78 1.749 2.073 2.532 3.074 2.532h2.625c.75 0 1.126-.368.91-1.096-.238-.724-1.084-1.775-2.215-3.022-.612-.71-1.53-1.475-1.809-1.858-.389-.491-.278-.71 0-1.147 0 0 3.2-4.426 3.533-5.584Z" />
       </svg>
     </button>
   );
