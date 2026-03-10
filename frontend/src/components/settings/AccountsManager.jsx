@@ -26,7 +26,7 @@ export default function AccountsManager() {
   const linkSocialProfile = useStore((state) => state.linkSocialProfile);
 
   const removeAccount = useStore((state) => state.removeAccount);
-  const removeSocialProfile = useStore((state) => state.removeSocialProfile); // <--- ВОТ ЭТО БЫЛО УТЕРЯНО
+  const removeSocialProfile = useStore((state) => state.removeSocialProfile);
   const saveAccountDesign = useStore((state) => state.saveAccountDesign);
   const token = useStore((state) => state.token);
 
