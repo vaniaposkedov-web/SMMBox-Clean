@@ -725,25 +725,55 @@ export default function AccountsManager() {
         {tgProfiles.map(profile => (
           <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
             
-            {/* Шапка профиля ТГ (Теперь кликабельная) */}
+            {/* Шапка профиля ТГ (Кликлабельная) */}
             <div 
               className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0088CC]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors" 
               onClick={() => toggleProfileCollapse(profile.id)}
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0088CC&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="TG" />
-                <div className="min-w-0">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0088CC&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="TG" />
+                <div className="min-w-0 flex-1">
                   <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
-                  <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
+                  {/* <--- УБРАЛИ ОТСЮДА redundat текст "Профиль активен" ---> */}
                 </div>
               </div>
               
+              {/* === КНОПКА ПОСТИНГА НА ЛИЧНУЮ СТРАНИЦУ === */}
+              {(() => {
+                const personalAcc = accounts.find(a => a.provider === 'TELEGRAM' && a.providerId === profile.providerAccountId);
+                const isPersonalActive = personalAcc && personalAcc.isValid;
+                
+                return (
+                  <div className="flex items-center ml-auto mr-2 sm:mr-4 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {isPersonalActive ? (
+                      <span className="flex flex-col items-end sm:items-center sm:flex-row gap-0.5 sm:gap-2">
+                        <span className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-semibold">Стена:</span>
+                        <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-500/20 px-2 py-1 rounded-md uppercase tracking-wider">
+                          АКТИВНЫ
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="flex flex-col items-end sm:items-center sm:flex-row gap-0.5 sm:gap-2">
+                        <span className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-semibold">Стена:</span>
+                        <button 
+                          onClick={() => startVkHackAuth(profile.id, 'personal', profile)}
+                          className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 hover:text-rose-300 border border-rose-500/20 px-2 py-1 rounded-md uppercase tracking-wider transition-all"
+                        >
+                          ПОДКЛЮЧИТЬ
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 {/* Кнопка сворачивания */}
                 <button className="p-2 text-gray-400 hover:text-white rounded-lg transition-all">
                   <ChevronDown size={20} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
                 </button>
-                {/* Кнопка отключения профиля ТГ (с блокировкой сворачивания при клике) */}
+
+                {/* Кнопка отключения профиля ТГ */}
                 <button 
                   onClick={async (e) => {
                     e.stopPropagation(); // Блокируем сворачивание при клике на удаление
@@ -773,7 +803,7 @@ export default function AccountsManager() {
                   
                   {/* === НОВАЯ МАГИЧЕСКАЯ КНОПКА TELEGRAM === */}
                   <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
-                    <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                    <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                     
                     {/* Кнопка с проверкой лимита */}
                     {isLimitReached ? (
