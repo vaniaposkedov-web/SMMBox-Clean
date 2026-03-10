@@ -72,6 +72,8 @@ export default function Auth() {
         });
         const data = await res.json();
         if (res.ok) {
+           // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ ТОКЕН В БРАУЗЕР!
+           localStorage.setItem('token', data.token);
            useStore.setState({ user: data.user, token: data.token });
            navigate(data.user.isOnboardingCompleted ? '/' : '/onboarding');
         } else {
@@ -94,15 +96,15 @@ export default function Auth() {
 
       if (res.ok && data.success) {
         if (isLogin) {
+          // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ ТОКЕН В БРАУЗЕР!
+          localStorage.setItem('token', data.token);
           useStore.setState({ user: data.user, token: data.token });
           navigate(data.user.isOnboardingCompleted ? '/' : '/onboarding');
         } else {
-          // После успешной регистрации переводим на ввод кода
           setIsVerification(true);
           setSuccessMsg('Код подтверждения отправлен на почту!');
         }
       } else {
-        // Если логин выдал ошибку, что почта не подтверждена - переводим на ввод кода
         if (data.error === 'EMAIL_NOT_VERIFIED') {
           setIsVerification(true);
           setSuccessMsg('На вашу почту отправлен новый код подтверждения.');
