@@ -552,18 +552,39 @@ export default function AccountsManager() {
         )}
 
         {tgProfiles.map(profile => (
-          <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
-            {/* Шапка профиля */}
-            <div className="flex items-center gap-3 p-3 bg-gray-800/60 rounded-xl border border-[#0088CC]/30 relative z-10">
-              <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0088CC&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="TG" />
-              <div className="min-w-0">
-                <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
-                <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
+          <div key={profile.id} className="mb-4 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col group transition-all">
+            {/* Шапка профиля с кнопкой удаления */}
+            <div className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0088CC]/30 relative z-10">
+              <div className="flex items-center gap-3 min-w-0">
+                <img 
+                  src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0088CC&color=fff`} 
+                  className="w-10 h-10 rounded-full object-cover border border-gray-700" 
+                  alt="TG" 
+                />
+                <div className="min-w-0">
+                  <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
+                  <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
+                </div>
               </div>
+              
+              {/* Кнопка отключения профиля */}
+              <button 
+                onClick={() => {
+                  if (window.confirm(`Отключить профиль Telegram "${profile.name}" и все связанные каналы?`)) {
+                    // Предполагается наличие функции removeSocialProfile в вашем store
+                    useStore.getState().removeSocialProfile?.(profile.id);
+                  }
+                }}
+                className="p-2 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                title="Отключить профиль"
+              >
+                <Trash2 size={18} />
+              </button>
             </div>
 
             {/* Дерево элементов */}
             <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
+              {/* Фильтр: подхватываем аккаунты профиля или "сирот" из onboarding для первого профиля */}
               {accounts.filter(a => a.provider === 'TELEGRAM' && (a.socialProfileId === profile.id || (!a.socialProfileId && profile.id === tgProfiles[0]?.id))).map(acc => (
                 <div key={acc.id} className="relative">
                   {/* Горизонтальная линия связи */}
@@ -572,19 +593,21 @@ export default function AccountsManager() {
                 </div>
               ))}
               
-              {/* Форма добавления (Плоская, без вылета) */}
-              <div className="relative flex flex-col sm:flex-row gap-3 w-full">
-                <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+              {/* Форма добавления канала */}
+              <div className="relative flex flex-col lg:flex-row gap-3 w-full">
+                <div className="absolute top-[24px] lg:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                 <input 
-                  type="text" placeholder="Ссылка на канал (@channel)" 
+                  type="text" 
+                  placeholder="Ссылка на канал (@channel)" 
                   value={inputs[`${profile.id}_tgLink`] || ''} 
                   onChange={e => handleInputChange(profile.id, 'tgLink', e.target.value)}
                   disabled={isLimitReached}
-                  className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0088CC] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
+                  className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0088CC] outline-none placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
                 />
                 <button 
-                  onClick={() => handleAddTgChannel(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
-                  className="shrink-0 w-full sm:w-auto bg-[#0088CC] hover:bg-[#0077B3] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex justify-center items-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0088CC]/20 active:scale-95"
+                  onClick={() => handleAddTgChannel(profile.id)} 
+                  disabled={loadingStates[profile.id] || isLimitReached} 
+                  className="shrink-0 w-full lg:w-auto bg-[#0088CC] hover:bg-[#0077B3] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex justify-center items-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0088CC]/20 active:scale-95"
                 >
                   {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
                   <span>Добавить канал</span>
@@ -625,46 +648,68 @@ export default function AccountsManager() {
         )}
 
         {vkProfiles.map(profile => (
-          <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
-            <div className="flex items-center gap-3 p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10">
-              <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700" alt="VK" />
-              <div className="min-w-0">
-                <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
-                <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
+          <div key={profile.id} className="mb-4 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col group transition-all">
+            {/* Шапка профиля ВК с кнопкой удаления */}
+            <div className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10">
+              <div className="flex items-center gap-3 min-w-0">
+                <img 
+                  src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} 
+                  className="w-10 h-10 rounded-full object-cover border border-gray-700" 
+                  alt="VK" 
+                />
+                <div className="min-w-0">
+                  <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
+                  <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
+                </div>
               </div>
+              
+              <button 
+                onClick={() => {
+                  if (window.confirm(`Отключить профиль ВКонтакте "${profile.name}"?`)) {
+                    useStore.getState().removeSocialProfile?.(profile.id);
+                  }
+                }}
+                className="p-2 text-gray-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                title="Отключить профиль"
+              >
+                <Trash2 size={18} />
+              </button>
             </div>
 
-            {/* Дерево элементов */}
+            {/* Дерево элементов ВК */}
             <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
               {accounts.filter(a => a.provider === 'VK' && (a.socialProfileId === profile.id || (!a.socialProfileId && profile.id === vkProfiles[0]?.id))).map(acc => (
                 <div key={acc.id} className="relative">
-                   <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                   {renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]')}
+                  <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                  {renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]')}
                 </div>
               ))}
               
-              {/* Исправленная форма ВКонтакте: Многоуровневый стек гарантирует, что кнопка не съедет */}
+              {/* Исправленная форма: Ссылка на всю ширину, Токен и Кнопка на следующей строке */}
               <div className="relative flex flex-col gap-3 w-full">
                 <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                 
                 <input 
-                  type="text" placeholder="Ссылка на группу (vk.com/public123)" 
+                  type="text" 
+                  placeholder="Ссылка на группу (vk.com/public123)" 
                   value={inputs[`${profile.id}_vkLink`] || ''} 
                   onChange={e => handleInputChange(profile.id, 'vkLink', e.target.value)}
                   disabled={isLimitReached}
-                  className="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
+                  className="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] outline-none placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
                 />
                 
                 <div className="flex flex-col sm:flex-row gap-3 w-full">
                   <input 
-                    type="text" placeholder="Токен API (Управление, Стена, Фото)" 
+                    type="text" 
+                    placeholder="Токен API (Управление, Стена, Фото)" 
                     value={inputs[`${profile.id}_vkToken`] || ''} 
                     onChange={e => handleInputChange(profile.id, 'vkToken', e.target.value)}
                     disabled={isLimitReached}
-                    className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
+                    className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] outline-none placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
                   />
                   <button 
-                    onClick={() => handleAddVkGroup(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
+                    onClick={() => handleAddVkGroup(profile.id)} 
+                    disabled={loadingStates[profile.id] || isLimitReached} 
                     className="shrink-0 w-full sm:w-auto bg-[#0077FF] hover:bg-[#0066CC] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0077FF]/20 active:scale-95"
                   >
                     {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
