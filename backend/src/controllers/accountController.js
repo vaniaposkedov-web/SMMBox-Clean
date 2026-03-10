@@ -400,3 +400,43 @@ exports.vkGroupCallback = async (req, res) => {
     res.send(`<script>window.opener.postMessage({ type: 'VK_GROUP_ERROR', error: 'Внутренняя ошибка сервера' }, '*'); window.close();</script>`);
   }
 };
+
+exports.vkFetchGroupsCallback = async (req, res) => {
+  const { code, state, error, error_description } = req.query;
+  
+  if (error) {
+    return res.send(`<script>window.opener.postMessage({ type: 'VK_FETCH_ERROR', error: '${error_description}' }, '*'); window.close();</script>`);
+  }
+
+  try {
+    const clientId = process.env.VK_APP_ID;
+    const clientSecret = process.env.VK_SECURE_KEY;
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const redirectUri = `${protocol}://${req.headers.host}/api/accounts/vk/fetch-groups-callback`;
+
+    // 1. Получаем токен пользователя с правом на просмотр групп
+    const tokenRes = await axios.get(`https://oauth.vk.com/access_token`, {
+      params: { client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code }
+    });
+
+    if (tokenRes.data.error) throw new Error(tokenRes.data.error_description);
+
+    // 2. Запрашиваем список групп
+    const groupsRes = await axios.get('https://api.vk.com/method/groups.get', {
+      params: { extended: 1, filter: 'admin,editor', access_token: tokenRes.data.access_token, v: '5.199' }
+    });
+
+    if (groupsRes.data.error) throw new Error(groupsRes.data.error.error_msg);
+
+    const groups = groupsRes.data.response ? groupsRes.data.response.items : [];
+    
+    // 3. Отправляем список в модальное окно на фронтенд
+    res.send(`<script>
+      window.opener.postMessage({ type: 'VK_FETCH_SUCCESS', groups: ${JSON.stringify(groups)} }, '*');
+      window.close();
+    </script>`);
+
+  } catch (err) {
+    res.send(`<script>window.opener.postMessage({ type: 'VK_FETCH_ERROR', error: 'Не удалось загрузить группы' }, '*'); window.close();</script>`);
+  }
+};

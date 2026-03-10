@@ -91,86 +91,88 @@ export default function AccountsManager() {
   };
 
 
-
-  // ДОБАВИТЬ ЭТИ 2 СТРОЧКИ К ИМПОРТАМ ИЗ STORE:
-  const fetchVkManagedGroups = useStore((state) => state.fetchVkManagedGroups);
-  const saveVkAccounts = useStore((state) => state.saveVkAccounts);
-
-  // ДОБАВИТЬ ЭТИ СТЕЙТЫ (например, после const [showTgHelperModal...]):
+// 1. Стейты для модального окна
   const [vkModal, setVkModal] = useState({ isOpen: false, profileId: null });
   const [vkGroupsList, setVkGroupsList] = useState([]);
   const [vkSelectedGroups, setVkSelectedGroups] = useState([]);
   const [isFetchingGroups, setIsFetchingGroups] = useState(false);
 
-  // ДОБАВИТЬ ФУНКЦИИ УПРАВЛЕНИЯ МОДАЛКОЙ:
-  const openVkModal = async (profileId) => {
-    setVkModal({ isOpen: true, profileId });
+  // 2. Открываем первое окно (запрашиваем только список групп)
+  const handleFetchVkCommunities = (profileId) => {
     setIsFetchingGroups(true);
-    setVkGroupsList([]);
+    setVkModal({ isOpen: true, profileId }); // Сразу показываем окно с загрузкой
     setVkSelectedGroups([]);
+    
+    const clientId = import.meta.env.VITE_VK_APP_ID || 54471878;
+    const redirectUri = `${window.location.protocol}//${window.location.host}/api/accounts/vk/fetch-groups-callback`;
+    
+    // Просим ТОЛЬКО scope=groups. Никакого wall, поэтому Security Error не будет!
+    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&display=popup&redirect_uri=${redirectUri}&scope=groups&response_type=code&v=5.199`;
 
-    const res = await fetchVkManagedGroups(profileId);
-    if (res.success) {
-      // Отфильтруем группы, которые уже добавлены в систему
-      const existingAccountIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
-      const availableGroups = res.groups.filter(g => !existingAccountIds.includes(String(g.id)));
-      setVkGroupsList(availableGroups);
-    } else {
-      alert(res.error || 'Не удалось загрузить список групп');
-      setVkModal({ isOpen: false, profileId: null });
-    }
-    setIsFetchingGroups(false);
+    const width = 600; const height = 600;
+    const left = window.screenX + (window.innerWidth - width) / 2;
+    const top = window.screenY + (window.innerHeight - height) / 2;
+    window.open(authUrl, 'vkGroupFetch', `width=${width},height=${height},left=${left},top=${top}`);
+
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      
+      if (event.data?.type === 'VK_FETCH_SUCCESS') {
+        window.removeEventListener('message', handleMessage);
+        // Убираем группы, которые уже подключены к сервису
+        const existingAccountIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
+        const availableGroups = event.data.groups.filter(g => !existingAccountIds.includes(String(g.id)));
+        
+        setVkGroupsList(availableGroups);
+        setIsFetchingGroups(false);
+      } else if (event.data?.type === 'VK_FETCH_ERROR') {
+        window.removeEventListener('message', handleMessage);
+        alert(`Ошибка загрузки: ${event.data.error}`);
+        setVkModal({ isOpen: false, profileId: null });
+        setIsFetchingGroups(false);
+      }
+    };
+    window.addEventListener('message', handleMessage);
   };
 
   const closeVkModal = () => setVkModal({ isOpen: false, profileId: null });
+  const toggleVkGroupSelection = (groupId) => setVkSelectedGroups(prev => prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]);
 
-  const toggleVkGroupSelection = (groupId) => {
-    setVkSelectedGroups(prev => prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]);
-  };
-
-  const handleSaveSelectedVkGroups = async () => {
+  // 3. Открываем второе окно (передаем выбранные группы и получаем ключи)
+  const handleSaveSelectedVkGroups = () => {
     if (vkSelectedGroups.length === 0) return;
     
-    if (!user?.isPro && (currentCount + vkSelectedGroups.length) > accountsLimit) {
-      return alert(`Лимит аккаунтов исчерпан!`);
-    }
-
-    // Формируем список ID групп через запятую (требование ВК)
-    const groupIdsStr = vkSelectedGroups.join(',');
+    const profileId = vkModal.profileId;
+    const groupIdsStr = vkSelectedGroups.join(','); // Передаем жестко ID групп!
     
-    // Твой ID приложения ВК
-    const clientId = import.meta.env.VITE_VK_APP_ID || 54471878; 
+    const clientId = import.meta.env.VITE_VK_APP_ID || 54471878;
     const redirectUri = `${window.location.protocol}//${window.location.host}/api/accounts/vk/group-callback`;
+    const stateStr = `${user.id}_${profileId}`;
     
-    // Формируем ссылку для окна авторизации сообществ
-    // scope=manage,wall,photos - дает права на публикацию и загрузку фото!
-    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&group_ids=${groupIdsStr}&display=popup&redirect_uri=${redirectUri}&scope=manage,wall,photos&response_type=code&state=${user.id}&v=5.199`;
+    // Теперь запрашиваем wall, но ВК разрешит, так как мы указали group_ids!
+    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&group_ids=${groupIdsStr}&display=popup&redirect_uri=${redirectUri}&scope=manage,wall,photos&response_type=code&state=${stateStr}&v=5.199`;
 
-    // Открываем всплывающее окно
-    const width = 600;
-    const height = 600;
+    const width = 600; const height = 600;
     const left = window.screenX + (window.innerWidth - width) / 2;
     const top = window.screenY + (window.innerHeight - height) / 2;
     window.open(authUrl, 'vkGroupAuth', `width=${width},height=${height},left=${left},top=${top}`);
 
     closeVkModal();
 
-    // Слушаем ответ от всплывающего окна (успех или ошибка)
     const handleMessage = async (event) => {
       if (event.origin !== window.location.origin) return;
-      
       if (event.data?.type === 'VK_GROUP_SUCCESS') {
         window.removeEventListener('message', handleMessage);
-        await fetchAccounts(user.id); // Обновляем список аккаунтов на экране
+        await fetchAccounts(user.id);
         alert('Сообщества успешно подключены!');
       } else if (event.data?.type === 'VK_GROUP_ERROR') {
         window.removeEventListener('message', handleMessage);
         alert(`Ошибка подключения: ${event.data.error}`);
       }
     };
-    
     window.addEventListener('message', handleMessage);
   };
+  
 
   const handleManualVerify = async (e) => { if (e) e.stopPropagation(); setIsVerifying(true); if (verifyAccountsStatus) await verifyAccountsStatus(); setIsVerifying(false); };
   const handleManualVerifyVk = async (e) => { if (e) e.stopPropagation(); setIsVerifyingVk(true); if (verifyVkAccountsStatus) await verifyVkAccountsStatus(); setIsVerifyingVk(false); };
@@ -361,39 +363,6 @@ export default function AccountsManager() {
     setLoadingStates(prev => ({...prev, [profileId]: false}));
   };
 
-  const handleAddVkCommunities = (profileId) => {
-    if (!user?.isPro && currentCount >= accountsLimit) return alert('Лимит аккаунтов исчерпан!');
-    
-    setLoadingStates(prev => ({...prev, [profileId]: true}));
-
-    const clientId = import.meta.env.VITE_VK_APP_ID || 54471878;
-    const redirectUri = `${window.location.protocol}//${window.location.host}/api/accounts/vk/group-callback`;
-    const stateStr = `${user.id}_${profileId}`; // Передаем ID чтобы бэкенд знал кому привязать
-    
-    // Формируем ссылку на страницу ВК, где он сам покажет список групп!
-    // Обрати внимание, group_ids не указан
-    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&display=popup&redirect_uri=${redirectUri}&scope=manage,wall,photos&response_type=code&state=${stateStr}&v=5.199`;
-
-    const width = 600; const height = 600;
-    const left = window.screenX + (window.innerWidth - width) / 2;
-    const top = window.screenY + (window.innerHeight - height) / 2;
-    window.open(authUrl, 'vkGroupAuth', `width=${width},height=${height},left=${left},top=${top}`);
-
-    // Слушаем ответ от бэкенда из окна
-    const handleMessage = async (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type === 'VK_GROUP_SUCCESS') {
-        window.removeEventListener('message', handleMessage);
-        await fetchAccounts(user.id);
-        setLoadingStates(prev => ({...prev, [profileId]: false}));
-      } else if (event.data?.type === 'VK_GROUP_ERROR') {
-        window.removeEventListener('message', handleMessage);
-        alert(`Ошибка: ${event.data.error}`);
-        setLoadingStates(prev => ({...prev, [profileId]: false}));
-      }
-    };
-    window.addEventListener('message', handleMessage);
-  };
 
   const renderAccountCard = (acc, providerIcon, providerColor) => {
     const isExpanded = expandedId === acc.id;
@@ -959,7 +928,69 @@ export default function AccountsManager() {
         </div>
       )}
 
-      
+      {/* МОДАЛЬНОЕ ОКНО ВЫБОРА ГРУПП ВК */}
+      {vkModal.isOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeVkModal}></div>
+          <div className="relative w-full max-w-lg bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] z-10">
+            
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Users size={20} className="text-[#0077FF]" /> Ваши сообщества
+              </h3>
+              <button onClick={closeVkModal} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 custom-scrollbar space-y-3 min-h-[200px]">
+              {isFetchingGroups ? (
+                <div className="flex flex-col items-center justify-center py-10 text-gray-400 gap-3">
+                  <Loader2 size={32} className="animate-spin text-[#0077FF]" />
+                  <span className="text-sm">Загрузка списка из ВКонтакте...</span>
+                </div>
+              ) : vkGroupsList.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 text-sm">
+                  Нет доступных сообществ или все они уже добавлены.
+                </div>
+              ) : (
+                vkGroupsList.map(group => (
+                  <div 
+                    key={group.id} 
+                    onClick={() => toggleVkGroupSelection(group.id)}
+                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                      vkSelectedGroups.includes(group.id) 
+                        ? 'bg-[#0077FF]/10 border-[#0077FF]/50 shadow-[0_0_10px_rgba(0,119,255,0.1)]' 
+                        : 'bg-gray-900/50 border-gray-800 hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img src={group.photo_50 || 'https://via.placeholder.com/50'} alt="group" className="w-10 h-10 rounded-full border border-gray-700 shrink-0" />
+                      <span className="text-white font-medium text-sm truncate">{group.name}</span>
+                    </div>
+                    <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
+                      vkSelectedGroups.includes(group.id) ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'
+                    }`}>
+                      {vkSelectedGroups.includes(group.id) && <Check size={14} className="text-white" />}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] rounded-b-2xl shrink-0">
+              <button 
+                onClick={handleSaveSelectedVkGroups} 
+                disabled={vkSelectedGroups.length === 0 || isFetchingGroups}
+                className="w-full bg-[#0077FF] hover:bg-[#0066CC] text-white py-3 rounded-xl font-bold disabled:opacity-50 transition-all flex justify-center items-center gap-2 active:scale-95"
+              >
+                Добавить выбранные ({vkSelectedGroups.length})
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
