@@ -716,7 +716,7 @@ export default function AccountsManager() {
 
             {/* Дерево элементов */}
             <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
-              {accounts.filter(a => a.provider === 'TELEGRAM' && (a.socialProfileId === profile.id || (!a.socialProfileId && profile.id === tgProfiles[0]?.id))).map(acc => (
+              {accounts.filter(a => a.provider === 'TELEGRAM' && (a.profileId === profile.id || (!a.profileId && profile.id === tgProfiles[0]?.id))).map(acc => (
                 <div key={acc.id} className="relative">
                   {/* Горизонтальная линия связи */}
                   <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
@@ -802,7 +802,7 @@ export default function AccountsManager() {
 
             {/* Дерево элементов */}
             <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
-              {accounts.filter(a => a.provider === 'VK' && (a.socialProfileId === profile.id || (!a.socialProfileId && profile.id === vkProfiles[0]?.id))).map(acc => (
+              {accounts.filter(a => a.provider === 'VK' && (a.profileId === profile.id || (!a.profileId && profile.id === vkProfiles[0]?.id))).map(acc => (
                 <div key={acc.id} className="relative">
                    <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                    {renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]')}
