@@ -11,12 +11,19 @@ exports.register = async (req, res) => {
     const { email, password, name, phone } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email и пароль обязательны' });
 
+    // ЗАЩИТА ОТ ОШИБКИ 500: Проверяем, не занят ли телефон
+    if (phone) {
+      const phoneOwner = await prisma.user.findUnique({ where: { phone } });
+      if (phoneOwner && phoneOwner.email !== email) {
+        return res.status(400).json({ error: 'Этот номер телефона уже привязан к другому аккаунту' });
+      }
+    }
+
     let existingUser = await prisma.user.findUnique({ where: { email } });
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     const hashedPassword = await bcrypt.hash(password, 10);
 
     if (existingUser) {
-      // Если аккаунт есть, но почта НЕ подтверждена - даем шанс зарегистрироваться заново
       if (!existingUser.isEmailVerified) {
         await prisma.user.update({
           where: { email },
@@ -26,22 +33,28 @@ exports.register = async (req, res) => {
         return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
       }
     } else {
-      // Создаем полностью нового
       await prisma.user.create({
         data: { email, password: hashedPassword, name: name || '', phone: phone || null, emailVerificationCode: verificationCode, isEmailVerified: false }
       });
     }
     
-    // ОТПРАВКА КОДА НА ПОЧТУ
+    // ОТПРАВКА КОДА (Теперь аргументы совпадут с тем, что ждет sendEmail.js)
     try {
-      await sendEmail(email, 'Подтверждение регистрации', `Ваш код подтверждения: ${verificationCode}`);
+      await sendEmail(email, 'Подтверждение регистрации', `
+        <h2>Добро пожаловать в SMMBOX!</h2>
+        <p>Ваш код подтверждения: <b style="font-size: 24px; color: #0077FF;">${verificationCode}</b></p>
+      `);
     } catch (e) {
-      console.error('Ошибка отправки email:', e);
+      console.error('Ошибка вызова функции отправки email:', e);
     }
 
     res.json({ success: true, message: 'Код подтверждения отправлен на почту' });
-  } catch (error) { res.status(500).json({ error: 'Внутренняя ошибка сервера' }); }
+  } catch (error) { 
+    console.error('Ошибка в процессе регистрации:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' }); 
+  }
 };
+
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
