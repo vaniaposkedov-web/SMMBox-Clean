@@ -762,7 +762,7 @@ export default function AccountsManager() {
               <div className="relative flex w-full mt-2">
                 <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                 <button 
-                  onClick={() => handleAddVkCommunities(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
+                  onClick={() => handleFetchVkCommunities(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
                   className="w-full bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3.5 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold shadow-sm active:scale-95"
                 >
                   {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
