@@ -280,19 +280,21 @@ export default function AccountsManager() {
     if (vkSelectedGroups.length === 0) return;
     
     const profileId = vkHackModal.profileId;
-    const token = vkHackModal.tempToken; // Тот самый универсальный токен
+    // ПЕРЕИМЕНОВАЛИ ПЕРЕМЕННУЮ, чтобы не было конфликта с JWT-токеном сайта
+    const vkToken = vkHackModal.tempToken; 
     
     setLoadingStates(prev => ({...prev, [profileId]: true}));
     setVkHackModal({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '' });
 
-    // Создаем объект токенов для бэкенда (один токен подходит ко всем группам пользователя)
+    // Создаем объект токенов для бэкенда
     const tokensToSave = {};
-    vkSelectedGroups.forEach(id => { tokensToSave[id] = token; });
+    vkSelectedGroups.forEach(id => { tokensToSave[id] = vkToken; });
 
     try {
       const res = await fetch('/api/accounts/vk/save-group-tokens', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` /* Убедись, что тут твой jwt токен пользователя приложения */ },
+        // ТУТ ВАЖНО: передаем глобальный token (JWT), а не vkToken
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ profileId, tokens: tokensToSave })
       });
       const data = await res.json();
