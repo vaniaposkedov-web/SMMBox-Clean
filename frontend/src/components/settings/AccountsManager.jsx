@@ -43,6 +43,8 @@ export default function AccountsManager() {
   const [copied, setCopied] = useState(false);
 
   const [designModal, setDesignModal] = useState({ isOpen: false, account: null });
+  const [showTgHelperModal, setShowTgHelperModal] = useState(false);
+  
   const [watermarkTab, setWatermarkTab] = useState('simple'); 
   const [localWatermark, setLocalWatermark] = useState({});
   const [localSignatures, setLocalSignatures] = useState({});
@@ -275,7 +277,6 @@ export default function AccountsManager() {
     setLoadingStates(prev => ({...prev, [profileId]: false}));
   };
 
-  // Отрисовка карточки аккаунта (дизайн сохранен 100%)
   const renderAccountCard = (acc, providerIcon, providerColor) => {
     const isExpanded = expandedId === acc.id;
     const hasCustomWatermark = !!acc.watermark;
@@ -571,22 +572,22 @@ export default function AccountsManager() {
                 </div>
               ))}
               
-              {/* Форма добавления */}
-              <div className="relative flex flex-col sm:flex-row gap-2 w-full">
-                <div className="absolute top-6 -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+              {/* Форма добавления (Плоская, без вылета) */}
+              <div className="relative flex flex-col sm:flex-row gap-3 w-full">
+                <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                 <input 
                   type="text" placeholder="Ссылка на канал (@channel)" 
                   value={inputs[`${profile.id}_tgLink`] || ''} 
                   onChange={e => handleInputChange(profile.id, 'tgLink', e.target.value)}
                   disabled={isLimitReached}
-                  className="flex-1 bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0088CC] focus:outline-none placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
+                  className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0088CC] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
                 />
                 <button 
                   onClick={() => handleAddTgChannel(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
-                  className="bg-[#0088CC] hover:bg-[#0077B3] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex justify-center items-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0088CC]/20 active:scale-95 shrink-0"
+                  className="shrink-0 w-full sm:w-auto bg-[#0088CC] hover:bg-[#0077B3] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex justify-center items-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0088CC]/20 active:scale-95"
                 >
                   {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                  <span className="sm:hidden lg:block">Добавить канал</span>
+                  <span>Добавить канал</span>
                 </button>
               </div>
             </div>
@@ -596,9 +597,15 @@ export default function AccountsManager() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 bg-gray-800/30 rounded-xl border border-gray-700/50 border-dashed hover:bg-gray-800/50 transition-colors gap-4 mt-2">
           <div className="flex flex-col">
             <span className="text-gray-300 font-bold text-sm flex items-center gap-2"><UserPlus size={18} className="text-gray-400"/> Подключить {tgProfiles.length > 0 ? 'еще один ' : ''}профиль</span>
-            {tgProfiles.length > 0 && <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">Если нужно привязать канал другого владельца — откройте новую вкладку в <b className="text-gray-400">режиме инкогнито</b>.</span>}
+            {tgProfiles.length > 0 && <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">Если нужно привязать профиль с другим номером, нажмите на кнопку справа.</span>}
           </div>
-          <CustomTelegramButton onAuthCallback={(data) => linkSocialProfile(user.id, 'TELEGRAM', data.id, [data.first_name, data.last_name].filter(Boolean).join(' ') || data.username || 'TG Юзер', data.photo_url, null)} />
+          {tgProfiles.length > 0 ? (
+            <button onClick={() => setShowTgHelperModal(true)} className="shrink-0 bg-[#0088CC] hover:bg-[#0077B3] text-white px-5 py-3 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0088CC]/20 active:scale-95 w-full sm:w-auto">
+               Добавить аккаунт
+            </button>
+          ) : (
+            <CustomTelegramButton onAuthCallback={(data) => linkSocialProfile(user.id, 'TELEGRAM', data.id, [data.first_name, data.last_name].filter(Boolean).join(' ') || data.username || 'TG Юзер', data.photo_url, null)} />
+          )}
         </div>
       </div>
 
@@ -636,29 +643,32 @@ export default function AccountsManager() {
                 </div>
               ))}
               
-              <div className="relative flex flex-col xl:flex-row gap-2 w-full">
-                <div className="absolute top-6 -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+              {/* Исправленная форма ВКонтакте: Многоуровневый стек гарантирует, что кнопка не съедет */}
+              <div className="relative flex flex-col gap-3 w-full">
+                <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                
                 <input 
-                  type="text" placeholder="Ссылка (vk.com/public123)" 
+                  type="text" placeholder="Ссылка на группу (vk.com/public123)" 
                   value={inputs[`${profile.id}_vkLink`] || ''} 
                   onChange={e => handleInputChange(profile.id, 'vkLink', e.target.value)}
                   disabled={isLimitReached}
-                  className="flex-1 bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] focus:outline-none placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
+                  className="w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
                 />
-                <div className="flex flex-col sm:flex-row gap-2 xl:flex-[1.5]">
+                
+                <div className="flex flex-col sm:flex-row gap-3 w-full">
                   <input 
                     type="text" placeholder="Токен API (Управление, Стена, Фото)" 
                     value={inputs[`${profile.id}_vkToken`] || ''} 
                     onChange={e => handleInputChange(profile.id, 'vkToken', e.target.value)}
                     disabled={isLimitReached}
-                    className="flex-1 bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] focus:outline-none placeholder:text-gray-600 disabled:opacity-50 min-h-[48px]"
+                    className="flex-1 min-w-0 w-full bg-gray-950 border border-gray-700 rounded-xl px-4 py-3 text-white text-sm sm:text-base focus:border-[#0077FF] outline-none placeholder-gray-600 disabled:opacity-50 min-h-[48px]"
                   />
                   <button 
                     onClick={() => handleAddVkGroup(profile.id)} disabled={loadingStates[profile.id] || isLimitReached} 
-                    className="bg-[#0077FF] hover:bg-[#0066CC] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0077FF]/20 active:scale-95 shrink-0"
+                    className="shrink-0 w-full sm:w-auto bg-[#0077FF] hover:bg-[#0066CC] text-white px-6 py-3 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold min-h-[48px] shadow-lg shadow-[#0077FF]/20 active:scale-95"
                   >
                     {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                    <span className="sm:hidden xl:block">Добавить группу</span>
+                    <span>Добавить группу</span>
                   </button>
                 </div>
               </div>
@@ -669,7 +679,7 @@ export default function AccountsManager() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 bg-gray-800/30 rounded-xl border border-gray-700/50 border-dashed hover:bg-gray-800/50 transition-colors gap-4 mt-2">
           <div className="flex flex-col">
             <span className="text-gray-300 font-bold text-sm flex items-center gap-2"><UserPlus size={18} className="text-gray-400"/> Подключить {vkProfiles.length > 0 ? 'еще один ' : ''}профиль</span>
-            {vkProfiles.length > 0 && <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">Выйдите из вашего аккаунта в соседней вкладке ВКонтакте, чтобы привязать другую страницу.</span>}
+            {vkProfiles.length > 0 && <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">Выйдите из вашего текущего аккаунта в соседней вкладке ВКонтакте, чтобы привязать другую страницу.</span>}
           </div>
           <div className="shrink-0">
             <CustomVkButton onAuth={(data) => linkSocialProfile(user.id, 'VK', data.id || data.user_id, [data.first_name, data.last_name].filter(Boolean).join(' ') || 'VK Юзер', data.photo_100, data.access_token)} />
@@ -677,40 +687,38 @@ export default function AccountsManager() {
         </div>
       </div>
 
-      {/* ================= БЛОК 3: ЛИЧНЫЕ СТРАНИЦЫ ВКОНТАКТЕ ================= */}
-      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl">
-        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
-          <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500">
-            <UserSquare2 size={20} />
+      {/* ================= МОДАЛЬНОЕ ОКНО-ПОМОЩНИК TELEGRAM (ДЛЯ 2+ АККАУНТОВ) ================= */}
+      {showTgHelperModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowTgHelperModal(false)}></div>
+          <div className="relative w-full max-w-md bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl flex flex-col z-10 overflow-hidden">
+            <div className="p-5 sm:p-6 border-b border-gray-800 bg-gray-900/50 flex justify-between items-center">
+               <h3 className="text-lg font-bold text-white flex items-center gap-2"><Send size={20} className="text-[#0088CC]"/> Добавление аккаунта</h3>
+               <button onClick={() => setShowTgHelperModal(false)} className="text-gray-400 hover:text-white p-1 transition-colors"><X size={20}/></button>
+            </div>
+            <div className="p-5 sm:p-6 space-y-4 text-sm text-gray-300 leading-relaxed">
+               <div className="bg-blue-500/10 border border-blue-500/20 text-blue-400 p-4 rounded-xl mb-4 text-xs font-medium">
+                 Telegram не позволяет выбрать аккаунт при нажатии на кнопку — он автоматически использует ту сессию, которая открыта в браузере.
+               </div>
+               <p className="font-bold text-white mb-2 text-base">Как добавить другой номер?</p>
+               <ol className="list-decimal list-inside space-y-3">
+                 <li>Скопируйте ссылку на эту страницу.</li>
+                 <li>Откройте новое окно браузера в <b className="text-white">Режиме Инкогнито</b> (Ctrl+Shift+N).</li>
+                 <li>Вставьте ссылку, авторизуйтесь на сайте и нажмите кнопку Telegram — он запросит новый номер.</li>
+               </ol>
+            </div>
+            <div className="p-5 border-t border-gray-800 bg-[#0d0f13] flex gap-3">
+               <button onClick={() => {
+                   navigator.clipboard.writeText(window.location.href);
+                   alert('Ссылка скопирована! Откройте окно Инкогнито и вставьте её в адресную строку.');
+                   setShowTgHelperModal(false);
+               }} className="flex-1 bg-[#0088CC] hover:bg-[#0077B3] text-white py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-[#0088CC]/20 flex justify-center items-center gap-2 active:scale-95">
+                 <Copy size={18}/> Скопировать ссылку
+               </button>
+            </div>
           </div>
-          <h2 className="text-lg font-bold text-white">ВКонтакте (Личные страницы)</h2>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {vkProfiles.map(profile => (
-            <div key={`page_${profile.id}`} className="flex items-center justify-between p-3 sm:p-4 bg-gray-900/50 rounded-xl border border-gray-800 gap-3 hover:border-gray-700 transition-colors">
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}`} className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover shrink-0 border border-gray-700 shadow-inner" alt="VK" />
-                <div className="min-w-0 flex flex-col">
-                  <div className="text-white font-bold text-sm sm:text-base truncate leading-tight">{profile.name}</div>
-                  <div className="text-gray-500 text-[10px] sm:text-xs mt-1 truncate">Публикация на стену</div>
-                </div>
-              </div>
-              <div className="shrink-0">
-                <span className="inline-flex items-center justify-center text-purple-400 text-[10px] font-bold px-3 py-1.5 sm:px-4 sm:py-2 bg-purple-500/10 border border-purple-500/20 rounded-lg uppercase tracking-wider whitespace-nowrap">
-                  Выкл
-                </span>
-              </div>
-            </div>
-          ))}
-          
-          {vkProfiles.length === 0 && (
-            <div className="col-span-full text-center p-8 border border-gray-800 border-dashed rounded-xl text-gray-500 text-sm bg-gray-900/20">
-              Сначала подключите профиль ВКонтакте в блоке выше.
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* МОДАЛЬНОЕ ОКНО ДИЗАЙНА */}
       {designModal.isOpen && (
