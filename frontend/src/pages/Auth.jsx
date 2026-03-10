@@ -1,22 +1,24 @@
 import { useState } from 'react';
 import { useStore } from '../store';
-import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft, Loader2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft, Loader2, KeyRound } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 import CustomTelegramButton from '../components/CustomTelegramButton';
 import CustomVkButton from '../components/CustomVkButton';
 
 export default function Auth() {
-  const login = useStore((state) => state.login);
-  const register = useStore((state) => state.register);
+  const navigate = useNavigate();
   const telegramLogin = useStore((state) => state.telegramLogin);
   const vkLogin = useStore((state) => state.vkLogin);
 
   const [isLogin, setIsLogin] = useState(true);
   const [isVerification, setIsVerification] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false); // Новое состояние
   const [showPassword, setShowPassword] = useState(false);
+  
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [isAccepted, setIsAccepted] = useState(false);
 
   const [email, setEmail] = useState('');
@@ -28,131 +30,230 @@ export default function Auth() {
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/\D/g, '');
     if (!val) { setPhone(''); return; }
-    let num = val;
-    if (val.startsWith('7') || val.startsWith('8')) num = val.slice(1);
-    let formatted = '+7';
-    if (num.length > 0) formatted += ' (' + num.substring(0, 3);
-    if (num.length >= 4) formatted += ') ' + num.substring(3, 6);
-    if (num.length >= 7) formatted += '-' + num.substring(6, 8);
-    if (num.length >= 9) formatted += '-' + num.substring(8, 10);
-    setPhone(formatted);
+    if (val.startsWith('7') || val.startsWith('8')) {
+      const p = val.substring(1, 11);
+      setPhone(`+7 ${p.slice(0,3)} ${p.slice(3,6)} ${p.slice(6,8)} ${p.slice(8,10)}`.trim());
+    } else {
+      setPhone(`+${val.slice(0,11)}`);
+    }
   };
 
-  const handleAuth = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setError(''); setIsLoading(true);
+    setError('');
+    setSuccessMsg('');
+    setIsLoading(true);
+
     try {
-      if (isLogin) {
-        const result = await login(email, password);
-        if (result.success) window.location.href = '/'; 
-        else if (result.error === 'EMAIL_NOT_VERIFIED') { setIsVerification(true); setError('Почта не подтверждена. Новый код отправлен.'); } 
-        else setError(result.error || 'Ошибка входа.');
-      } else {
-        if (!isAccepted) { setError('Нужно согласие с политикой'); setIsLoading(false); return; }
-        if (password.length < 6) { setError('Пароль минимум 6 символов'); setIsLoading(false); return; }
-        const result = await register(email, password, name, phone);
-        if (result.success) setIsVerification(true); 
-        else setError(result.error || 'Ошибка регистрации');
+      // 1. ЛОГИКА ВОССТАНОВЛЕНИЯ ПАРОЛЯ
+      if (isForgotPassword) {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setSuccessMsg('Ссылка для сброса пароля отправлена на вашу почту!');
+          setTimeout(() => setIsForgotPassword(false), 3000);
+        } else {
+          setError(data.error || 'Ошибка при восстановлении');
+        }
+        setIsLoading(false);
+        return;
       }
-    } catch (err) { setError('Ошибка соединения с сервером'); }
+
+      // 2. ЛОГИКА ВВОДА КОДА ПОДТВЕРЖДЕНИЯ
+      if (isVerification) {
+        const res = await fetch('/api/auth/verify-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code })
+        });
+        const data = await res.json();
+        if (res.ok) {
+           useStore.setState({ user: data.user, token: data.token });
+           navigate(data.user.isOnboardingCompleted ? '/' : '/onboarding');
+        } else {
+           setError(data.error || 'Неверный код');
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      // 3. ЛОГИКА РЕГИСТРАЦИИ И ВХОДА
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const body = isLogin ? { email, password } : { email, password, name, phone };
+      
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        if (isLogin) {
+          useStore.setState({ user: data.user, token: data.token });
+          navigate(data.user.isOnboardingCompleted ? '/' : '/onboarding');
+        } else {
+          // После успешной регистрации переводим на ввод кода
+          setIsVerification(true);
+          setSuccessMsg('Код подтверждения отправлен на почту!');
+        }
+      } else {
+        // Если логин выдал ошибку, что почта не подтверждена - переводим на ввод кода
+        if (data.error === 'EMAIL_NOT_VERIFIED') {
+          setIsVerification(true);
+          setSuccessMsg('На вашу почту отправлен новый код подтверждения.');
+        } else {
+          setError(data.error || 'Произошла ошибка');
+        }
+      }
+    } catch (err) {
+      setError('Ошибка соединения с сервером');
+    }
     setIsLoading(false);
   };
-
-  const handleVerifySubmit = async (e) => {
-    e.preventDefault();
-    setError(''); setIsLoading(true);
-    try {
-      const verifyEmailCode = useStore.getState().verifyEmailCode;
-      const result = await verifyEmailCode(email, code);
-      if (result.success) window.location.href = '/';
-      else setError(result.error || 'Неверный код');
-    } catch(err) { setError('Ошибка соединения'); }
-    setIsLoading(false);
-  };
-
-  const handleTelegramResponse = async (tgUser) => {
-    setIsLoading(true);
-    const result = await telegramLogin(tgUser);
-    if (result.success) window.location.href = '/';
-    else { setIsLoading(false); setError(result.error || 'Ошибка Telegram'); }
-  };
-
-  const handleVkResponse = async (vkData) => {
-    setIsLoading(true);
-    const result = await vkLogin(vkData);
-    if (result.success) window.location.href = '/';
-    else { setIsLoading(false); setError(result.error || 'Ошибка авторизации ВКонтакте'); }
-  };
-
-  if (isVerification) {
-    return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 font-sans relative">
-        <div className="w-full max-w-md bg-admin-card border border-gray-800 rounded-3xl p-8 shadow-2xl relative z-10 animate-in fade-in">
-          <button onClick={() => setIsVerification(false)} className="flex items-center gap-2 text-gray-500 hover:text-white mb-6"><ArrowLeft size={20} /> <span>Назад</span></button>
-          <h2 className="text-2xl font-bold text-white mb-2">Подтверждение</h2>
-          <p className="text-sm text-gray-400 mb-6">Код отправлен на <span className="text-white">{email}</span></p>
-          <form onSubmit={handleVerifySubmit} className="space-y-4">
-            <input type="text" value={code} onChange={(e) => setCode(e.target.value)} placeholder="000000" className="w-full bg-gray-900 border border-gray-800 rounded-xl py-4 px-4 text-center tracking-[0.5em] text-lg text-white outline-none focus:border-blue-500" maxLength="6" />
-            <div className="min-h-[40px]">{error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20"><span>{error}</span></div>}</div>
-            <button type="submit" disabled={isLoading || code.length !== 6} className="w-full font-bold py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50">
-              {isLoading ? <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin"/><span>Проверка...</span></div> : <span>Завершить регистрацию</span>}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-admin-bg p-4 font-sans relative py-[max(2rem,env(safe-area-inset-bottom))]">
-      <div className="w-full max-w-md bg-admin-card border border-gray-800 rounded-[2rem] p-6 sm:p-8 shadow-2xl relative z-10 animate-in fade-in">
-        <div className="flex justify-center mb-8">
-           <div className="flex items-center gap-3">
-             <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white"><ShieldCheck size={24} /></div>
-             <span className="text-3xl font-black text-white">SMM<span className="text-blue-500">BOX</span></span>
-           </div>
-        </div>
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Декоративный фон */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+        <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-blue-600/10 blur-[120px]"></div>
+        <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-blue-500/10 blur-[120px]"></div>
+      </div>
 
-        <div className="flex bg-gray-900 border border-gray-800 p-1 rounded-xl mb-6">
-          <button onClick={() => { setIsLogin(true); setError(''); }} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${isLogin ? 'bg-gray-800 text-white border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}><span>Вход</span></button>
-          <button onClick={() => { setIsLogin(false); setError(''); }} className={`flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${!isLogin ? 'bg-gray-800 text-white border border-gray-700' : 'text-gray-500 hover:text-gray-300'}`}><span>Регистрация</span></button>
-        </div>
+      <div className="w-full max-w-md bg-[#0d0f13] border border-gray-800 rounded-3xl p-8 sm:p-10 shadow-2xl relative z-10 animate-in slide-in-from-bottom-4 duration-500">
+        
+        {/* Кнопка "Назад" */}
+        {(isVerification || isForgotPassword) && (
+          <button 
+            onClick={() => { setIsVerification(false); setIsForgotPassword(false); setError(''); setSuccessMsg(''); }} 
+            className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors mb-6"
+          >
+            <ArrowLeft size={18} /> <span className="text-sm font-medium">Назад</span>
+          </button>
+        )}
 
-        <form onSubmit={handleAuth} className="space-y-4">
-          {!isLogin && (
-            <>
-              <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><User size={18} /></span><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя и Фамилия" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3.5 pl-11 pr-4 text-white focus:border-blue-500 outline-none" /></div>
-              <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Phone size={18} /></span><input type="tel" value={phone} onChange={handlePhoneChange} placeholder="+7 (___) ___-__-__" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3.5 pl-11 pr-4 text-white focus:border-blue-500 outline-none" /></div>
-            </>
-          )}
-          <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Mail size={18} /></span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Электронная почта" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3.5 pl-11 pr-4 text-white focus:border-blue-500 outline-none" /></div>
-          
-          <div className="relative">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Lock size={18} /></span>
-            <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Пароль" required className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3.5 pl-11 pr-12 text-white focus:border-blue-500 outline-none" />
-            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 p-2"><Eye size={18}/></button>
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-500 mb-4 border border-blue-500/20">
+            {isForgotPassword ? <KeyRound size={28} /> : isVerification ? <ShieldCheck size={28} /> : <User size={28} />}
           </div>
+          <h1 className="text-2xl font-bold text-white mb-2">
+            {isForgotPassword ? 'Сброс пароля' : isVerification ? 'Подтверждение почты' : isLogin ? 'С возвращением' : 'Создать аккаунт'}
+          </h1>
+          <p className="text-gray-400 text-sm">
+            {isForgotPassword 
+              ? 'Введите email, и мы отправим ссылку для сброса.'
+              : isVerification 
+              ? `Введите 6-значный код, отправленный на ${email}` 
+              : isLogin 
+              ? 'Войдите в свой аккаунт для продолжения' 
+              : 'Заполните данные для начала работы'}
+          </p>
+        </div>
 
-          {!isLogin && (
-            <div className="flex items-start gap-3 mt-4">
-              <input type="checkbox" checked={isAccepted} onChange={(e) => setIsAccepted(e.target.checked)} className="w-5 h-5 mt-0.5 accent-blue-600 rounded" />
-              <label className="text-sm text-gray-400 leading-relaxed">Согласен(на) с <Link to="/privacy" className="text-blue-500">политикой</Link>.</label>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          
+          {/* ФОРМА: ПОДТВЕРЖДЕНИЕ КОДА */}
+          {isVerification && (
+            <div className="relative">
+              <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+              <input 
+                type="text" 
+                placeholder="000000" 
+                value={code} 
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-12 pr-4 py-4 text-white text-center tracking-[0.5em] text-xl focus:border-blue-500 transition-colors focus:outline-none"
+                required 
+              />
             </div>
           )}
-          <div className="min-h-[40px]">{error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20"><span>{error}</span></div>}</div>
+
+          {/* ФОРМА: ЛОГИН / РЕГИСТРАЦИЯ / СБРОС ПАРОЛЯ */}
+          {!isVerification && (
+            <>
+              {!isLogin && !isForgotPassword && (
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <input type="text" placeholder="Имя профиля" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-12 pr-4 py-4 text-white placeholder-gray-500 focus:border-blue-500 transition-colors focus:outline-none" required />
+                </div>
+              )}
+              
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                <input type="email" placeholder="Email адрес" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-12 pr-4 py-4 text-white placeholder-gray-500 focus:border-blue-500 transition-colors focus:outline-none" required />
+              </div>
+
+              {!isLogin && !isForgotPassword && (
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <input type="text" placeholder="Телефон (необязательно)" value={phone} onChange={handlePhoneChange} className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-12 pr-4 py-4 text-white placeholder-gray-500 focus:border-blue-500 transition-colors focus:outline-none" />
+                </div>
+              )}
+
+              {!isForgotPassword && (
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+                  <input type={showPassword ? 'text' : 'password'} placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-12 pr-12 py-4 text-white placeholder-gray-500 focus:border-blue-500 transition-colors focus:outline-none" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              )}
+
+              {/* Ссылка Забыли пароль */}
+              {isLogin && !isForgotPassword && (
+                <div className="flex justify-end">
+                  <button type="button" onClick={() => setIsForgotPassword(true)} className="text-sm text-blue-500 hover:text-blue-400 transition-colors">
+                    Забыли пароль?
+                  </button>
+                </div>
+              )}
+
+              {!isLogin && !isForgotPassword && (
+                <div className="flex items-start gap-3 mt-4">
+                  <input type="checkbox" checked={isAccepted} onChange={(e) => setIsAccepted(e.target.checked)} className="w-5 h-5 mt-0.5 accent-blue-600 rounded" />
+                  <label className="text-sm text-gray-400 leading-relaxed">Согласен(на) с <Link to="/privacy" className="text-blue-500 hover:underline">политикой конфиденциальности</Link>.</label>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Сообщения об ошибке / успехе */}
+          <div className="min-h-[40px]">
+            {error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20">{error}</div>}
+            {successMsg && <div className="text-green-500 text-xs text-center bg-green-500/10 py-3 rounded-xl border border-green-500/20">{successMsg}</div>}
+          </div>
           
-          <button type="submit" disabled={isLoading || (!isLogin && !isAccepted)} className="w-full font-bold py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors">
-            {isLoading ? <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin"/><span>Загрузка...</span></div> : <span>{isLogin ? 'Войти' : 'Создать аккаунт'}</span>}
+          <button type="submit" disabled={isLoading || (!isLogin && !isVerification && !isForgotPassword && !isAccepted)} className="w-full font-bold py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors shadow-lg shadow-blue-500/20">
+            {isLoading ? <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin" size={20}/></div> : 
+              <span>{isForgotPassword ? 'Отправить ссылку' : isVerification ? 'Подтвердить' : isLogin ? 'Войти' : 'Создать аккаунт'}</span>
+            }
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-gray-800">
-          <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase">Быстрый вход через соцсети</p>
-          <div className="flex flex-row items-center justify-center gap-6">
-             <CustomTelegramButton onAuthCallback={telegramLogin} />
-              <CustomVkButton onAuth={vkLogin} />
-          </div>
-        </div>
+        {/* Блок социальных сетей (скрыт при вводе кода или сбросе пароля) */}
+        {!isVerification && !isForgotPassword && (
+          <>
+            <div className="mt-8 pt-6 border-t border-gray-800">
+              <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase tracking-wider">Быстрый вход через соцсети</p>
+              <div className="flex justify-center gap-4">
+                <CustomTelegramButton onAuthCallback={telegramLogin} />
+                <CustomVkButton onAuth={vkLogin} />
+              </div>
+            </div>
+
+            <div className="mt-8 text-center text-sm text-gray-400">
+              {isLogin ? "Нет аккаунта? " : "Уже есть аккаунт? "}
+              <button onClick={() => { setIsLogin(!isLogin); setError(''); setSuccessMsg(''); }} className="text-blue-500 font-bold hover:text-blue-400 transition-colors">
+                {isLogin ? 'Зарегистрироваться' : 'Войти'}
+              </button>
+            </div>
+          </>
+        )}
+
       </div>
     </div>
   );
