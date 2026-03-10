@@ -149,8 +149,8 @@ export default function Auth() {
         <div className="mt-8 pt-6 border-t border-gray-800">
           <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase">Быстрый вход через соцсети</p>
           <div className="flex flex-row items-center justify-center gap-6">
-             <CustomTelegramButton onAuthCallback={handleTelegramResponse} />
-             <CustomVkButton onAuthCallback={handleVkResponse} />
+             <CustomTelegramButton onAuthCallback={telegramLogin} />
+              <CustomVkButton onAuth={vkLogin} />
           </div>
         </div>
       </div>
