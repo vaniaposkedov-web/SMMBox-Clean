@@ -295,7 +295,7 @@ export default function AccountsManager() {
         method: 'POST',
         // ТУТ ВАЖНО: передаем глобальный token (JWT), а не vkToken
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ profileId, tokens: tokensToSave })
+        body: JSON.stringify({ userId: user.id, profileId, tokens: tokensToSave })
       });
       const data = await res.json();
       if (data.success) {

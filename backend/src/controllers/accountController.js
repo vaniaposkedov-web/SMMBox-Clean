@@ -442,8 +442,8 @@ exports.vkFetchGroupsCallback = async (req, res) => {
 };
 
 exports.saveVkGroupTokens = async (req, res) => {
-  const { profileId, tokens } = req.body;
-  const userId = req.user?.userId || req.user?.id;
+  // Получаем userId напрямую от фронтенда для 100% надежности
+  const { userId, profileId, tokens } = req.body; 
 
   try {
     if (!tokens || Object.keys(tokens).length === 0) {
@@ -453,20 +453,39 @@ exports.saveVkGroupTokens = async (req, res) => {
     let savedCount = 0;
 
     for (const [groupId, groupToken] of Object.entries(tokens)) {
-      // Запрашиваем название и аватарку группы у ВК
+      // Запрашиваем информацию о группе у ВК
       const groupInfoRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
         params: { group_id: groupId, access_token: groupToken, v: '5.199' }
       });
 
       const groupDetails = groupInfoRes.data.response?.[0];
+      
       if (groupDetails) {
-        // Сохраняем группу в базу
+        // ВАЖНО: Используем правильные названия полей (socialProfileId)
         await prisma.account.upsert({
           where: { provider_providerId: { provider: 'VK', providerId: String(groupId) } },
-          update: { accessToken: groupToken, avatarUrl: groupDetails.photo_50, name: groupDetails.name, profileId: profileId, isValid: true, errorMsg: null },
-          create: { userId: String(userId), provider: 'VK', providerId: String(groupId), name: groupDetails.name, accessToken: groupToken, avatarUrl: groupDetails.photo_50, profileId: profileId }
+          update: { 
+            userId: String(userId), // Перезаписываем ID юзера, чтобы исправить старую ошибку
+            accessToken: groupToken, 
+            avatarUrl: groupDetails.photo_50, 
+            name: groupDetails.name, 
+            socialProfileId: profileId, // Правильное поле связи
+            isValid: true, 
+            errorMsg: null 
+          },
+          create: { 
+            userId: String(userId), 
+            provider: 'VK', 
+            providerId: String(groupId), 
+            name: groupDetails.name, 
+            accessToken: groupToken, 
+            avatarUrl: groupDetails.photo_50, 
+            socialProfileId: profileId // Правильное поле связи
+          }
         });
         savedCount++;
+      } else {
+        console.error('Ошибка VK API при запросе группы:', groupInfoRes.data);
       }
     }
 
