@@ -11,15 +11,26 @@ exports.register = async (req, res) => {
     const { email, password, name, phone } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email и пароль обязательны' });
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
-
+    let existingUser = await prisma.user.findUnique({ where: { email } });
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     const hashedPassword = await bcrypt.hash(password, 10);
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString(); // Генерируем код
 
-    await prisma.user.create({
-      data: { email, password: hashedPassword, name: name || '', phone: phone || null, emailVerificationCode: verificationCode, isEmailVerified: false }
-    });
+    if (existingUser) {
+      // Если аккаунт есть, но почта НЕ подтверждена - даем шанс зарегистрироваться заново
+      if (!existingUser.isEmailVerified) {
+        await prisma.user.update({
+          where: { email },
+          data: { password: hashedPassword, name: name || '', phone: phone || null, emailVerificationCode: verificationCode }
+        });
+      } else {
+        return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
+      }
+    } else {
+      // Создаем полностью нового
+      await prisma.user.create({
+        data: { email, password: hashedPassword, name: name || '', phone: phone || null, emailVerificationCode: verificationCode, isEmailVerified: false }
+      });
+    }
     
     // ОТПРАВКА КОДА НА ПОЧТУ
     try {
@@ -31,7 +42,6 @@ exports.register = async (req, res) => {
     res.json({ success: true, message: 'Код подтверждения отправлен на почту' });
   } catch (error) { res.status(500).json({ error: 'Внутренняя ошибка сервера' }); }
 };
-
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -247,10 +257,22 @@ exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(400).json({ error: 'Не найден' });
+    if (!user) return res.status(400).json({ error: 'Пользователь не найден' });
 
     const token = crypto.randomBytes(32).toString('hex');
-    await prisma.user.update({ where: { email }, data: { resetPasswordToken: token, resetPasswordExpires: new Date(Date.now() + 3600000) } });
+    await prisma.user.update({ 
+      where: { email }, 
+      data: { resetPasswordToken: token, resetPasswordExpires: new Date(Date.now() + 3600000) } 
+    });
+
+    // ФАКТИЧЕСКАЯ ОТПРАВКА ПИСЬМА (раньше этого блока не было)
+    const resetLink = `https://smmdeck.ru/reset-password/${token}`;
+    try {
+      await sendEmail(email, 'Восстановление пароля', `Для сброса пароля перейдите по ссылке:\n\n${resetLink}\n\nЕсли вы не запрашивали сброс, просто проигнорируйте это письмо.`);
+    } catch (e) {
+      console.error('Ошибка отправки email:', e);
+    }
+
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Ошибка' }); }
 };
