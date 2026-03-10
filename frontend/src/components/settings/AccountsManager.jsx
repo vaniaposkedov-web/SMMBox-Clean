@@ -276,28 +276,33 @@ export default function AccountsManager() {
     setIsFetchingGroups(false);
   };
 
-  const saveHackGroups = async () => {
+ const saveHackGroups = async () => {
     if (vkSelectedGroups.length === 0) return;
     
     const profileId = vkHackModal.profileId;
-    // ПЕРЕИМЕНОВАЛИ ПЕРЕМЕННУЮ, чтобы не было конфликта с JWT-токеном сайта
     const vkToken = vkHackModal.tempToken; 
     
     setLoadingStates(prev => ({...prev, [profileId]: true}));
     setVkHackModal({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '' });
 
-    // Создаем объект токенов для бэкенда
-    const tokensToSave = {};
-    vkSelectedGroups.forEach(id => { tokensToSave[id] = vkToken; });
+    // Формируем готовые объекты групп со всей инфой с фронтенда!
+    const groupsToSave = vkGroupsList
+      .filter(g => vkSelectedGroups.includes(g.id))
+      .map(g => ({
+        id: g.id,
+        name: g.name,
+        avatarUrl: g.photo_50,
+        accessToken: vkToken
+      }));
 
     try {
       const res = await fetch('/api/accounts/vk/save-group-tokens', {
         method: 'POST',
-        // ТУТ ВАЖНО: передаем глобальный token (JWT), а не vkToken
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ userId: user.id, profileId, tokens: tokensToSave })
+        body: JSON.stringify({ userId: user.id, profileId, groups: groupsToSave })
       });
       const data = await res.json();
+      
       if (data.success) {
         await fetchAccounts(user.id);
         alert('Сообщества успешно подключены!');

@@ -442,49 +442,42 @@ exports.vkFetchGroupsCallback = async (req, res) => {
 };
 
 exports.saveVkGroupTokens = async (req, res) => {
-  // Надежно достаем твой ID (из токена или из запроса)
+  // Надежно достаем твой ID
   const userId = req.user?.userId || req.user?.id || req.body.userId;
-  const { profileId, tokens } = req.body; 
+  const { profileId, groups } = req.body; 
 
   try {
     if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-    if (!tokens || Object.keys(tokens).length === 0) return res.status(400).json({ error: 'Токены не переданы' });
+    if (!groups || groups.length === 0) return res.status(400).json({ error: 'Группы не переданы' });
 
     let savedCount = 0;
 
-    for (const [groupId, groupToken] of Object.entries(tokens)) {
-      const groupInfoRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
-        params: { group_id: groupId, access_token: groupToken, v: '5.199' }
+    for (const group of groups) {
+      // Сохраняем группу НАПРЯМУЮ, без запросов к ВКонтакте!
+      await prisma.account.upsert({
+        where: { provider_providerId: { provider: 'VK', providerId: String(group.id) } },
+        update: { 
+          userId: String(userId), 
+          accessToken: group.accessToken, 
+          avatarUrl: group.avatarUrl || null, 
+          name: group.name || 'Без названия', 
+          profileId: profileId,   
+          isValid: true, 
+          errorMsg: null 
+        },
+        create: { 
+          userId: String(userId), 
+          provider: 'VK', 
+          providerId: String(group.id), 
+          name: group.name || 'Без названия', 
+          accessToken: group.accessToken, 
+          avatarUrl: group.avatarUrl || null, 
+          profileId: profileId    
+        }
       });
-
-      const groupDetails = groupInfoRes.data.response?.[0];
-      
-      if (groupDetails) {
-        // База данных Prisma требует именно 'profileId', мы это исправили!
-        await prisma.account.upsert({
-          where: { provider_providerId: { provider: 'VK', providerId: String(groupId) } },
-          update: { 
-            userId: String(userId), // ВАЖНО: Забираем группу у призрака и отдаем тебе!
-            accessToken: groupToken, 
-            avatarUrl: groupDetails.photo_50, 
-            name: groupDetails.name, 
-            profileId: profileId,   // Правильное имя поля из schema.prisma
-            isValid: true, 
-            errorMsg: null 
-          },
-          create: { 
-            userId: String(userId), 
-            provider: 'VK', 
-            providerId: String(groupId), 
-            name: groupDetails.name, 
-            accessToken: groupToken, 
-            avatarUrl: groupDetails.photo_50, 
-            profileId: profileId    // Правильное имя поля
-          }
-        });
-        savedCount++;
-      }
+      savedCount++;
     }
+    
     res.json({ success: true, count: savedCount });
   } catch (error) {
     console.error('Ошибка сохранения:', error);
