@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const accountController = require('../controllers/accountController');
-const authMiddleware = require('../middleware/authMiddleware');
+const authMiddleware = require('../middleware/auth');
 
 // === МАРШРУТЫ ПРОФИЛЕЙ (НОВОЕ) ===
 router.post('/profiles/link', authMiddleware, accountController.linkSocialProfile);
