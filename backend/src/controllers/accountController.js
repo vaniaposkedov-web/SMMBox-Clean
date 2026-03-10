@@ -334,7 +334,6 @@ exports.getVkManagedGroups = async (req, res) => {
 exports.vkGroupCallback = async (req, res) => {
   const { code, state, error, error_description } = req.query;
   
-  // Если пользователь нажал "Отмена" в окне ВК
   if (error) {
     return res.send(`<script>window.opener.postMessage({ type: 'VK_GROUP_ERROR', error: '${error_description}' }, '*'); window.close();</script>`);
   }
@@ -342,10 +341,15 @@ exports.vkGroupCallback = async (req, res) => {
   try {
     const clientId = process.env.VK_APP_ID;
     const clientSecret = process.env.VK_SECURE_KEY;
-    const redirectUri = `${process.env.BACKEND_URL || 'http://' + req.headers.host}/api/accounts/vk/group-callback`;
-    const userId = state; // Мы передадим ID пользователя через параметр state
+    
+    // Формируем ссылку, которая должна ТОЧНО совпадать с той, что отправил фронтенд
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const redirectUri = `${protocol}://${req.headers.host}/api/accounts/vk/group-callback`;
+    
+    // Мы передали ID юзера и профиля через параметр state
+    const [userId, profileId] = (state || '').split('_');
 
-    // 1. Меняем код от ВК на токены сообществ
+    // Меняем временный код на вечные токены групп
     const tokenRes = await axios.get(`https://oauth.vk.com/access_token`, {
       params: { client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code }
     });
@@ -355,40 +359,41 @@ exports.vkGroupCallback = async (req, res) => {
     }
 
     const tokensData = tokenRes.data; 
-    // ВК возвращает объект вида: { access_token_12345: "vk1.a...", access_token_67890: "vk1.a..." }
+    let savedCount = 0;
 
-    // 2. Ищем профиль ВК этого пользователя, чтобы привязать группы к нему
-    const vkProfile = await prisma.socialProfile.findFirst({
-      where: { userId: String(userId), provider: 'VK' }
-    });
+    // Ищем профиль ВК
+    let targetProfileId = profileId;
+    if (!targetProfileId || targetProfileId === 'undefined') {
+      const vkProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'VK' } });
+      targetProfileId = vkProfile ? vkProfile.id : null;
+    }
 
-    // 3. Перебираем все полученные токены и сохраняем группы
-    const savedGroups = [];
+    // ВКонтакте пришлет объект, где ключи называются access_token_123, access_token_456 и т.д.
     for (const key in tokensData) {
       if (key.startsWith('access_token_')) {
         const groupId = key.replace('access_token_', '');
         const groupToken = tokensData[key];
 
-        // Получаем информацию о группе (имя, аватарку)
+        // Получаем аватарку и название группы
         const groupInfoRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
           params: { group_id: groupId, access_token: groupToken, v: '5.199' }
         });
 
         const groupDetails = groupInfoRes.data.response?.[0];
         if (groupDetails) {
-          // Сохраняем или обновляем группу в базе
+          // Сохраняем группу и ее API токен
           await prisma.account.upsert({
             where: { provider_providerId: { provider: 'VK', providerId: String(groupId) } },
-            update: { accessToken: groupToken, avatarUrl: groupDetails.photo_50, name: groupDetails.name, profileId: vkProfile?.id, isValid: true, errorMsg: null },
-            create: { userId: String(userId), provider: 'VK', providerId: String(groupId), name: groupDetails.name, accessToken: groupToken, avatarUrl: groupDetails.photo_50, profileId: vkProfile?.id }
+            update: { accessToken: groupToken, avatarUrl: groupDetails.photo_50, name: groupDetails.name, profileId: targetProfileId, isValid: true, errorMsg: null },
+            create: { userId: String(userId), provider: 'VK', providerId: String(groupId), name: groupDetails.name, accessToken: groupToken, avatarUrl: groupDetails.photo_50, profileId: targetProfileId }
           });
-          savedGroups.push(groupDetails.name);
+          savedCount++;
         }
       }
     }
 
-    // 4. Успешно! Отправляем сообщение на фронтенд и закрываем окно
-    res.send(`<script>window.opener.postMessage({ type: 'VK_GROUP_SUCCESS' }, '*'); window.close();</script>`);
+    // Сообщаем фронтенду об успехе
+    res.send(`<script>window.opener.postMessage({ type: 'VK_GROUP_SUCCESS', count: ${savedCount} }, '*'); window.close();</script>`);
 
   } catch (err) {
     console.error('Ошибка в vkGroupCallback:', err);
