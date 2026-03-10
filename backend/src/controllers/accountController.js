@@ -440,3 +440,40 @@ exports.vkFetchGroupsCallback = async (req, res) => {
     res.send(`<script>window.opener.postMessage({ type: 'VK_FETCH_ERROR', error: 'Не удалось загрузить группы' }, '*'); window.close();</script>`);
   }
 };
+
+exports.saveVkGroupTokens = async (req, res) => {
+  const { profileId, tokens } = req.body;
+  const userId = req.user?.userId || req.user?.id;
+
+  try {
+    if (!tokens || Object.keys(tokens).length === 0) {
+      return res.status(400).json({ error: 'Токены не переданы' });
+    }
+
+    let savedCount = 0;
+
+    for (const [groupId, groupToken] of Object.entries(tokens)) {
+      // Запрашиваем название и аватарку группы у ВК
+      const groupInfoRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
+        params: { group_id: groupId, access_token: groupToken, v: '5.199' }
+      });
+
+      const groupDetails = groupInfoRes.data.response?.[0];
+      if (groupDetails) {
+        // Сохраняем группу в базу
+        await prisma.account.upsert({
+          where: { provider_providerId: { provider: 'VK', providerId: String(groupId) } },
+          update: { accessToken: groupToken, avatarUrl: groupDetails.photo_50, name: groupDetails.name, profileId: profileId, isValid: true, errorMsg: null },
+          create: { userId: String(userId), provider: 'VK', providerId: String(groupId), name: groupDetails.name, accessToken: groupToken, avatarUrl: groupDetails.photo_50, profileId: profileId }
+        });
+        savedCount++;
+      }
+    }
+
+    res.json({ success: true, count: savedCount });
+
+  } catch (error) {
+    console.error('Ошибка при сохранении токенов групп:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+};
