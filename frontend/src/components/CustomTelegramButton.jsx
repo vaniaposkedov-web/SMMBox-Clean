@@ -5,35 +5,38 @@ export default function CustomTelegramButton({ onAuthCallback }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    if (containerRef.current) {
+      containerRef.current.innerHTML = '';
+    }
 
-    // Глобальная функция-колбэк для Telegram
-    window.onTelegramAuth = (user) => {
-      if (onAuthCallback) onAuthCallback(user);
-    };
+    const botName = import.meta.env.VITE_TG_BOT_NAME || 'smmbox_auth_bot';
 
-    // Создаем скрипт
     const script = document.createElement('script');
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
-    script.setAttribute('data-telegram-login', import.meta.env.VITE_TG_BOT_NAME || 'smmbox_auth_bot');
+    script.setAttribute('data-telegram-login', botName);
     script.setAttribute('data-size', 'large');
     script.setAttribute('data-request-access', 'write');
     script.setAttribute('data-userpic', 'false');
-    script.setAttribute('data-onauth', 'onTelegramAuth(user)');
     script.async = true;
 
-    container.appendChild(script);
+    window.onTelegramAuth = (user) => {
+      if (onAuthCallback) onAuthCallback(user);
+    };
+    script.setAttribute('data-onauth', 'onTelegramAuth(user)');
 
-    // Строгая очистка при ререндере или размонтировании (спасает от StrictMode React'а)
+    if (containerRef.current) {
+      containerRef.current.appendChild(script);
+    }
+
     return () => {
-      container.innerHTML = '';
-      delete window.onTelegramAuth;
+      if (window.onTelegramAuth) {
+        delete window.onTelegramAuth;
+      }
     };
   }, [onAuthCallback]);
 
   const handleFallbackClick = () => {
-    alert('Клик заблокирован! Telegram-виджет не загрузился. Убедитесь, что выключен AdBlock или защита от слежения в браузере (например, "Щит" в Brave).');
+    alert('Клик заблокирован! Ваш браузер (или AdBlock / защита от слежения) вырезал скрипт Telegram. Пожалуйста, отключите щит защиты в браузере или AdBlock для этого сайта и обновите страницу.');
   };
 
   return (
