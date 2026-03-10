@@ -883,7 +883,6 @@ export default function AccountsManager() {
                 <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="VK" />
                 <div className="min-w-0 flex-1">
                   <div className="text-white font-bold text-sm sm:text-base truncate">{profile.name}</div>
-                  <div className="text-emerald-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Профиль активен</div>
                 </div>
               </div>
               
