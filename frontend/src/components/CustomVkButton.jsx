@@ -3,80 +3,66 @@ import * as VKID from '@vkid/sdk';
 
 export default function CustomVkButton({ onAuth }) {
   useEffect(() => {
-    // 1. Инициализация
+    // 1. Инициализируем SDK строго по документации
+    // PKCE (codeVerifier/codeChallenge) сгенерируется SDK автоматически!
     VKID.Config.init({
-      app: import.meta.env.VITE_VK_APP_ID || 54471878,
-      redirectUrl: 'https://smmdeck.ru/auth', 
-      responseMode: VKID.ConfigResponseMode.Callback,
-      mode: VKID.ConfigAuthMode.InNewWindow,
+      app: 54471878, // ID вашего приложения
+      redirectUrl: 'https://smmdeck.ru/auth', // Обязательно совпадает со ссылкой в настройках приложения ВК
+      responseMode: VKID.ConfigResponseMode.Callback, // Работа в режиме callback (вернет payload)
+      mode: VKID.ConfigAuthMode.InNewWindow, // Открывать в новом окне
     });
 
-    // 2. ПЕРЕХВАТЧИК: Ловим параметры из ссылки после того, как ВК нас вернул
-    const urlParams = new URLSearchParams(window.location.search);
-    let code = urlParams.get('code');
-    let deviceId = urlParams.get('device_id');
-
-    // На случай, если ВК все-таки упакует их в payload
-    const payloadStr = urlParams.get('payload');
+    // 2. БЛОК РЕДИРЕКТА: Если окно заблокировалось и ВК обновил текущую страницу
+    const params = new URLSearchParams(window.location.search);
+    const payloadStr = params.get('payload');
+    
     if (payloadStr) {
       try {
         const payload = JSON.parse(payloadStr);
-        if (payload.code) code = payload.code;
-        if (payload.device_id) deviceId = payload.device_id;
-      } catch (e) {}
-    }
-
-    // Если данные пойманы (мы вернулись с авторизации ВК)
-    if (code && deviceId) {
-      // Мгновенно очищаем адресную строку, чтобы не было повторных срабатываний
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      // Идем менять код на токен
-      VKID.Auth.exchangeCode(code, deviceId)
-        .then(async (authTokens) => {
-          let userId = authTokens.user_id || authTokens.id;
+        if (payload.code && payload.device_id) {
+          // Мгновенно очищаем адресную строку от мусора ВК
+          window.history.replaceState({}, document.title, window.location.pathname);
           
-          // Если ВК не отдал ID пользователя сразу, запрашиваем отдельно
-          if (!userId) {
-            const userInfo = await VKID.Auth.userInfo(authTokens.access_token);
-            userId = userInfo.user?.id || userInfo.id;
-          }
-
-          const vkData = {
-            access_token: authTokens.access_token,
-            user_id: userId,
-            email: authTokens.email || null,
-          };
-          
-          // Отправляем в стор!
-          if (onAuth) onAuth(vkData);
-        })
-        .catch((err) => {
-          console.error('Ошибка обмена токена ВК после редиректа:', err);
-        });
+          // Вызываем обмен (SDK сам достанет сгенерированный ранее codeVerifier из LocalStorage)
+          VKID.Auth.exchangeCode(payload.code, payload.device_id)
+            .then((tokens) => {
+              if (onAuth) onAuth({
+                access_token: tokens.access_token,
+                user_id: tokens.user_id,
+                email: tokens.email || null,
+              });
+            })
+            .catch(err => console.error('VKID SDK: Ошибка обмена кода после редиректа:', err));
+        }
+      } catch (e) {
+        console.error('VKID SDK: Ошибка чтения ответа от ВК', e);
+      }
     }
   }, [onAuth]);
 
   const handleVkLogin = () => {
+    // 3. Запуск авторизации через модуль Auth (под свой дизайн)
     VKID.Auth.login()
-      .then(async (data) => {
-        // Если авторизация прошла без перезагрузки страницы (в идеальном мире)
-        const payload = data.payload || data;
-        if (payload.code && payload.device_id) {
-          try {
-            const authTokens = await VKID.Auth.exchangeCode(payload.code, payload.device_id);
-            const vkData = {
-              access_token: authTokens.access_token,
-              user_id: authTokens.user_id || authTokens.id,
-              email: authTokens.email || null,
-            };
-            if (onAuth) onAuth(vkData);
-          } catch (error) {
-            console.error('Ошибка обмена токена ВК внутри окна:', error);
-          }
+      .then((res) => {
+        // Если InNewWindow сработал идеально (popup открылся и закрылся без редиректа страницы)
+        const code = res.code || res.payload?.code;
+        const deviceId = res.device_id || res.payload?.device_id;
+        
+        if (code && deviceId) {
+          VKID.Auth.exchangeCode(code, deviceId)
+            .then((tokens) => {
+              if (onAuth) onAuth({
+                access_token: tokens.access_token,
+                user_id: tokens.user_id,
+                email: tokens.email || null,
+              });
+            })
+            .catch(err => console.error('VKID SDK: Ошибка обмена кода в popup:', err));
         }
       })
-      .catch((error) => console.error('Ошибка окна авторизации ВК:', error));
+      .catch((err) => {
+        console.error('VKID SDK: Ошибка окна авторизации:', err);
+      });
   };
 
   return (
