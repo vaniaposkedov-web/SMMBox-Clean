@@ -442,18 +442,17 @@ exports.vkFetchGroupsCallback = async (req, res) => {
 };
 
 exports.saveVkGroupTokens = async (req, res) => {
-  // Получаем userId напрямую от фронтенда для 100% надежности
-  const { userId, profileId, tokens } = req.body; 
+  // Надежно достаем твой ID (из токена или из запроса)
+  const userId = req.user?.userId || req.user?.id || req.body.userId;
+  const { profileId, tokens } = req.body; 
 
   try {
-    if (!tokens || Object.keys(tokens).length === 0) {
-      return res.status(400).json({ error: 'Токены не переданы' });
-    }
+    if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+    if (!tokens || Object.keys(tokens).length === 0) return res.status(400).json({ error: 'Токены не переданы' });
 
     let savedCount = 0;
 
     for (const [groupId, groupToken] of Object.entries(tokens)) {
-      // Запрашиваем информацию о группе у ВК
       const groupInfoRes = await axios.get(`https://api.vk.com/method/groups.getById`, {
         params: { group_id: groupId, access_token: groupToken, v: '5.199' }
       });
@@ -461,15 +460,15 @@ exports.saveVkGroupTokens = async (req, res) => {
       const groupDetails = groupInfoRes.data.response?.[0];
       
       if (groupDetails) {
-        // ВАЖНО: Используем правильные названия полей (socialProfileId)
+        // База данных Prisma требует именно 'profileId', мы это исправили!
         await prisma.account.upsert({
           where: { provider_providerId: { provider: 'VK', providerId: String(groupId) } },
           update: { 
-            userId: String(userId), // Перезаписываем ID юзера, чтобы исправить старую ошибку
+            userId: String(userId), // ВАЖНО: Забираем группу у призрака и отдаем тебе!
             accessToken: groupToken, 
             avatarUrl: groupDetails.photo_50, 
             name: groupDetails.name, 
-            socialProfileId: profileId, // Правильное поле связи
+            profileId: profileId,   // Правильное имя поля из schema.prisma
             isValid: true, 
             errorMsg: null 
           },
@@ -480,19 +479,15 @@ exports.saveVkGroupTokens = async (req, res) => {
             name: groupDetails.name, 
             accessToken: groupToken, 
             avatarUrl: groupDetails.photo_50, 
-            socialProfileId: profileId // Правильное поле связи
+            profileId: profileId    // Правильное имя поля
           }
         });
         savedCount++;
-      } else {
-        console.error('Ошибка VK API при запросе группы:', groupInfoRes.data);
       }
     }
-
     res.json({ success: true, count: savedCount });
-
   } catch (error) {
-    console.error('Ошибка при сохранении токенов групп:', error);
+    console.error('Ошибка сохранения:', error);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 };
