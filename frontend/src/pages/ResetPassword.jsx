@@ -4,7 +4,7 @@ import { useStore } from '../store';
 import { Lock, CheckCircle2 } from 'lucide-react';
 
 export default function ResetPassword() {
-  const { token } = useParams(); // Берем токен из URL
+  const { token } = useParams(); 
   const navigate = useNavigate();
   const resetPasswordAction = useStore((state) => state.resetPasswordAction);
   
@@ -21,7 +21,7 @@ export default function ResetPassword() {
     
     if (result.success) {
       setStatus('success');
-      setTimeout(() => navigate('/auth'), 3000); // Редирект на логин через 3 сек
+      setTimeout(() => navigate('/auth'), 3000); 
     } else {
       setStatus('error');
       setErrorMsg(result.error);

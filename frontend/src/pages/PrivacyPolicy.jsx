@@ -5,13 +5,13 @@ import { ChevronLeft, ShieldCheck } from 'lucide-react';
 export default function PrivacyPolicy() {
   const navigate = useNavigate();
 
-  // Умная функция возврата для мобильных устройств и новых вкладок
+  
   const handleBack = () => {
     if (window.history.length > 2) {
-      navigate(-1); // Если есть история - возвращаемся
+      navigate(-1); 
     } else {
-      window.close(); // Если открыли в новой вкладке - закрываем её
-      navigate('/auth'); // Резервный вариант
+      window.close(); 
+      navigate('/auth'); 
     }
   };
 

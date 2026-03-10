@@ -7,7 +7,7 @@ export const useStore = create(
       user: null,
       token: null,
       accounts: [],
-      profiles: [], // НОВОЕ: Хранилище профилей
+      profiles: [], 
       posts: [],
       myPartners: [],
       incomingRequests: [],
@@ -61,7 +61,7 @@ export const useStore = create(
         watermarkSettings: { ...state.watermarkSettings, ...newSettings }
       })),
 
-      // === НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ПРОФИЛЯМИ ===
+      
       fetchProfiles: async (userId) => {
         try {
           const res = await fetch(`/api/accounts/profiles?userId=${userId}`);
@@ -94,7 +94,7 @@ export const useStore = create(
         }
       },
 
-      // === ОСТАЛЬНЫЕ ФУНКЦИИ (БЕЗ ИЗМЕНЕНИЙ) ===
+      
       fetchScheduledPosts: async () => {
         try {
           const token = localStorage.getItem('token') || get().token;

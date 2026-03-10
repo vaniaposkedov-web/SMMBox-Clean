@@ -1,24 +1,24 @@
-# Зависимости
+
 node_modules/
 
-# Логи
+
 logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Сборка
+
 dist/
 build/
 dist-ssr/
 
-# Локальные переменные окружения
+
 .env
 .env.local
 *.local
 
-# Редакторы и ОС
+
 .vscode/*
 !.vscode/extensions.json
 .idea

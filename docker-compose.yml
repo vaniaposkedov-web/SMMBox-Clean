@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # 1. Наша база данных (PostgreSQL)
+  
   db:
     image: postgres:15-alpine
     container_name: smmbox_db
@@ -15,7 +15,7 @@ services:
     ports:
       - "5432:5432"
 
-  # 2. Наш Бэкенд
+  
   backend:
     build: ./backend
     container_name: smmbox_backend
@@ -35,7 +35,7 @@ services:
     depends_on:
       - db
 
-  # 3. Наш Фронтенд (React + Nginx)
+  
   frontend:
     build: ./frontend
     container_name: smmbox_frontend
@@ -48,6 +48,6 @@ services:
     depends_on:
       - backend
 
-# Место, где физически будут храниться данные базы
+
 volumes:
   pgdata:

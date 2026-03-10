@@ -2,7 +2,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Функция для обрыва долгих запросов (Тайм-аут)
+
 const withTimeout = (promise, ms) => {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
@@ -15,15 +15,15 @@ exports.generateText = async (req, res) => {
   try {
     let { prompt, action, images } = req.body;
 
-    // ЗАЩИТА 1: Проверка на пустой запрос
+   
     if (!prompt || typeof prompt !== 'string') {
         return res.status(400).json({ error: 'Пустой запрос недопустим.' });
     }
 
-    // ЗАЩИТА 2: Жесткая обрезка текста на бэкенде (максимум 1500 символов)
+    
     prompt = prompt.substring(0, 1500);
 
-    // === НОВЫЙ МОЩНЫЙ СИСТЕМНЫЙ ПРОМПТ ===
+   
     let systemInstruction = `Ты — профессиональный SMM-копирайтер для продавцов из торговых центров и розничных магазинов.
     Твоя задача — создавать привлекательные, живые и продающие тексты для соцсетей (Telegram, VK, Instagram).
 
@@ -54,14 +54,14 @@ exports.generateText = async (req, res) => {
     const userMessage = action === 'rewrite' ? `Черновик для улучшения: ${prompt}` : `Идея для поста: ${prompt}`;
     parts.push(userMessage);
 
-    // ЗАЩИТА 3: Ограничение размера и количества картинок
+  
     if (images && Array.isArray(images) && images.length > 0) {
-        // Уточняем задачу для анализа фото
+        
         parts.push("Внимательно проанализируй прикрепленные фотографии (какой товар, стиль, цвет, детали) и органично впиши эту информацию в пост.");
         
         const imagesToProcess = images.slice(0, 2);
         for (const base64Image of imagesToProcess) {
-            // Если base64 строка слишком огромная (больше ~4MB), пропускаем картинку
+        
             if (base64Image.length > 5 * 1024 * 1024) continue; 
 
             const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
@@ -73,7 +73,7 @@ exports.generateText = async (req, res) => {
         }
     }
 
-    // ЗАЩИТА 4: Выполнение с тайм-аутом 15 секунд
+    
     const requestPromise = model.generateContent(parts);
     const result = await withTimeout(requestPromise, 15000); 
 
@@ -88,7 +88,7 @@ exports.generateText = async (req, res) => {
   } catch (error) {
     console.error('=== ОШИБКА ИИ ===', error.message);
 
-    // ЗАЩИТА 5: Умная обработка специфичных ошибок
+    
     if (error.message === 'TIMEOUT') {
         return res.status(504).json({ error: 'Нейросеть думает слишком долго. Попробуйте нажать еще раз.' });
     }
@@ -99,7 +99,7 @@ exports.generateText = async (req, res) => {
         return res.status(429).json({ error: 'Сервер перегружен запросами. Подождите пару минут.' });
     }
 
-    // Общая ошибка для всего остального
+    
     res.status(500).json({ error: 'Временный сбой нейросети. Мы уже чиним!' });
   }
 };

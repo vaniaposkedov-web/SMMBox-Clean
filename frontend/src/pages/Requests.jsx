@@ -7,12 +7,12 @@ export default function Requests() {
   const user = useStore((state) => state.user);
   const navigate = useNavigate();
   
-  // Данные
+  
   const incomingRequests = useStore((state) => state.incomingRequests) || [];
   const notifications = useStore((state) => state.notifications) || [];
   const sharedIncoming = useStore((state) => state.sharedIncoming) || []; 
   
-  // Методы
+ 
   const fetchPartnerData = useStore((state) => state.fetchPartnerData);
   const fetchSharedPosts = useStore((state) => state.fetchSharedPosts);
   const deleteSharedPostAction = useStore((state) => state.deleteSharedPostAction);
@@ -22,7 +22,7 @@ export default function Requests() {
   const declinePartnership = useStore((state) => state.declinePartnership);
   const clearNotifications = useStore((state) => state.clearNotifications);
 
-  const [activeTab, setActiveTab] = useState('events'); // 'events' или 'posts'
+  const [activeTab, setActiveTab] = useState('events'); 
 
   useEffect(() => {
     if (user?.id) {
@@ -31,7 +31,7 @@ export default function Requests() {
     }
   }, [user?.id, fetchPartnerData, fetchSharedPosts]);
 
-  // Магия превращения Base64 от партнера обратно в Файл для нашего редактора
+  
   const dataURLtoFile = (dataurl, filename) => {
       try {
         const arr = dataurl.split(',');
@@ -61,11 +61,11 @@ export default function Requests() {
           return {
             id: `shared_${Math.random().toString(36).substr(2, 9)}`,
             file: file,
-            url: base64 // Используем сам base64 для превью
+            url: base64 
           };
-      }).filter(Boolean); // Убираем битые файлы
+      }).filter(Boolean); 
 
-      // Передаем данные в редактор, принудительно ставим Шаг 1
+     
       if (saveTempDraft) {
         saveTempDraft({ 
           text: post.text || '', 

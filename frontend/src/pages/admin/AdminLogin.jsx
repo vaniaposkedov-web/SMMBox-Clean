@@ -23,8 +23,8 @@ export default function AdminLogin() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        localStorage.setItem('adminToken', data.token); // Отдельный токен!
-        navigate('/system-core-dashboard'); // Переход в админку
+        localStorage.setItem('adminToken', data.token); 
+        navigate('/system-core-dashboard'); 
       } else {
         setError(data.error || 'Доступ запрещен');
       }

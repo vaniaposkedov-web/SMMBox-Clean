@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = new PrismaClient();
 
-// Секретный вход только для админов
+
 exports.adminLogin = async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -25,7 +25,7 @@ exports.adminLogin = async (req, res) => {
     }
 };
 
-// Сбор глобальной статистики проекта
+
 exports.getDashboardData = async (req, res) => {
     try {
         const totalUsers = await prisma.user.count();
@@ -49,7 +49,6 @@ exports.getDashboardData = async (req, res) => {
     }
 };
 
-// Получить всех пользователей для управления
 exports.getAllUsers = async (req, res) => {
     try {
         const users = await prisma.user.findMany({
@@ -62,7 +61,7 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
-// === НОВАЯ ФУНКЦИЯ: Получить полное досье пользователя ===
+
 exports.getUserDetails = async (req, res) => {
     try {
         const { id } = req.params;
@@ -78,12 +77,12 @@ exports.getUserDetails = async (req, res) => {
         
         if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-        // Считаем посты пользователя через его аккаунты
+        
         const postsCount = await prisma.post.count({
             where: { account: { userId: id } }
         });
 
-        // Убираем хэш пароля из ответа в целях безопасности
+        
         const { password, ...safeUser } = user;
 
         res.json({ success: true, user: safeUser, postsCount });
@@ -93,7 +92,7 @@ exports.getUserDetails = async (req, res) => {
     }
 };
 
-// Выдать / Забрать PRO статус
+
 exports.toggleProStatus = async (req, res) => {
     try {
         const { id } = req.params;
