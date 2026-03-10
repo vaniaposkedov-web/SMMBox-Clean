@@ -512,6 +512,16 @@ exports.telegramWebhook = async (req, res) => {
 
         // Если нашли — сохраняем канал в его аккаунт!
         if (tgProfile) {
+
+          const userWithPlan = await prisma.user.findUnique({ where: { id: tgProfile.userId } });
+          const currentAccountsCount = await prisma.account.count({ where: { userId: tgProfile.userId } });
+          const existingAccount = await prisma.account.findFirst({ where: { provider: 'TELEGRAM', providerId: chatId } });
+
+          // Если канала еще нет в базе, тариф бесплатный и лимит исчерпан — блокируем добавление
+          if (!existingAccount && !userWithPlan.isPro && currentAccountsCount >= 10) {
+            console.log(`Лимит превышен для ${tgProfile.userId}. Канал ${chatTitle} не добавлен.`);
+            return; 
+          }
           // Получаем аватарку канала (если есть)
           let avatarUrl = null;
           try {
