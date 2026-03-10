@@ -241,7 +241,11 @@ export default function AccountsManager() {
   const [vkHackModal, setVkHackModal] = useState({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '', mode: 'groups', profile: null });
 
   const startVkHackAuth = (profileId, mode = 'groups', profile = null) => {
-    setVkSelectedGroups([]); setVkGroupsList([]);
+    if (isLimitReached) {
+      return alert('Лимит аккаунтов исчерпан! Оформите PRO тариф для снятия ограничений.');
+    }
+    setVkSelectedGroups([]); 
+    setVkGroupsList([]);
     setVkHackModal({ isOpen: true, profileId, step: 1, pastedUrl: '', tempToken: '', mode, profile });
   };
 
@@ -640,7 +644,7 @@ export default function AccountsManager() {
           <div className="absolute -top-12 -right-12 w-40 h-40 bg-[#0088CC]/20 blur-[60px] rounded-full pointer-events-none"></div>
           
           <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-3 mb-6 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-[#0088CC]/10 border border-[#0088CC]/20 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-[#0088CC]/10 border border-[#0088CC]/20 flex items-center justify-center shrink-0">
               <Info size={20} className="text-[#0088CC]" />
             </div>
             Инструкция Telegram
@@ -650,19 +654,19 @@ export default function AccountsManager() {
              <li className="pl-6 relative">
                <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0088CC] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,136,204,0.3)]">1</span>
                <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 Добавьте нашего системного бота <span onClick={copyBotName} title="Нажмите, чтобы скопировать" className="font-mono text-white bg-black/60 px-2 py-0.5 rounded border border-gray-700 ml-1 select-all cursor-pointer inline-flex items-center gap-1 active:scale-95 transition-transform hover:border-gray-500">@smmbox_auth_bot {copied && <Check size={12} className="text-emerald-500"/>}</span>
+                 В блоке ниже (под вашим профилем) нажмите кнопку <b className="text-white">«Добавить бота в канал»</b>.
                </p>
              </li>
              <li className="pl-6 relative">
                <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0088CC] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,136,204,0.3)]">2</span>
                <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 Назначьте бота <b>администратором</b> вашего канала и дайте ему право на публикацию сообщений.
+                 В открывшемся приложении Telegram <b>выберите ваш канал</b> (все права настроятся автоматически) и нажмите «Добавить».
                </p>
              </li>
              <li className="pl-6 relative">
                <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0088CC] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,136,204,0.3)]">3</span>
                <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 В блоке ниже (под вашим профилем) вставьте ссылку на канал и нажмите кнопку <b>«Добавить канал»</b>.
+                 Вернитесь на эту страницу и нажмите кнопку <b className="text-white">«Обновить»</b> — канал моментально появится в списке!
                </p>
              </li>
           </ol>
@@ -673,7 +677,7 @@ export default function AccountsManager() {
           <div className="absolute -top-12 -right-12 w-40 h-40 bg-[#0077FF]/20 blur-[60px] rounded-full pointer-events-none"></div>
           
           <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-3 mb-6 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 border border-[#0077FF]/20 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 border border-[#0077FF]/20 flex items-center justify-center shrink-0">
               <Info size={20} className="text-[#0077FF]" />
             </div>
             Инструкция ВКонтакте
@@ -683,19 +687,19 @@ export default function AccountsManager() {
              <li className="pl-6 relative">
                <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0077FF] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,119,255,0.3)]">1</span>
                <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 Зайдите в настройки вашего сообщества ВКонтакте, перейдите в раздел <b>«Работа с API»</b>.
+                 В блоке ниже нажмите <b className="text-white">«Добавить сообщества»</b> или <b>«Подключить стену»</b> в шапке вашего профиля.
                </p>
              </li>
              <li className="pl-6 relative">
                <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0077FF] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,119,255,0.3)]">2</span>
                <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 Нажмите «Создать ключ» и обязательно отметьте галочками права: <b>Управление, Фото, Документы и Стена</b>.
+                 Нажмите <b>«Получить безопасный ключ ВК»</b> и разрешите доступ приложению в открывшемся окне.
                </p>
              </li>
              <li className="pl-6 relative">
                <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0077FF] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,119,255,0.3)]">3</span>
                <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 В блоке ниже (под вашим профилем) вставьте ссылку на группу и полученный длинный <b>API токен</b>.
+                 Вы увидите пустую страницу. <b>Скопируйте всю ссылку</b> из адресной строки браузера, вставьте её на нашем сайте и выберите нужные группы галочками!
                </p>
              </li>
           </ol>
@@ -771,15 +775,26 @@ export default function AccountsManager() {
                   <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
                     <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                     
-                    <a 
-                      href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 w-full bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-6 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-center"
-                    >
-                      <Plus size={18} />
-                      <span>Добавить бота в канал</span>
-                    </a>
+                    {/* Кнопка с проверкой лимита */}
+                    {isLimitReached ? (
+                      <button 
+                        onClick={() => alert('Лимит аккаунтов исчерпан! Оформите PRO тариф для снятия ограничений.')}
+                        className="flex-1 w-full bg-[#0088CC]/5 text-[#0088CC]/50 border border-[#0088CC]/10 px-6 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold cursor-not-allowed text-center"
+                      >
+                        <Plus size={18} />
+                        <span>Добавить бота в канал</span>
+                      </button>
+                    ) : (
+                      <a 
+                        href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 w-full bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-6 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-center"
+                      >
+                        <Plus size={18} />
+                        <span>Добавить бота в канал</span>
+                      </a>
+                    )}
 
                     <button 
                       onClick={() => fetchAccounts(user.id)}
@@ -908,7 +923,7 @@ export default function AccountsManager() {
                   <div className="relative flex w-full mt-2">
                     <div className="absolute top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                     <button 
-                      onClick={() => startVkHackAuth(profile.id, 'groups', profile)} disabled={loadingStates[profile.id] || isLimitReached} 
+                       onClick={() => startVkHackAuth(profile.id, 'groups', profile)} disabled={loadingStates[profile.id]}
                       className="w-full bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3.5 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold shadow-sm active:scale-95"
                     >
                       {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
