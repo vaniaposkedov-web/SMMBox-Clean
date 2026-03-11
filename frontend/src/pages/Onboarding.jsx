@@ -20,11 +20,34 @@ export default function Onboarding() {
   const removeSocialProfile = useStore(state => state.removeSocialProfile);
   const removeAccount = useStore(state => state.removeAccount);
   const setVkhModal = useStore(state => state.setVkhModal);
+  const linkSocialProfile = useStore(state => state.linkSocialProfile);
 
   // === ЛИМИТЫ И ПРОВЕРКИ ===
   const isLimitReached = accounts.length >= 10;
   const vkProfile = profiles.find(p => p.provider === 'VK');
   const tgProfile = profiles.find(p => p.provider === 'TELEGRAM');
+
+  const handleVkAuth = async (data) => {
+    if (!user || !user.id) return alert('Ошибка: ID пользователя не найден');
+    try {
+      const vkUser = data.profile || (data.session && data.session.user) || data.user || data;
+      if (!vkUser || (!vkUser.id && !vkUser.uid && !vkUser.mid)) return alert('Ошибка: ВК не прислал ID');
+      
+      const providerAccountId = String(vkUser.id || vkUser.uid || vkUser.mid);
+      const name = `${vkUser.first_name || 'Пользователь'} ${vkUser.last_name || ''}`.trim();
+      const avatarUrl = vkUser.photo_100 || vkUser.photo || vkUser.photo_url || data.photo || '';
+      const accessToken = data.accessToken || data.access_token || (data.session && data.session.sid) || '';
+
+      const res = await linkSocialProfile(user.id, 'VK', providerAccountId, name, avatarUrl, accessToken);
+      if (res.success) {
+        await fetchProfiles(user.id);
+      } else {
+        alert('Ошибка сохранения ВК: ' + res.error);
+      }
+    } catch (error) {
+      alert('Системная ошибка ВК: ' + error.message);
+    }
+  };
 
   // === СТАНДАРТНАЯ ЗАГРУЗКА ДАННЫХ ===
   useEffect(() => {
@@ -39,27 +62,22 @@ export default function Onboarding() {
 
   useEffect(() => {
     let checkInterval = null;
-    
-    // Если мы ждем ТГ, запускаем polling (опрос сервера каждые 3 секунды)
     if (tgChecker.isWaiting && user?.id) {
       checkInterval = setInterval(async () => {
-        // Загружаем профили в фоне
-        const res = await useStore.getState().fetchProfiles(user.id);
-        const currentTgProfile = res.find(p => p.provider === 'TELEGRAM');
+        await fetchProfiles(user.id); // Просто дергаем сервер
         
-        // Если ТГ-профиль появился, или его ID изменился (привязали другой)
-        if (currentTgProfile) {
-          clearInterval(checkInterval); // Стоп чекер
-          await fetchAccounts(user.id); // Обновляем и группы
-          setTgChecker({ isWaiting: false, initialCount: 0 }); // Закрываем окно ожидания
+        // Берем свежие данные напрямую из глобального стейта
+        const latestProfiles = useStore.getState().profiles; 
+        const foundTg = latestProfiles.find(p => p.provider === 'TELEGRAM');
+        
+        if (foundTg) {
+          clearInterval(checkInterval);
+          await fetchAccounts(user.id);
+          setTgChecker({ isWaiting: false, initialCount: 0 }); // Закрываем окно!
         }
-      }, 3000); // Опрос каждые 3 секунды
+      }, 3000);
     }
-
-    return () => {
-      // Подчищаем интервал при уходе со страницы или закрытии модалки
-      if (checkInterval) clearInterval(checkInterval);
-    };
+    return () => { if (checkInterval) clearInterval(checkInterval); };
   }, [tgChecker.isWaiting, user?.id, fetchProfiles, fetchAccounts]);
 
   // Запуск чекера
@@ -142,7 +160,7 @@ export default function Onboarding() {
                 <p className="text-gray-200 text-base font-semibold">Ваш профиль ВК еще не привязан</p>
                 <p className="text-gray-500 text-xs">Для добавления групп привяжите личный аккаунт ВК</p>
               </div>
-              <CustomVkButton onAuth={() => fetchProfiles(user.id)} className="w-max bg-[#0077FF] text-white px-10 py-3.5 rounded-xl font-bold flex items-center gap-2" />
+              <CustomVkButton onAuth={handleVkAuth} className="w-max bg-[#0077FF] text-white px-10 py-3.5 rounded-xl font-bold flex items-center gap-2" />
             </div>
           ) : (
             <div className="space-y-4">
