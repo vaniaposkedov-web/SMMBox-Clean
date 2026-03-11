@@ -313,6 +313,24 @@ export const useStore = create(
         });
       },
 
+      completeOnboarding: async () => {
+        try {
+          const res = await fetch('/api/auth/complete-onboarding', {
+            method: 'POST', 
+            headers: { 'Authorization': `Bearer ${get().token}` }
+          });
+          if (res.ok) {
+            // Обновляем статус пользователя в стейте, чтобы пропустить Onboarding
+            set({ user: { ...get().user, isOnboardingCompleted: true } });
+            return { success: true };
+          }
+          return { success: false };
+        } catch (error) {
+          console.error("Ошибка завершения Onboarding:", error);
+          return { success: false };
+        }
+      },
+
       fetchPartnerData: async (userId) => {
         try {
           const res = await fetch(`/api/partners/data?userId=${userId}`);
