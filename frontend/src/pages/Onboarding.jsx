@@ -156,7 +156,10 @@ export default function Onboarding() {
           {!vkProfile ? (
             <div className="flex flex-col items-center justify-center py-8 bg-gray-950/50 rounded-2xl border border-dashed border-gray-800">
               <p className="text-gray-500 text-sm mb-4 text-center px-4">Для добавления групп привяжите свой профиль ВК</p>
-              <CustomVkButton onAuth={() => fetchProfiles(user.id)} />
+              <CustomVkButton onAuth={async (data) => {
+                await linkSocialProfile('VK', data);
+                await fetchProfiles(user.id);
+                }} />
             </div>
           ) : (
             <div className="space-y-4">
@@ -215,7 +218,10 @@ export default function Onboarding() {
           {!tgProfile ? (
             <div className="flex flex-col items-center justify-center py-8 bg-gray-950/50 rounded-2xl border border-dashed border-gray-800">
               <p className="text-gray-500 text-sm mb-4 text-center px-4">Для добавления каналов авторизуйтесь через Telegram</p>
-              <CustomTelegramButton onAuthCallback={() => fetchProfiles(user.id)} />
+              <CustomTelegramButton onAuthCallback={async (data) => {
+                await linkSocialProfile('TELEGRAM', data);
+                await fetchProfiles(user.id);
+                }} />
             </div>
           ) : (
             <div className="space-y-4">
