@@ -36,37 +36,57 @@ export default function Onboarding() {
   }, [user?.id, fetchProfiles, fetchAccounts]);
 
   // === ЖЕЛЕЗОБЕТОННЫЕ ОБРАБОТЧИКИ АВТОРИЗАЦИИ ===
-  const handleVkAuth = async (data) => {
-    alert('✅ ВК передал данные сайту!');
-    console.log('VK Payload:', data);
-    
+ const handleVkAuth = async (data) => {
     if (!user || !user.id) {
       return alert('❌ Ошибка: ID пользователя не найден. Обновите страницу.');
     }
 
     try {
-      await linkSocialProfile('VK', data);
-      await fetchProfiles(user.id);
-      alert('🎉 ВК успешно привязан!');
+      // 1. Распаковываем данные от ВКонтакте
+      const providerAccountId = String(data.profile.id);
+      const name = `${data.profile.first_name} ${data.profile.last_name || ''}`.trim();
+      const avatarUrl = data.profile.photo_100 || '';
+      const accessToken = data.accessToken;
+
+      // 2. Отправляем строго 6 параметров по порядку!
+      const res = await linkSocialProfile(user.id, 'VK', providerAccountId, name, avatarUrl, accessToken);
+      
+      // 3. Проверяем РЕАЛЬНЫЙ ответ от сервера
+      if (res.success) {
+        await fetchProfiles(user.id);
+        alert('🎉 ВК успешно привязан!');
+      } else {
+        alert('❌ Ошибка сохранения ВК в базу: ' + res.error);
+      }
     } catch (error) {
-      alert('❌ Ошибка сервера при сохранении ВК: ' + error.message);
+      alert('❌ Системная ошибка ВК: ' + error.message);
     }
   };
 
   const handleTgAuth = async (data) => {
-    alert('✅ Telegram передал данные сайту!');
-    console.log('TG Payload:', data);
-    
     if (!user || !user.id) {
       return alert('❌ Ошибка: ID пользователя не найден. Обновите страницу.');
     }
 
     try {
-      await linkSocialProfile('TELEGRAM', data);
-      await fetchProfiles(user.id);
-      alert('🎉 Telegram успешно привязан!');
+      // 1. Распаковываем данные от Telegram
+      const providerAccountId = String(data.id);
+      const name = `${data.first_name} ${data.last_name || ''}`.trim();
+      const avatarUrl = data.photo_url || '';
+      const accessToken = ''; // У Telegram тут нет ключа
+
+      // 2. Отправляем строго 6 параметров по порядку!
+      const res = await linkSocialProfile(user.id, 'TELEGRAM', providerAccountId, name, avatarUrl, accessToken);
+      
+      // 3. Проверяем РЕАЛЬНЫЙ ответ от сервера
+      if (res.success) {
+        await fetchProfiles(user.id);
+        alert('🎉 Telegram успешно привязан!');
+      } else {
+        alert('❌ Ошибка сохранения TG в базу: ' + res.error);
+      }
     } catch (error) {
-      alert('❌ Ошибка сервера при сохранении TG: ' + error.message);
+      alert('❌ Системная ошибка TG: ' + error.message);
     }
   };
 
