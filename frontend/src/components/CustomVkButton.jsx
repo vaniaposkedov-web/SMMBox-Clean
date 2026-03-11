@@ -6,9 +6,7 @@ export default function CustomVkButton({ onAuth }) {
     VKID.Config.init({
       app: import.meta.env.VITE_VK_APP_ID || 54471878,
       
-      // КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: 
-      // Эта команда сама определит, на какой странице сейчас пользователь
-      // (на /auth или /settings) и подставит правильную ссылку
+
       redirectUrl: window.location.origin + window.location.pathname, 
       
       responseMode: VKID.ConfigResponseMode.Callback,

@@ -74,7 +74,7 @@ export default function Auth() {
         if (res.ok) {
            localStorage.setItem('token', data.token);
            useStore.setState({ user: data.user, token: data.token });
-           navigate(data.user.isOnboardingCompleted ? '/' : '/onboarding');
+           navigate('/profile');
         } else {
            setError(data.error || 'Неверный код');
         }
@@ -97,7 +97,7 @@ export default function Auth() {
         if (isLogin) {
           localStorage.setItem('token', data.token);
           useStore.setState({ user: data.user, token: data.token });
-          navigate(data.user.isOnboardingCompleted ? '/' : '/onboarding');
+          navigate('/profile');
         } else {
           setIsVerification(true);
           setSuccessMsg('Код подтверждения отправлен на почту!');
