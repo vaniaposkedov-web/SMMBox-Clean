@@ -20,6 +20,7 @@ export default function Onboarding() {
   const completeOnboarding = useStore(state => state.completeOnboarding);
   const removeSocialProfile = useStore(state => state.removeSocialProfile);
   const removeAccount = useStore(state => state.removeAccount);
+  const linkSocialProfile = useStore(state => state.linkSocialProfile);
 
   // === ЛИМИТЫ И ПРОВЕРКИ ===
   const isLimitReached = accounts.length >= 10;
@@ -157,8 +158,12 @@ export default function Onboarding() {
             <div className="flex flex-col items-center justify-center py-8 bg-gray-950/50 rounded-2xl border border-dashed border-gray-800">
               <p className="text-gray-500 text-sm mb-4 text-center px-4">Для добавления групп привяжите свой профиль ВК</p>
               <CustomVkButton onAuth={async (data) => {
-                await linkSocialProfile('VK', data);
-                await fetchProfiles(user.id);
+                try {
+                    await linkSocialProfile('VK', data);
+                    await fetchProfiles(user.id);
+                } catch (err) {
+                    alert('Ошибка при сохранении профиля ВК!');
+                }
                 }} />
             </div>
           ) : (
@@ -219,8 +224,12 @@ export default function Onboarding() {
             <div className="flex flex-col items-center justify-center py-8 bg-gray-950/50 rounded-2xl border border-dashed border-gray-800">
               <p className="text-gray-500 text-sm mb-4 text-center px-4">Для добавления каналов авторизуйтесь через Telegram</p>
               <CustomTelegramButton onAuthCallback={async (data) => {
-                await linkSocialProfile('TELEGRAM', data);
-                await fetchProfiles(user.id);
+                try {
+                    await linkSocialProfile('TELEGRAM', data);
+                    await fetchProfiles(user.id);
+                } catch (err) {
+                    alert('Ошибка при сохранении профиля TG!');
+                }
                 }} />
             </div>
           ) : (
