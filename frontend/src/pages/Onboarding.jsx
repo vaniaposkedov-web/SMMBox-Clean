@@ -109,14 +109,14 @@ export default function Onboarding() {
       <div className="max-w-3xl w-full mx-auto space-y-8 sm:space-y-10 relative z-10">
         
         {/* === ШАПКА === */}
-        <div className="text-center space-y-3 pt-6">
-          <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-tight">Настройка аккаунта <span className="text-gray-600">(шаг 1/1)</span></h1>
-          <p className="text-sm sm:text-base text-gray-400 max-w-xl mx-auto">
-            Подключите профили соцсетей и добавьте до 10 сообществ. Вы можете пропустить этот шаг и сделать это позже в настройках.
+        <div className="text-center space-y-2 pt-2 sm:pt-6">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Подключение соцсетей</h1>
+          <p className="text-[13px] sm:text-sm text-gray-400 max-w-sm mx-auto leading-snug px-4">
+            Добавьте до 10 сообществ. Вы можете пропустить этот шаг и настроить всё позже.
           </p>
-          <div className="inline-flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-full px-4 py-1.5 text-sm font-medium mt-4 shadow-lg shadow-black/30">
-            <span className="text-gray-400">Добавлено сообществ:</span>
-            <span className={isLimitReached ? "text-rose-500 font-extrabold" : "text-emerald-400 font-extrabold"}>
+          <div className="inline-flex items-center gap-1.5 bg-gray-900/80 border border-gray-800 rounded-lg px-3 py-1.5 text-xs font-medium mt-2">
+            <span className="text-gray-400">Добавлено:</span>
+            <span className={isLimitReached ? "text-rose-500 font-bold" : "text-emerald-400 font-bold"}>
               {accounts.length} / 10
             </span>
           </div>
@@ -216,8 +216,8 @@ export default function Onboarding() {
               >
                 <Send size={18} /> Привязать профиль через бота
               </button>
-              <div className="text-[11px] text-gray-500 max-w-xs text-center">
-                 Откроется бот. Нажмите кнопку <b className="text-white">«Запустить»</b> (или Старт) и вернитесь сюда. Профиль привяжется сам.
+              <div className="text-[11px] text-gray-500 max-w-[250px] text-center mt-3">
+                 Нажмите <b className="text-white">«Запустить»</b> в открывшемся боте, и профиль привяжется автоматически.
               </div>
             </div>
           ) : (
@@ -271,25 +271,27 @@ export default function Onboarding() {
         </div>
 
         {/* === КНОПКИ УПРАВЛЕНИЯ (ФУТЕР) === */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 border-t border-gray-800/50 relative z-10">
-          <button 
-            onClick={handleFinish} 
-            className="w-full sm:w-auto text-gray-500 hover:text-white px-6 py-3 font-medium transition-colors order-2 sm:order-1 active:scale-95 text-sm"
-          >
-            Пропустить и завершить настройку
-          </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4 pt-6 sm:pt-8 mt-4 border-t border-gray-800/50 relative z-10">
           
           <button 
             onClick={handleFinish}
             disabled={accounts.length === 0}
-            className={`w-full sm:w-auto px-10 py-4 rounded-xl font-bold flex justify-center items-center gap-2.5 transition-all shadow-xl active:scale-95 order-1 sm:order-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 disabled:shadow-none ${
+            className={`w-full sm:w-auto px-6 py-3.5 sm:py-4 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-lg active:scale-95 order-1 sm:order-2 text-sm sm:text-base ${
               accounts.length > 0 
               ? "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20" 
-              : "bg-gray-800 text-gray-400"
+              : "bg-gray-800 text-gray-500"
             }`}
           >
-            {accounts.length > 0 ? "Завершить настройку" : "Добавьте 1 канал"} <ArrowRight size={18} />
+            {accounts.length > 0 ? "Завершить настройку" : "Сначала добавьте сообщество"} <ArrowRight size={18} />
           </button>
+
+          <button 
+            onClick={handleFinish} 
+            className="w-full sm:w-auto bg-gray-900/50 sm:bg-transparent border border-gray-800 sm:border-transparent text-gray-400 hover:text-white px-6 py-3.5 sm:py-4 rounded-xl font-medium transition-all order-2 sm:order-1 active:scale-95 text-sm"
+          >
+            Пропустить этот шаг
+          </button>
+          
         </div>
 
       </div>
