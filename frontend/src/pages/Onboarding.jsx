@@ -280,7 +280,23 @@ export default function Onboarding() {
           {!tgProfile ? (
             <div className="flex flex-col items-center justify-center py-8 bg-gray-950/50 rounded-2xl border border-dashed border-gray-800">
               <p className="text-gray-500 text-sm mb-4 text-center px-4">Для добавления каналов авторизуйтесь через Telegram</p>
-              <CustomTelegramButton onAuthCallback={handleTgAuth} />
+              {/* Идеальная авторизация Telegram через бота */}
+            <div className="flex flex-col gap-3 max-w-sm mx-auto w-full py-4">
+              <a 
+                href={`https://t.me/smmbox_auth_bot?start=bind_${user.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-[#0088CC] hover:bg-[#0077B3] text-white py-3.5 rounded-xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-[#0088CC]/20 active:scale-95"
+              >
+                <Send size={18} /> Привязать через бота
+              </a>
+              <button 
+                onClick={() => fetchProfiles(user.id)}
+                className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold transition-all flex justify-center items-center gap-2 active:scale-95"
+              >
+                <RefreshCw size={18} /> Я привязал(а), обновить страницу
+              </button>
+            </div>
             </div>
           ) : (
             <div className="space-y-4">

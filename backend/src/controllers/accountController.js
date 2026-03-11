@@ -485,13 +485,49 @@ exports.saveVkGroupTokens = async (req, res) => {
   }
 };
 
-// === АВТОМАТИЧЕСКОЕ ДОБАВЛЕНИЕ КАНАЛОВ TELEGRAM (WEBHOOK) ===
 exports.telegramWebhook = async (req, res) => {
   try {
     const update = req.body;
     
     // 1. МГНОВЕННО отвечаем Telegram, что всё ок, чтобы он не спамил запросами
     res.sendStatus(200);
+
+    // === НОВАЯ НЕПРОБИВАЕМАЯ АВТОРИЗАЦИЯ TELEGRAM (DEEP LINKING) ===
+    if (update.message && update.message.text && update.message.text.startsWith('/start bind_')) {
+      const userId = update.message.text.split('bind_')[1]; // Достаем ID юзера из ссылки
+      const tgUser = update.message.from;
+      
+      const providerAccountId = String(tgUser.id);
+      const name = `${tgUser.first_name} ${tgUser.last_name || ''}`.trim();
+      let avatarUrl = ''; // Аватарка подтянется позже (при обновлении каналов)
+      
+      // Создаем или обновляем профиль в базе напрямую
+      await prisma.socialProfile.upsert({
+        where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: providerAccountId } },
+        update: { name, userId: String(userId) },
+        create: { 
+          userId: String(userId), 
+          provider: 'TELEGRAM', 
+          providerAccountId: providerAccountId, 
+          name, 
+          avatarUrl, 
+          accessToken: '' 
+        }
+      });
+
+      // Отвечаем пользователю прямо в Телеграм
+      const botToken = process.env.TELEGRAM_BOT_TOKEN;
+      if (botToken) {
+        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          chat_id: tgUser.id,
+          text: '✅ Ваш аккаунт Telegram успешно привязан! Вернитесь на сайт и нажмите кнопку "Обновить".'
+        }).catch(e => console.log('Не удалось отправить сообщение об успехе в ТГ'));
+      }
+
+      // Выходим из функции, так как это была команда привязки профиля, а не добавление канала
+      return; 
+    }
+    // === КОНЕЦ БЛОКА АВТОРИЗАЦИИ ===
 
     // 2. Проверяем, что это событие изменения статуса бота в чате/канале
     if (update.my_chat_member) {
@@ -512,7 +548,6 @@ exports.telegramWebhook = async (req, res) => {
 
         // Если нашли — сохраняем канал в его аккаунт!
         if (tgProfile) {
-
           const userWithPlan = await prisma.user.findUnique({ where: { id: tgProfile.userId } });
           const currentAccountsCount = await prisma.account.count({ where: { userId: tgProfile.userId } });
           const existingAccount = await prisma.account.findFirst({ where: { provider: 'TELEGRAM', providerId: chatId } });
@@ -522,6 +557,7 @@ exports.telegramWebhook = async (req, res) => {
             console.log(`Лимит превышен для ${tgProfile.userId}. Канал ${chatTitle} не добавлен.`);
             return; 
           }
+
           // Получаем аватарку канала (если есть)
           let avatarUrl = null;
           try {

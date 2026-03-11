@@ -315,3 +315,20 @@ exports.updateProfile = async (req, res) => {
     res.json({ success: true, user: updated });
   } catch (error) { res.status(500).json({ error: 'Ошибка обновления' }); }
 };
+
+exports.completeOnboarding = async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+    
+    // Обновляем статус пользователя в базе данных
+    await prisma.user.update({
+      where: { id: String(userId) },
+      data: { isOnboardingCompleted: true }
+    });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Ошибка завершения Onboarding:', error);
+    res.status(500).json({ error: 'Ошибка сервера при завершении Onboarding' });
+  }
+};
