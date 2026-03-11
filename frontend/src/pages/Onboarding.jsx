@@ -88,12 +88,94 @@ export default function Onboarding() {
     setTgChecker({ isWaiting: true });
   };
 
+  // === ЛОГИКА ВКОНТАКТЕ (МОДАЛЬНОЕ ОКНО) ===
+  const [vkHackModal, setVkHackModal] = useState({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '' });
+  const [isFetchingGroups, setIsFetchingGroups] = useState(false);
+  const [vkGroupsList, setVkGroupsList] = useState([]);
+  const [vkSelectedGroups, setVkSelectedGroups] = useState([]);
+
+  const startVkHackAuth = (profileId) => {
+    if (isLimitReached) return alert('Достигнут лимит в 10 сообществ!');
+    setVkSelectedGroups([]); setVkGroupsList([]);
+    setVkHackModal({ isOpen: true, profileId, step: 1, pastedUrl: '', tempToken: '' });
+  };
+
+  const openKateMobileAuth = () => {
+    window.open(`https://oauth.vk.com/authorize?client_id=2685278&scope=groups,manage,wall,photos,offline&response_type=token&redirect_uri=https://oauth.vk.com/blank.html&display=popup`, '_blank', 'width=600,height=500');
+  };
+
+  const fetchGroupsViaJsonp = (accessToken) => {
+    return new Promise((resolve) => {
+      const callbackName = 'vkJsonpCallback_' + Math.round(100000 * Math.random());
+      window[callbackName] = function(data) {
+        delete window[callbackName];
+        const scriptElem = document.getElementById(callbackName);
+        if (scriptElem) document.body.removeChild(scriptElem);
+        if (data.error) resolve({ error: data.error.error_msg });
+        else resolve({ groups: data.response ? data.response.items : [] });
+      };
+      const script = document.createElement('script');
+      script.id = callbackName;
+      script.src = `https://api.vk.com/method/groups.get?extended=1&filter=admin,editor&access_token=${accessToken}&v=5.199&callback=${callbackName}`;
+      script.onerror = () => {
+        delete window[callbackName];
+        if (script.parentNode) document.body.removeChild(script);
+        resolve({ error: 'Ошибка сети ВКонтакте' });
+      };
+      document.body.appendChild(script);
+    });
+  };
+
+  const handlePasteUrl = async () => {
+    const tokenMatch = vkHackModal.pastedUrl.match(/access_token=([^&]+)/);
+    if (!tokenMatch) return alert('Ссылка не содержит токен! Скопируйте всю строку.');
+    
+    const extractedToken = tokenMatch[1];
+    setVkHackModal(prev => ({ ...prev, tempToken: extractedToken, step: 2 }));
+    setIsFetchingGroups(true);
+
+    const res = await fetchGroupsViaJsonp(extractedToken);
+    if (res.error) {
+      alert(`Ошибка ВК: ${res.error}`);
+      setVkHackModal(prev => ({ ...prev, step: 1 }));
+    } else {
+      const existingIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
+      setVkGroupsList(res.groups.filter(g => !existingIds.includes(String(g.id))));
+    }
+    setIsFetchingGroups(false);
+  };
+
+  const saveHackGroups = async () => {
+    if (accounts.length + vkSelectedGroups.length > 10) return alert('Лимит 10 сообществ!');
+    setIsFetchingGroups(true);
+    const groupsToSave = vkGroupsList.filter(g => vkSelectedGroups.includes(g.id)).map(g => ({
+      id: g.id, name: g.name, avatarUrl: g.photo_100, accessToken: vkHackModal.tempToken
+    }));
+
+    try {
+      const res = await fetch('/api/accounts/vk/save-group-tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ userId: user.id, profileId: vkHackModal.profileId, groups: groupsToSave })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchAccounts(user.id);
+        setVkHackModal({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '' });
+      } else alert(data.error || 'Ошибка сохранения');
+    } catch (e) { alert('Ошибка сети'); }
+    setIsFetchingGroups(false);
+  };
 
   // === ФУНКЦИИ УПРАВЛЕНИЯ ===
+
+
   const handleFinish = async () => {
     await completeOnboarding();
     navigate('/profile'); // Уходим в кабинет
   };
+
+
 
   // Красивый рендеринг карточки аккаунта (группы/канала) из AccountsManager
   const renderAccountCard = (acc, icon, iconBg) => (
@@ -196,8 +278,8 @@ export default function Onboarding() {
                 <div className="relative flex items-center w-full mt-1">
                     <div className="absolute top-1/2 -translate-y-1/2 -left-4 sm:-left-6 w-4 sm:w-6 h-[2px] bg-gray-800/60"></div>
                     <button 
-                      onClick={() => setVkhModal(vkProfile.id, 'groups', vkProfile)}
-                      disabled={isLimitReached}
+                        onClick={() => startVkHackAuth(vkProfile.id)}
+                        disabled={isLimitReached}
                       className="w-full mt-2 bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3 rounded-2xl transition-all flex items-center justify-center gap-2.5 font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Plus size={18} /> Добавить сообщества
@@ -269,20 +351,14 @@ export default function Onboarding() {
                   </div>
                 ))}
                 
-                <div className="relative flex items-center w-full mt-1">
-                  {/* ИДЕАЛЬНО центрированная линия для кнопки + Добавить */}
-                  <div className="absolute top-1/2 -translate-y-1/2 -left-4 sm:-left-6 w-4 sm:w-6 h-[2px] bg-gray-800/60"></div>
-                  
-                  {isLimitReached ? (
-                    <button onClick={() => alert('Лимит исчерпан!')} className="flex-1 w-full bg-[#0088CC]/5 text-[#0088CC]/50 border border-[#0088CC]/10 px-4 py-3 rounded-2xl transition-all flex justify-center items-center gap-2 font-bold cursor-not-allowed">
-                      <Plus size={18} /> Добавить канал/группу
-                    </button>
-                  ) : (
-                    <a href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages" target="_blank" rel="noopener noreferrer" className="flex-1 w-full bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-6 py-3 rounded-2xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-center text-sm">
-                      <Plus size={18} /> Добавить канал/группу
-                    </a>
-                  )}
-                </div>
+                <div className="flex flex-row gap-2 w-full">
+                        <a href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
+                            <Plus size={16} /> Канал
+                        </a>
+                        <a href="https://t.me/smmbox_auth_bot?startgroup=true&admin=post_messages+edit_messages+delete_messages" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
+                            <Plus size={16} /> Группа
+                        </a>
+                        </div>
               </div>
             </div>
           )}
@@ -313,6 +389,63 @@ export default function Onboarding() {
         </div>
 
       </div>
+
+      {/* === МОДАЛЬНОЕ ОКНО ВК === */}
+      {vkHackModal.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-[#0d0f13] border border-gray-800 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 sm:p-5 border-b border-gray-800 flex justify-between items-center bg-gray-900/50 shrink-0">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+                <Users size={20} className="text-[#0077FF]" /> Подключение ВК
+              </h3>
+              <button onClick={() => setVkHackModal(prev => ({ ...prev, isOpen: false }))} className="text-gray-500 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 rounded-lg transition-all"><X size={20}/></button>
+            </div>
+            
+            <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar">
+              {vkHackModal.step === 1 ? (
+                <div className="space-y-5">
+                  <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-blue-200">
+                    Нажмите кнопку ниже, скопируйте всю ссылку из адресной строки ВК и вставьте сюда.
+                  </div>
+                  <button onClick={openKateMobileAuth} className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white py-3.5 rounded-xl font-bold transition-all flex justify-center items-center gap-2">
+                    Получить ссылку
+                  </button>
+                  <input 
+                    type="text" placeholder="Вставьте ссылку сюда..." 
+                    value={vkHackModal.pastedUrl} onChange={e => setVkHackModal(prev => ({...prev, pastedUrl: e.target.value}))}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white text-sm outline-none"
+                  />
+                  <button onClick={handlePasteUrl} disabled={!vkHackModal.pastedUrl} className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:bg-gray-800 disabled:text-gray-500 text-white py-3.5 rounded-xl font-bold transition-all active:scale-95">
+                    Далее
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <h4 className="font-bold text-gray-300 text-sm mb-3">Выберите сообщества:</h4>
+                  {isFetchingGroups ? (
+                    <div className="flex justify-center py-10"><Loader2 className="animate-spin text-[#0077FF]" size={32}/></div>
+                  ) : (
+                    vkGroupsList.map(group => (
+                      <div key={group.id} onClick={() => setVkSelectedGroups(prev => prev.includes(group.id) ? prev.filter(id => id !== group.id) : [...prev, group.id])} className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${vkSelectedGroups.includes(group.id) ? 'bg-[#0077FF]/10 border-[#0077FF]/30' : 'bg-gray-900/50 border-gray-800'}`}>
+                        <div className="flex items-center gap-3 min-w-0"><img src={group.photo_100} className="w-10 h-10 rounded-full" alt=""/><span className="text-white text-sm truncate">{group.name}</span></div>
+                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${vkSelectedGroups.includes(group.id) ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'}`}>{vkSelectedGroups.includes(group.id) && <Check size={14} className="text-white" />}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {vkHackModal.step === 2 && (
+              <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] shrink-0">
+                <button onClick={saveHackGroups} disabled={vkSelectedGroups.length === 0 || isFetchingGroups} className="w-full bg-[#0077FF] text-white py-3.5 rounded-xl font-bold transition-all flex justify-center items-center gap-2 active:scale-95">
+                  Добавить ({vkSelectedGroups.length})
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* === МОДАЛЬНОЕ ОКНО ОЖИДАНИЯ TELEGRAM (REAL-TIME ЧЕКЕР) === */}
       {tgChecker.isWaiting && (
