@@ -9,9 +9,11 @@ const sendEmail = require('../utils/sendEmail');
 exports.register = async (req, res) => {
   try {
     const { email, password, name, phone } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email и пароль обязательны' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email и пароль обязательны' });
+    }
 
-    // ЗАЩИТА ОТ ОШИБКИ 500: Проверяем, не занят ли телефон
+    // 1. ЗАЩИТА ОТ ОШИБКИ 500: Проверяем, не занят ли телефон другим пользователем
     if (phone) {
       const phoneOwner = await prisma.user.findUnique({ where: { phone } });
       if (phoneOwner && phoneOwner.email !== email) {
@@ -19,42 +21,83 @@ exports.register = async (req, res) => {
       }
     }
 
+    // 2. Ищем существующего пользователя
     let existingUser = await prisma.user.findUnique({ where: { email } });
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     const hashedPassword = await bcrypt.hash(password, 10);
 
     if (existingUser) {
+      // Если пользователь есть, но не подтвержден — обновляем данные и шлем новый код
       if (!existingUser.isEmailVerified) {
         await prisma.user.update({
           where: { email },
-          data: { password: hashedPassword, name: name || '', phone: phone || null, emailVerificationCode: verificationCode }
+          data: { 
+            password: hashedPassword, 
+            name: name || '', 
+            phone: phone || null, 
+            emailVerificationCode: verificationCode 
+          }
         });
       } else {
         return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
       }
     } else {
+      // 3. ГЕНЕРАЦИЯ УНИКАЛЬНОГО ЧИСЛОВОГО ID (например, 96720965)
+      let newId;
+      let isUnique = false;
+
+      // Цикл будет работать, пока не найдет свободный ID в базе
+      while (!isUnique) {
+        // Генерируем случайное 8-значное число от 10000000 до 99999999
+        newId = Math.floor(10000000 + Math.random() * 90000000);
+        
+        // Проверяем, нет ли уже пользователя с таким ID
+        // ВАЖНО: Если в схеме Prisma id — это String, используйте String(newId)
+        const duplicate = await prisma.user.findUnique({ where: { id: String(newId) } });
+        if (!duplicate) isUnique = true;
+      }
+
+      // 4. СОЗДАНИЕ НОВОГО ПОЛЬЗОВАТЕЛЯ с числовым ID
       await prisma.user.create({
-        data: { email, password: hashedPassword, name: name || '', phone: phone || null, emailVerificationCode: verificationCode, isEmailVerified: false }
+        data: { 
+          id: String(newId), // Записываем наш сгенерированный ID
+          email, 
+          password: hashedPassword, 
+          name: name || '', 
+          phone: phone || null, 
+          emailVerificationCode: verificationCode, 
+          isEmailVerified: false 
+        }
       });
     }
     
-    // ОТПРАВКА КОДА (Теперь аргументы совпадут с тем, что ждет sendEmail.js)
+    // 5. ОТПРАВКА КОДА ПОДТВЕРЖДЕНИЯ
     try {
       await sendEmail(email, 'Подтверждение регистрации', `
-        <h2>Добро пожаловать в SMMBOX!</h2>
-        <p>Ваш код подтверждения: <b style="font-size: 24px; color: #0077FF;">${verificationCode}</b></p>
+        <div style="font-family: sans-serif; max-width: 400px;">
+          <h2 style="color: #111;">Добро пожаловать в SMMBOX!</h2>
+          <p style="color: #666;">Введите этот код в приложении для подтверждения почты:</p>
+          <div style="background: #f4f7ff; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0;">
+            <b style="font-size: 32px; color: #0077FF; letter-spacing: 5px;">${verificationCode}</b>
+          </div>
+          <p style="font-size: 12px; color: #999;">Если вы не регистрировались у нас, просто проигнорируйте это письмо.</p>
+        </div>
       `);
     } catch (e) {
-      console.error('Ошибка вызова функции отправки email:', e);
+      // Ошибку почты только логируем, чтобы не прерывать регистрацию
+      console.error('Ошибка при отправке письма:', e);
     }
 
-    res.json({ success: true, message: 'Код подтверждения отправлен на почту' });
+    res.json({ 
+      success: true, 
+      message: 'Код подтверждения отправлен на вашу почту' 
+    });
+
   } catch (error) { 
-    console.error('Ошибка в процессе регистрации:', error);
+    console.error('Критическая ошибка регистрации:', error);
     res.status(500).json({ error: 'Внутренняя ошибка сервера' }); 
   }
 };
-
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
