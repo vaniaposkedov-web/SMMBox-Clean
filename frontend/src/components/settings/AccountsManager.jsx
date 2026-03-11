@@ -824,117 +824,37 @@ export default function AccountsManager() {
         </div>
       </div>
 
-      {/* ================= УПРАВЛЕНИЕ СООБЩЕСТВАМИ ВКОНТАКТЕ ================= */}
-      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl">
-        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
-          <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF]">
-            <Users size={20} />
+      {/* ================= УПРАВЛЕНИЕ СООБЩЕСТВАМИ ВКОНТАКТЕ (ЗАГЛУШКА) ================= */}
+      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl opacity-75">
+        <div className="flex items-center justify-between border-b border-gray-800/50 pb-4 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF]">
+              <Users size={20} />
+            </div>
+            <h2 className="text-lg font-bold text-white">Управление сообществами ВКонтакте</h2>
           </div>
-          <h2 className="text-lg font-bold text-white">Управление сообществами ВКонтакте</h2>
+          <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 text-[#0077FF] text-[10px] sm:text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg shrink-0">
+            Скоро
+          </div>
         </div>
 
-        {vkProfiles.length === 0 && (
-          <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
-            <p className="text-gray-400 text-sm px-4 mb-4">Для добавления сообществ подтвердите ваши права — привяжите профиль ВКонтакте.</p>
+        <div className="flex flex-col items-center justify-center py-8 sm:py-10 bg-gray-950/30 rounded-2xl border border-dashed border-gray-800/50 gap-4">
+          <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mb-2">
+             <Users size={28} className="text-gray-600" />
           </div>
-        )}
-
-        {vkProfiles.map(profile => (
-          <div key={profile.id} className="mb-4 sm:mb-6 bg-gray-900/30 p-3 sm:p-5 rounded-[20px] border border-gray-800 flex flex-col shadow-sm">
-            
-            {/* === ИДЕАЛЬНАЯ ШАПКА ВК === */}
-            <div 
-              className="flex items-center justify-between p-3 sm:p-4 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors gap-3 shadow-sm" 
-              onClick={() => toggleProfileCollapse(profile.id)}
-            >
-              {/* Левая часть: Аватарка + (Имя и Кнопка стены друг под другом) */}
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0077FF&color=fff`} className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover border border-gray-700 shrink-0" alt="VK" />
-                
-                <div className="flex flex-col min-w-0 gap-1.5">
-                  <div className="text-white font-bold text-sm sm:text-base truncate leading-tight">
-                    {profile.name}
-                  </div>
-                  
-                  {/* Кнопка стены теперь живет ПОД именем, экономя кучу места */}
-                  <div onClick={(e) => e.stopPropagation()} className="w-max">
-                    {(() => {
-                      const personalAcc = accounts.find(a => a.provider === 'VK' && a.providerId === profile.providerAccountId);
-                      const isPersonalActive = personalAcc && personalAcc.isValid;
-                      
-                      return isPersonalActive ? (
-                        <span className="inline-flex items-center gap-1.5 text-[9px] sm:text-[10px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-500/20 px-2 py-0.5 rounded uppercase tracking-wider">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Стена подключена
-                        </span>
-                      ) : (
-                        <button 
-                          onClick={() => startVkHackAuth(profile.id, 'personal', profile)}
-                          className="inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 px-2 py-0.5 rounded uppercase tracking-wider transition-all"
-                        >
-                          + Подключить стену
-                        </button>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-              
-              {/* Правая часть: Только иконки управления (Свободно и не зажато) */}
-              <div className="flex items-center gap-1 shrink-0 ml-auto pl-2 border-l border-gray-700/50">
-                <button className="p-1.5 text-gray-400 hover:text-white rounded-md transition-all">
-                  <ChevronDown size={20} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
-                </button>
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (window.confirm(`Отключить профиль ВКонтакте?`)) await removeSocialProfile(profile.id);
-                  }}
-                  className="p-1.5 text-gray-500 hover:text-rose-500 rounded-md transition-all"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            </div>
-
-            {/* === ИСПРАВЛЕННОЕ ДЕРЕВО ГРУПП === */}
-            <div className={`grid transition-all duration-300 ease-in-out ${collapsedProfiles[profile.id] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
-              <div className="overflow-hidden">
-                <div className="flex flex-col gap-3 sm:gap-4 mt-3 sm:mt-4 ml-[24px] sm:ml-[28px] pl-4 sm:pl-6 border-l-2 border-gray-800/60 pb-2 relative">
-                  {accounts.filter(a => a.provider === 'VK' && (a.profileId === profile.id || (!a.profileId && profile.id === vkProfiles[0]?.id))).map(acc => (
-                    <div key={acc.id} className="relative flex items-center">
-                       {/* Линии теперь ИДЕАЛЬНО по центру */}
-                       <div className="absolute top-1/2 -translate-y-1/2 -left-4 sm:-left-6 w-4 sm:w-6 h-[2px] bg-gray-800/60"></div>
-                       <div className="w-full">{renderAccountCard(acc, <span className="font-bold text-[8px] text-white">K</span>, 'bg-[#0077FF]')}</div>
-                    </div>
-                  ))}
-                  
-                  <div className="relative flex items-center w-full mt-1">
-                    <div className="absolute top-1/2 -translate-y-1/2 -left-4 sm:-left-6 w-4 sm:w-6 h-[2px] bg-gray-800/60"></div>
-                    <button 
-                      onClick={() => startVkHackAuth(profile.id, 'groups', profile)} disabled={loadingStates[profile.id]} 
-                      className="w-full bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3.5 rounded-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 font-bold shadow-sm active:scale-95"
-                    >
-                      {loadingStates[profile.id] ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                      <span>Добавить сообщества</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+          <div className="text-center space-y-1.5 px-4">
+            <p className="text-gray-300 text-sm sm:text-base font-semibold">Модуль ВКонтакте в разработке</p>
+            <p className="text-gray-500 text-xs sm:text-sm max-w-[280px] mx-auto leading-relaxed">
+              Мы проходим официальную модерацию приложения. Скоро здесь появится возможность управлять вашими сообществами.
+            </p>
           </div>
-        ))}
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 bg-gray-800/30 rounded-xl border border-gray-700/50 border-dashed hover:bg-gray-800/50 transition-colors gap-4 mt-2">
-          <div className="flex flex-col">
-            <span className="text-gray-300 font-bold text-sm flex items-center gap-2"><UserPlus size={18} className="text-gray-400"/> Подключить {vkProfiles.length > 0 ? 'еще один ' : ''}профиль</span>
-            {vkProfiles.length > 0 && <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">Выйдите из вашего текущего аккаунта в соседней вкладке ВКонтакте, чтобы привязать другую страницу.</span>}
-          </div>
-          <div className="shrink-0">
-            <CustomVkButton onAuth={(data) => linkSocialProfile(user.id, 'VK', data.id || data.user_id, [data.first_name, data.last_name].filter(Boolean).join(' ') || 'VK Юзер', data.photo_100, data.access_token)} />
-          </div>
+          <button disabled className="mt-2 bg-gray-900 border border-gray-800 text-gray-600 px-6 py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 cursor-not-allowed text-sm">
+            Временно недоступно
+          </button>
         </div>
       </div>
+
+       
 
       {/* МОДАЛЬНОЕ ОКНО ДИЗАЙНА */}
       {designModal.isOpen && (
