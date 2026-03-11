@@ -352,13 +352,13 @@ export default function Onboarding() {
                 ))}
                 
                 <div className="flex flex-row gap-2 w-full">
-                        <a href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
-                            <Plus size={16} /> Канал
-                        </a>
-                        <a href="https://t.me/smmbox_auth_bot?startgroup=true&admin=post_messages+edit_messages+delete_messages" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
-                            <Plus size={16} /> Группа
-                        </a>
-                        </div>
+                      <a href="https://t.me/smmbox_auth_bot?startchannel=true" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
+                        <Plus size={16} /> Канал
+                      </a>
+                      <a href="https://t.me/smmbox_auth_bot?startgroup=true" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
+                        <Plus size={16} /> Группа
+                      </a>
+                    </div>
               </div>
             </div>
           )}
