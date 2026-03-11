@@ -5,6 +5,8 @@ import {
   ArrowRight, Info, Plus, Trash2, X, RefreshCw, Send, Loader2, Users, Check
 } from 'lucide-react';
 
+import CustomVkButton from '../components/CustomVkButton';
+
 export default function Onboarding() {
   const navigate = useNavigate();
   const user = useStore(state => state.user);
