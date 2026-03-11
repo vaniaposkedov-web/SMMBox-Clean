@@ -35,6 +35,41 @@ export default function Onboarding() {
     }
   }, [user?.id, fetchProfiles, fetchAccounts]);
 
+  // === ЖЕЛЕЗОБЕТОННЫЕ ОБРАБОТЧИКИ АВТОРИЗАЦИИ ===
+  const handleVkAuth = async (data) => {
+    alert('✅ ВК передал данные сайту!');
+    console.log('VK Payload:', data);
+    
+    if (!user || !user.id) {
+      return alert('❌ Ошибка: ID пользователя не найден. Обновите страницу.');
+    }
+
+    try {
+      await linkSocialProfile('VK', data);
+      await fetchProfiles(user.id);
+      alert('🎉 ВК успешно привязан!');
+    } catch (error) {
+      alert('❌ Ошибка сервера при сохранении ВК: ' + error.message);
+    }
+  };
+
+  const handleTgAuth = async (data) => {
+    alert('✅ Telegram передал данные сайту!');
+    console.log('TG Payload:', data);
+    
+    if (!user || !user.id) {
+      return alert('❌ Ошибка: ID пользователя не найден. Обновите страницу.');
+    }
+
+    try {
+      await linkSocialProfile('TELEGRAM', data);
+      await fetchProfiles(user.id);
+      alert('🎉 Telegram успешно привязан!');
+    } catch (error) {
+      alert('❌ Ошибка сервера при сохранении TG: ' + error.message);
+    }
+  };
+
   // === ЛОГИКА ЗАВЕРШЕНИЯ / ПРОПУСКА ===
   const handleFinish = async () => {
     await completeOnboarding();
@@ -157,14 +192,7 @@ export default function Onboarding() {
           {!vkProfile ? (
             <div className="flex flex-col items-center justify-center py-8 bg-gray-950/50 rounded-2xl border border-dashed border-gray-800">
               <p className="text-gray-500 text-sm mb-4 text-center px-4">Для добавления групп привяжите свой профиль ВК</p>
-              <CustomVkButton onAuth={async (data) => {
-                try {
-                    await linkSocialProfile('VK', data);
-                    await fetchProfiles(user.id);
-                } catch (err) {
-                    alert('Ошибка при сохранении профиля ВК!');
-                }
-                }} />
+              <CustomVkButton onAuth={handleVkAuth} />
             </div>
           ) : (
             <div className="space-y-4">
@@ -223,14 +251,7 @@ export default function Onboarding() {
           {!tgProfile ? (
             <div className="flex flex-col items-center justify-center py-8 bg-gray-950/50 rounded-2xl border border-dashed border-gray-800">
               <p className="text-gray-500 text-sm mb-4 text-center px-4">Для добавления каналов авторизуйтесь через Telegram</p>
-              <CustomTelegramButton onAuthCallback={async (data) => {
-                try {
-                    await linkSocialProfile('TELEGRAM', data);
-                    await fetchProfiles(user.id);
-                } catch (err) {
-                    alert('Ошибка при сохранении профиля TG!');
-                }
-                }} />
+              <CustomTelegramButton onAuthCallback={handleTgAuth} />
             </div>
           ) : (
             <div className="space-y-4">
