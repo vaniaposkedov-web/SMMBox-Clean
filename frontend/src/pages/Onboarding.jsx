@@ -42,16 +42,25 @@ export default function Onboarding() {
     }
 
     try {
-      // 1. Распаковываем данные от ВКонтакте
-      const providerAccountId = String(data.profile.id);
-      const name = `${data.profile.first_name} ${data.profile.last_name || ''}`.trim();
-      const avatarUrl = data.profile.photo_100 || '';
-      const accessToken = data.accessToken;
+      // Умный поиск данных: ищем профиль везде, где ВК мог его спрятать
+      const vkUser = data.profile || (data.session && data.session.user) || data.user || data;
 
-      // 2. Отправляем строго 6 параметров по порядку!
+      // Если ВК вообще не прислал ID, останавливаемся
+      if (!vkUser || (!vkUser.id && !vkUser.uid && !vkUser.mid)) {
+        console.error('Неизвестный формат данных ВК:', data);
+        return alert('❌ Ошибка: ВК не прислал ID пользователя!');
+      }
+
+      // 1. Распаковываем данные
+      const providerAccountId = String(vkUser.id || vkUser.uid || vkUser.mid);
+      const name = `${vkUser.first_name || 'Пользователь'} ${vkUser.last_name || ''}`.trim();
+      const avatarUrl = vkUser.photo_100 || vkUser.photo || vkUser.photo_url || data.photo || '';
+      const accessToken = data.accessToken || data.access_token || (data.session && data.session.sid) || '';
+
+      // 2. Отправляем в базу
       const res = await linkSocialProfile(user.id, 'VK', providerAccountId, name, avatarUrl, accessToken);
       
-      // 3. Проверяем РЕАЛЬНЫЙ ответ от сервера
+      // 3. Проверяем ответ
       if (res.success) {
         await fetchProfiles(user.id);
         alert('🎉 ВК успешно привязан!');
