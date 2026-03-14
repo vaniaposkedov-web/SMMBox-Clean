@@ -25,6 +25,7 @@ export default function AccountsManager() {
   const verifyVkAccountsStatus = useStore((state) => state.verifyVkAccountsStatus);
   const fetchVkManagedGroupsClient = useStore((state) => state.fetchVkManagedGroupsClient);
   const linkSocialProfile = useStore((state) => state.linkSocialProfile);
+  const [tgError, setTgError] = useState('');
 
   const removeAccount = useStore((state) => state.removeAccount);
   const removeSocialProfile = useStore((state) => state.removeSocialProfile);
@@ -58,6 +59,8 @@ export default function AccountsManager() {
 
   const [collapsedProfiles, setCollapsedProfiles] = useState({});
   const toggleProfileCollapse = (id) => setCollapsedProfiles(prev => ({ ...prev, [id]: !prev[id] }));
+
+  
 
   const presetColors = ['#FFFFFF', '#000000', '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
 
@@ -851,6 +854,7 @@ export default function AccountsManager() {
             <span className="text-gray-300 font-bold text-sm flex items-center gap-2"><UserPlus size={18} className="text-gray-400"/> Подключить {tgProfiles.length > 0 ? 'еще один ' : ''}профиль</span>
             {tgProfiles.length > 0 && <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">Если нужно привязать профиль с другим номером, нажмите на кнопку справа.</span>}
           </div>
+
           {tgProfiles.length > 0 ? (
             <div className="flex gap-2 w-full sm:w-auto shrink-0">
               <button 
@@ -869,9 +873,26 @@ export default function AccountsManager() {
               </button>
             </div>
           ) : (
-            <CustomTelegramButton onAuthCallback={(data) => linkSocialProfile(user.id, 'TELEGRAM', data.id, [data.first_name, data.last_name].filter(Boolean).join(' ') || data.username || 'TG Юзер', data.photo_url, null)} />
+            <div className="flex flex-col items-end gap-3 w-full sm:w-auto">
+              {/* === КРАСИВЫЙ БЛОК ОШИБКИ === */}
+              {tgError && (
+                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 px-4 py-3 rounded-xl text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300 w-full max-w-sm flex items-start gap-2">
+                  <ShieldAlert size={18} className="shrink-0 mt-0.5" />
+                  <span>{tgError}</span>
+                </div>
+              )}
+              
+              <CustomTelegramButton onAuthCallback={async (data) => {
+                setTgError(''); // Сбрасываем ошибку перед новым запросом
+                const res = await linkSocialProfile(user.id, 'TELEGRAM', data.id, [data.first_name, data.last_name].filter(Boolean).join(' ') || data.username || 'TG Юзер', data.photo_url, null);
+                
+                if (!res?.success) {
+                  // Если бэкенд вернул ошибку, показываем её в интерфейсе
+                  setTgError(res.error || 'Ошибка привязки аккаунта');
+                }
+              }} />
+            </div>
           )}
-        </div>
       </div>
 
       {/* ================= УПРАВЛЕНИЕ СООБЩЕСТВАМИ ВКОНТАКТЕ (ЗАГЛУШКА) ================= */}
