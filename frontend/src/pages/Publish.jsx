@@ -97,6 +97,8 @@ export default function Publish() {
     }
   };
 
+  
+
   useEffect(() => {
     if (user?.id) fetchScheduledPosts();
   }, [user?.id, fetchScheduledPosts, view]);
@@ -195,8 +197,12 @@ export default function Publish() {
     }
   };
 
-  const togglePartner = (id) => {
-    setSelectedPartners(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+  const togglePartner = (partnerId) => {
+    setSelectedPartners(prev => 
+      prev.includes(partnerId) 
+        ? prev.filter(id => id !== partnerId) // Если уже выбран - убираем
+        : [...prev, partnerId] // Если не выбран - добавляем
+    );
   };
 
   const getEffectiveSetting = (accountId, settingType) => {
@@ -1009,8 +1015,9 @@ export default function Publish() {
               ) : (
                 <div className="space-y-2">
                   {myPartners.map(partner => (
-                    <label 
+                    <div 
                       key={partner.id} 
+                      onClick={() => togglePartner(partner.id)}
                       className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${selectedPartners.includes(partner.id) ? 'bg-purple-500/10 border-purple-500/30' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
                     >
                       <div className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors ${selectedPartners.includes(partner.id) ? 'bg-purple-500 border-purple-500' : 'border-gray-600'}`}>
@@ -1025,7 +1032,7 @@ export default function Publish() {
                           <p className="text-[10px] text-gray-400 truncate">{partner.pavilion}</p>
                         </div>
                       </div>
-                    </label>
+                    </div>
                   ))}
                 </div>
               )}
