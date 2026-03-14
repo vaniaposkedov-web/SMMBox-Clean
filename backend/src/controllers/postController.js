@@ -343,6 +343,30 @@ exports.createPost = async (req, res) => {
                 });
             }
 
+            // === УВЕДОМЛЯЕМ ВСЕХ ПАРТНЕРОВ О ВАШЕЙ НОВОЙ ПУБЛИКАЦИИ ===
+            try {
+                const userId = getUserId(req);
+                const partnerships = await prisma.partnership.findMany({
+                    where: { OR: [{ requesterId: userId }, { receiverId: userId }], status: 'ACCEPTED' }
+                });
+                
+                const partnerIds = partnerships.map(p => p.requesterId === userId ? p.receiverId : p.requesterId);
+                const currentUser = await prisma.user.findUnique({ where: { id: userId }});
+                const accNames = accounts.map(a => a.name || 'канал').join(', ');
+                const timeString = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+                for (const pid of partnerIds) {
+                    await prisma.notification.create({
+                        data: {
+                            userId: pid,
+                            type: 'INFO',
+                            text: `Партнер ${currentUser.name} опубликовал новый пост в ${timeString} (Паблики: ${accNames}).`,
+                            metadata: JSON.stringify({ text: text || '', mediaUrls: mediaUrls.slice(0, 3) }) // Только превью
+                        }
+                    });
+                }
+            } catch (notifyErr) { console.error('Ошибка рассылки уведомлений партнерам', notifyErr); }
+
             // Отпускаем пользователя (перекидываем на зеленый экран)
             res.status(200).json({ success: true, message: 'Отправка запущена' });
 
@@ -468,7 +492,6 @@ exports.updateScheduledPost = async (req, res) => {
     }
 };
 
-// === ОСТАЛЬНЫЕ ФУНКЦИИ ПАРТНЕРОВ И УДАЛЕНИЯ ===
 exports.shareWithPartners = async (req, res) => {
     try {
         const { text, mediaUrls = [], partnerIds = [] } = req.body;
@@ -485,7 +508,12 @@ exports.shareWithPartners = async (req, res) => {
                 data: { senderId: sender.id, receiverId, text: text || '', mediaUrls: mediaString }
             });
             await prisma.notification.create({
-                data: { userId: receiverId, text: `Партнер ${sender?.name || 'Без имени'} поделился с вами публикацией.` }
+                data: { 
+                    userId: receiverId, 
+                    type: 'INFO',
+                    text: `Партнер ${sender?.name || 'Без имени'} поделился с вами новой публикацией. Вы можете опубликовать её у себя!`,
+                    metadata: JSON.stringify({ text, mediaUrls })
+                }
             });
         }
         res.json({ success: true });

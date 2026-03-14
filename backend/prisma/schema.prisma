@@ -183,7 +183,11 @@ model Notification {
   id        String   @id @default(uuid())
   userId    String   
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
   text      String   
+  type      String   @default("INFO") // INFO, SUCCESS, WARNING, ERROR, POST_SHARED
+  metadata  String?  @db.Text         // JSON для хранения картинок и текста поста
+  
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 }
@@ -194,6 +198,7 @@ model SharedPost {
   receiverId  String
   text        String?
   mediaUrls   String?  @db.Text 
+  isPublished Boolean  @default(false) // Отслеживаем, опубликовал ли партнер пост
   createdAt   DateTime @default(now())
 
   sender      User     @relation("SentSharedPosts", fields: [senderId], references: [id], onDelete: Cascade)

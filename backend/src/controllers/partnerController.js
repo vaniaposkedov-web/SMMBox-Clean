@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const cron = require('node-cron');
 
 // 1. Получить все данные (Партнеры, Заявки, Уведомления)
 exports.getPartnerData = async (req, res) => {
@@ -109,21 +110,17 @@ exports.sendRequest = async (req, res) => {
 exports.acceptRequest = async (req, res) => {
   const { partnershipId } = req.body;
   try {
-    // Обновляем статус и получаем данные обоих юзеров
     const updated = await prisma.partnership.update({
       where: { id: partnershipId },
       data: { status: 'ACCEPTED' },
-      include: {
-        requester: true,
-        receiver: true
-      }
+      include: { requester: true, receiver: true }
     });
 
-    // СОЗДАЕМ УВЕДОМЛЕНИЕ ДЛЯ ОТПРАВИТЕЛЯ (чтобы у него загорелся индикатор)
     await prisma.notification.create({
       data: {
         userId: updated.requesterId,
-        text: `Пользователь ${updated.receiver.name || 'Без имени'} (Павильон: ${updated.receiver.pavilion || 'Не указан'}) принял вашу заявку! Теперь вы партнеры.`
+        type: 'SUCCESS',
+        text: `Пользователь ${updated.receiver.name || 'Без имени'} (Павильон: ${updated.receiver.pavilion || '?'}) принял вашу заявку! Теперь вы партнеры.`
       }
     });
 
@@ -137,6 +134,17 @@ exports.acceptRequest = async (req, res) => {
 exports.declineRequest = async (req, res) => {
   const { partnershipId } = req.body;
   try {
+    const p = await prisma.partnership.findUnique({ where: { id: partnershipId }, include: { requester: true, receiver: true } });
+    if (p && p.status === 'PENDING') {
+      // Если заявку отклоняет получатель — уведомляем отправителя
+      await prisma.notification.create({
+        data: {
+          userId: p.requesterId,
+          type: 'WARNING',
+          text: `Пользователь ${p.receiver.name || 'Без имени'} отклонил вашу заявку в партнеры.`
+        }
+      });
+    }
     await prisma.partnership.delete({ where: { id: partnershipId } });
     res.json({ success: true });
   } catch (error) {
@@ -144,7 +152,6 @@ exports.declineRequest = async (req, res) => {
   }
 };
 
-// 5. Прекратить сотрудничество (Создает уведомление)
 exports.removePartner = async (req, res) => {
   const { currentUserId, partnerId } = req.body;
   try {
@@ -162,7 +169,8 @@ exports.removePartner = async (req, res) => {
     await prisma.notification.create({
       data: {
         userId: partnerId,
-        text: `Пользователь ${currentUser.name || 'Без имени'} (Павильон: ${currentUser.pavilion || 'Не указан'}) прекратил с вами сотрудничество.`
+        type: 'ERROR',
+        text: `Пользователь ${currentUser.name || 'Без имени'} прекратил с вами сотрудничество.`
       }
     });
 
@@ -181,4 +189,63 @@ exports.clearNotifications = async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: 'Ошибка очистки' });
   }
+};
+
+// === ФОНОВЫЕ ЗАДАЧИ (CRON) ДЛЯ ПАРТНЕРОВ ===
+exports.initPartnerCron = () => {
+  // Запускается каждый день в 00:00
+  cron.schedule('0 0 * * *', async () => {
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      // 1. Очистка просроченных заявок в партнеры
+      const expiredRequests = await prisma.partnership.findMany({
+        where: { status: 'PENDING', createdAt: { lt: sevenDaysAgo } },
+        include: { requester: true, receiver: true }
+      });
+
+      for (const req of expiredRequests) {
+        // Уведомляем получателя
+        await prisma.notification.create({
+          data: {
+            userId: req.receiverId,
+            type: 'WARNING',
+            text: `Заявка в партнеры от ${req.requester.name || 'Пользователя'} была автоматически отменена (истек срок 7 дней).`
+          }
+        });
+        // Уведомляем отправителя
+        await prisma.notification.create({
+          data: {
+            userId: req.requesterId,
+            type: 'WARNING',
+            text: `Пользователь ${req.receiver.name || 'Без имени'} не принял вашу заявку в течение недели. Заявка аннулирована.`
+          }
+        });
+        await prisma.partnership.delete({ where: { id: req.id } });
+      }
+
+      // 2. Проверка неопубликованных партнерских постов
+      const ignoredPosts = await prisma.sharedPost.findMany({
+        where: { isPublished: false, createdAt: { lt: sevenDaysAgo } },
+        include: { sender: true, receiver: true }
+      });
+
+      for (const post of ignoredPosts) {
+        await prisma.notification.create({
+          data: {
+            userId: post.senderId,
+            type: 'WARNING',
+            text: `Партнер ${post.receiver.name || 'Без имени'} так и не опубликовал отправленный вами пост в течение недели.`,
+            metadata: JSON.stringify({ text: post.text, mediaUrls: post.mediaUrls })
+          }
+        });
+        // Удаляем пост, чтобы не спамить
+        await prisma.sharedPost.delete({ where: { id: post.id } });
+      }
+
+    } catch (error) {
+      console.error('Ошибка в Partner CRON:', error);
+    }
+  });
 };
