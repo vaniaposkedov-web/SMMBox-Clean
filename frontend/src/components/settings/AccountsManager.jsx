@@ -993,6 +993,50 @@ export default function AccountsManager() {
         </div>
       )}
 
+      {/* МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ НОВОГО ПРОФИЛЯ ТГ */}
+      {showTgHelperModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowTgHelperModal(false)}></div>
+          <div className="relative w-full max-w-md bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col z-10">
+            
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <UserPlus size={20} className="text-[#0088CC]" />
+                Новый профиль Telegram
+              </h3>
+              <button onClick={() => setShowTgHelperModal(false)} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 sm:p-6 space-y-4 text-sm text-gray-300">
+              <div className="bg-[#0088CC]/10 border border-[#0088CC]/20 rounded-xl p-4 text-sm text-gray-300">
+                <p className="mb-3 font-semibold text-white">Чтобы привязать дополнительный аккаунт:</p>
+                <ol className="list-decimal pl-4 space-y-2">
+                  <li>Нажмите кнопку ниже — откроется наш бот.</li>
+                  <li><b>Важно:</b> Убедитесь, что в приложении Telegram вы переключились на тот аккаунт, который хотите привязать.</li>
+                  <li>Нажмите <b>«Запустить»</b> (или отправьте команду <span className="text-white font-mono">/start</span>).</li>
+                  <li>Вернитесь сюда и обновите страницу.</li>
+                </ol>
+              </div>
+              
+              <div className="pt-2">
+                <a
+                  href={`https://t.me/smmbox_auth_bot?start=bind_${user.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShowTgHelperModal(false)}
+                  className="w-full bg-[#0088CC] hover:bg-[#0077B3] text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-lg shadow-[#0088CC]/20 active:scale-95"
+                >
+                  <Send size={18} /> Перейти в бота
+                </a>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* УЛЬТИМАТИВНОЕ ОКНО ВКОНТАКТЕ (ОБХОД БЛОКИРОВОК) */}
       {vkHackModal.isOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
