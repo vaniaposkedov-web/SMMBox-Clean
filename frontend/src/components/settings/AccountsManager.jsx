@@ -851,50 +851,34 @@ export default function AccountsManager() {
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 bg-gray-800/30 rounded-xl border border-gray-700/50 border-dashed hover:bg-gray-800/50 transition-colors gap-4 mt-2">
           <div className="flex flex-col">
-            <span className="text-gray-300 font-bold text-sm flex items-center gap-2"><UserPlus size={18} className="text-gray-400"/> Подключить {tgProfiles.length > 0 ? 'еще один ' : ''}профиль</span>
-            {tgProfiles.length > 0 && <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">Если нужно привязать профиль с другим номером, нажмите на кнопку справа.</span>}
+            <span className="text-gray-300 font-bold text-sm flex items-center gap-2">
+              <UserPlus size={18} className="text-gray-400"/> Подключить {tgProfiles.length > 0 ? 'еще один ' : ''}профиль
+            </span>
+            <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+              Безопасная привязка напрямую через Telegram-бота (без блокировок и сбоев).
+            </span>
           </div>
 
-          {tgProfiles.length > 0 ? (
-            <div className="flex gap-2 w-full sm:w-auto shrink-0">
-              <button 
-                onClick={handleRefreshProfiles} 
-                disabled={isRefreshingProfiles} 
-                className="shrink-0 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white w-12 h-12 flex items-center justify-center rounded-xl transition-all shadow-sm active:scale-95"
-                title="Обновить список профилей"
-              >
-                <RefreshCw size={18} className={isRefreshingProfiles ? "animate-spin" : ""} />
-              </button>
-              <button 
-                onClick={() => setShowTgHelperModal(true)} 
-                className="flex-1 sm:flex-none shrink-0 whitespace-nowrap bg-[#0088CC] hover:bg-[#0077B3] text-white px-5 h-12 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0088CC]/20 active:scale-95"
-              >
-                 Добавить аккаунт
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col items-end gap-3 w-full sm:w-auto">
-              {/* === КРАСИВЫЙ БЛОК ОШИБКИ === */}
-              {tgError && (
-                <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 px-4 py-3 rounded-xl text-sm font-medium animate-in fade-in slide-in-from-top-2 duration-300 w-full max-w-sm flex items-start gap-2">
-                  <ShieldAlert size={18} className="shrink-0 mt-0.5" />
-                  <span>{tgError}</span>
-                </div>
-              )}
-              
-              <CustomTelegramButton onAuthCallback={async (data) => {
-                setTgError(''); // Сбрасываем ошибку перед новым запросом
-                const res = await linkSocialProfile(user.id, 'TELEGRAM', data.id, [data.first_name, data.last_name].filter(Boolean).join(' ') || data.username || 'TG Юзер', data.photo_url, null);
-                
-                if (!res?.success) {
-                  // Если бэкенд вернул ошибку, показываем её в интерфейсе
-                  setTgError(res.error || 'Ошибка привязки аккаунта');
-                }
-              }} />
-            </div>
-          )}
+          <div className="flex gap-2 w-full sm:w-auto shrink-0">
+            <button 
+              onClick={handleRefreshProfiles} 
+              disabled={isRefreshingProfiles} 
+              className="shrink-0 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white w-12 h-12 flex items-center justify-center rounded-xl transition-all shadow-sm active:scale-95"
+              title="Обновить список профилей"
+            >
+              <RefreshCw size={18} className={isRefreshingProfiles ? "animate-spin" : ""} />
+            </button>
+            <button 
+              onClick={() => setShowTgHelperModal(true)} 
+              className="flex-1 sm:flex-none shrink-0 whitespace-nowrap bg-[#0088CC] hover:bg-[#0077B3] text-white px-5 h-12 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0088CC]/20 active:scale-95"
+            >
+               {tgProfiles.length > 0 ? 'Добавить аккаунт' : 'Привязать Telegram'}
+            </button>
+          </div>
         </div>
-      </div>
+      </div> {/* <--- Этот закрывающий DIV держит структуру страницы */}
+
+      {/* ================= УПРАВЛЕНИЕ СООБЩЕСТВАМИ ВКОНТАКТЕ (ЗАГЛУШКА) ================= */}
 
       {/* ================= УПРАВЛЕНИЕ СООБЩЕСТВАМИ ВКОНТАКТЕ (ЗАГЛУШКА) ================= */}
       <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl opacity-75">
