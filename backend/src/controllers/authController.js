@@ -126,6 +126,18 @@ exports.login = async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Ошибка сервера при входе' }); }
 };
 
+// Вспомогательная функция для генерации 8-значного ID
+async function generateUniqueId() {
+  let newId;
+  let isUnique = false;
+  while (!isUnique) {
+    newId = String(Math.floor(10000000 + Math.random() * 90000000));
+    const duplicate = await prisma.user.findUnique({ where: { id: newId } });
+    if (!duplicate) isUnique = true;
+  }
+  return newId;
+}
+
 exports.telegramAuth = async (req, res) => {
   try {
     const { id, first_name, last_name, username, photo_url } = req.body;
@@ -136,15 +148,23 @@ exports.telegramAuth = async (req, res) => {
 
     if (!user) {
       isNewUser = true;
+      const newId = await generateUniqueId(); // Генерируем красивый ID
       const fullName = [first_name, last_name].filter(Boolean).join(' ') || username || 'TG Юзер';
+      
       user = await prisma.user.create({
-        data: { telegramId: String(id), name: fullName, avatarUrl: photo_url || null, isOnboardingCompleted: false, isEmailVerified: true }
+        data: { 
+          id: newId, // Сохраняем сгенерированный ID
+          telegramId: String(id), 
+          name: fullName, 
+          avatarUrl: photo_url || null, 
+          isOnboardingCompleted: false, 
+          isEmailVerified: true 
+        }
       });
       await prisma.socialProfile.create({
         data: { userId: user.id, provider: 'TELEGRAM', providerAccountId: String(id), name: fullName, avatarUrl: photo_url || null, accessToken: '' }
       });
     } else {
-       // Обновляем аватарку, если юзер поменял её в телеграме
        if (photo_url && !user.avatarUrl) {
           await prisma.user.update({ where: { id: user.id }, data: { avatarUrl: photo_url } });
        }
@@ -159,7 +179,7 @@ exports.vkAuth = async (req, res) => {
   try {
     const vkIdStr = req.body.id || req.body.user_id;
     const access_token = req.body.access_token;
-    const email = req.body.email; // ВК иногда отдает email
+    const email = req.body.email;
     let first_name = req.body.first_name || '';
     let last_name = req.body.last_name || '';
     let photo_100 = req.body.photo_100 || null;
@@ -170,38 +190,36 @@ exports.vkAuth = async (req, res) => {
     let isNewUser = false;
 
     if (!user) {
-      // --- УМНАЯ СКЛЕЙКА (MERGE) ПО EMAIL ---
-      // Если ВК вернул email, ищем, нет ли уже такого пользователя в базе
       if (email) {
         user = await prisma.user.findUnique({ where: { email: email } });
       }
 
       if (user) {
-        // СКЛЕЙКА: Аккаунт с такой почтой уже есть. Привязываем к нему ВК!
         user = await prisma.user.update({
           where: { id: user.id },
           data: {
             vkId: String(vkIdStr),
-            avatarUrl: user.avatarUrl || photo_100 // Ставим аватарку, если её не было
+            avatarUrl: user.avatarUrl || photo_100
           }
         });
       } else {
-        // СОЗДАНИЕ: Создаем полностью нового пользователя
         isNewUser = true;
+        const newId = await generateUniqueId(); // Генерируем красивый ID
         const fullName = [first_name, last_name].filter(Boolean).join(' ') || 'VK Юзер';
+        
         user = await prisma.user.create({
           data: {
+            id: newId, // Сохраняем сгенерированный ID
             vkId: String(vkIdStr),
             email: email || null,
             name: fullName,
             avatarUrl: photo_100,
             isOnboardingCompleted: false,
-            isEmailVerified: !!email // Если ВК дал почту, она 100% подтверждена
+            isEmailVerified: !!email
           }
         });
       }
 
-      // Создаем SocialProfile для ВК в любом случае (склейка или новый)
       await prisma.socialProfile.create({
         data: {
           userId: user.id,
@@ -214,7 +232,6 @@ exports.vkAuth = async (req, res) => {
       });
 
     } else {
-      // Пользователь уже привязан к ВК. Просто обновляем его токен и аватарку
       await prisma.socialProfile.updateMany({
         where: { userId: user.id, provider: 'VK' },
         data: { accessToken: access_token, avatarUrl: photo_100 }
