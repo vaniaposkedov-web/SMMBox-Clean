@@ -215,6 +215,10 @@ export const useStore = create(
           if (res.ok) {
             set({ user: data.user, token: data.token });
             localStorage.setItem('token', data.token);
+            
+            // ВАЖНО: Добавь эту строку, чтобы профили загрузились сразу после входа
+            get().fetchProfiles(data.user.id); 
+            
             return { success: true };
           }
           return { success: false, error: data.error };
