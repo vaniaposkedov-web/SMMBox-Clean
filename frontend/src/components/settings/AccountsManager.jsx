@@ -35,8 +35,8 @@ export default function AccountsManager() {
   const [inputs, setInputs] = useState({});
   const [loadingStates, setLoadingStates] = useState({});
 
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [isVerifyingVk, setIsVerifyingVk] = useState(false);
+  const [isRefreshingTg, setIsRefreshingTg] = useState(false);
+  const [verifyingId, setVerifyingId] = useState(null);
 
   const [savingSignature, setSavingSignature] = useState({});
   const [savingWatermark, setSavingWatermark] = useState({});
@@ -152,9 +152,24 @@ export default function AccountsManager() {
   
   
 
-  const handleManualVerify = async (e) => { if (e) e.stopPropagation(); setIsVerifying(true); if (verifyAccountsStatus) await verifyAccountsStatus(); setIsVerifying(false); };
-  const handleManualVerifyVk = async (e) => { if (e) e.stopPropagation(); setIsVerifyingVk(true); if (verifyVkAccountsStatus) await verifyVkAccountsStatus(); setIsVerifyingVk(false); };
+  // Функция для главной кнопки "Обновить"
+  const handleRefreshTg = async () => {
+    setIsRefreshingTg(true);
+    await fetchAccounts(user.id);
+    setIsRefreshingTg(false);
+  };
 
+  // Умная функция проверки конкретного аккаунта
+  const handleVerifyAccount = async (e, acc) => {
+    if (e) e.stopPropagation();
+    setVerifyingId(acc.id); // Включаем спиннер только на нажатом аккаунте
+    if (acc.provider === 'VK') {
+      if (verifyVkAccountsStatus) await verifyVkAccountsStatus();
+    } else {
+      if (verifyAccountsStatus) await verifyAccountsStatus();
+    }
+    setVerifyingId(null); // Выключаем спиннер
+  };
   const toggleExpand = (acc) => {
     if (expandedId === acc.id) { setExpandedId(null); } else { setExpandedId(acc.id); setLocalSignatures(prev => ({ ...prev, [acc.id]: acc.signature || '' })); }
   };
@@ -501,21 +516,33 @@ export default function AccountsManager() {
                   <p className="text-gray-300 text-xs sm:text-sm mb-3">{acc.errorMsg || 'Ошибка подключения.'}</p>
                   
                   {acc.provider === 'TELEGRAM' && (
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-gray-400 bg-black/30 p-2.5 rounded-lg mb-3 gap-2">
-                      <span className="truncate w-full sm:w-auto">Бот: <span className="font-mono text-white">@smmbox_auth_bot</span></span>
-                      <button onClick={copyBotName} className="shrink-0 w-full sm:w-auto text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-2.5 sm:py-1.5 rounded-md flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0">
-                        {copied ? <><Check size={14} className="text-emerald-500" /> Сохранено</> : <><Copy size={14} /> Копировать</>}
-                      </button>
-                    </div>
+                    <>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-gray-400 bg-black/30 p-2.5 rounded-lg mb-3 gap-2">
+                        <span className="truncate w-full sm:w-auto">Бот: <span className="font-mono text-white">@smmbox_auth_bot</span></span>
+                        <button onClick={copyBotName} className="shrink-0 w-full sm:w-auto text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-2.5 sm:py-1.5 rounded-md flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0">
+                          {copied ? <><Check size={14} className="text-emerald-500" /> Сохранено</> : <><Copy size={14} /> Копировать</>}
+                        </button>
+                      </div>
+
+                      {/* НОВАЯ КНОПКА ВОЗВРАТА БОТА */}
+                      <a 
+                        href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full mb-3 bg-[#0088CC]/20 hover:bg-[#0088CC]/30 text-[#0088CC] border border-[#0088CC]/30 py-3 sm:py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 min-h-[44px]"
+                      >
+                        <Plus size={16} /> Вернуть бота в канал
+                      </a>
+                    </>
                   )}
 
                   {acc.provider === 'VK' ? (
-                    <button onClick={handleManualVerifyVk} disabled={isVerifyingVk} className="w-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px]">
-                      <RefreshCw size={16} className={isVerifyingVk ? "animate-spin" : ""} /> Проверить ключ ВК
+                    <button onClick={(e) => handleVerifyAccount(e, acc)} disabled={verifyingId === acc.id} className="w-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px]">
+                      <RefreshCw size={16} className={verifyingId === acc.id ? "animate-spin" : ""} /> Проверить ключ ВК
                     </button>
                   ) : (
-                    <button onClick={handleManualVerify} disabled={isVerifying} className="w-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px]">
-                      <RefreshCw size={16} className={isVerifying ? "animate-spin" : ""} /> Проверить статус бота
+                    <button onClick={(e) => handleVerifyAccount(e, acc)} disabled={verifyingId === acc.id} className="w-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 py-3 sm:py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px]">
+                      <RefreshCw size={16} className={verifyingId === acc.id ? "animate-spin" : ""} /> Проверить статус бота
                     </button>
                   )}
                 </div>
@@ -795,11 +822,12 @@ export default function AccountsManager() {
                     )}
 
                     <button 
-                      onClick={() => fetchAccounts(user.id)}
-                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-white px-5 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95"
+                      onClick={handleRefreshTg}
+                      disabled={isRefreshingTg}
+                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-5 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95"
                     >
-                      <RefreshCw size={18} />
-                      <span className="sm:hidden">Обновить</span>
+                      <RefreshCw size={18} className={isRefreshingTg ? "animate-spin" : ""} />
+                      <span className="sm:hidden">{isRefreshingTg ? 'Обновление...' : 'Обновить'}</span>
                     </button>
                   </div>
                 </div>
