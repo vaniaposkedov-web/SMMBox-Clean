@@ -85,7 +85,8 @@ function BottomNav() {
     `flex flex-col items-center flex-1 p-2 rounded-xl transition-colors ${isActive ? 'text-admin-accent' : 'text-gray-500 hover:text-gray-300'}`;
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 w-full bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 flex justify-between px-2 py-2 pb-safe z-40">
+    // Используем жесткую привязку, padding для безопасных зон iPhone (через env) и z-[100]
+    <nav className="md:hidden fixed bottom-0 left-0 w-full bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 flex justify-between px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] z-[100] transform-gpu">
       <NavLink to="/profile" className={linkClass}><User size={22} /><span className="text-[10px] mt-1 font-medium">Профиль</span></NavLink>
       <NavLink to="/publish" className={linkClass}><PlusSquare size={22} /><span className="text-[10px] mt-1 font-medium">Пост</span></NavLink>
       
@@ -118,7 +119,7 @@ function UserLayout() {
   return (
     <div className="min-h-screen bg-admin-bg text-admin-text flex font-sans">
       <Sidebar />
-      <main className="flex-1 w-full pb-20 md:pb-0 overflow-y-auto">
+      <main className="flex-1 w-full pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0 overflow-y-auto">
         <div className="max-w-5xl mx-auto w-full">
           <Outlet />
         </div>
@@ -172,13 +173,10 @@ function App() {
       <Routes>
         
         {/* --- ПУТЕВОДИТЕЛЬ (ДЛЯ НОВИЧКОВ) --- */}
-        <Route 
-          path="/onboarding" 
-          element={user.isOnboardingCompleted ? <Navigate to="/profile" replace /> : <Onboarding />} 
-        />
+        <Route path="/onboarding" element={<Onboarding />} />
 
-        {/* --- СТАНДАРТНЫЙ ИНТЕРФЕЙС (ТОЛЬКО ЕСЛИ ПРОШЕЛ ПУТЕВОДИТЕЛЬ) --- */}
-        <Route element={!user.isOnboardingCompleted ? <Navigate to="/onboarding" replace /> : <UserLayout />}>
+        {/* --- СТАНДАРТНЫЙ ИНТЕРФЕЙС (ТЕПЕРЬ ПУСКАЕМ ВСЕХ СРАЗУ) --- */}
+        <Route element={<UserLayout />}>
           <Route path="/" element={<Navigate to="/profile" replace />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/publish" element={<Publish />} />
@@ -193,8 +191,8 @@ function App() {
         <Route path="/boss-login" element={<AdminLogin />} />
         <Route path="/system-core-dashboard" element={<AdminDashboard />} />
 
-        {/* Catch-all ДОЛЖЕН БЫТЬ В САМОМ НИЗУ */}
-        <Route path="*" element={<Navigate to={!user.isOnboardingCompleted ? "/onboarding" : "/profile"} replace />} />
+        {/* Catch-all ДОЛЖЕН БЫТЬ В САМОМ НИЗУ (Если адрес не найден - кидаем в профиль) */}
+        <Route path="*" element={<Navigate to="/profile" replace />} />
       </Routes>
     </BrowserRouter>
   );

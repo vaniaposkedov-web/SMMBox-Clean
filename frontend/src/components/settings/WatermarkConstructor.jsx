@@ -227,7 +227,7 @@ export default function WatermarkConstructor() {
             Настройте дизайн постов. Он применится ко всем каналам, использующим <span className="text-gray-300 font-bold bg-gray-800 px-2 py-0.5 rounded-md border border-gray-700 whitespace-nowrap">Шаблон</span>.
           </p>
         </div>
-        <button onClick={handleSave} disabled={isSaving} className={`hidden sm:flex shrink-0 px-8 py-3.5 rounded-xl font-bold items-center justify-center gap-2 transition-all shadow-xl active:scale-95 ${saveSuccess ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20 disabled:opacity-50'}`}>
+        <button onClick={handleSave} disabled={isSaving} className={`flex w-full sm:w-auto mt-4 sm:mt-0 shrink-0 px-8 py-3.5 rounded-xl font-bold items-center justify-center gap-2 transition-all shadow-xl active:scale-95 ${saveSuccess ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20 disabled:opacity-50'}`}>
           {isSaving ? <Loader2 className="animate-spin" size={20} /> : saveSuccess ? <Check size={20} /> : <Save size={20} />}
           <span>{isSaving ? 'Сохранение...' : saveSuccess ? 'Сохранено' : 'Сохранить шаблон'}</span>
         </button>
@@ -378,7 +378,7 @@ export default function WatermarkConstructor() {
       </div>
 
       {/* === TOP ACTION BAR ДЛЯ МОБИЛЬНЫХ (ВЕРХНЯЯ ПАНЕЛЬ) === */}
-      <div className={`fixed top-0 left-0 right-0 bg-admin-card/95 backdrop-blur-xl border-b border-gray-800 p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] z-[60] transition-transform duration-300 shadow-[0_10px_30px_rgba(0,0,0,0.5)] flex items-center justify-between sm:hidden ${showMobileSticky ? 'translate-y-0' : '-translate-y-[150%]'}`}>
+      <div className={`fixed top-0 left-0 right-0 bg-[#0d0f13]/95 backdrop-blur-xl border-b border-gray-800 p-3 z-[60] transition-transform duration-300 shadow-xl flex items-center justify-between sm:hidden ${showMobileSticky ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="flex items-center gap-3 pr-2 min-w-0">
           <div className="w-10 h-10 rounded-lg bg-gray-800 bg-cover bg-center relative overflow-hidden shadow-inner border border-gray-700/50 shrink-0" style={{ backgroundImage: `url('${SAMPLE_IMG}')` }}>
              <WatermarkElement isMiniature={true} />
