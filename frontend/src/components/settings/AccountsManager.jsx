@@ -72,6 +72,15 @@ export default function AccountsManager() {
   const currentCount = accounts.length;
   const isLimitReached = !isPro && currentCount >= accountsLimit;
 
+  const [isRefreshingProfiles, setIsRefreshingProfiles] = useState(false);
+
+  const handleRefreshProfiles = async () => {
+    setIsRefreshingProfiles(true);
+    await fetchProfiles(user.id);
+    await fetchAccounts(user.id);
+    setIsRefreshingProfiles(false);
+  };
+
   useEffect(() => {
     if (user?.id) {
       fetchProfiles(user.id);
@@ -843,9 +852,22 @@ export default function AccountsManager() {
             {tgProfiles.length > 0 && <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">Если нужно привязать профиль с другим номером, нажмите на кнопку справа.</span>}
           </div>
           {tgProfiles.length > 0 ? (
-            <button onClick={() => setShowTgHelperModal(true)} className="shrink-0 bg-[#0088CC] hover:bg-[#0077B3] text-white px-5 py-3 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0088CC]/20 active:scale-95 w-full sm:w-auto">
-               Добавить аккаунт
-            </button>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <button 
+                onClick={handleRefreshProfiles} 
+                disabled={isRefreshingProfiles} 
+                className="shrink-0 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white w-12 flex items-center justify-center rounded-xl transition-all shadow-sm active:scale-95"
+                title="Обновить список профилей"
+              >
+                <RefreshCw size={18} className={isRefreshingProfiles ? "animate-spin" : ""} />
+              </button>
+              <button 
+                onClick={() => setShowTgHelperModal(true)} 
+                className="flex-1 sm:flex-none shrink-0 bg-[#0088CC] hover:bg-[#0077B3] text-white px-5 py-3 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0088CC]/20 active:scale-95"
+              >
+                 Добавить аккаунт
+              </button>
+            </div>
           ) : (
             <CustomTelegramButton onAuthCallback={(data) => linkSocialProfile(user.id, 'TELEGRAM', data.id, [data.first_name, data.last_name].filter(Boolean).join(' ') || data.username || 'TG Юзер', data.photo_url, null)} />
           )}
