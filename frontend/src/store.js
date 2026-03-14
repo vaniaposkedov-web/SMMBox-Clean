@@ -258,7 +258,8 @@ export const useStore = create(
           const res = await fetch('/api/accounts/tg/verify-status', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId: user.id })
           });
-          if (res.ok) get().fetchAccounts(user.id); 
+          // ДОБАВЛЕН await для синхронизации анимации
+          if (res.ok) await get().fetchAccounts(user.id); 
         } catch (error) {}
       },
 
@@ -505,7 +506,8 @@ export const useStore = create(
           const res = await fetch('/api/accounts/vk/verify-status', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId: user.id })
           });
-          if (res.ok) get().fetchAccounts(user.id); 
+          // ДОБАВЛЕН await
+          if (res.ok) await get().fetchAccounts(user.id); 
         } catch (error) {}
       },
 
