@@ -496,15 +496,30 @@ exports.telegramWebhook = async (req, res) => {
     if (update.message && update.message.text && update.message.text.startsWith('/start bind_')) {
       const userId = update.message.text.split('bind_')[1]; // Достаем ID юзера из ссылки
       const tgUser = update.message.from;
+      const botToken = process.env.TELEGRAM_BOT_TOKEN;
       
       const providerAccountId = String(tgUser.id);
       const name = `${tgUser.first_name} ${tgUser.last_name || ''}`.trim();
-      let avatarUrl = ''; // Аватарка подтянется позже (при обновлении каналов)
+      let avatarUrl = '';
       
-      // Создаем или обновляем профиль в базе напрямую
+      // 1. Пытаемся скачать аватарку пользователя через API Telegram
+      if (botToken) {
+        try {
+          const photosRes = await axios.get(`https://api.telegram.org/bot${botToken}/getUserProfilePhotos?user_id=${tgUser.id}&limit=1`);
+          if (photosRes.data.result.total_count > 0) {
+            const fileId = photosRes.data.result.photos[0][0].file_id;
+            const fileRes = await axios.get(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
+            avatarUrl = `https://api.telegram.org/file/bot${botToken}/${fileRes.data.result.file_path}`;
+          }
+        } catch (e) {
+          console.log('Не удалось загрузить аватарку пользователя из-за настроек приватности');
+        }
+      }
+      
+      // 2. Создаем или обновляем профиль в базе
       await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: providerAccountId } },
-        update: { name, userId: String(userId) },
+        update: { name, avatarUrl: avatarUrl || undefined, userId: String(userId) }, // avatarUrl обновляем только если нашли
         create: { 
           userId: String(userId), 
           provider: 'TELEGRAM', 
@@ -515,8 +530,7 @@ exports.telegramWebhook = async (req, res) => {
         }
       });
 
-      // Отвечаем пользователю прямо в Телеграм
-      const botToken = process.env.TELEGRAM_BOT_TOKEN;
+      // 3. Отвечаем пользователю прямо в Телеграм
       if (botToken) {
         await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           chat_id: tgUser.id,
@@ -524,9 +538,9 @@ exports.telegramWebhook = async (req, res) => {
         }).catch(e => console.log('Не удалось отправить сообщение об успехе в ТГ'));
       }
 
-      // Выходим из функции, так как это была команда привязки профиля, а не добавление канала
       return; 
     }
+    // === КОНЕЦ БЛОКА АВТОРИЗАЦИИ ===
     // === КОНЕЦ БЛОКА АВТОРИЗАЦИИ ===
 
     // 2. Проверяем, что это событие изменения статуса бота в чате/канале
