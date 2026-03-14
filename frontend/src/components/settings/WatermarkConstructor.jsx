@@ -378,7 +378,7 @@ export default function WatermarkConstructor() {
       </div>
 
       {/* === TOP ACTION BAR ДЛЯ МОБИЛЬНЫХ (ВЕРХНЯЯ ПАНЕЛЬ) === */}
-      <div className={`fixed top-0 left-0 right-0 bg-[#0d0f13]/95 backdrop-blur-xl border-b border-gray-800 p-3 z-[60] transition-transform duration-300 shadow-xl flex items-center justify-between sm:hidden ${showMobileSticky ? 'translate-y-0' : '-translate-y-full'}`}>
+      <div className={`fixed top-0 left-0 right-0 bg-[#0d0f13]/95 backdrop-blur-xl border-b border-gray-800 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] z-[60] transition-all duration-300 shadow-xl flex items-center justify-between sm:hidden ${showMobileSticky ? 'translate-y-0 opacity-100' : '-translate-y-[150%] opacity-0'}`}>
         <div className="flex items-center gap-3 pr-2 min-w-0">
           <div className="w-10 h-10 rounded-lg bg-gray-800 bg-cover bg-center relative overflow-hidden shadow-inner border border-gray-700/50 shrink-0" style={{ backgroundImage: `url('${SAMPLE_IMG}')` }}>
              <WatermarkElement isMiniature={true} />
