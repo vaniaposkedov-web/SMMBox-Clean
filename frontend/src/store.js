@@ -338,7 +338,9 @@ export const useStore = create(
 
       fetchPartnerData: async (userId) => {
         try {
-          const res = await fetch(`/api/partners/data?userId=${userId}`);
+          const res = await fetch(`/api/partners/data?userId=${userId}`, {
+            headers: { 'Authorization': `Bearer ${get().token}` }
+          });
           if (res.ok) {
             const data = await res.json();
             set({ myPartners: data.partners, incomingRequests: data.incomingRequests, outgoingRequests: data.outgoingRequests, notifications: data.notifications });
@@ -348,7 +350,9 @@ export const useStore = create(
 
       searchUsersFromApi: async (query, userId) => {
         try {
-          const res = await fetch(`/api/partners/search?query=${encodeURIComponent(query)}&userId=${userId}`);
+          const res = await fetch(`/api/partners/search?query=${encodeURIComponent(query)}&userId=${userId}`, {
+            headers: { 'Authorization': `Bearer ${get().token}` }
+          });
           if (res.ok) return await res.json();
           return [];
         } catch (error) { return []; }
@@ -369,28 +373,81 @@ export const useStore = create(
       },
 
       sendPartnershipRequest: async (requesterId, receiverId) => {
-        await fetch('/api/partners/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requesterId, receiverId }) });
-        get().fetchPartnerData(requesterId);
+        try {
+          const res = await fetch('/api/partners/request', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
+            body: JSON.stringify({ requesterId, receiverId }) 
+          });
+          const data = await res.json();
+          if (res.ok) {
+            get().fetchPartnerData(requesterId);
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) { 
+          return { success: false, error: 'Ошибка соединения с сервером' }; 
+        }
       },
 
       acceptPartnership: async (partnershipId) => {
-        await fetch('/api/partners/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId }) });
-        get().fetchPartnerData(get().user.id);
+        try {
+          const res = await fetch('/api/partners/accept', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
+            body: JSON.stringify({ partnershipId }) 
+          });
+          if (res.ok) {
+            get().fetchPartnerData(get().user.id);
+            return { success: true };
+          }
+          return { success: false };
+        } catch (error) { return { success: false }; }
       },
 
       declinePartnership: async (partnershipId) => {
-        await fetch('/api/partners/decline', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ partnershipId }) });
-        get().fetchPartnerData(get().user.id);
+        try {
+          const res = await fetch('/api/partners/decline', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
+            body: JSON.stringify({ partnershipId }) 
+          });
+          if (res.ok) {
+            get().fetchPartnerData(get().user.id);
+            return { success: true };
+          }
+          return { success: false };
+        } catch (error) { return { success: false }; }
       },
 
       removePartnerAction: async (currentUserId, partnerId) => {
-        await fetch('/api/partners/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentUserId, partnerId }) });
-        get().fetchPartnerData(currentUserId);
+        try {
+          const res = await fetch('/api/partners/remove', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
+            body: JSON.stringify({ currentUserId, partnerId }) 
+          });
+          if (res.ok) {
+            get().fetchPartnerData(currentUserId);
+            return { success: true };
+          }
+          return { success: false };
+        } catch (error) { return { success: false }; }
       },
 
       clearNotifications: async (userId) => {
-        await fetch('/api/partners/notifications/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
-        get().fetchPartnerData(userId);
+        try {
+          const res = await fetch('/api/partners/notifications/clear', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
+            body: JSON.stringify({ userId }) 
+          });
+          if (res.ok) {
+            get().fetchPartnerData(userId);
+            return { success: true };
+          }
+          return { success: false };
+        } catch (error) { return { success: false }; }
       },
 
       fetchAccounts: async (userId) => {
