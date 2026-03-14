@@ -852,18 +852,18 @@ export default function AccountsManager() {
             {tgProfiles.length > 0 && <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">Если нужно привязать профиль с другим номером, нажмите на кнопку справа.</span>}
           </div>
           {tgProfiles.length > 0 ? (
-            <div className="flex gap-2 w-full sm:w-auto">
+            <div className="flex gap-2 w-full sm:w-auto shrink-0">
               <button 
                 onClick={handleRefreshProfiles} 
                 disabled={isRefreshingProfiles} 
-                className="shrink-0 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white w-12 flex items-center justify-center rounded-xl transition-all shadow-sm active:scale-95"
+                className="shrink-0 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white w-12 h-12 flex items-center justify-center rounded-xl transition-all shadow-sm active:scale-95"
                 title="Обновить список профилей"
               >
                 <RefreshCw size={18} className={isRefreshingProfiles ? "animate-spin" : ""} />
               </button>
               <button 
                 onClick={() => setShowTgHelperModal(true)} 
-                className="flex-1 sm:flex-none shrink-0 bg-[#0088CC] hover:bg-[#0077B3] text-white px-5 py-3 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0088CC]/20 active:scale-95"
+                className="flex-1 sm:flex-none shrink-0 whitespace-nowrap bg-[#0088CC] hover:bg-[#0077B3] text-white px-5 h-12 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0088CC]/20 active:scale-95"
               >
                  Добавить аккаунт
               </button>

@@ -5,35 +5,32 @@ const prisma = new PrismaClient();
 exports.getPartnerData = async (req, res) => {
   const { userId } = req.query;
   try {
-    // Входящие заявки
     const incomingRequests = await prisma.partnership.findMany({
       where: { receiverId: userId, status: 'PENDING' },
       include: { requester: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } }
     });
 
-    // Исходящие заявки
+    // ИСПРАВЛЕНИЕ 1: Добавили "include: { receiver: ... }" чтобы аватарки отображались в исходящих
     const outgoingRequests = await prisma.partnership.findMany({
-      where: { requesterId: userId, status: 'PENDING' }
+      where: { requesterId: userId, status: 'PENDING' },
+      include: { receiver: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } }
     });
 
-    // Подтвержденные партнеры (ОТОБРАЖАЮТСЯ И У ОТПРАВИТЕЛЯ, И У ПОЛУЧАТЕЛЯ)
     const acceptedPartnerships = await prisma.partnership.findMany({
       where: {
         OR: [{ requesterId: userId }, { receiverId: userId }],
         status: 'ACCEPTED'
       },
       include: {
-        requester: { select: { id: true, name: true, pavilion: true, phone: true } },
-        receiver: { select: { id: true, name: true, pavilion: true, phone: true } }
+        requester: { select: { id: true, name: true, pavilion: true, phone: true, avatarUrl: true } },
+        receiver: { select: { id: true, name: true, pavilion: true, phone: true, avatarUrl: true } }
       }
     });
 
-    // Извлекаем самих людей из связей
     const partners = acceptedPartnerships.map(p => 
       p.requesterId === userId ? p.receiver : p.requester
     );
 
-    // Уведомления
     const notifications = await prisma.notification.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' }
@@ -45,29 +42,50 @@ exports.getPartnerData = async (req, res) => {
   }
 };
 
-// 2. МУЛЬТИ-ПОИСК (Имя, ID, Павильон, Телефон)
+// 2. УМНЫЙ МУЛЬТИ-ПОИСК С ОПРЕДЕЛЕНИЕМ СТАТУСОВ
 exports.searchPartners = async (req, res) => {
   const { query, userId } = req.query;
-  
   try {
     if (!query) return res.json([]);
-    const lowerQuery = query.toLowerCase().trim();
-
-    const allUsers = await prisma.user.findMany({
-      where: { id: { not: userId } },
-      select: { id: true, name: true, pavilion: true, phone: true }
+    
+    // Ищем юзеров мощным запросом через Prisma (без учета регистра)
+    const filteredUsers = await prisma.user.findMany({
+      where: {
+        id: { not: userId },
+        OR: [
+          { id: { contains: query, mode: 'insensitive' } },
+          { name: { contains: query, mode: 'insensitive' } },
+          { pavilion: { contains: query, mode: 'insensitive' } },
+          { phone: { contains: query, mode: 'insensitive' } }
+        ]
+      },
+      select: { id: true, name: true, pavilion: true, phone: true, avatarUrl: true },
+      take: 20
     });
 
-    const filteredUsers = allUsers.filter(u => {
-      const matchId = u.id && u.id.toLowerCase().includes(lowerQuery);
-      const matchName = u.name && u.name.toLowerCase().includes(lowerQuery);
-      const matchPavilion = u.pavilion && u.pavilion.toLowerCase().includes(lowerQuery);
-      const matchPhone = u.phone && u.phone.toLowerCase().includes(lowerQuery);
-      
-      return matchId || matchName || matchPavilion || matchPhone;
+    // Находим все возможные связи между текущим юзером и найденными людьми
+    const partnerships = await prisma.partnership.findMany({
+      where: {
+        OR: [
+          { requesterId: userId, receiverId: { in: filteredUsers.map(u => u.id) } },
+          { receiverId: userId, requesterId: { in: filteredUsers.map(u => u.id) } }
+        ]
+      }
     });
 
-    res.json(filteredUsers.slice(0, 20));
+    // ИСПРАВЛЕНИЕ 2: Присваиваем статусы, чтобы фронтенд знал, какие кнопки показывать
+    const resultsWithStatus = filteredUsers.map(user => {
+      const p = partnerships.find(p => p.requesterId === user.id || p.receiverId === user.id);
+      let status = 'NONE';
+      if (p) {
+        if (p.status === 'ACCEPTED') status = 'PARTNER'; // Уже партнер
+        else if (p.requesterId === userId) status = 'PENDING'; // Заявка уже отправлена нами
+        else status = 'INCOMING'; // Нам прислали заявку
+      }
+      return { ...user, status };
+    });
+
+    res.json(resultsWithStatus);
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ error: 'Ошибка поиска' });
