@@ -66,7 +66,8 @@ exports.register = async (req, res) => {
           name: name || '', 
           phone: phone || null, 
           emailVerificationCode: verificationCode, 
-          isEmailVerified: false 
+          isEmailVerified: false,
+          isOnboardingCompleted: true
         }
       });
     }
@@ -157,7 +158,7 @@ exports.telegramAuth = async (req, res) => {
           telegramId: String(id), 
           name: fullName, 
           avatarUrl: photo_url || null, 
-          isOnboardingCompleted: false, 
+          isOnboardingCompleted: true, 
           isEmailVerified: true 
         }
       });
@@ -214,7 +215,7 @@ exports.vkAuth = async (req, res) => {
             email: email || null,
             name: fullName,
             avatarUrl: photo_100,
-            isOnboardingCompleted: false,
+            isOnboardingCompleted: true,
             isEmailVerified: !!email
           }
         });
