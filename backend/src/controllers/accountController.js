@@ -25,15 +25,27 @@ exports.vkCallback = async (req, res) => {
 };
 
 exports.linkSocialProfile = async (req, res) => {
-  const { userId, provider, providerAccountId, name, avatarUrl, accessToken } = req.body;
   try {
+    const { userId, provider, providerAccountId, name, avatarUrl, accessToken } = req.body;
+
+    // ЗАЩИТА: ПРОВЕРЯЕМ, НЕ ПРИВЯЗАН ЛИ УЖЕ ЭТОТ ПРОФИЛЬ К ДРУГОМУ ЮЗЕРУ
+    const existingProfile = await prisma.socialProfile.findUnique({
+      where: { provider_providerAccountId: { provider, providerAccountId: String(providerAccountId) } }
+    });
+
+    if (existingProfile && existingProfile.userId !== String(userId)) {
+      return res.status(400).json({ success: false, error: 'Этот профиль уже привязан к другому аккаунту' });
+    }
+
     const profile = await prisma.socialProfile.upsert({
       where: { provider_providerAccountId: { provider, providerAccountId: String(providerAccountId) } },
-      update: { name, avatarUrl, accessToken, userId: String(userId) }, 
+      update: { name, avatarUrl, accessToken },
       create: { userId: String(userId), provider, providerAccountId: String(providerAccountId), name, avatarUrl, accessToken }
     });
     res.json({ success: true, profile });
-  } catch (error) { res.status(500).json({ error: 'Ошибка привязки' }); }
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Ошибка сервера' });
+  }
 };
 
 exports.getProfiles = async (req, res) => {
@@ -515,6 +527,23 @@ exports.telegramWebhook = async (req, res) => {
           console.log('Не удалось загрузить аватарку пользователя из-за настроек приватности');
         }
       }
+
+      // ЗАЩИТА В БОТЕ: ПРОВЕРЯЕМ, НЕ ПРИВЯЗАН ЛИ УЖЕ ЭТОТ ТГ
+      const existingProfile = await prisma.socialProfile.findUnique({
+        where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: providerAccountId } }
+      });
+
+      if (existingProfile && existingProfile.userId !== String(userId)) {
+        if (botToken) {
+          await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+            chat_id: tgUser.id,
+            text: '❌ Ошибка: Этот Telegram-аккаунт уже привязан к другому профилю на сайте. Пожалуйста, используйте другой Telegram-аккаунт.'
+          }).catch(e => console.log('Не удалось отправить сообщение об ошибке в ТГ'));
+        }
+        return; // Прерываем выполнение!
+      }
+
+    
       
       // 2. Создаем или обновляем профиль в базе
       await prisma.socialProfile.upsert({
