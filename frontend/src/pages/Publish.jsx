@@ -78,6 +78,25 @@ export default function Publish() {
   const fetchScheduledPosts = useStore(state => state.fetchScheduledPosts);
   const deleteScheduledPostAction = useStore(state => state.deleteScheduledPostAction);
 
+  
+  const [isSharing, setIsSharing] = useState(false);
+  const handleShareToPartners = async () => {
+    if (selectedPartners.length === 0) return;
+    setIsSharing(true);
+    
+    // Отправляем текст и массив Base64 картинок
+    const res = await sharePostAction(text, photos, selectedPartners);
+    
+    setIsSharing(false);
+    if (res?.success) {
+      setShowPartnerModal(false);
+      setSelectedPartners([]);
+      alert('Пост успешно отправлен выбранным партнерам!'); // Можно заменить на красивый тост, если используешь
+    } else {
+      alert(res?.error || 'Ошибка при отправке поста');
+    }
+  };
+
   useEffect(() => {
     if (user?.id) fetchScheduledPosts();
   }, [user?.id, fetchScheduledPosts, view]);
@@ -912,8 +931,11 @@ export default function Publish() {
               <button onClick={resetForm} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-xl font-bold border border-gray-700 transition-colors">
                 <LayoutTemplate size={20} /> <span>В главное меню</span>
               </button>
-              <button onClick={() => setShowPartnerModal(true)} className="w-full flex items-center justify-center gap-2 text-white py-4 rounded-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 active:scale-95 transition-all">
-                <Share2 size={20} /> <span>Отправить партнерам</span>
+              <button 
+                onClick={() => setShowPartnerModal(true)} 
+                className="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-500/20 active:scale-95"
+              >
+                <Share2 size={18} /> Поделиться с партнерами
               </button>
             </div>
           </div>
@@ -957,6 +979,72 @@ export default function Publish() {
               <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step === 3) ? 'flex' : 'hidden'}`}><Send size={18}/> Опубликовать</span>
               <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step < 3) ? 'flex' : 'hidden'}`}>Далее <ChevronRight size={20}/></span>
             </button>
+          </div>
+        </div>
+      )}
+
+
+
+      {/* === МОДАЛЬНОЕ ОКНО ВЫБОРА ПАРТНЕРОВ === */}
+      {showPartnerModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowPartnerModal(false)}></div>
+          <div className="relative w-full max-w-md bg-[#111318] border border-gray-800 rounded-2xl shadow-2xl flex flex-col z-10 overflow-hidden">
+            
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/50">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Users size={18} className="text-purple-500" /> Выберите партнеров
+              </h3>
+              <button onClick={() => setShowPartnerModal(false)} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-xl transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 max-h-[50vh] overflow-y-auto custom-scrollbar">
+              {myPartners.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Users size={40} className="mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">У вас пока нет добавленных партнеров.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {myPartners.map(partner => (
+                    <label 
+                      key={partner.id} 
+                      className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${selectedPartners.includes(partner.id) ? 'bg-purple-500/10 border-purple-500/30' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors ${selectedPartners.includes(partner.id) ? 'bg-purple-500 border-purple-500' : 'border-gray-600'}`}>
+                        {selectedPartners.includes(partner.id) && <Check size={14} className="text-white" />}
+                      </div>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-gray-800 shrink-0 overflow-hidden border border-gray-700 flex justify-center items-center text-xs font-bold text-gray-400">
+                          {partner.avatarUrl ? <img src={partner.avatarUrl} className="w-full h-full object-cover"/> : partner.name?.substring(0,2).toUpperCase()}
+                        </div>
+                        <div className="truncate">
+                          <p className="text-sm font-bold text-white truncate">{partner.name}</p>
+                          <p className="text-[10px] text-gray-400 truncate">{partner.pavilion}</p>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 border-t border-gray-800 bg-gray-900/50 flex gap-3">
+              <button onClick={() => setShowPartnerModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-all text-sm">
+                Отмена
+              </button>
+              <button 
+                onClick={handleShareToPartners} 
+                disabled={isSharing || selectedPartners.length === 0} 
+                className="flex-[2] bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 text-sm active:scale-95 shadow-lg shadow-purple-500/20"
+              >
+                {isSharing ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                {isSharing ? 'Отправка...' : `Отправить (${selectedPartners.length})`}
+              </button>
+            </div>
+
           </div>
         </div>
       )}
