@@ -60,6 +60,8 @@ export default function Publish() {
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const [partnerStatus, setPartnerStatus] = useState('idle'); 
   const [selectedPartners, setSelectedPartners] = useState([]);
+  // === ДОБАВЬТЕ ЭТУ СТРОКУ ===
+  const [toastMessage, setToastMessage] = useState(null);
 
   const [editPost, setEditPost] = useState(null);
   const [editTab, setEditTab] = useState('text');
@@ -85,24 +87,23 @@ export default function Publish() {
     setIsSharing(true);
     
     try {
-      // ИСПРАВЛЕНИЕ 1: Конвертируем файлы в Base64 перед отправкой на сервер
       const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
-      
       const res = await sharePostAction(text, base64Images, selectedPartners);
       
       if (res?.success) {
         setShowPartnerModal(false);
         setSelectedPartners([]);
         
-        // ИСПРАВЛЕНИЕ 2: Задержка перед alert, чтобы React успел закрыть модалку и не выдал ошибку "insertBefore"
-        setTimeout(() => {
-          alert('Пост успешно отправлен выбранным партнерам!');
-        }, 150);
+        // Показываем кастомное уведомление на 3 секунды
+        setToastMessage('Пост успешно отправлен партнерам!');
+        setTimeout(() => setToastMessage(null), 3000);
       } else {
-        alert(res?.error || 'Ошибка при отправке поста');
+        setToastMessage('Ошибка при отправке поста');
+        setTimeout(() => setToastMessage(null), 3000);
       }
     } catch (error) {
-      alert('Ошибка при обработке фотографий');
+      setToastMessage('Ошибка при обработке фотографий');
+      setTimeout(() => setToastMessage(null), 3000);
     } finally {
       setIsSharing(false);
     }
@@ -1065,6 +1066,15 @@ export default function Publish() {
           </div>
         </div>
       )}
+
+      {/* === КАСТОМНОЕ УВЕДОМЛЕНИЕ (TOAST) === */}
+      {toastMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] bg-emerald-500/90 backdrop-blur-md text-white px-6 py-3.5 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.3)] flex items-center gap-3 animate-in slide-in-from-top-4 fade-in duration-300 font-bold border border-emerald-400/50 whitespace-nowrap">
+          <CheckCircle2 size={20} />
+          {toastMessage}
+        </div>
+      )}
+
     </div>
   );
 }
