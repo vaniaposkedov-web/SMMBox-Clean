@@ -98,13 +98,16 @@ export default function Requests() {
   };
 
   return (
-    <div className="w-full animate-fade-in font-sans pb-20 sm:pb-0">
-      <div className="mb-6 sm:mb-8">
+    <div className="min-h-[100dvh] bg-admin-bg pb-[120px] md:pb-24 font-sans relative animate-fade-in">
+      <div className="p-4 sm:p-8 max-w-4xl mx-auto">
+        
+        <div className="mb-6 sm:mb-8">
         <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 flex items-center gap-2">
           <Bell className="text-blue-500" size={24} /> Уведомления и Посты
         </h2>
         <p className="text-xs sm:text-sm text-gray-400">Следите за активностью партнеров и входящим контентом.</p>
       </div>
+      
 
       <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-6 sm:mb-8 pb-2 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0">
         <button 
@@ -242,7 +245,7 @@ export default function Requests() {
           </div>
         )}
       </div>
-
+      </div>
       {/* === МОДАЛЬНОЕ ОКНО ПРОСМОТРА ПОСТА === */}
       {previewModal.isOpen && previewModal.data && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
