@@ -39,7 +39,7 @@ function Sidebar() {
         <div className="w-8 h-8 bg-admin-accent rounded-lg flex items-center justify-center text-white">
           <Box size={20} />
         </div>
-        <span className="text-xl font-bold tracking-wide">SMM<span className="text-admin-accent">BOXSS</span></span>
+        <span className="text-xl font-bold tracking-wide">SMM<span className="text-admin-accent">DECK</span></span>
       </div>
       
       <nav className="flex-1 p-4 space-y-2">
