@@ -284,8 +284,25 @@ exports.requestLinkEmail = async (req, res) => {
     const { userId, email } = req.body;
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing && existing.id !== String(userId)) return res.status(400).json({ error: 'Email занят' });
+    
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     await prisma.user.update({ where: { id: String(userId) }, data: { emailVerificationCode: code } });
+    
+    // === ВОТ ЭТОГО БЛОКА ТАМ НЕ БЫЛО. ТЕПЕРЬ ПИСЬМО БУДЕТ ОТПРАВЛЯТЬСЯ ===
+    try {
+      await sendEmail(email, 'Подтверждение почты SMMBOX', `
+        <div style="font-family: sans-serif; max-width: 400px;">
+          <h2 style="color: #111;">Привязка почты</h2>
+          <p style="color: #666;">Введите этот код в профиле для подтверждения:</p>
+          <div style="background: #f4f7ff; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0;">
+            <b style="font-size: 32px; color: #0077FF; letter-spacing: 5px;">${code}</b>
+          </div>
+        </div>
+      `);
+    } catch (e) {
+      console.error('Ошибка отправки email:', e);
+    }
+
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };

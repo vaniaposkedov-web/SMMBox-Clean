@@ -662,7 +662,7 @@ export default function Profile() {
 
       {/* === МОДАЛЬНОЕ ОКНО ПРОСМОТРА ПОСТА (BOTTOM SHEET НА MOBILE) === */}
       {viewPostModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-200 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-admin-card w-full max-w-lg border-t sm:border border-gray-800 rounded-t-[2rem] sm:rounded-3xl p-5 sm:p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6 shadow-2xl relative flex flex-col max-h-[90vh] sm:max-h-[85vh] transition-transform">
             <button onClick={() => setViewPostModal(null)} className="absolute top-4 sm:top-5 right-4 sm:right-5 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 sm:p-2.5 transition-colors z-10">
               <X size={20} />
@@ -714,7 +714,7 @@ export default function Profile() {
 
       {/* === МОДАЛЬНОЕ ОКНО ШЕРИНГА ПАРТНЕРАМ (BOTTOM SHEET НА MOBILE) === */}
       {sharePostModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-200 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-admin-card w-full max-w-md border-t sm:border border-gray-800 rounded-t-[2rem] sm:rounded-3xl p-5 sm:p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6 shadow-2xl relative flex flex-col max-h-[90vh] sm:max-h-[85vh] transition-transform">
             <button onClick={() => setSharePostModal(null)} className="absolute top-4 sm:top-5 right-4 sm:right-5 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 sm:p-2.5 transition-colors z-10">
               <X size={20} />
@@ -783,9 +783,9 @@ export default function Profile() {
         </div>
       )}
 
-      {/* === МОДАЛЬНОЕ ОКНО ОФОРМЛЕНИЯ PRO (BOTTOM SHEET НА MOBILE) === */}
+      {/* === МОДАЛЬНОЕ ОКНО ОФОРМЛЕНИЯ PRO === */}
       {showProModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-admin-card w-full max-w-md border-t sm:border border-purple-500/30 rounded-t-[2rem] sm:rounded-3xl p-6 sm:p-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-8 shadow-2xl relative transition-transform">
             <button onClick={() => setShowProModal(false)} className="absolute top-4 sm:top-5 right-4 sm:right-5 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 sm:p-2.5 transition-colors z-10">
               <X size={20} />
@@ -800,7 +800,7 @@ export default function Profile() {
               
               <div className="text-gray-400 text-xs sm:text-sm mb-6 sm:mb-8 leading-relaxed space-y-3 sm:space-y-4">
                 <p>
-                  Стоимость безлимитной PRO-подписки составляет <span className="text-yellow-400 font-bold text-sm sm:text-base px-1">2000 ₽</span><br/>
+                  Стоимость безлимитной PRO-подписки составляет <span className="text-yellow-400 font-bold text-sm sm:text-base px-1">2000 ₽ в месяц</span><br/>
                   Оплата производится напрямую переводом на банковскую карту.
                 </p>
                 <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl text-left sm:text-center">
@@ -814,7 +814,7 @@ export default function Profile() {
               </div>
             </div>
 
-            <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-[#229ED9]/20 active:scale-95 min-h-[48px]">
+            <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-[#229ED9]/20 active:scale-95 min-h-[48px] mb-2 sm:mb-0">
               <Send size={18} /> Написать менеджеру
             </button>
           </div>
