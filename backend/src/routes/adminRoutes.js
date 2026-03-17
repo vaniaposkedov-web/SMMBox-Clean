@@ -5,14 +5,13 @@ const adminAuth = require('../middleware/adminAuth');
 
 router.post('/login', adminController.adminLogin);
 
-// Защищенные роуты (только для ADMIN)
+// Защищенные роуты
 router.get('/dashboard', adminAuth, adminController.getDashboardData);
 router.get('/users', adminAuth, adminController.getAllUsers);
 router.get('/users/:id', adminAuth, adminController.getUserDetails); 
 
-// === НОВЫЕ РОУТЫ: Финансы, PRO и Нейросеть ===
+// === НОВЫЕ РОУТЫ ===
 router.post('/users/:id/grant-pro', adminAuth, adminController.grantProStatus);
-router.get('/settings/ai', adminAuth, adminController.getAiSettings);
-router.post('/settings/ai', adminAuth, adminController.updateAiSettings);
+router.put('/users/:id', adminAuth, adminController.updateUserAdmin);
 
 module.exports = router;

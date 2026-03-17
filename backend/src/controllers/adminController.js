@@ -91,7 +91,7 @@ exports.getUserDetails = async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Ошибка сервера при загрузке досье' }); }
 };
 
-// === ВЫДАЧА PRO И ЗАПИСЬ ТРАНЗАКЦИИ ===
+// === ВЫДАЧА PRO НА ЛЮБОЕ КОЛИЧЕСТВО МЕСЯЦЕВ ===
 exports.grantProStatus = async (req, res) => {
     try {
         const { id } = req.params;
@@ -100,33 +100,38 @@ exports.grantProStatus = async (req, res) => {
         const targetUser = await prisma.user.findUnique({ where: { id } });
         if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
 
-        // Если передали 0 месяцев — забираем PRO
         if (Number(months) === 0) {
             await prisma.user.update({ where: { id }, data: { isPro: false, proExpiresAt: null } });
-            return res.json({ success: true, isPro: false, message: 'PRO статус отключен' });
+            return res.json({ success: true, isPro: false });
         }
 
-        // Вычисляем дату окончания
         const expiresAt = new Date();
         expiresAt.setMonth(expiresAt.getMonth() + Number(months));
 
-        // Выдаем PRO
         await prisma.user.update({
             where: { id },
             data: { isPro: true, proExpiresAt: expiresAt }
         });
 
-        // Если админ указал сумму (например 2000), записываем в финансы
-        if (Number(amount) > 0) {
-            await prisma.transaction.create({
-                data: { userId: id, amount: Number(amount), type: 'PRO_SUBSCRIPTION' }
-            });
-        }
-
         res.json({ success: true, isPro: true, proExpiresAt: expiresAt });
     } catch (error) { res.status(500).json({ error: 'Ошибка при выдаче PRO' }); }
 };
 
+exports.updateUserAdmin = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { pavilion } = req.body;
+        
+        const updatedUser = await prisma.user.update({
+            where: { id },
+            data: { pavilion }
+        });
+
+        res.json({ success: true, user: updatedUser });
+    } catch (error) {
+        res.status(500).json({ error: 'Ошибка обновления пользователя' });
+    }
+};
 // === НАСТРОЙКИ НЕЙРОСЕТИ ===
 exports.getAiSettings = async (req, res) => {
     try {
