@@ -966,17 +966,52 @@ export default function Publish() {
 
       </div>
 
-      {/* МОДАЛКИ ПАРТНЕРОВ И ИИ */}
+      {/* === МОДАЛЬНОЕ ОКНО ИИ === */}
       {showAiModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
-          <div className="bg-admin-card w-full max-w-md border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">
-            <button onClick={() => setShowAiModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-10 h-10 rounded-full flex items-center justify-center transition-colors z-10"><X size={20} /></button>
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 bg-purple-500/10 text-purple-500"><Sparkles size={28} /></div>
-            <h3 className="text-xl font-bold text-white mb-3">О чем написать пост?</h3>
-            <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Скидка 50% на кроссовки..." className="w-full bg-gray-900 border border-gray-800 rounded-2xl p-4 text-base text-white h-32 mb-4 resize-none focus:border-purple-500 outline-none" autoFocus />
-            <button onClick={() => handleAiAction('generate', aiPrompt)} disabled={!aiPrompt.trim() || isImprovingAI} className="w-full bg-purple-600 hover:bg-purple-500 text-white py-4 rounded-xl font-bold transition-all disabled:opacity-50">
-              Сгенерировать пост
-            </button>
+        <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-6 animate-in fade-in duration-200">
+          
+          {/* Кликабельный фон для закрытия окна */}
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowAiModal(false)}></div>
+          
+          {/* Само окно с правильным позиционированием */}
+          <div className="relative w-full max-w-md bg-[#111318] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col z-10 overflow-hidden pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-0">
+            
+            {/* Шапка */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/50">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Sparkles size={18} className="text-purple-500" /> О чем написать пост?
+              </h3>
+              <button onClick={() => setShowAiModal(false)} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-xl transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Тело модалки */}
+            <div className="p-4 sm:p-5 flex flex-col gap-4">
+              <textarea 
+                value={aiPrompt} 
+                onChange={(e) => setAiPrompt(e.target.value)} 
+                placeholder="Например: Скидка 50% на весеннюю коллекцию кроссовок..." 
+                className="w-full bg-gray-900 border border-gray-800 rounded-2xl p-4 text-base text-white min-h-[140px] resize-none focus:border-purple-500 outline-none transition-colors custom-scrollbar" 
+                autoFocus 
+              />
+            </div>
+            
+            {/* Подвал с кнопками */}
+            <div className="p-4 border-t border-gray-800 bg-gray-900/50 flex gap-3">
+              <button onClick={() => setShowAiModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-all text-sm">
+                Отмена
+              </button>
+              <button 
+                onClick={() => handleAiAction('generate', aiPrompt)} 
+                disabled={!aiPrompt.trim() || isImprovingAI} 
+                className="flex-[2] bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 text-sm active:scale-95 shadow-lg shadow-purple-500/20"
+              >
+                {isImprovingAI ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                {isImprovingAI ? 'Генерация...' : 'Сгенерировать'}
+              </button>
+            </div>
+
           </div>
         </div>
       )}

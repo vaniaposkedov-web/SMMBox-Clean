@@ -2,7 +2,6 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-
 const withTimeout = (promise, ms) => {
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
@@ -14,15 +13,12 @@ const withTimeout = (promise, ms) => {
 exports.generateText = async (req, res) => {
   try {
     let { prompt, action, images } = req.body;
-
    
     if (!prompt || typeof prompt !== 'string') {
         return res.status(400).json({ error: 'Пустой запрос недопустим.' });
     }
-
     
     prompt = prompt.substring(0, 1500);
-
    
     let systemInstruction = `Ты — профессиональный SMM-копирайтер для продавцов из торговых центров и розничных магазинов.
     Твоя задача — создавать привлекательные, живые и продающие тексты для соцсетей (Telegram, VK, Instagram).
@@ -45,8 +41,9 @@ exports.generateText = async (req, res) => {
         systemInstruction += `\n\nТвоя задача: Создать пост с нуля по короткой мысли пользователя.`;
     }
 
+    // === ИСПРАВЛЕНИЕ: Используем стабильную версию модели gemini-2.0-flash ===
     const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash", 
+        model: "gemini-2.0-flash", 
         systemInstruction: systemInstruction 
     });
 
@@ -54,14 +51,11 @@ exports.generateText = async (req, res) => {
     const userMessage = action === 'rewrite' ? `Черновик для улучшения: ${prompt}` : `Идея для поста: ${prompt}`;
     parts.push(userMessage);
 
-  
     if (images && Array.isArray(images) && images.length > 0) {
-        
         parts.push("Внимательно проанализируй прикрепленные фотографии (какой товар, стиль, цвет, детали) и органично впиши эту информацию в пост.");
         
         const imagesToProcess = images.slice(0, 2);
         for (const base64Image of imagesToProcess) {
-        
             if (base64Image.length > 5 * 1024 * 1024) continue; 
 
             const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
@@ -73,7 +67,6 @@ exports.generateText = async (req, res) => {
         }
     }
 
-    
     const requestPromise = model.generateContent(parts);
     const result = await withTimeout(requestPromise, 15000); 
 
@@ -87,7 +80,6 @@ exports.generateText = async (req, res) => {
 
   } catch (error) {
     console.error('=== ОШИБКА ИИ ===', error.message);
-
     
     if (error.message === 'TIMEOUT') {
         return res.status(504).json({ error: 'Нейросеть думает слишком долго. Попробуйте нажать еще раз.' });
@@ -98,7 +90,6 @@ exports.generateText = async (req, res) => {
     if (error.status === 429 || error.message.includes('quota')) {
         return res.status(429).json({ error: 'Сервер перегружен запросами. Подождите пару минут.' });
     }
-
     
     res.status(500).json({ error: 'Временный сбой нейросети. Мы уже чиним!' });
   }
