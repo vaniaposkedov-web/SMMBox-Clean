@@ -4,7 +4,7 @@ import * as VKID from '@vkid/sdk';
 export default function CustomVkButton({ onAuth }) {
   useEffect(() => {
     VKID.Config.init({
-      app: import.meta.env.VITE_VK_APP_ID || 54471878,
+      app: import.meta.env.VITE_VK_APP_ID || 54490006,
       
 
       redirectUrl: window.location.origin + window.location.pathname, 
