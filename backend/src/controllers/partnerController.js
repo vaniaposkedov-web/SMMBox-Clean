@@ -191,6 +191,13 @@ exports.clearNotifications = async (req, res) => {
   }
 };
 
+exports.markNotificationRead = async (req, res) => {
+  try {
+    await prisma.notification.update({ where: { id: req.body.id }, data: { isRead: true } });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Ошибка' }); }
+};
+
 // === ФОНОВЫЕ ЗАДАЧИ (CRON) ДЛЯ ПАРТНЕРОВ ===
 exports.initPartnerCron = () => {
   // Запускается каждый день в 00:00

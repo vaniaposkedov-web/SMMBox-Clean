@@ -539,3 +539,10 @@ exports.deleteScheduledPost = async (req, res) => {
         res.status(500).json({ success: false });
     }
 };
+
+exports.markSharedPostRead = async (req, res) => {
+  try {
+    await prisma.sharedPost.update({ where: { id: req.body.id }, data: { isRead: true } });
+    res.json({ success: true });
+  } catch (error) { res.status(500).json({ error: 'Ошибка' }); }
+};

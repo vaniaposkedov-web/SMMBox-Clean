@@ -26,8 +26,9 @@ function Sidebar() {
 
   // Достаем заявки и уведомления для счетчика
   const incomingRequests = useStore((state) => state.incomingRequests) || [];
-  const notifications = useStore((state) => state.notifications) || [];
-  const badgeCount = incomingRequests.length + notifications.length;
+  const unreadNotifications = (useStore((state) => state.notifications) || []).filter(n => !n.isRead);
+  const unreadShared = (useStore((state) => state.sharedIncoming) || []).filter(p => !p.isRead);
+  const badgeCount = incomingRequests.length + unreadNotifications.length + unreadShared.length;
 
   const linkClass = ({isActive}) => 
     `flex items-center gap-3 p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`;
@@ -78,8 +79,9 @@ function Sidebar() {
 function BottomNav() {
   // Достаем заявки и уведомления для счетчика на мобилке
   const incomingRequests = useStore((state) => state.incomingRequests) || [];
-  const notifications = useStore((state) => state.notifications) || [];
-  const badgeCount = incomingRequests.length + notifications.length;
+  const unreadNotifications = (useStore((state) => state.notifications) || []).filter(n => !n.isRead);
+  const unreadShared = (useStore((state) => state.sharedIncoming) || []).filter(p => !p.isRead);
+  const badgeCount = incomingRequests.length + unreadNotifications.length + unreadShared.length;
 
   const linkClass = ({isActive}) => 
     `flex flex-col items-center flex-1 p-2 rounded-xl transition-colors ${isActive ? 'text-admin-accent' : 'text-gray-500 hover:text-gray-300'}`;
@@ -105,16 +107,28 @@ function BottomNav() {
 }
 
 // --- КАРКАС ОБЫЧНОГО ПОЛЬЗОВАТЕЛЯ ---
+// --- КАРКАС ОБЫЧНОГО ПОЛЬЗОВАТЕЛЯ ---
 function UserLayout() {
   const user = useStore((state) => state.user);
   const fetchPartnerData = useStore((state) => state.fetchPartnerData);
+  const fetchSharedPosts = useStore((state) => state.fetchSharedPosts);
 
-  // === ГЛОБАЛЬНАЯ ПОДГРУЗКА ДАННЫХ ПАРТНЕРОВ И УВЕДОМЛЕНИЙ ===
+  // === ГЛОБАЛЬНАЯ ПОДГРУЗКА И ФОНОВЫЙ ПОЛЛИНГ (Без перезагрузки) ===
   useEffect(() => {
     if (user?.id) {
+      // Первичная загрузка
       fetchPartnerData(user.id);
+      fetchSharedPosts();
+
+      // Тихий опрос сервера каждые 15 секунд
+      const interval = setInterval(() => {
+        fetchPartnerData(user.id);
+        fetchSharedPosts();
+      }, 15000);
+      
+      return () => clearInterval(interval);
     }
-  }, [user?.id, fetchPartnerData]);
+  }, [user?.id, fetchPartnerData, fetchSharedPosts]);
 
   return (
     <div className="min-h-screen bg-admin-bg text-admin-text flex font-sans">
