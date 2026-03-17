@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { useNavigate } from 'react-router-dom';
 import { 
   Trash2, Bell, Inbox, X, Send, 
-  CheckCircle2, AlertTriangle, XCircle, Info, Image as ImageIcon 
+  CheckCircle2, AlertTriangle, XCircle, Info, Image as ImageIcon, Eye
 } from 'lucide-react';
 
 export default function Requests() {
