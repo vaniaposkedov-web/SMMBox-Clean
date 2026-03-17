@@ -41,9 +41,9 @@ exports.generateText = async (req, res) => {
         systemInstruction += `\n\nТвоя задача: Создать пост с нуля по короткой мысли пользователя.`;
     }
 
-    // === ИСПРАВЛЕНИЕ: Используем стабильную версию модели gemini-2.0-flash ===
+    // === ИСПРАВЛЕНИЕ: Откатываемся на версию 1.5, так как 2.0 заблокирована Google для бесплатных ключей ===
     const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash", 
+        model: "gemini-1.5-flash", // <-- Вернули 1.5-flash
         systemInstruction: systemInstruction 
     });
 
