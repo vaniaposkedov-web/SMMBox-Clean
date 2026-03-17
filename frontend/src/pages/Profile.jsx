@@ -712,29 +712,34 @@ export default function Profile() {
         </div>
       )}
 
-      {/* === МОДАЛЬНОЕ ОКНО ШЕРИНГА ПАРТНЕРАМ (BOTTOM SHEET НА MOBILE) === */}
+      {/* === МОДАЛЬНОЕ ОКНО ШЕРИНГА ПАРТНЕРАМ (ИСПРАВЛЕННОЕ) === */}
       {sharePostModal && (
-        <div className="fixed inset-0 z-200 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-admin-card w-full max-w-md border-t sm:border border-gray-800 rounded-t-[2rem] sm:rounded-3xl p-5 sm:p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6 shadow-2xl relative flex flex-col max-h-[90vh] sm:max-h-[85vh] transition-transform">
-            <button onClick={() => setSharePostModal(null)} className="absolute top-4 sm:top-5 right-4 sm:right-5 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 sm:p-2.5 transition-colors z-10">
-              <X size={20} />
-            </button>
+        <div className="fixed inset-0 z-[200] flex flex-col justify-end sm:justify-center items-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+          
+          <div className="absolute inset-0" onClick={() => setSharePostModal(null)}></div>
 
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex shrink-0 items-center justify-center mb-4 bg-blue-500/10 text-blue-500 border border-blue-500/20">
-              <Share2 size={24} className="sm:w-7 sm:h-7" />
-            </div>
+          <div className="bg-admin-card w-full max-w-md border-t sm:border border-gray-800 rounded-t-[2rem] sm:rounded-3xl shadow-2xl relative flex flex-col max-h-[85vh] sm:max-h-[90vh] z-10 overflow-hidden">
             
-            <h3 className="text-lg sm:text-xl font-bold text-white mb-1 sm:mb-2 shrink-0 pr-10">Отправить партнерам</h3>
-            <p className="text-gray-400 text-xs sm:text-sm mb-4 sm:mb-5 shrink-0">
-              Выберите партнеров, которые получат этот пост для перепубликации.
-            </p>
+            {/* ШАПКА */}
+            <div className="p-5 sm:p-6 shrink-0 border-b border-gray-800 bg-gray-900/50">
+              <button onClick={() => setSharePostModal(null)} className="absolute top-5 right-5 text-gray-500 hover:text-white bg-gray-800 rounded-full p-2 transition-colors">
+                <X size={20} />
+              </button>
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                <Share2 size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-1 pr-10">Отправить партнерам</h3>
+              <p className="text-gray-400 text-xs sm:text-sm">
+                Выберите, кто получит этот пост для публикации.
+              </p>
+            </div>
 
-            <div className="overflow-y-auto custom-scrollbar pr-1 sm:pr-2 mb-4 space-y-2 flex-1 min-h-[150px] bg-gray-900/30 p-2 rounded-2xl border border-gray-800/50">
+            {/* СКРОЛЛИРУЕМЫЙ СПИСОК ПАРТНЕРОВ */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 sm:p-6 space-y-2 bg-black/20">
               {myPartners.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-800 rounded-full flex justify-center items-center mx-auto mb-3"><Users size={20}/></div>
+                  <div className="w-12 h-12 bg-gray-800 rounded-full flex justify-center items-center mx-auto mb-3"><Users size={20}/></div>
                   <p className="font-medium text-sm">У вас пока нет партнеров.</p>
-                  <p className="text-[10px] sm:text-xs mt-1">Добавьте их в разделе настроек.</p>
                 </div>
               ) : (
                 myPartners.map(partner => {
@@ -743,7 +748,7 @@ export default function Profile() {
                     <div 
                       key={partner.id} 
                       onClick={() => togglePartner(partner.id)}
-                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors min-h-[56px] ${isSelected ? 'bg-blue-500/10 border-blue-500/50' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
+                      className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors ${isSelected ? 'bg-blue-500/10 border-blue-500/50' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
                     >
                        <div className={`w-5 h-5 rounded flex items-center justify-center border shrink-0 transition-colors ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'}`}>
                          {isSelected && <Check size={14} className="text-white"/>}
@@ -758,27 +763,25 @@ export default function Profile() {
               )}
             </div>
 
-            {shareSuccess ? (
-              <div className="text-center py-3 bg-green-500/10 border border-green-500/20 rounded-xl animate-in zoom-in-95 duration-200 shrink-0">
-                <div className="text-green-500 flex justify-center mb-1"><CheckCircle2 size={24} /></div>
-                <p className="text-green-500 font-bold text-sm">Успешно отправлено!</p>
-              </div>
-            ) : (
-              <button 
-                onClick={executeSharePost} 
-                disabled={myPartners.length === 0 || isSharing}
-                className="w-full shrink-0 text-white py-3.5 sm:py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 shadow-lg shadow-blue-500/20 min-h-[48px] active:scale-95"
-              >
-                {isSharing ? <><Loader2 className="animate-spin" size={18}/> Отправка...</> : <><Send size={18} /> Разослать выбранным</>}
-              </button>
-            )}
-            
-            {/* Предупреждение о медиафайлах */}
-            {sharePostModal?.statusLower === 'published' && (!sharePostModal.media || sharePostModal.media.length === 0) && (
-              <p className="text-center text-[9px] sm:text-[10px] text-gray-500 mt-3 leading-tight px-2">
-                *Уже опубликованные посты отправляются без картинок (так как фото были удалены с сервера для экономии места).
-              </p>
-            )}
+            {/* ПРИЛИПШАЯ К НИЗУ КНОПКА (С УЧЕТОМ АЙФОНОВ) */}
+            <div className="p-5 sm:p-6 shrink-0 border-t border-gray-800 bg-gray-900/50 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+              {shareSuccess ? (
+                <div className="text-center py-3.5 bg-green-500/10 border border-green-500/20 rounded-xl animate-in zoom-in-95 duration-200">
+                  <p className="text-green-500 font-bold text-sm flex items-center justify-center gap-2">
+                    <CheckCircle2 size={20} /> Успешно отправлено!
+                  </p>
+                </div>
+              ) : (
+                <button 
+                  onClick={executeSharePost} 
+                  disabled={myPartners.length === 0 || isSharing}
+                  className="w-full text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 shadow-lg shadow-blue-500/20 active:scale-95"
+                >
+                  {isSharing ? <><Loader2 className="animate-spin" size={18}/> Отправка...</> : <><Send size={18} /> Разослать выбранным</>}
+                </button>
+              )}
+            </div>
+
           </div>
         </div>
       )}
