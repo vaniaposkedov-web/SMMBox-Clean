@@ -1014,7 +1014,7 @@ export default function Publish() {
 
           </div>
         </div>
-      )}
+      )} 
 
       {step < 4 && (
         <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
