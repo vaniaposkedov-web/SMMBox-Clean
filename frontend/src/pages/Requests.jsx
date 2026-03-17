@@ -248,13 +248,13 @@ export default function Requests() {
       </div>
       {/* === МОДАЛЬНОЕ ОКНО ПРОСМОТРА ПОСТА === */}
       {previewModal.isOpen && previewModal.data && (
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[200] flex flex-col justify-end sm:justify-center items-center bg-black/90 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
           
           {/* Кликабельный фон */}
           <div className="absolute inset-0" onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })}></div>
           
           {/* Само окно */}
-          <div className="relative w-full max-w-2xl bg-[#0d0f13] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[85dvh] sm:max-h-[90vh] z-10 overflow-hidden pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0">
+          <div className="relative w-full max-w-2xl bg-[#0d0f13] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[85dvh] sm:max-h-[90vh] z-10 overflow-hidden">
             
             {/* Шапка */}
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0 bg-gray-900/50">
@@ -266,7 +266,7 @@ export default function Requests() {
               </button>
             </div>
 
-            {/* Скроллируемая область контента (flex-1 min-h-0 решает проблему скролла) */}
+            {/* Скроллируемая область контента */}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
               
               {/* Фотографии */}
@@ -280,7 +280,7 @@ export default function Requests() {
                 </div>
               )}
               
-              {/* Текст (break-words предотвращает слом верстки длинными ссылками) */}
+              {/* Текст */}
               {previewModal.data.text && (
                 <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl text-sm sm:text-base text-gray-300 whitespace-pre-wrap break-words leading-relaxed">
                   {previewModal.data.text}
@@ -290,7 +290,7 @@ export default function Requests() {
             </div>
             
             {/* Подвал с кнопками */}
-            <div className="p-4 border-t border-gray-800 bg-gray-900/50 shrink-0 flex gap-2 sm:gap-3">
+            <div className="p-4 pb-8 sm:pb-4 border-t border-gray-800 bg-gray-900/50 shrink-0 flex gap-2 sm:gap-3">
               {previewModal.isSharedPost ? (
                 <>
                   <button onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold transition-all text-sm sm:text-base">
