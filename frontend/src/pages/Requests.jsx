@@ -258,7 +258,8 @@ export default function Requests() {
               </button>
             </div>
 
-            <div className="overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
+            {/* Добавили flex-1 и min-h-0 для починки скролла */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
               {/* Фотографии */}
               {previewModal.data.mediaUrls && previewModal.data.mediaUrls.length > 0 && (
                 <div className={`grid gap-2 ${previewModal.data.mediaUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3'}`}>
