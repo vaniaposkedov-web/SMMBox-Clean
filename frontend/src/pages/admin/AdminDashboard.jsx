@@ -115,9 +115,29 @@ export default function AdminDashboard() {
     try {
       const res = await fetch(`/api/admin/users/${userId}`, { headers: { 'Authorization': `Bearer ${token}` } });
       const result = await res.json();
-      if (result?.success) setUserDetails(result);
+      if (result?.success) {
+          setUserDetails(result);
+          setEditPavilion(result.user.pavilion || ''); // Подтягиваем павильон
+      }
     } catch (e) {}
     setLoadingDetails(false);
+  };
+
+  const savePavilion = async () => {
+      setIsSavingPavilion(true);
+      const token = localStorage.getItem('adminToken');
+      try {
+          const res = await fetch(`/api/admin/users/${userDetails.user.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ pavilion: editPavilion })
+          });
+          if (res.ok) {
+              fetchDashboardData(); 
+              alert('Павильон успешно изменен!');
+          }
+      } catch (e) { alert('Ошибка сохранения'); }
+      setIsSavingPavilion(false);
   };
 
   const filteredUsers = allUsers.filter(u => 
@@ -333,6 +353,23 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* РЕДАКТИРОВАНИЕ ПАВИЛЬОНА */}
+            <div className="mt-4 p-4 bg-gray-900 border border-gray-800 rounded-xl">
+               <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Рабочий павильон</label>
+               <div className="flex gap-2">
+                 <input 
+                   type="text" 
+                   value={editPavilion} 
+                   onChange={(e) => setEditPavilion(e.target.value)}
+                   className="flex-1 p-2.5 rounded-lg border border-gray-700 bg-black text-white outline-none"
+                   placeholder="Укажите павильон..."
+                 />
+                 <button onClick={savePavilion} disabled={isSavingPavilion} className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-lg font-bold">
+                   {isSavingPavilion ? '...' : 'Сохранить'}
+                 </button>
+               </div>
+            </div>
+
       {/* МОДАЛКА: ВЫДАЧА PRO */}
       {proModal.isOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -342,15 +379,16 @@ export default function AdminDashboard() {
             
             <div className="space-y-4 mb-6">
               <div>
-                <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Срок (в месяцах)</label>
-                {/* ИСПРАВЛЕН ВЫБОР МЕСЯЦЕВ */}
-                <select value={proMonths} onChange={e => setProMonths(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg}`}>
-                  <option value="1">1 месяц (30 дней)</option>
-                  <option value="3">3 месяца</option>
-                  <option value="6">6 месяцев</option>
-                  <option value="12">1 год</option>
-                  <option value="120">Навсегда</option>
-                </select>
+                <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Кол-во месяцев</label>
+                {/* ТЕПЕРЬ ТУТ ПРОСТО ЦИФРА */}
+                <input 
+                  type="number" 
+                  min="1"
+                  value={proMonths} 
+                  onChange={e => setProMonths(e.target.value)} 
+                  className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg}`} 
+                  placeholder="Например: 1 или 12"
+                />
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Оплачено (Рублей)</label>
