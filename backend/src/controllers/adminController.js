@@ -24,16 +24,41 @@ exports.getDashboardData = async (req, res) => {
         const totalAccounts = await prisma.account.count();
         const totalPosts = await prisma.post.count();
         
-        // Считаем общую выручку со всех транзакций
-        const revenueResult = await prisma.transaction.aggregate({ _sum: { amount: true } });
-        const totalRevenue = revenueResult._sum.amount || 0;
+        // --- ПОДРОБНАЯ ФИНАНСОВАЯ АНАЛИТИКА ---
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const startOfDay = new Date(now.setHours(0,0,0,0));
+
+        const [totalRev, monthRev, dayRev] = await Promise.all([
+            prisma.transaction.aggregate({ _sum: { amount: true } }),
+            prisma.transaction.aggregate({ where: { createdAt: { gte: startOfMonth } }, _sum: { amount: true } }),
+            prisma.transaction.aggregate({ where: { createdAt: { gte: startOfDay } }, _sum: { amount: true } })
+        ]);
 
         const recentUsers = await prisma.user.findMany({
             take: 5, orderBy: { createdAt: 'desc' },
             select: { id: true, name: true, email: true, phone: true, isPro: true, proExpiresAt: true, role: true, createdAt: true }
         });
 
-        res.json({ success: true, stats: { totalUsers, proUsers, totalAccounts, totalPosts, totalRevenue }, recentUsers });
+        // Достаем историю последних платежей
+        const recentTransactions = await prisma.transaction.findMany({
+            take: 15, orderBy: { createdAt: 'desc' },
+            include: { user: { select: { email: true, name: true } } }
+        });
+
+        res.json({ 
+            success: true, 
+            stats: { 
+                totalUsers, proUsers, totalAccounts, totalPosts, 
+                revenue: {
+                    total: totalRev._sum.amount || 0,
+                    month: monthRev._sum.amount || 0,
+                    today: dayRev._sum.amount || 0
+                }
+            }, 
+            recentUsers,
+            recentTransactions
+        });
     } catch (error) { res.status(500).json({ error: 'Ошибка загрузки данных' }); }
 };
 
