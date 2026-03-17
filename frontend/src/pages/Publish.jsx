@@ -84,19 +84,29 @@ export default function Publish() {
     if (selectedPartners.length === 0) return;
     setIsSharing(true);
     
-    // Отправляем текст и массив Base64 картинок
-    const res = await sharePostAction(text, photos, selectedPartners);
-    
-    setIsSharing(false);
-    if (res?.success) {
-      setShowPartnerModal(false);
-      setSelectedPartners([]);
-      alert('Пост успешно отправлен выбранным партнерам!'); // Можно заменить на красивый тост, если используешь
-    } else {
-      alert(res?.error || 'Ошибка при отправке поста');
+    try {
+      // ИСПРАВЛЕНИЕ 1: Конвертируем файлы в Base64 перед отправкой на сервер
+      const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
+      
+      const res = await sharePostAction(text, base64Images, selectedPartners);
+      
+      if (res?.success) {
+        setShowPartnerModal(false);
+        setSelectedPartners([]);
+        
+        // ИСПРАВЛЕНИЕ 2: Задержка перед alert, чтобы React успел закрыть модалку и не выдал ошибку "insertBefore"
+        setTimeout(() => {
+          alert('Пост успешно отправлен выбранным партнерам!');
+        }, 150);
+      } else {
+        alert(res?.error || 'Ошибка при отправке поста');
+      }
+    } catch (error) {
+      alert('Ошибка при обработке фотографий');
+    } finally {
+      setIsSharing(false);
     }
   };
-
   
 
   useEffect(() => {
