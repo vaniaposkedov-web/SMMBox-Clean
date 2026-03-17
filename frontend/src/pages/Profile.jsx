@@ -248,24 +248,34 @@ export default function Profile() {
   };
 
   const executeSharePost = async () => {
-    if (selectedPartners.length === 0) return alert('Выберите хотя бы одного партнера!');
+    if (selectedPartners.length === 0) return;
     setIsSharing(true);
+    
     try {
       const result = await sharePostAction(sharePostModal.text, sharePostModal.media, selectedPartners);
       if (result.success) {
          setShareSuccess(true);
+         
+         // БЕЗОПАСНАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ЗАКРЫТИЯ:
          setTimeout(() => {
-            setShareSuccess(false);
-            setSharePostModal(null);
-            setSelectedPartners([]);
-         }, 2000);
+            setSharePostModal(null); // 1. Сначала скрываем окно из DOM
+            
+            setTimeout(() => { // 2. Ждем 100мс и только потом чистим стейты
+               setShareSuccess(false);
+               setSelectedPartners([]);
+               setIsSharing(false);
+            }, 100);
+            
+         }, 1500); // Показываем галочку "Успешно" полторы секунды
+         
       } else {
+         setIsSharing(false);
          alert(result.error || 'Ошибка при отправке');
       }
     } catch (e) {
+      setIsSharing(false);
       alert('Ошибка соединения с сервером');
     }
-    setIsSharing(false);
   };
 
   const getRegMethod = () => {
