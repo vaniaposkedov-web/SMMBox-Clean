@@ -53,6 +53,8 @@ model User {
   receivedSharedPosts      SharedPost[] @relation("ReceivedSharedPosts")
 
   isPro                    Boolean @default(false)
+  proExpiresAt             DateTime? 
+  transactions             Transaction[] 
 }
 
 model SocialProfile {
@@ -204,4 +206,22 @@ model SharedPost {
 
   sender      User     @relation("SentSharedPosts", fields: [senderId], references: [id], onDelete: Cascade)
   receiver    User     @relation("ReceivedSharedPosts", fields: [receiverId], references: [id], onDelete: Cascade)
+}
+
+// === ФИНАНСЫ И ПЛАТЕЖИ ===
+model Transaction {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  amount    Int      // Сумма в рублях
+  type      String   @default("PRO_SUBSCRIPTION") 
+  createdAt DateTime @default(now())
+}
+
+// === ГЛОБАЛЬНЫЕ НАСТРОЙКИ СИСТЕМЫ ===
+model SystemSettings {
+  id        String   @id @default("global") // Всегда одна запись
+  aiPrompt  String   @db.Text               // Тот самый промпт для нейросети
+  updatedAt DateTime @updatedAt
 }
