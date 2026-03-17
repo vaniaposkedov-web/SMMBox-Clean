@@ -450,6 +450,28 @@ export const useStore = create(
         } catch (error) { return { success: false }; }
       },
 
+      markNotificationAsRead: async (id) => {
+        // Мгновенно убираем индикатор в интерфейсе
+        set((state) => ({ notifications: state.notifications.map(n => n.id === id ? { ...n, isRead: true } : n) }));
+        // Тихо отправляем запрос на сервер
+        try {
+          await fetch('/api/partners/notifications/read', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ id })
+          });
+        } catch (e) {}
+      },
+
+      markSharedPostAsRead: async (id) => {
+        // Мгновенно убираем индикатор в интерфейсе
+        set((state) => ({ sharedIncoming: state.sharedIncoming.map(p => p.id === id ? { ...p, isRead: true } : p) }));
+        // Тихо отправляем запрос на сервер
+        try {
+          await fetch('/api/posts/shared/read', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ id })
+          });
+        } catch (e) {}
+      },
+
       fetchAccounts: async (userId) => {
         try {
           const res = await fetch(`/api/accounts?userId=${userId}`);

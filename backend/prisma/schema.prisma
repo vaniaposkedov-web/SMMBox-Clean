@@ -199,6 +199,7 @@ model SharedPost {
   text        String?
   mediaUrls   String?  @db.Text 
   isPublished Boolean  @default(false) // Отслеживаем, опубликовал ли партнер пост
+  isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   sender      User     @relation("SentSharedPosts", fields: [senderId], references: [id], onDelete: Cascade)

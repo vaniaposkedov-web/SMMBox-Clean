@@ -9,6 +9,7 @@ router.post('/accept', partnerController.acceptRequest);
 router.post('/decline', partnerController.declineRequest);
 router.post('/remove', partnerController.removePartner);
 router.post('/notifications/clear', partnerController.clearNotifications);
+router.post('/notifications/read', partnerController.markNotificationRead);
 
 
 module.exports = router;

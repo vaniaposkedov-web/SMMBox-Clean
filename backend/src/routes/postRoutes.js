@@ -7,6 +7,7 @@ router.post('/create', authMiddleware, postController.createPost);
 router.post('/share', authMiddleware, postController.shareWithPartners);
 router.get('/shared', authMiddleware, postController.getSharedPosts);
 router.delete('/shared/:id', authMiddleware, postController.deleteSharedPost);
+router.post('/shared/read', authMiddleware, postController.markSharedPostRead);
 
 // НОВЫЕ РОУТЫ ДЛЯ КАЛЕНДАРЯ И РЕДАКТИРОВАНИЯ
 router.get('/scheduled', authMiddleware, postController.getScheduledPosts);
