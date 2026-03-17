@@ -43,7 +43,7 @@ exports.generateText = async (req, res) => {
 
     // === ИСПРАВЛЕНИЕ: Откатываемся на версию 1.5, так как 2.0 заблокирована Google для бесплатных ключей ===
     const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash", // <-- Вернули 1.5-flash
+        model: "gemini-2.5-flash", // <-- Ставим актуальную бесплатную версию
         systemInstruction: systemInstruction 
     });
 
