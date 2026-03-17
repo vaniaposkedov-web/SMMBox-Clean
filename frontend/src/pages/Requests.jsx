@@ -20,18 +20,40 @@ export default function Requests() {
   const clearNotifications = useStore((state) => state.clearNotifications);
 
   const [activeTab, setActiveTab] = useState('notifications'); 
-  const [previewModal, setPreviewModal] = useState({ isOpen: false, data: null });
+  const [previewModal, setPreviewModal] = useState({ isOpen: false, data: null, isSharedPost: false });
 
-  useEffect(() => {
-    if (user?.id) {
-      fetchPartnerData(user.id);
-      fetchSharedPosts();
+  // === ИСПРАВЛЕНИЕ: Конвертер Base64 обратно в File ===
+  const base64ToFile = (base64String, filename) => {
+    try {
+      const arr = base64String.split(',');
+      const mime = arr[0].match(/:(.*?);/)[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new File([u8arr], filename, { type: mime });
+    } catch (e) {
+      console.error("Ошибка конвертации картинки:", e);
+      return null;
     }
-  }, [user?.id, fetchPartnerData, fetchSharedPosts]);
+  };
 
   const handleUseSharedPost = (post) => {
-    saveTempDraft({ text: post.text, photos: JSON.parse(post.mediaUrls || '[]') });
-    // В идеале здесь мы дергаем API чтобы отметить post.isPublished = true
+    const mediaUrls = post.mediaUrls ? (typeof post.mediaUrls === 'string' ? JSON.parse(post.mediaUrls) : post.mediaUrls) : [];
+    
+    // Восстанавливаем структуру файлов, которую ожидает Publish.jsx
+    const reconstructedPhotos = mediaUrls.map((base64str, index) => {
+      const file = base64ToFile(base64str, `shared_image_${index}.jpg`);
+      return {
+        id: `shared_${Math.random().toString(36).substr(2, 9)}`,
+        url: base64str,
+        file: file
+      };
+    }).filter(p => p.file !== null); // Исключаем битые
+
+    saveTempDraft({ text: post.text, photos: reconstructedPhotos });
     navigate('/publish');
   };
 
@@ -40,10 +62,30 @@ export default function Requests() {
     try {
       const data = JSON.parse(metadataJson);
       if (data.text || (data.mediaUrls && data.mediaUrls.length > 0)) {
-        setPreviewModal({ isOpen: true, data });
+        setPreviewModal({ isOpen: true, data, isSharedPost: false });
       }
     } catch (e) {}
   };
+
+  const openSharedPreview = (post) => {
+    let media = [];
+    try { media = JSON.parse(post.mediaUrls || '[]'); } catch (e) {}
+    
+    setPreviewModal({
+      isOpen: true,
+      isSharedPost: true,
+      data: { id: post.id, text: post.text, mediaUrls: media, sender: post.sender, rawPost: post }
+    });
+  };
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchPartnerData(user.id);
+      fetchSharedPosts();
+    }
+  }, [user?.id, fetchPartnerData, fetchSharedPosts]);
+
+  
 
   // Функция для определения цвета и иконки уведомления
   const getNotificationStyle = (type) => {
@@ -141,12 +183,12 @@ export default function Requests() {
                 {sharedIncoming.map((post) => {
                   const media = JSON.parse(post.mediaUrls || '[]');
                   return (
-                    <div key={post.id} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden flex flex-col shadow-lg transition-transform hover:-translate-y-1 hover:border-gray-700">
+                    <div key={post.id} className="bg-admin-card border border-gray-800 rounded-xl p-4 flex flex-col shadow-md hover:border-gray-700 transition-colors">
                       
-                      {/* Шапка карточки */}
-                      <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/50">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold shrink-0 border border-blue-500/30 overflow-hidden">
+                      {/* Шапка с именем и датой */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold shrink-0 overflow-hidden border border-blue-500/30">
                             {post.sender?.avatarUrl ? <img src={post.sender.avatarUrl} className="w-full h-full object-cover"/> : post.sender?.name?.charAt(0).toUpperCase() || '?'}
                           </div>
                           <div className="min-w-0">
@@ -154,46 +196,44 @@ export default function Requests() {
                             <p className="text-[10px] text-gray-500 truncate">{new Date(post.createdAt).toLocaleDateString()}</p>
                           </div>
                         </div>
-                      </div>
-
-                      {/* Превью картинок */}
-                      <div className="relative h-40 bg-gray-950 flex items-center justify-center overflow-hidden border-b border-gray-800">
-                        {media.length > 0 ? (
-                          <>
-                            <img src={media[0]} className="w-full h-full object-cover opacity-80" alt="Превью" />
-                            {media.length > 1 && (
-                              <div className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-lg text-xs font-bold text-white border border-white/10 flex items-center gap-1.5">
-                                <ImageIcon size={12}/> +{media.length - 1}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <span className="text-gray-600 text-xs uppercase tracking-widest font-bold">Только текст</span>
+                        {media.length > 0 && (
+                          <span className="text-xs text-gray-500 bg-gray-900 border border-gray-800 px-2 py-1 rounded-lg flex items-center gap-1 shrink-0">
+                            <ImageIcon size={12}/> {media.length}
+                          </span>
                         )}
                       </div>
 
-                      {/* Текст поста */}
-                      <div className="p-4 flex-1 bg-gray-900">
-                        <p className="text-sm text-gray-300 line-clamp-3">
-                          {post.text || <span className="text-gray-600 italic">Без текста</span>}
+                      {/* Текст (ограничен 2 строками) */}
+                      <div className="flex-1 mb-4">
+                        <p className="text-sm text-gray-400 line-clamp-2 leading-relaxed">
+                          {post.text || <span className="italic opacity-50">Без текста</span>}
                         </p>
                       </div>
 
-                      {/* Кнопки действий */}
-                      <div className="p-3 bg-black/20 border-t border-gray-800 flex gap-2">
-                         <button 
-                           onClick={() => deleteSharedPostAction(post.id)}
-                           className="w-12 h-11 bg-gray-800 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 rounded-xl transition-colors border border-gray-700 hover:border-rose-500/30 flex items-center justify-center shrink-0 active:scale-95"
-                         >
-                           <Trash2 size={18}/>
-                         </button>
-                         <button 
-                           onClick={() => handleUseSharedPost(post)}
-                           className="flex-1 h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20 active:scale-95 text-sm"
-                         >
-                           <Send size={16} /> Опубликовать
-                         </button>
+                      {/* 3 кнопки на карточке */}
+                      <div className="flex items-center gap-2 pt-3 border-t border-gray-800/50">
+                        <button 
+                          onClick={() => openSharedPreview(post)}
+                          className="flex-1 bg-gray-900 hover:bg-gray-800 text-gray-300 py-2.5 rounded-xl text-xs font-bold transition-colors flex justify-center items-center gap-1 border border-gray-800"
+                        >
+                          <Eye size={14}/> Просмотр
+                        </button>
+                        
+                        <button 
+                          onClick={() => deleteSharedPostAction(post.id)}
+                          className="w-10 h-10 bg-gray-900 hover:bg-rose-500/20 text-gray-500 hover:text-rose-400 rounded-xl flex items-center justify-center transition-colors border border-gray-800 hover:border-rose-500/30 shrink-0"
+                        >
+                          <Trash2 size={16}/>
+                        </button>
+                        
+                        <button 
+                          onClick={() => handleUseSharedPost(post)}
+                          className="w-10 h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-xl flex items-center justify-center transition-colors shadow-lg shadow-blue-500/20 shrink-0"
+                        >
+                          <Send size={14}/>
+                        </button>
                       </div>
+                      
                     </div>
                   )
                 })}
@@ -238,10 +278,38 @@ export default function Requests() {
               )}
             </div>
             
-            <div className="p-4 border-t border-gray-800 bg-gray-900/50 shrink-0">
-               <button onClick={() => setPreviewModal({ isOpen: false, data: null })} className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold transition-all active:scale-95">
-                 Закрыть
-               </button>
+            <div className="p-4 border-t border-gray-800 bg-gray-900/50 shrink-0 flex gap-2">
+              {previewModal.isSharedPost ? (
+                <>
+                  {/* Кнопки для ПРИСЛАННЫХ ПОСТОВ */}
+                  <button onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-all text-sm">
+                    Закрыть
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      deleteSharedPostAction(previewModal.data.id); 
+                      setPreviewModal({ isOpen: false, data: null, isSharedPost: false }); 
+                    }} 
+                    className="w-12 h-12 bg-gray-800 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 rounded-xl flex items-center justify-center transition-colors border border-gray-700 shrink-0"
+                  >
+                    <Trash2 size={18}/>
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      handleUseSharedPost(previewModal.data.rawPost); 
+                      setPreviewModal({ isOpen: false, data: null, isSharedPost: false }); 
+                    }} 
+                    className="flex-[2] bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 text-sm shadow-lg shadow-blue-500/20"
+                  >
+                    <Send size={18}/> Опубликовать
+                  </button>
+                </>
+              ) : (
+                /* Кнопка для обычных УВЕДОМЛЕНИЙ */
+                <button onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })} className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold transition-all active:scale-95">
+                  Закрыть
+                </button>
+              )}
             </div>
           </div>
         </div>
