@@ -19,7 +19,6 @@ export default function Requests() {
   const saveTempDraft = useStore((state) => state.saveTempDraft);
   const clearNotifications = useStore((state) => state.clearNotifications);
   
-  // Функции для отметки прочитанным
   const markNotificationAsRead = useStore((state) => state.markNotificationAsRead);
   const markSharedPostAsRead = useStore((state) => state.markSharedPostAsRead);
 
@@ -46,8 +45,6 @@ export default function Requests() {
 
   const handleUseSharedPost = (post) => {
     const mediaUrls = post.mediaUrls ? (typeof post.mediaUrls === 'string' ? JSON.parse(post.mediaUrls) : post.mediaUrls) : [];
-    
-    // Восстанавливаем структуру файлов, которую ожидает Publish.jsx
     const reconstructedPhotos = mediaUrls.map((base64str, index) => {
       const file = base64ToFile(base64str, `shared_image_${index}.jpg`);
       return {
@@ -55,14 +52,13 @@ export default function Requests() {
         url: base64str,
         file: file
       };
-    }).filter(p => p.file !== null); // Исключаем битые
+    }).filter(p => p.file !== null); 
 
     saveTempDraft({ text: post.text, photos: reconstructedPhotos });
     navigate('/publish');
   };
 
   const handleOpenNotifPreview = (notif) => {
-    if (!notif.isRead) markNotificationAsRead(notif.id);
     if (!notif.metadata) return;
     try {
       const data = JSON.parse(notif.metadata);
@@ -73,10 +69,8 @@ export default function Requests() {
   };
 
   const handleOpenSharedPreview = (post) => {
-    if (!post.isRead) markSharedPostAsRead(post.id);
     let media = [];
     try { media = JSON.parse(post.mediaUrls || '[]'); } catch (e) {}
-    
     setPreviewModal({
       isOpen: true,
       isSharedPost: true,
@@ -91,7 +85,22 @@ export default function Requests() {
     }
   }, [user?.id, fetchPartnerData, fetchSharedPosts]);
 
-  // Функция для определения цвета и иконки уведомления
+  // === НОВАЯ ЛОГИКА: АВТО-ПРОЧТЕНИЕ ПРИ ПРОСМОТРЕ ===
+  useEffect(() => {
+    // Ждем 1 секунду, чтобы пользователь успел увидеть синие кружки, а затем гасим их
+    const timer = setTimeout(() => {
+      if (activeTab === 'notifications') {
+        const unread = notifications.filter(n => !n.isRead);
+        if (unread.length > 0) unread.forEach(n => markNotificationAsRead(n.id));
+      } else if (activeTab === 'shared') {
+        const unread = sharedIncoming.filter(p => !p.isRead);
+        if (unread.length > 0) unread.forEach(p => markSharedPostAsRead(p.id));
+      }
+    }, 1000); 
+    
+    return () => clearTimeout(timer);
+  }, [activeTab, notifications, sharedIncoming, markNotificationAsRead, markSharedPostAsRead]);
+
   const getNotificationStyle = (type) => {
     switch(type) {
       case 'SUCCESS': return { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', icon: <CheckCircle2 className="text-emerald-500 shrink-0" size={20} /> };
@@ -101,7 +110,6 @@ export default function Requests() {
     }
   };
 
-  // Считаем только непрочитанные для счетчиков на вкладках
   const unreadNotificationsCount = notifications.filter(n => !n.isRead).length;
   const unreadSharedCount = sharedIncoming.filter(p => !p.isRead).length;
 
@@ -157,8 +165,8 @@ export default function Requests() {
                   return (
                     <div key={notif.id} className={`relative ${style.bg} border ${style.border} p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all`}>
                       
-                      {/* Индикатор непрочитанного уведомления */}
-                      {!notif.isRead && <div className="absolute top-4 right-4 sm:top-auto sm:right-auto sm:-left-1.5 w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>}
+                      {/* Индикатор */}
+                      {!notif.isRead && <div className="absolute top-4 right-4 sm:top-auto sm:right-auto sm:-left-1.5 w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-opacity duration-300"></div>}
 
                       <div className="flex items-start gap-3 w-full pl-2 sm:pl-0">
                         <div className="mt-0.5">{style.icon}</div>
@@ -199,10 +207,9 @@ export default function Requests() {
                     return (
                       <div key={post.id} className="relative bg-admin-card border border-gray-800 rounded-xl p-4 flex flex-col shadow-md hover:border-gray-700 transition-colors">
                         
-                        {/* Индикатор непрочитанного поста */}
-                        {!post.isRead && <div className="absolute top-4 right-4 w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.5)] z-10"></div>}
+                        {/* Индикатор */}
+                        {!post.isRead && <div className="absolute top-4 right-4 w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(59,130,246,0.5)] z-10 transition-opacity duration-300"></div>}
 
-                        {/* Шапка с именем и датой */}
                         <div className="flex items-center justify-between mb-3 pr-6">
                           <div className="flex items-center gap-2 min-w-0">
                             <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold shrink-0 overflow-hidden border border-blue-500/30">
@@ -220,14 +227,12 @@ export default function Requests() {
                           )}
                         </div>
 
-                        {/* Текст (ограничен 2 строками) */}
                         <div className="flex-1 mb-4">
                           <p className="text-sm text-gray-400 line-clamp-2 leading-relaxed">
                             {post.text || <span className="italic opacity-50">Без текста</span>}
                           </p>
                         </div>
 
-                        {/* 3 кнопки на карточке */}
                         <div className="flex items-center gap-2 pt-3 border-t border-gray-800/50">
                           <button 
                             onClick={() => handleOpenSharedPreview(post)}
@@ -265,13 +270,10 @@ export default function Requests() {
       {previewModal.isOpen && previewModal.data && (
         <div className="fixed inset-0 z-[200] flex flex-col justify-end sm:justify-center items-center bg-black/90 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
           
-          {/* Кликабельный фон */}
           <div className="absolute inset-0" onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })}></div>
           
-          {/* Само окно */}
           <div className="relative w-full max-w-2xl bg-[#0d0f13] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[85dvh] sm:max-h-[90vh] z-10 overflow-hidden">
             
-            {/* Шапка */}
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0 bg-gray-900/50">
               <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <Info size={18} className="text-blue-500" /> Подробности публикации
@@ -281,10 +283,8 @@ export default function Requests() {
               </button>
             </div>
 
-            {/* Скроллируемая область контента */}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
               
-              {/* Фотографии */}
               {previewModal.data.mediaUrls && previewModal.data.mediaUrls.length > 0 && (
                 <div className={`grid gap-2 sm:gap-3 ${previewModal.data.mediaUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3'}`}>
                   {previewModal.data.mediaUrls.map((img, i) => (
@@ -295,7 +295,6 @@ export default function Requests() {
                 </div>
               )}
               
-              {/* Текст */}
               {previewModal.data.text && (
                 <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl text-sm sm:text-base text-gray-300 whitespace-pre-wrap break-words leading-relaxed">
                   {previewModal.data.text}
@@ -304,7 +303,6 @@ export default function Requests() {
               
             </div>
             
-            {/* Подвал с кнопками */}
             <div className="p-4 pb-8 sm:pb-4 border-t border-gray-800 bg-gray-900/50 shrink-0 flex gap-2 sm:gap-3">
               {previewModal.isSharedPost ? (
                 <>
