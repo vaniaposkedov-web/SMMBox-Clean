@@ -651,6 +651,27 @@ export default function Profile() {
                       isResettingPassword ? <Loader2 size={18} className="text-gray-500 animate-spin shrink-0" /> : <SettingsIcon size={18} className="text-gray-600 group-hover:text-white transition-colors shrink-0" />
                     )}
                   </button>
+
+                  {/* === НАЧАЛО НОВОГО БЛОКА: ДОКУМЕНТЫ ПОДПИСАНЫ === */}
+                  <div className="flex items-center justify-between p-4 bg-gray-900 border border-gray-800 rounded-2xl">
+                    <div className="flex items-center gap-4 min-w-0 pr-2">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 bg-green-500/10 text-green-500">
+                        <CheckCircle2 size={20} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-white text-sm sm:text-base font-bold truncate">Документы подписаны</p>
+                        <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 truncate">Пользовательское соглашение</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => navigate('/privacy')} 
+                      className="text-blue-500 hover:text-blue-400 p-2 text-sm font-bold transition-colors shrink-0"
+                    >
+                      Читать
+                    </button>
+                  </div>
+                  {/* === КОНЕЦ НОВОГО БЛОКА === */}
+
                 </div>
               </div>
 

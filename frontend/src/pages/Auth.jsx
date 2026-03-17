@@ -212,7 +212,7 @@ export default function Auth() {
               {!isLogin && !isForgotPassword && (
                 <div className="flex items-start gap-2 sm:gap-3 mt-3 sm:mt-4">
                   <input type="checkbox" checked={isAccepted} onChange={(e) => setIsAccepted(e.target.checked)} className="w-4 h-4 sm:w-5 sm:h-5 mt-1 accent-blue-600 rounded shrink-0 cursor-pointer" />
-                  <label className="text-xs sm:text-sm text-gray-400 leading-relaxed">Согласен(на) с <Link to="/privacy" className="text-blue-500 hover:underline">политикой конфиденциальности</Link>.</label>
+                  <label className="text-xs sm:text-sm text-gray-400 leading-relaxed">Согласен(на) с <Link to="/privacy" className="text-blue-500 hover:underline">Пользовательским соглашением и Политикой конфиденциальности</Link>.</label>
                 </div>
               )}
             </>
@@ -234,6 +234,9 @@ export default function Auth() {
         {!isVerification && !isForgotPassword && (
           <>
             <div className="mt-8 pt-6 border-t border-gray-800">
+              <p className="text-center text-[10px] text-gray-500 mb-3 leading-tight px-4">
+                Продолжая авторизацию через соцсети, вы принимаете <Link to="/privacy" className="text-blue-500 hover:underline">Пользовательское соглашение и Политику конфиденциальности</Link>.
+              </p>
               <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase tracking-wider">Быстрый вход через соцсети</p>
               <div className="flex justify-center gap-4">
                 <CustomTelegramButton onAuthCallback={telegramLogin} />
