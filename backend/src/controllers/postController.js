@@ -437,9 +437,15 @@ exports.getScheduledPosts = async (req, res) => {
         });
 
         // ЗАЩИТА: Не отдаем тяжелые Base64-картинки фронтенду, чтобы не вызвать ошибку QuotaExceededError
+        // ЗАЩИТА: Отдаем только ОДНУ картинку для превью, чтобы не вызвать ошибку
         const lightweightPosts = posts.map(p => {
-            const { mediaUrls, ...rest } = p;
-            return { ...rest, mediaUrls: '[]' };
+            let firstImage = [];
+            try {
+                const parsed = JSON.parse(p.mediaUrls || '[]');
+                if (parsed.length > 0) firstImage = [parsed[0]]; // Берем только 1 фото
+            } catch(e) {}
+            
+            return { ...p, mediaUrls: JSON.stringify(firstImage) };
         });
 
         res.json({ success: true, posts: lightweightPosts });
