@@ -21,6 +21,10 @@ export default function AdminDashboard() {
   const [userDetails, setUserDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
+  // === ИСПРАВЛЕНИЕ: ДОБАВИЛИ ПЕРЕМЕННЫЕ ДЛЯ ПАВИЛЬОНА ===
+  const [editPavilion, setEditPavilion] = useState('');
+  const [isSavingPavilion, setIsSavingPavilion] = useState(false);
+
   const [proModal, setProModal] = useState({ isOpen: false, user: null });
   const [proMonths, setProMonths] = useState(1);
   const [proAmount, setProAmount] = useState(2000);
@@ -117,7 +121,7 @@ export default function AdminDashboard() {
       const result = await res.json();
       if (result?.success) {
           setUserDetails(result);
-          setEditPavilion(result.user.pavilion || ''); // Подтягиваем павильон
+          setEditPavilion(result.user.pavilion || ''); 
       }
     } catch (e) {}
     setLoadingDetails(false);
@@ -160,7 +164,6 @@ export default function AdminDashboard() {
   if (loading) return <div className={`min-h-[100dvh] ${theme.bg} flex justify-center items-center`}><Loader2 className="animate-spin text-blue-500" size={40}/></div>;
 
   return (
-    // Запрещаем браузерам переводить эту страницу, чтобы не было "Белых футов"
     <div translate="no" className={`min-h-[100dvh] ${theme.bg} ${theme.text} font-sans transition-colors pb-10`}>
       
       <header className={`${theme.card} border-b sticky top-0 z-40 px-4 sm:px-6 py-4 flex items-center justify-between`}>
@@ -343,18 +346,15 @@ export default function AdminDashboard() {
           <div className={`${theme.card} w-full max-w-2xl border rounded-3xl p-6 shadow-2xl relative`}>
             <button onClick={() => setIsModalOpen(false)} className="absolute top-5 right-5 p-2 bg-gray-800 rounded-full"><X size={20} /></button>
             <h2 className="text-2xl font-black mb-6">Досье клиента</h2>
-            <div className="space-y-2 text-sm">
+            <div className="space-y-2 text-sm mb-6">
               <p><span className="text-gray-500">ID:</span> {userDetails.user.id}</p>
               <p><span className="text-gray-500">Email:</span> {userDetails.user.email}</p>
               <p><span className="text-gray-500">Подключенных групп:</span> {userDetails.user.accounts?.length}</p>
               <p><span className="text-gray-500">Сгенерировано постов:</span> {userDetails.postsCount}</p>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* РЕДАКТИРОВАНИЕ ПАВИЛЬОНА */}
-            <div className="mt-4 p-4 bg-gray-900 border border-gray-800 rounded-xl">
+            {/* РЕДАКТИРОВАНИЕ ПАВИЛЬОНА */}
+            <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl">
                <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Рабочий павильон</label>
                <div className="flex gap-2">
                  <input 
@@ -369,6 +369,9 @@ export default function AdminDashboard() {
                  </button>
                </div>
             </div>
+          </div>
+        </div>
+      )}
 
       {/* МОДАЛКА: ВЫДАЧА PRO */}
       {proModal.isOpen && (
@@ -380,7 +383,6 @@ export default function AdminDashboard() {
             <div className="space-y-4 mb-6">
               <div>
                 <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Кол-во месяцев</label>
-                {/* ТЕПЕРЬ ТУТ ПРОСТО ЦИФРА */}
                 <input 
                   type="number" 
                   min="1"
