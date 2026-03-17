@@ -90,22 +90,28 @@ export default function Publish() {
       const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
       const res = await sharePostAction(text, base64Images, selectedPartners);
       
+      setIsSharing(false); // ВАЖНО: сначала снимаем статус загрузки
+      
       if (res?.success) {
-        setShowPartnerModal(false);
         setSelectedPartners([]);
         
-        // Показываем кастомное уведомление на 3 секунды
-        setToastMessage('Пост успешно отправлен партнерам!');
+        // Показываем плашку
+        setToastMessage('Пост успешно отправлен!');
         setTimeout(() => setToastMessage(null), 3000);
+        
+        // ВАЖНО: Разносим рендер по времени, чтобы React не словил ошибку insertBefore
+        setTimeout(() => {
+          setShowPartnerModal(false);
+        }, 50);
+        
       } else {
         setToastMessage('Ошибка при отправке поста');
         setTimeout(() => setToastMessage(null), 3000);
       }
     } catch (error) {
+      setIsSharing(false);
       setToastMessage('Ошибка при обработке фотографий');
       setTimeout(() => setToastMessage(null), 3000);
-    } finally {
-      setIsSharing(false);
     }
   };
   
@@ -1067,11 +1073,12 @@ export default function Publish() {
         </div>
       )}
 
+      
       {/* === КАСТОМНОЕ УВЕДОМЛЕНИЕ (TOAST) === */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] bg-emerald-500/90 backdrop-blur-md text-white px-6 py-3.5 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.3)] flex items-center gap-3 animate-in slide-in-from-top-4 fade-in duration-300 font-bold border border-emerald-400/50 whitespace-nowrap">
-          <CheckCircle2 size={20} />
-          {toastMessage}
+        <div className="fixed top-4 sm:top-6 left-1/2 -translate-x-1/2 z-[200] bg-emerald-500/95 backdrop-blur-md text-white px-4 py-3 sm:px-6 sm:py-3.5 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.3)] flex items-center justify-center gap-2 sm:gap-3 animate-in slide-in-from-top-4 fade-in duration-300 font-bold border border-emerald-400/50 w-[90vw] max-w-sm sm:max-w-md text-sm sm:text-base text-center leading-snug">
+          <CheckCircle2 size={20} className="shrink-0" />
+          <span>{toastMessage}</span>
         </div>
       )}
 

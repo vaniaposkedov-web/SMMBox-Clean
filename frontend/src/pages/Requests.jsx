@@ -245,24 +245,30 @@ export default function Requests() {
 
       {/* === МОДАЛЬНОЕ ОКНО ПРОСМОТРА ПОСТА === */}
       {previewModal.isOpen && previewModal.data && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setPreviewModal({ isOpen: false, data: null })}></div>
-          <div className="relative w-full max-w-2xl bg-[#0d0f13] border border-gray-800 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] z-10 overflow-hidden">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/90 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
+          
+          {/* Кликабельный фон */}
+          <div className="absolute inset-0" onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })}></div>
+          
+          {/* Само окно */}
+          <div className="relative w-full max-w-2xl bg-[#0d0f13] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col max-h-[85dvh] sm:max-h-[90vh] z-10 overflow-hidden pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-0">
             
-            <div className="flex items-center justify-between p-4 border-b border-gray-800 shrink-0 bg-gray-900/50">
+            {/* Шапка */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0 bg-gray-900/50">
               <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 <Info size={18} className="text-blue-500" /> Подробности публикации
               </h3>
-              <button onClick={() => setPreviewModal({ isOpen: false, data: null })} className="text-gray-400 hover:text-white p-2 bg-gray-800 rounded-xl transition-colors">
+              <button onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })} className="text-gray-400 hover:text-white p-2 bg-gray-800 hover:bg-gray-700 rounded-xl transition-colors">
                 <X size={18} />
               </button>
             </div>
 
-            {/* Добавили flex-1 и min-h-0 для починки скролла */}
+            {/* Скроллируемая область контента (flex-1 min-h-0 решает проблему скролла) */}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar">
+              
               {/* Фотографии */}
               {previewModal.data.mediaUrls && previewModal.data.mediaUrls.length > 0 && (
-                <div className={`grid gap-2 ${previewModal.data.mediaUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3'}`}>
+                <div className={`grid gap-2 sm:gap-3 ${previewModal.data.mediaUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2 sm:grid-cols-3'}`}>
                   {previewModal.data.mediaUrls.map((img, i) => (
                     <div key={i} className="aspect-square rounded-xl overflow-hidden bg-gray-950 border border-gray-800 relative group">
                       <img src={img} className="w-full h-full object-cover" alt="Media"/>
@@ -271,19 +277,20 @@ export default function Requests() {
                 </div>
               )}
               
-              {/* Текст */}
+              {/* Текст (break-words предотвращает слом верстки длинными ссылками) */}
               {previewModal.data.text && (
-                <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
+                <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl text-sm sm:text-base text-gray-300 whitespace-pre-wrap break-words leading-relaxed">
                   {previewModal.data.text}
                 </div>
               )}
+              
             </div>
             
-            <div className="p-4 border-t border-gray-800 bg-gray-900/50 shrink-0 flex gap-2">
+            {/* Подвал с кнопками */}
+            <div className="p-4 border-t border-gray-800 bg-gray-900/50 shrink-0 flex gap-2 sm:gap-3">
               {previewModal.isSharedPost ? (
                 <>
-                  {/* Кнопки для ПРИСЛАННЫХ ПОСТОВ */}
-                  <button onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-all text-sm">
+                  <button onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold transition-all text-sm sm:text-base">
                     Закрыть
                   </button>
                   <button 
@@ -291,27 +298,27 @@ export default function Requests() {
                       deleteSharedPostAction(previewModal.data.id); 
                       setPreviewModal({ isOpen: false, data: null, isSharedPost: false }); 
                     }} 
-                    className="w-12 h-12 bg-gray-800 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 rounded-xl flex items-center justify-center transition-colors border border-gray-700 shrink-0"
+                    className="w-14 h-[52px] bg-gray-800 hover:bg-rose-500/20 text-gray-400 hover:text-rose-400 rounded-xl flex items-center justify-center transition-colors border border-gray-700 shrink-0"
                   >
-                    <Trash2 size={18}/>
+                    <Trash2 size={20}/>
                   </button>
                   <button 
                     onClick={() => { 
                       handleUseSharedPost(previewModal.data.rawPost); 
                       setPreviewModal({ isOpen: false, data: null, isSharedPost: false }); 
                     }} 
-                    className="flex-[2] bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 text-sm shadow-lg shadow-blue-500/20"
+                    className="flex-[2] bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-xl font-bold transition-all flex justify-center items-center gap-2 text-sm sm:text-base shadow-lg shadow-blue-500/20"
                   >
-                    <Send size={18}/> Опубликовать
+                    <Send size={18} className="shrink-0" /> <span className="truncate">Опубликовать</span>
                   </button>
                 </>
               ) : (
-                /* Кнопка для обычных УВЕДОМЛЕНИЙ */
-                <button onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })} className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold transition-all active:scale-95">
+                <button onClick={() => setPreviewModal({ isOpen: false, data: null, isSharedPost: false })} className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold transition-all active:scale-95 text-base">
                   Закрыть
                 </button>
               )}
             </div>
+
           </div>
         </div>
       )}
