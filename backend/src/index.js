@@ -48,7 +48,7 @@ const rateLimit = require('express-rate-limit');
 
 const aiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 минута
-  max: 5, // Максимум 5 генераций в минуту с одного IP
+  max: 20, // Максимум 5 генераций в минуту с одного IP
   message: { success: false, error: 'Слишком много запросов. Подождите одну минуту и попробуйте снова.' },
   standardHeaders: true,
   legacyHeaders: false,
