@@ -521,6 +521,27 @@ export const useStore = create(
         } catch (error) { return { success: false }; }
       },
 
+      // Внутри actions в store.js
+      syncVkKomod: async () => {
+        try {
+          const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/accounts/vk/komod-sync`, {
+            method: 'POST',
+            headers: { 
+              'Authorization': `Bearer ${get().token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          const data = await res.json();
+          if (data.success) {
+            await get().fetchAccounts(); // Обновляем список в UI
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети' };
+        }
+      },
+
      createPostAction: async (text, mediaUrls, accountIds, accountsData, publishAt) => {
         try {
           const res = await fetch('/api/posts/create', {
