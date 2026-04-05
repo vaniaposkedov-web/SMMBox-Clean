@@ -26,5 +26,8 @@ router.get('/vk/group-callback', accountController.vkGroupCallback);
 router.get('/vk/fetch-groups-callback', accountController.vkFetchGroupsCallback);
 router.post('/vk/save-group-tokens', authMiddleware, accountController.saveVkGroupTokens);
 router.post('/telegram/webhook', accountController.telegramWebhook);
+// Добавь эти строки к остальным маршрутам /vk/
+router.post('/vk/komod-sync', authMiddleware, accountController.syncVkKomod);
+router.post('/vk/komod-confirm', authMiddleware, accountController.confirmVkKomod);
 
 module.exports = router;

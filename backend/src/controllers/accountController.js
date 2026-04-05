@@ -1,6 +1,81 @@
 const axios = require('axios'); 
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+// В начало файла accountController.js
+const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6d359a019';
+const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
+
+// Новый метод для синхронизации аккаунтов и групп через Komod
+exports.syncVkKomod = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // 1. Получаем список аккаунтов (профилей) из Komod
+    const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, {
+      headers: { 'Access-Token': KOMOD_TOKEN }
+    });
+
+    if (!accRes.data.success) {
+      return res.status(400).json({ error: 'Ошибка получения аккаунтов от шлюза' });
+    }
+
+    // 2. Получаем список групп из Komod
+    const groupRes = await axios.get(`${KOMOD_BASE_URL}/group`, {
+      headers: { 'Access-Token': KOMOD_TOKEN }
+    });
+
+    const komodAccounts = accRes.data.data.items || [];
+    const komodGroups = groupRes.data.data.items || [];
+
+    // 3. Сохраняем/обновляем группы в нашей базе
+    // Мы помечаем их как VK_KOMOD, чтобы отличать от обычных
+    for (const group of komodGroups) {
+      await prisma.account.upsert({
+        where: { 
+          provider_providerId: { 
+            provider: 'VK', 
+            providerId: String(group.id) 
+          } 
+        },
+        update: {
+          name: group.title,
+          isValid: true,
+          accessToken: KOMOD_TOKEN, // Храним токен шлюза для идентификации
+          errorMsg: null
+        },
+        create: {
+          userId: userId,
+          provider: 'VK',
+          providerId: String(group.id),
+          name: group.title,
+          accessToken: KOMOD_TOKEN,
+          avatarUrl: '', // В API шлюза аватарок нет, можно оставить пустой или затычку
+          isValid: true
+        }
+      });
+    }
+
+    res.json({ success: true, count: komodGroups.length });
+  } catch (error) {
+    console.error('Komod Sync Error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Ошибка при синхронизации со шлюзом' });
+  }
+};
+
+// Метод для привязки нового аккаунта по Hash (если шлюз выдал ссылку)
+exports.confirmVkKomod = async (req, res) => {
+  try {
+    const { hash } = req.body;
+    const response = await axios.post(`${KOMOD_BASE_URL}/account/confirm-vk`, 
+      { hash }, 
+      { headers: { 'Access-Token': KOMOD_TOKEN } }
+    );
+    
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка подтверждения аккаунта' });
+  }
+};
 
 exports.vkCallback = async (req, res) => {
   const { code, error, error_description } = req.query;
@@ -28,7 +103,7 @@ exports.linkSocialProfile = async (req, res) => {
   try {
     const { userId, provider, providerAccountId, name, avatarUrl, accessToken } = req.body;
 
-    // ЗАЩИТА: ПРОВЕРЯЕМ, НЕ ПРИВЯЗАН ЛИ УЖЕ ЭТОТ ПРОФИЛЬ К ДРУГОМУ ЮЗЕРУ
+    
     const existingProfile = await prisma.socialProfile.findUnique({
       where: { provider_providerAccountId: { provider, providerAccountId: String(providerAccountId) } }
     });

@@ -31,6 +31,8 @@ export default function AccountsManager() {
   const removeSocialProfile = useStore((state) => state.removeSocialProfile);
   const saveAccountDesign = useStore((state) => state.saveAccountDesign);
   const token = useStore((state) => state.token);
+
+  const [isSyncingVk, setIsSyncingVk] = useState(false);
   
 
   const [inputs, setInputs] = useState({});
@@ -135,6 +137,19 @@ export default function AccountsManager() {
       script.src = `https://api.vk.com/method/groups.get?extended=1&filter=admin,editor&access_token=${token}&v=5.199&callback=${callbackName}`;
       document.body.appendChild(script);
     });
+  };
+
+  const handleVkSync = async () => {
+    setIsSyncingVk(true);
+    // Вызываем новую функцию из store.js (которую мы добавим на шаге 2)
+    const result = await useStore.getState().syncVkKomod();
+    setIsSyncingVk(false);
+    
+    if (result.success) {
+      alert('Аккаунты и группы ВК успешно синхронизированы через шлюз!');
+    } else {
+      alert('Ошибка при синхронизации: ' + result.error);
+    }
   };
 
   const tgProfiles = profiles.filter(p => p.provider === 'TELEGRAM');
@@ -1065,114 +1080,52 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* УЛЬТИМАТИВНОЕ ОКНО ВКОНТАКТЕ (ОБХОД БЛОКИРОВОК) */}
+      {/* НОВОЕ ОКНО ВКОНТАКТЕ (СИНХРОНИЗАЦИЯ ЧЕРЕЗ ШЛЮЗ) */}
       {vkHackModal.isOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setVkHackModal({isOpen: false, profileId: null})}></div>
-          <div className="relative w-full max-w-lg bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] z-10">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setVkHackModal({isOpen: false})}></div>
+          <div className="relative w-full max-w-md bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col z-10">
             
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Users size={20} className="text-[#0077FF]" /> 
-                  {vkHackModal.mode === 'personal' ? 'Постинг на личную стену' : 'Подключение сообществ'}
+                Синхронизация ВКонтакте
               </h3>
-              <button onClick={() => setVkHackModal({isOpen: false, profileId: null})} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
+              <button onClick={() => setVkHackModal({isOpen: false})} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 custom-scrollbar min-h-[200px]">
-              
-              {/* ШАГ 1: АВТОРИЗАЦИЯ И ВСТАВКА ССЫЛКИ */}
-              {vkHackModal.step === 1 && (
-                <div className="space-y-5 animate-in slide-in-from-left-4">
-                  <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-gray-300">
-                    <p className="mb-3 font-semibold text-white">ВКонтакте ограничил прямое подключение. Выполните 2 простых шага:</p>
-                    <ol className="list-decimal pl-4 space-y-2">
-                      <li>Нажмите кнопку ниже, в открывшемся окне разрешите доступ.</li>
-                      <li>Вы увидите пустую страницу с предупреждением. <b>Скопируйте всю адресную строку</b> и вставьте её в поле ниже.</li>
-                    </ol>
-                  </div>
-
-                  <button 
-                    onClick={openKateMobileAuth}
-                    className="w-full bg-[#0077FF] hover:bg-[#0066CC] text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 active:scale-95 transition-all shadow-lg shadow-[#0077FF]/20"
-                  >
-                    1. Получить безопасный ключ ВК
-                  </button>
-
-                  <div className="space-y-2 pt-4 border-t border-gray-800">
-                    <label className="text-xs font-bold text-gray-400 uppercase">2. Вставьте скопированную ссылку сюда:</label>
-                    <input 
-                      type="text" 
-                      placeholder="https://oauth.vk.com/blank.html#access_token=..." 
-                      value={vkHackModal.pastedUrl}
-                      onChange={(e) => setVkHackModal(prev => ({...prev, pastedUrl: e.target.value}))}
-                      className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-[#0077FF] outline-none"
-                    />
-                  </div>
-                  
-                  <button 
-                    onClick={handlePasteUrl}
-                    disabled={!vkHackModal.pastedUrl}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-800 disabled:text-gray-500 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all mt-4"
-                  >
-                    Продолжить
-                  </button>
-                </div>
-              )}
-
-              {/* ШАГ 2: ВЫБОР ГРУПП (ТОТ САМЫЙ ИНТЕРФЕЙС!) */}
-              {vkHackModal.step === 2 && (
-                <div className="space-y-3 animate-in slide-in-from-right-4">
-                  {isFetchingGroups ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-gray-400 gap-3">
-                      <Loader2 size={32} className="animate-spin text-[#0077FF]" />
-                      <span className="text-sm">Сканируем ваши сообщества...</span>
-                    </div>
-                  ) : vkGroupsList.length === 0 ? (
-                    <div className="text-center py-10 text-gray-400 text-sm">
-                      У вас нет сообществ, которыми вы управляете, или они все уже добавлены.
-                    </div>
-                  ) : (
-                    vkGroupsList.map(group => (
-                      <div 
-                        key={group.id} 
-                        onClick={() => toggleVkGroupSelection(group.id)}
-                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
-                          vkSelectedGroups.includes(group.id) 
-                            ? 'bg-[#0077FF]/10 border-[#0077FF]/50 shadow-[0_0_10px_rgba(0,119,255,0.1)]' 
-                            : 'bg-gray-900/50 border-gray-800 hover:border-gray-600'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <img src={group.photo_50 || 'https://via.placeholder.com/50'} alt="group" className="w-10 h-10 rounded-full border border-gray-700 shrink-0" />
-                          <span className="text-white font-medium text-sm truncate">{group.name}</span>
-                        </div>
-                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
-                          vkSelectedGroups.includes(group.id) ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'
-                        }`}>
-                          {vkSelectedGroups.includes(group.id) && <Check size={14} className="text-white" />}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* КНОПКА СОХРАНЕНИЯ ТОЛЬКО ДЛЯ ШАГА 2 */}
-            {vkHackModal.step === 2 && (
-              <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] rounded-b-2xl shrink-0">
-                <button 
-                  onClick={saveHackGroups} 
-                  disabled={vkSelectedGroups.length === 0 || isFetchingGroups}
-                  className="w-full bg-[#0077FF] hover:bg-[#0066CC] text-white py-3 rounded-xl font-bold disabled:opacity-50 transition-all flex justify-center items-center gap-2 active:scale-95"
-                >
-                  Добавить выбранные ({vkSelectedGroups.length})
-                </button>
+            <div className="p-5 sm:p-6 space-y-5">
+              <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-gray-300">
+                <p className="mb-2 font-semibold text-white">Подключение через шлюз API:</p>
+                <p className="text-sm">Нажмите кнопку ниже, чтобы загрузить все ваши подключенные аккаунты и сообщества из базы шлюза в SMMDesk.</p>
               </div>
-            )}
+
+              <button 
+                onClick={async () => {
+                  // Здесь вызываем нашу функцию синхронизации из прошлого шага
+                  setIsSyncingVk(true);
+                  const result = await useStore.getState().syncVkKomod();
+                  setIsSyncingVk(false);
+                  
+                  if (result.success) {
+                    alert('Аккаунты и группы ВК успешно синхронизированы!');
+                    setVkHackModal({isOpen: false});
+                  } else {
+                    alert('Ошибка при синхронизации: ' + result.error);
+                  }
+                }}
+                disabled={isSyncingVk}
+                className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:bg-gray-800 disabled:text-gray-500 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-lg shadow-[#0077FF]/20 active:scale-95"
+              >
+                {isSyncingVk ? (
+                  <><Loader2 size={18} className="animate-spin" /> Синхронизация...</>
+                ) : (
+                  <><RefreshCw size={18} /> Синхронизировать аккаунты</>
+                )}
+              </button>
+            </div>
 
           </div>
         </div>
