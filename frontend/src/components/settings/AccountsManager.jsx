@@ -893,35 +893,40 @@ export default function AccountsManager() {
         </div>
       </div> {/* <--- Этот закрывающий DIV держит структуру страницы */}
 
-      {/* ================= УПРАВЛЕНИЕ СООБЩЕСТВАМИ ВКОНТАКТЕ (ЗАГЛУШКА) ================= */}
+    
 
-      {/* ================= УПРАВЛЕНИЕ СООБЩЕСТВАМИ ВКОНТАКТЕ (ЗАГЛУШКА) ================= */}
-      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl opacity-75">
+      {/* ================= УПРАВЛЕНИЕ ВКОНТАКТЕ (СИНХРОНИЗАЦИЯ KOM-OD) ================= */}
+      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-800/50 pb-4 relative z-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF]">
               <Users size={20} />
             </div>
-            <h2 className="text-lg font-bold text-white">Управление сообществами ВКонтакте</h2>
+            <h2 className="text-lg font-bold text-white">ВКонтакте</h2>
           </div>
-          <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 text-[#0077FF] text-[10px] sm:text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg shrink-0">
-            Скоро
-          </div>
+          
+          <button 
+            onClick={() => setVkHackModal({isOpen: true})}
+            className="bg-[#0077FF] hover:bg-[#0066CC] text-white px-5 py-2.5 rounded-xl font-bold transition-all text-sm flex items-center gap-2 active:scale-95 shadow-lg shadow-[#0077FF]/20"
+          >
+            <RefreshCw size={16} /> Добавить аккаунты
+          </button>
         </div>
 
-        <div className="flex flex-col items-center justify-center py-8 sm:py-10 bg-gray-950/30 rounded-2xl border border-dashed border-gray-800/50 gap-4">
-          <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mb-2">
-             <Users size={28} className="text-gray-600" />
-          </div>
-          <div className="text-center space-y-1.5 px-4">
-            <p className="text-gray-300 text-sm sm:text-base font-semibold">Модуль ВКонтакте в разработке</p>
-            <p className="text-gray-500 text-xs sm:text-sm max-w-[280px] mx-auto leading-relaxed">
-              Мы проходим официальную модерацию приложения. Скоро здесь появится возможность управлять вашими сообществами.
-            </p>
-          </div>
-          <button disabled className="mt-2 bg-gray-900 border border-gray-800 text-gray-600 px-6 py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 cursor-not-allowed text-sm">
-            Временно недоступно
-          </button>
+        <div className="flex flex-col gap-4 mt-2">
+          {accounts.filter(a => a.provider === 'VK').length === 0 ? (
+            <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
+              <p className="text-gray-400 text-sm px-4">Нет подключенных аккаунтов ВК. Нажмите кнопку добавления.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {accounts.filter(a => a.provider === 'VK').map(acc => (
+                <div key={acc.id} className="relative">
+                  {renderAccountCard(acc, <Users size={8} className="text-white"/>, 'bg-[#0077FF]')}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
