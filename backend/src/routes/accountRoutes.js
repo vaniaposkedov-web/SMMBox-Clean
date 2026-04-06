@@ -29,5 +29,6 @@ router.post('/telegram/webhook', accountController.telegramWebhook);
 // Добавь эти строки к остальным маршрутам /vk/
 router.post('/vk/komod-sync', authMiddleware, accountController.syncVkKomod);
 router.post('/vk/komod-confirm', authMiddleware, accountController.confirmVkKomod);
+router.post('/vk/komod-add', authMiddleware, accountController.addVkKomodGroup);
 
 module.exports = router;
