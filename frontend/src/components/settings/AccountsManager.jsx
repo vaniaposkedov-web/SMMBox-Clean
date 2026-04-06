@@ -130,8 +130,7 @@ export default function AccountsManager() {
     const redirectUrl = encodeURIComponent(`${window.location.origin}/settings?vk_komod_hash=${hash}`);
     
     // ВНИМАНИЕ СЮДА: должно быть redirect_url=
-    const authUrl = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_url=${redirectUrl}`;
-    
+    const authUrl = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_uri=${redirectUrl}`;
     window.location.href = authUrl; 
   };
 
