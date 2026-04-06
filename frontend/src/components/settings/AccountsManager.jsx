@@ -97,6 +97,41 @@ export default function AccountsManager() {
   }, [user]);
 
 
+  // Перехватываем хэш после возвращения от Kom-od
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const vkHash = params.get('vk_komod_hash');
+
+    if (vkHash) {
+      // 1. Очищаем адресную строку (чтобы при обновлении страницы скрипт не сработал снова)
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      // 2. Вызываем привязку и синхронизацию
+      const finalizeAuth = async () => {
+        setIsSyncingVk(true);
+        const confirmResult = await useStore.getState().confirmVkKomod(vkHash);
+        
+        if (confirmResult.success) {
+          await useStore.getState().syncVkKomod(); // Сразу скачиваем аккаунты из базы
+          alert('Аккаунт ВКонтакте успешно подключен!');
+        } else {
+          alert('Ошибка привязки: ' + confirmResult.error);
+        }
+        setIsSyncingVk(false);
+      };
+
+      finalizeAuth();
+    }
+  }, []);
+
+  // Функция для генерации ссылки и отправки пользователя
+  const handleConnectVkOAuth = () => {
+    const hash = 'vk_' + user.id + '_' + Date.now();
+    const redirectUrl = encodeURIComponent(`${window.location.origin}/settings?vk_komod_hash=${hash}`);
+    const authUrl = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_url=${redirectUrl}`;
+    window.location.href = authUrl; 
+  };
+
   // --- ПЕРЕХВАТЧИК ТОКЕНОВ ИЗ ВСПЛЫВАЮЩИХ ОКОН ВК ---
   useEffect(() => {
     if (window.opener && window.location.hash) {
@@ -1103,22 +1138,34 @@ export default function AccountsManager() {
 
             <div className="p-5 sm:p-6 space-y-6">
               
-              {/* БЛОК 1: ДОБАВЛЕНИЕ НОВОГО СООБЩЕСТВА */}
+              {/* БЛОК 1: ОФИЦИАЛЬНАЯ АВТОРИЗАЦИЯ */}
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Основной способ</label>
+                <button 
+                  onClick={handleConnectVkOAuth}
+                  className="w-full bg-[#0077FF] hover:bg-[#0066CC] text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20"
+                >
+                  <UserCircle size={18} />
+                  Авторизовать профиль ВК
+                </button>
+                <p className="text-[11px] text-gray-500 text-center">Безопасное подключение для постинга на стену</p>
+              </div>
+
+              <div className="relative flex items-center py-1">
+                <div className="flex-grow border-t border-gray-800"></div>
+                <span className="flex-shrink-0 mx-4 text-gray-500 text-[10px] font-bold uppercase tracking-widest">или</span>
+                <div className="flex-grow border-t border-gray-800"></div>
+              </div>
+
+              {/* БЛОК 2: ДОБАВЛЕНИЕ ПО ССЫЛКЕ */}
               <div className="space-y-3">
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Подключить сообщество</label>
                 <div className="space-y-2">
                   <input 
                     type="text" 
-                    placeholder="Ссылка (например: https://vk.com/mygroup)" 
+                    placeholder="Ссылка (vk.com/club123)" 
                     value={vkHackModal.pastedUrl || ''}
                     onChange={(e) => setVkHackModal(prev => ({...prev, pastedUrl: e.target.value}))}
-                    className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-[#0077FF] outline-none transition-colors"
-                  />
-                  <input 
-                    type="text" 
-                    placeholder="Название (для удобства)" 
-                    value={vkHackModal.tempToken || ''}
-                    onChange={(e) => setVkHackModal(prev => ({...prev, tempToken: e.target.value}))}
                     className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-[#0077FF] outline-none transition-colors"
                   />
                 </div>
@@ -1127,51 +1174,21 @@ export default function AccountsManager() {
                   onClick={async () => {
                     if (!vkHackModal.pastedUrl) return alert('Введите ссылку на группу!');
                     setIsSyncingVk(true);
-                    // Вызываем добавление
-                    const result = await useStore.getState().addVkKomodGroup(vkHackModal.pastedUrl, vkHackModal.tempToken);
+                    const result = await useStore.getState().addVkKomodGroup(vkHackModal.pastedUrl, 'Новая группа');
                     setIsSyncingVk(false);
                     
                     if (result.success) {
                       alert('Группа успешно добавлена!');
-                      setVkHackModal({isOpen: false, pastedUrl: '', tempToken: ''});
+                      setVkHackModal({isOpen: false, pastedUrl: ''});
                     } else {
                       alert('Ошибка: ' + result.error);
                     }
                   }}
                   disabled={isSyncingVk}
-                  className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20"
+                  className="w-full bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95"
                 >
                   {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
                   Добавить по ссылке
-                </button>
-              </div>
-
-              <div className="relative flex items-center">
-                <div className="flex-grow border-t border-gray-800"></div>
-                <span className="flex-shrink-0 mx-4 text-gray-500 text-[10px] font-bold uppercase tracking-widest">или</span>
-                <div className="flex-grow border-t border-gray-800"></div>
-              </div>
-
-              {/* БЛОК 2: СИНХРОНИЗАЦИЯ */}
-              <div className="space-y-3">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Уже добавленные</label>
-                <button 
-                  onClick={async () => {
-                    setIsSyncingVk(true);
-                    const result = await useStore.getState().syncVkKomod();
-                    setIsSyncingVk(false);
-                    if (result.success) {
-                      alert('Данные обновлены!');
-                      setVkHackModal({isOpen: false});
-                    } else {
-                      alert('Ошибка при синхронизации: ' + result.error);
-                    }
-                  }}
-                  disabled={isSyncingVk}
-                  className="w-full bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95"
-                >
-                  {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />} 
-                  Синхронизировать базу
                 </button>
               </div>
 

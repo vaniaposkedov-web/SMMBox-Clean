@@ -191,6 +191,29 @@ exports.saveVkGroupWithToken = async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Внутренняя ошибка сервера' }); }
 };
 
+
+// Подтверждение привязки ВК по Hash
+exports.confirmVkKomod = async (req, res) => {
+  try {
+    const { hash } = req.body;
+    
+    // 1. Подтверждаем хэш в шлюзе
+    const response = await axios.post(`${process.env.KOMOD_BASE_URL || 'https://kom-od.ru/api/v1'}/account/confirm-vk`,
+      { hash },
+      { headers: { 'Access-Token': process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6d359a019' } }
+    );
+
+    if (response.data && response.data.success === false) {
+      return res.status(400).json({ error: 'Ошибка подтверждения: ' + JSON.stringify(response.data.errors) });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Komod Confirm Error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Ошибка при подтверждении аккаунта' });
+  }
+};
+
 exports.saveTgAccounts = async (req, res) => {
   const { userId, channels } = req.body;
   try {

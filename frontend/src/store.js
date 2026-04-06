@@ -516,6 +516,24 @@ export const useStore = create(
         }
       },
 
+      // Добавь это рядом с функцией syncVkKomod:
+      confirmVkKomod: async (hash) => {
+        try {
+          const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/accounts/vk/komod-confirm`, {
+            method: 'POST',
+            headers: { 
+              'Authorization': `Bearer ${get().token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ hash })
+          });
+          const data = await res.json();
+          return data.success ? { success: true } : { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети' };
+        }
+      },
+
       saveGlobalSettings: async (signature, watermarkData) => {
         try {
           const res = await fetch('/api/accounts/global/settings', {
