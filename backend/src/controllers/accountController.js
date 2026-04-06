@@ -62,6 +62,35 @@ exports.syncVkKomod = async (req, res) => {
   }
 };
 
+
+// Добавление новой группы в шлюз Komod
+exports.addVkKomodGroup = async (req, res) => {
+  try {
+    const { url, title } = req.body;
+    
+    // 1. Отправляем запрос в Komod
+    const response = await axios.post(`${KOMOD_BASE_URL}/group`, {
+      url: url,
+      title: title || 'Новая группа ВК',
+      join_to_group: true
+    }, {
+      headers: { 'Access-Token': KOMOD_TOKEN }
+    });
+
+    if (response.data && response.data.success === false) {
+      return res.status(400).json({ error: 'Ошибка шлюза: ' + JSON.stringify(response.data.errors) });
+    }
+
+    // 2. Если добавилось успешно, сразу вызываем синхронизацию, 
+    // чтобы группа сохранилась в нашу базу данных и вывелась на экран
+    await exports.syncVkKomod(req, res);
+    
+  } catch (error) {
+    console.error('Komod Add Group Error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Ошибка при добавлении группы в шлюз' });
+  }
+};
+
 // Метод для привязки нового аккаунта по Hash (если шлюз выдал ссылку)
 exports.confirmVkKomod = async (req, res) => {
   try {

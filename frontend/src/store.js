@@ -494,6 +494,28 @@ export const useStore = create(
         } catch (error) {}
       },
 
+      // Добавь это сразу после функции syncVkKomod:
+      addVkKomodGroup: async (url, title) => {
+        try {
+          const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/accounts/vk/komod-add`, {
+            method: 'POST',
+            headers: { 
+              'Authorization': `Bearer ${get().token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url, title })
+          });
+          const data = await res.json();
+          if (data.success) {
+            await get().fetchAccounts(); // Обновляем список на клиенте
+            return { success: true };
+          }
+          return { success: false, error: data.error };
+        } catch (error) {
+          return { success: false, error: 'Ошибка сети' };
+        }
+      },
+
       saveGlobalSettings: async (signature, watermarkData) => {
         try {
           const res = await fetch('/api/accounts/global/settings', {
