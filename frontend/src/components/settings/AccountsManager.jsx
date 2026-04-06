@@ -128,7 +128,10 @@ export default function AccountsManager() {
   const handleConnectVkOAuth = () => {
     const hash = 'vk_' + user.id + '_' + Date.now();
     const redirectUrl = encodeURIComponent(`${window.location.origin}/settings?vk_komod_hash=${hash}`);
+    
+    // ВНИМАНИЕ СЮДА: должно быть redirect_url=
     const authUrl = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_url=${redirectUrl}`;
+    
     window.location.href = authUrl; 
   };
 
