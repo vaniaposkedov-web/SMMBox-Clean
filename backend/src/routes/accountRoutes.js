@@ -30,5 +30,6 @@ router.post('/telegram/webhook', accountController.telegramWebhook);
 router.post('/vk/komod-sync', authMiddleware, accountController.syncVkKomod);
 router.post('/vk/komod-confirm', authMiddleware, accountController.confirmVkKomod);
 router.post('/vk/komod-add', authMiddleware, accountController.addVkKomodGroup);
+router.post('/vk/komod-confirm', authMiddleware, accountController.confirmVkKomod);
 
 module.exports = router;

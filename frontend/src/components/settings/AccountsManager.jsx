@@ -103,23 +103,26 @@ export default function AccountsManager() {
     const vkHash = params.get('vk_komod_hash');
 
     if (vkHash) {
-      // 1. Очищаем адресную строку (чтобы при обновлении страницы скрипт не сработал снова)
       window.history.replaceState({}, document.title, window.location.pathname);
 
-      // 2. Вызываем привязку и синхронизацию
       const finalizeAuth = async () => {
         setIsSyncingVk(true);
         const confirmResult = await useStore.getState().confirmVkKomod(vkHash);
         
         if (confirmResult.success) {
-          await useStore.getState().syncVkKomod(); // Сразу скачиваем аккаунты из базы
-          alert('Аккаунт ВКонтакте успешно подключен!');
+          await useStore.getState().syncVkKomod();
+          await handleRefreshProfiles(); // Скачиваем обновленный профиль из базы
+          setIsSyncingVk(false);
+          
+          // Магия: сразу предлагаем добавить группы!
+          if (window.confirm('Профиль ВКонтакте успешно подключен!\nХотите сразу добавить ссылки на ваши сообщества для постинга?')) {
+            setVkHackModal({ isOpen: true, pastedUrl: '' });
+          }
         } else {
           alert('Ошибка привязки: ' + confirmResult.error);
+          setIsSyncingVk(false);
         }
-        setIsSyncingVk(false);
       };
-
       finalizeAuth();
     }
   }, []);
@@ -932,38 +935,114 @@ export default function AccountsManager() {
 
     
 
-      {/* ================= УПРАВЛЕНИЕ ВКОНТАКТЕ (СИНХРОНИЗАЦИЯ KOM-OD) ================= */}
-      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-800/50 pb-4 relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF]">
-              <Users size={20} />
-            </div>
-            <h2 className="text-lg font-bold text-white">ВКонтакте</h2>
+      {/* ================= УПРАВЛЕНИЕ ВКОНТАКТЕ ================= */}
+      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 mt-6 sm:mt-8 shadow-xl">
+        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
+          <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF]">
+            <Users size={20} />
           </div>
-          
-          <button 
-            onClick={() => setVkHackModal({isOpen: true})}
-            className="bg-[#0077FF] hover:bg-[#0066CC] text-white px-5 py-2.5 rounded-xl font-bold transition-all text-sm flex items-center gap-2 active:scale-95 shadow-lg shadow-[#0077FF]/20"
-          >
-            <RefreshCw size={16} /> Добавить аккаунты
-          </button>
+          <h2 className="text-lg font-bold text-white">Управление ВКонтакте</h2>
         </div>
 
-        <div className="flex flex-col gap-4 mt-2">
-          {accounts.filter(a => a.provider === 'VK').length === 0 ? (
-            <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
-              <p className="text-gray-400 text-sm px-4">Нет подключенных аккаунтов ВК. Нажмите кнопку добавления.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {accounts.filter(a => a.provider === 'VK').map(acc => (
-                <div key={acc.id} className="relative">
-                  {renderAccountCard(acc, <Users size={8} className="text-white"/>, 'bg-[#0077FF]')}
+        {vkProfiles.length === 0 && (
+          <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
+            <p className="text-gray-400 text-sm px-4 mb-4">Для добавления сообществ сначала авторизуйте профиль ВКонтакте.</p>
+          </div>
+        )}
+
+        {vkProfiles.map(profile => (
+          <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
+            
+            {/* Шапка профиля ВК */}
+            <div 
+              className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors gap-2" 
+              onClick={() => toggleProfileCollapse(profile.id)}
+            >
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}&background=0077FF&color=fff`} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="VK" />
+                <div className="min-w-0">
+                  <div className="text-white font-bold text-sm sm:text-base truncate leading-tight">
+                    {profile.name}
+                  </div>
                 </div>
-              ))}
+              </div>
+              
+              <div className="flex items-center gap-0.5 shrink-0 ml-auto pl-1.5 sm:pl-3">
+                <button className="p-1 text-gray-400 hover:text-white rounded-md transition-all">
+                  <ChevronDown size={18} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
+                </button>
+                <button 
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Отключить профиль ВКонтакте "${profile.name}" и все связанные с ним страницы?`)) {
+                      await removeSocialProfile(profile.id);
+                    }
+                  }}
+                  className="p-1 text-gray-500 hover:text-rose-500 rounded-md transition-all"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
-          )}
+
+            {/* Дерево элементов ВК */}
+            <div className={`grid transition-all duration-300 ease-in-out ${collapsedProfiles[profile.id] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
+              <div className="overflow-hidden">
+                <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
+                  {accounts.filter(a => a.provider === 'VK' && a.profileId === profile.id).map(acc => (
+                    <div key={acc.id} className="relative">
+                      <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                      {renderAccountCard(acc, <Users size={8} className="text-white"/>, 'bg-[#0077FF]')}
+                    </div>
+                  ))}
+                  
+                  <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
+                    <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
+                    
+                    <button 
+                      onClick={() => setVkHackModal({isOpen: true})}
+                      className="flex-1 w-full bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-center"
+                    >
+                      <Plus size={18} />
+                      <span>Добавить сообщество (по ссылке)</span>
+                    </button>
+
+                    <button 
+                      onClick={handleVkSync}
+                      disabled={isSyncingVk}
+                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-5 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95"
+                    >
+                      <RefreshCw size={18} className={isSyncingVk ? "animate-spin" : ""} />
+                      <span className="sm:hidden">{isSyncingVk ? 'Синхронизация...' : 'Синхронизировать'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        ))}
+
+        {/* Кнопка авторизации (Вынесена вниз как в ТГ) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 bg-gray-800/30 rounded-xl border border-gray-700/50 border-dashed hover:bg-gray-800/50 transition-colors gap-4 mt-2">
+          <div className="flex flex-col">
+            <span className="text-gray-300 font-bold text-sm flex items-center gap-2">
+              <UserPlus size={18} className="text-gray-400"/> Подключить {vkProfiles.length > 0 ? 'еще один ' : ''}профиль ВК
+            </span>
+            <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+              Основной аккаунт для постинга на стену и привязки сообществ.
+            </span>
+          </div>
+
+          <div className="flex gap-2 w-full sm:w-auto shrink-0">
+            <button 
+              onClick={handleConnectVkOAuth} 
+              className="flex-1 sm:flex-none shrink-0 whitespace-nowrap bg-[#0077FF] hover:bg-[#0066CC] text-white px-5 h-12 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0077FF]/20 active:scale-95 flex items-center justify-center gap-2"
+            >
+              <UserCircle size={18} />
+               {vkProfiles.length > 0 ? 'Добавить аккаунт' : 'Авторизовать ВК'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1122,7 +1201,7 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* НОВОЕ ОКНО ВКОНТАКТЕ (СИНХРОНИЗАЦИЯ ЧЕРЕЗ ШЛЮЗ) */}
+      {/* НОВОЕ ОКНО ВКОНТАКТЕ (ТОЛЬКО ДОБАВЛЕНИЕ ПО ССЫЛКЕ) */}
       {vkHackModal.isOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setVkHackModal({isOpen: false})}></div>
@@ -1131,71 +1210,54 @@ export default function AccountsManager() {
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Users size={20} className="text-[#0077FF]" /> 
-                Синхронизация ВКонтакте
+                Добавить сообщество ВК
               </h3>
               <button onClick={() => setVkHackModal({isOpen: false})} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 sm:p-6 space-y-6">
+            <div className="p-5 sm:p-6 space-y-4">
+              <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-gray-300">
+                <p className="mb-2 font-semibold text-white">Как подключить группу:</p>
+                <ol className="list-decimal pl-4 space-y-1.5 text-xs">
+                  <li>Зайдите в вашу группу ВКонтакте.</li>
+                  <li>Скопируйте ссылку из адресной строки (например: <span className="font-mono text-white">vk.com/myclub</span>).</li>
+                  <li>Вставьте ссылку в поле ниже и нажмите добавить.</li>
+                </ol>
+              </div>
+
+              <div className="space-y-2 mt-4">
+                <input 
+                  type="text" 
+                  placeholder="Ссылка на группу..." 
+                  value={vkHackModal.pastedUrl || ''}
+                  onChange={(e) => setVkHackModal(prev => ({...prev, pastedUrl: e.target.value}))}
+                  className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-[#0077FF] outline-none transition-colors"
+                />
+              </div>
               
-              {/* БЛОК 1: ОФИЦИАЛЬНАЯ АВТОРИЗАЦИЯ */}
-              <div className="space-y-3">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Основной способ</label>
-                <button 
-                  onClick={handleConnectVkOAuth}
-                  className="w-full bg-[#0077FF] hover:bg-[#0066CC] text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20"
-                >
-                  <UserCircle size={18} />
-                  Авторизовать профиль ВК
-                </button>
-                <p className="text-[11px] text-gray-500 text-center">Безопасное подключение для постинга на стену</p>
-              </div>
-
-              <div className="relative flex items-center py-1">
-                <div className="flex-grow border-t border-gray-800"></div>
-                <span className="flex-shrink-0 mx-4 text-gray-500 text-[10px] font-bold uppercase tracking-widest">или</span>
-                <div className="flex-grow border-t border-gray-800"></div>
-              </div>
-
-              {/* БЛОК 2: ДОБАВЛЕНИЕ ПО ССЫЛКЕ */}
-              <div className="space-y-3">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Подключить сообщество</label>
-                <div className="space-y-2">
-                  <input 
-                    type="text" 
-                    placeholder="Ссылка (vk.com/club123)" 
-                    value={vkHackModal.pastedUrl || ''}
-                    onChange={(e) => setVkHackModal(prev => ({...prev, pastedUrl: e.target.value}))}
-                    className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-[#0077FF] outline-none transition-colors"
-                  />
-                </div>
-                
-                <button 
-                  onClick={async () => {
-                    if (!vkHackModal.pastedUrl) return alert('Введите ссылку на группу!');
-                    setIsSyncingVk(true);
-                    const result = await useStore.getState().addVkKomodGroup(vkHackModal.pastedUrl, 'Новая группа');
-                    setIsSyncingVk(false);
-                    
-                    if (result.success) {
-                      alert('Группа успешно добавлена!');
-                      setVkHackModal({isOpen: false, pastedUrl: ''});
-                    } else {
-                      alert('Ошибка: ' + result.error);
-                    }
-                  }}
-                  disabled={isSyncingVk}
-                  className="w-full bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95"
-                >
-                  {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                  Добавить по ссылке
-                </button>
-              </div>
-
+              <button 
+                onClick={async () => {
+                  if (!vkHackModal.pastedUrl) return alert('Введите ссылку на группу!');
+                  setIsSyncingVk(true);
+                  const result = await useStore.getState().addVkKomodGroup(vkHackModal.pastedUrl, 'Новое сообщество');
+                  setIsSyncingVk(false);
+                  
+                  if (result.success) {
+                    alert('Группа успешно добавлена!');
+                    setVkHackModal({isOpen: false, pastedUrl: ''});
+                  } else {
+                    alert('Ошибка: ' + result.error);
+                  }
+                }}
+                disabled={isSyncingVk}
+                className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20 mt-2"
+              >
+                {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                Добавить
+              </button>
             </div>
-
           </div>
         </div>
       )}
