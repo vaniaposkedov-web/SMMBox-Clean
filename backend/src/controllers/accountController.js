@@ -5,8 +5,6 @@ const prisma = new PrismaClient();
 const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6d359a019';
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 
-// Новый метод для синхронизации аккаунтов и групп через Komod
-// Улучшенный метод для синхронизации аккаунтов и групп через Komod (с поддержкой дерева профилей)
 exports.syncVkKomod = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -14,58 +12,61 @@ exports.syncVkKomod = async (req, res) => {
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const groupRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
 
+    // Учитываем структуру ответа Kom-od
     const accountsList = accRes.data?.data?.items || accRes.data?.data || [];
     const groupsList = groupRes.data?.data?.items || groupRes.data?.data || [];
 
     let addedCount = 0;
-    let targetProfileId = null;
+    const profileMap = {}; // Карта для связи ID Kom-od с ID профиля в Prisma
 
-    // 1. Создаем или обновляем ГЛАВНЫЙ ПРОФИЛЬ (SocialProfile)
-    if (accountsList.length > 0) {
-      const mainAcc = accountsList[0];
-      const profileName = mainAcc.title || mainAcc.name || 'Мой профиль ВК';
+    // 1. Создаем ПРОФИЛИ (шапка дерева) и СТЕНЫ (карточки для постинга)
+    for (const acc of accountsList) {
+      const profileName = acc.title || acc.name || 'Мой профиль ВК';
+      const providerAccountId = String(acc.id);
+
+      // Создаем шапку профиля
       const vkProfile = await prisma.socialProfile.upsert({
-        where: { provider_providerAccountId: { provider: 'VK', providerAccountId: String(mainAcc.id) } },
+        where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
         update: { name: profileName },
         create: {
-          userId: userId, provider: 'VK', providerAccountId: String(mainAcc.id),
+          userId: userId, provider: 'VK', providerAccountId,
           name: profileName, accessToken: KOMOD_TOKEN
         }
       });
-      targetProfileId = vkProfile.id;
-    } else {
-      const existingProfile = await prisma.socialProfile.findFirst({ where: { userId, provider: 'VK' } });
-      targetProfileId = existingProfile ? existingProfile.id : null;
-    }
 
-    // 2. Сохраняем ЛИЧНУЮ СТЕНУ как место для постинга (привязываем к профилю)
-    for (const acc of accountsList) {
-      const accName = acc.title || acc.name || `Моя стена ВК`;
+      profileMap[acc.id] = vkProfile.id;
+
+      // Создаем КАРТОЧКУ СТЕНЫ (именно она появится в UI с настройками дизайна)
       await prisma.account.upsert({
-        where: { provider_providerId: { provider: 'VK', providerId: `account_${acc.id}` } },
-        update: { name: accName, isValid: true, accessToken: KOMOD_TOKEN, errorMsg: null, profileId: targetProfileId },
+        where: { provider_providerId: { provider: 'VK', providerId: `wall_${acc.id}` } },
+        update: { name: `Стена: ${profileName}`, isValid: true, profileId: vkProfile.id, errorMsg: null },
         create: {
-          userId: userId, provider: 'VK', providerId: `account_${acc.id}`, name: accName,
-          accessToken: KOMOD_TOKEN, avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(accName)}&background=0077FF&color=fff`,
-          isValid: true, profileId: targetProfileId
+          userId: userId, provider: 'VK', providerId: `wall_${acc.id}`, name: `Стена: ${profileName}`,
+          accessToken: KOMOD_TOKEN, avatarUrl: `https://ui-avatars.com/api/?name=Стена&background=0077FF&color=fff`,
+          isValid: true, profileId: vkProfile.id
         }
       });
       addedCount++;
     }
 
-    // 3. Сохраняем ГРУППЫ (привязываем к профилю)
+    // 2. Создаем КАРТОЧКИ ГРУПП
     for (const group of groupsList) {
-      const groupName = group.title || group.name || `Сообщество ВК`;
-      await prisma.account.upsert({
-        where: { provider_providerId: { provider: 'VK', providerId: `group_${group.id}` } },
-        update: { name: groupName, isValid: true, accessToken: KOMOD_TOKEN, errorMsg: null, profileId: targetProfileId },
-        create: {
-          userId: userId, provider: 'VK', providerId: `group_${group.id}`, name: groupName,
-          accessToken: KOMOD_TOKEN, avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName)}&background=0077FF&color=fff`,
-          isValid: true, profileId: targetProfileId
-        }
-      });
-      addedCount++;
+      const groupName = group.title || group.name || 'Сообщество ВК';
+      // Ищем, к какому профилю привязана группа (если данных нет, кидаем в первый попавшийся)
+      const parentProfileId = profileMap[group.account_id] || Object.values(profileMap)[0];
+
+      if (parentProfileId) {
+        await prisma.account.upsert({
+          where: { provider_providerId: { provider: 'VK', providerId: `group_${group.id}` } },
+          update: { name: groupName, isValid: true, profileId: parentProfileId, errorMsg: null },
+          create: {
+            userId: userId, provider: 'VK', providerId: `group_${group.id}`, name: groupName,
+            accessToken: KOMOD_TOKEN, avatarUrl: group.photo_50 || `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName)}&background=0077FF&color=fff`,
+            isValid: true, profileId: parentProfileId
+          }
+        });
+        addedCount++;
+      }
     }
 
     res.json({ success: true, count: addedCount });
@@ -75,18 +76,29 @@ exports.syncVkKomod = async (req, res) => {
   }
 };
 
-
 // Добавление новой группы в шлюз Komod
 exports.addVkKomodGroup = async (req, res) => {
   try {
-    const { url, title } = req.body;
+    const { url, title, profileId } = req.body;
     
-    // 1. Отправляем запрос в Komod
-    const response = await axios.post(`${KOMOD_BASE_URL}/group`, {
+    // Ищем профиль в нашей базе, чтобы получить его ID в системе Kom-od
+    const profile = await prisma.socialProfile.findUnique({ 
+      where: { id: profileId } 
+    });
+
+    const payload = {
       url: url,
       title: title || 'Новая группа ВК',
       join_to_group: true
-    }, {
+    };
+
+    // Указываем шлюзу, к какому конкретно аккаунту привязать группу
+    if (profile && profile.providerAccountId) {
+        payload.random_account = false;
+        payload.account_id = profile.providerAccountId;
+    }
+
+    const response = await axios.post(`${KOMOD_BASE_URL}/group`, payload, {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
@@ -94,13 +106,9 @@ exports.addVkKomodGroup = async (req, res) => {
       return res.status(400).json({ error: 'Ошибка шлюза: ' + JSON.stringify(response.data.errors) });
     }
 
-    // 2. Если добавилось успешно, сразу вызываем синхронизацию, 
-    // чтобы группа сохранилась в нашу базу данных и вывелась на экран
     await exports.syncVkKomod(req, res);
-    
   } catch (error) {
-    console.error('Komod Add Group Error:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Ошибка при добавлении группы в шлюз' });
+    res.status(500).json({ error: 'Ошибка при добавлении группы' });
   }
 };
 
