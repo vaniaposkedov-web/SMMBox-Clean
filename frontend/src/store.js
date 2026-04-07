@@ -494,8 +494,7 @@ export const useStore = create(
         } catch (error) {}
       },
 
-      // Добавь это сразу после функции syncVkKomod:
-      addVkKomodGroup: async (url, title) => {
+      addVkKomodGroup: async (url, title, profileId) => {
         try {
           const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/accounts/vk/komod-add`, {
             method: 'POST',
@@ -503,11 +502,11 @@ export const useStore = create(
               'Authorization': `Bearer ${get().token}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ url, title })
+            body: JSON.stringify({ url, title, profileId }) // Добавили profileId
           });
           const data = await res.json();
           if (data.success) {
-            await get().fetchAccounts(get().user?.id); // Обновляем список на клиенте
+            await get().fetchAccounts(get().user?.id);
             return { success: true };
           }
           return { success: false, error: data.error };

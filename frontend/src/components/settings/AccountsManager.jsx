@@ -390,8 +390,9 @@ export default function AccountsManager() {
     }
     
     setIsSyncingVk(false);
+    // В конце функции saveHackGroups:
     alert(`Успешно подключено сообществ: ${addedCount} из ${vkSelectedGroups.length}!`);
-    setVkHackModal({ isOpen: false, step: 1, pastedUrl: '' });
+    setVkHackModal({ isOpen: false, step: 1, pastedUrl: '', profileId: null }); // Добавили очистку
     handleRefreshProfiles(); // Обновляем интерфейс
   };
 
@@ -970,9 +971,10 @@ export default function AccountsManager() {
                     <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                     
                     <button 
-                      onClick={() => setVkHackModal({isOpen: true})}
-                      className="flex-1 w-full bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-6 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-center"
-                    >
+                        // Было: onClick={() => setVkHackModal({isOpen: true})}
+                        onClick={() => setVkHackModal({isOpen: true, profileId: profile.id, step: 1})}
+                        className="flex-1 w-full bg-[#0077FF]/10..."
+                      >
                       <Plus size={18} />
                       <span>Добавить сообщество (по ссылке)</span>
                     </button>
