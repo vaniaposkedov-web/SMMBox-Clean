@@ -116,48 +116,57 @@ export default function AccountsManager() {
     }
   }, [user]);
 
-// ЕДИНЫЙ ПЕРЕХВАТЧИК ХЭША (Защита от двойных запросов и 500-й ошибки)
+// Реф для предотвращения двойной обработки одного и того же хэша
+  const processingHash = useRef(null);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlHash = params.get('vk_komod_hash');
     const pendingHash = localStorage.getItem('vk_pending_hash');
     
-    // Берем хэш из URL или из LocalStorage
     const hashToProcess = urlHash || pendingHash;
 
-    if (hashToProcess) {
-      // Сразу зачищаем следы, чтобы хук не сработал дважды
+    // Если хэш есть и мы его еще не обрабатываем в текущем сеансе
+    if (hashToProcess && processingHash.current !== hashToProcess) {
+      processingHash.current = hashToProcess; // Помечаем хэш как обрабатываемый
+
+      // Очищаем URL и локальное хранилище немедленно
       if (urlHash) window.history.replaceState({}, document.title, window.location.pathname);
       if (pendingHash) localStorage.removeItem('vk_pending_hash');
 
       const finalizeAuth = async () => {
         setIsSyncingVk(true);
+        console.log('Отправка хэша на подтверждение:', hashToProcess);
         
-        // 1. Отправляем хэш в Kom-od
-        await useStore.getState().confirmVkKomod(hashToProcess);
-        
-        // 2. Игнорируем возможную ошибку (если хэш уже подтверждался) и принудительно качаем аккаунты
-        const syncResult = await useStore.getState().syncVkKomod();
-        await handleRefreshProfiles(); // Обновляем UI
-        setIsSyncingVk(false);
-        
-        // 3. Если скачалось успешно — предлагаем добавить группы
-        if (syncResult.success) {
-          if (window.confirm('Профиль ВКонтакте успешно подключен!\nХотите сразу загрузить и выбрать ваши сообщества для постинга?')) {
-            // Находим свежедобавленный профиль
-            const vkProfile = useStore.getState().profiles.find(p => p.provider === 'VK');
-            // Открываем модалку с привязкой к конкретному профилю
-            setVkHackModal({ isOpen: true, step: 1, pastedUrl: '', profileId: vkProfile?.id });
+        try {
+          // 1. Подтверждаем хэш в шлюзе
+          const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
+          
+          if (confirmResult.success) {
+            // 2. Если успех — синхронизируем данные
+            const syncResult = await useStore.getState().syncVkKomod();
+            await handleRefreshProfiles();
+            
+            if (syncResult.success) {
+              if (window.confirm('Профиль успешно подключен! Хотите выбрать сообщества?')) {
+                const vkProfile = useStore.getState().profiles.find(p => p.provider === 'VK');
+                setVkHackModal({ isOpen: true, step: 1, profileId: vkProfile?.id });
+              }
+            }
+          } else {
+            console.error('Ошибка подтверждения хэша:', confirmResult.error);
           }
-        } else {
-          alert('Не удалось загрузить профиль ВК. Попробуйте нажать кнопку "Синхронизировать".');
+        } catch (err) {
+          console.error('Критическая ошибка при авторизации:', err);
+        } finally {
+          setIsSyncingVk(false);
+          // Не обнуляем processingHash.current, чтобы предотвратить повтор на этой же странице
         }
       };
       
       finalizeAuth();
     }
-  }, []); // Пустой массив зависимостей
-
+  }, [handleRefreshProfiles]);
 
   // Функция для генерации ссылки и отправки пользователя
   const handleConnectVkOAuth = () => {

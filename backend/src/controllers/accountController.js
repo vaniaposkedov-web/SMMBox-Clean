@@ -112,20 +112,7 @@ exports.addVkKomodGroup = async (req, res) => {
   }
 };
 
-// Метод для привязки нового аккаунта по Hash (если шлюз выдал ссылку)
-exports.confirmVkKomod = async (req, res) => {
-  try {
-    const { hash } = req.body;
-    const response = await axios.post(`${KOMOD_BASE_URL}/account/confirm-vk`, 
-      { hash }, 
-      { headers: { 'Access-Token': KOMOD_TOKEN } }
-    );
-    
-    res.json(response.data);
-  } catch (error) {
-    res.status(500).json({ error: 'Ошибка подтверждения аккаунта' });
-  }
-};
+
 
 exports.vkCallback = async (req, res) => {
   const { code, error, error_description } = req.query;
@@ -213,25 +200,27 @@ exports.saveVkGroupWithToken = async (req, res) => {
 };
 
 
-// Подтверждение привязки ВК по Hash
 exports.confirmVkKomod = async (req, res) => {
   try {
     const { hash } = req.body;
+    console.log(`[VK AUTH] Пытаемся подтвердить хэш: ${hash}`);
     
-    // 1. Подтверждаем хэш в шлюзе
-    const response = await axios.post(`${process.env.KOMOD_BASE_URL || 'https://kom-od.ru/api/v1'}/account/confirm-vk`,
+    const response = await axios.post(
+      `${KOMOD_BASE_URL}/account/confirm-vk`,
       { hash },
-      { headers: { 'Access-Token': process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6d359a019' } }
+      { headers: { 'Access-Token': KOMOD_TOKEN } }
     );
 
+    console.log(`[VK AUTH] Ответ от Kom-od:`, JSON.stringify(response.data, null, 2));
+
     if (response.data && response.data.success === false) {
-      return res.status(400).json({ error: 'Ошибка подтверждения: ' + JSON.stringify(response.data.errors) });
+      return res.status(400).json({ error: 'Ошибка шлюза: ' + JSON.stringify(response.data.errors) });
     }
 
-    res.json({ success: true });
+    res.json({ success: true, data: response.data });
   } catch (error) {
-    console.error('Komod Confirm Error:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Ошибка при подтверждении аккаунта' });
+    console.error('[VK AUTH] Критическая ошибка сети/шлюза:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Ошибка сервера при обращении к Kom-od' });
   }
 };
 
