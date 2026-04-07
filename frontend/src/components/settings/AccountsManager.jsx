@@ -127,42 +127,44 @@ export default function AccountsManager() {
     }
   }, []);
 
+  // Перехватываем хэш из LocalStorage (защита от потери при редиректах)
+  useEffect(() => {
+    const pendingHash = localStorage.getItem('vk_pending_hash');
+    
+    if (pendingHash) {
+      localStorage.removeItem('vk_pending_hash'); // Сразу удаляем, чтобы не было дублей
+
+      const finalizeAuth = async () => {
+        setIsSyncingVk(true);
+        const confirmResult = await useStore.getState().confirmVkKomod(pendingHash);
+        
+        if (confirmResult.success) {
+          await useStore.getState().syncVkKomod();
+          await handleRefreshProfiles(); // Скачиваем обновленный профиль из базы
+          setIsSyncingVk(false);
+          
+          if (window.confirm('Профиль ВКонтакте успешно подключен!\nХотите сразу загрузить и выбрать ваши сообщества для постинга?')) {
+            setVkHackModal({ isOpen: true, step: 1, pastedUrl: '' });
+          }
+        } else {
+          alert('Ошибка привязки: ' + confirmResult.error);
+          setIsSyncingVk(false);
+        }
+      };
+      finalizeAuth();
+    }
+  }, []);
+
   // Функция для генерации ссылки и отправки пользователя
   const handleConnectVkOAuth = () => {
     const hash = 'vk_' + user.id + '_' + Date.now();
-    const redirectUrl = encodeURIComponent(`${window.location.origin}/settings?vk_komod_hash=${hash}`);
+    // СОХРАНЯЕМ ХЭШ В ПАМЯТЬ, чтобы он пережил любые редиректы
+    localStorage.setItem('vk_pending_hash', hash);
     
-    // ВНИМАНИЕ СЮДА: должно быть redirect_url=
-    const authUrl = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_uri=${redirectUrl}`;
+    const redirectUrl = encodeURIComponent(`${window.location.origin}/settings`);
+    const authUrl = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_url=${redirectUrl}`;
     window.location.href = authUrl; 
   };
-
-  // --- ПЕРЕХВАТЧИК ТОКЕНОВ ИЗ ВСПЛЫВАЮЩИХ ОКОН ВК ---
-  useEffect(() => {
-    if (window.opener && window.location.hash) {
-      const hash = window.location.hash.substring(1);
-      const params = new URLSearchParams(hash);
-
-      if (params.has('access_token') && !hash.includes('access_token_')) {
-        // Поймали токен пользователя
-        window.opener.postMessage({ type: 'VK_USER_TOKEN', token: params.get('access_token') }, '*');
-        window.close();
-      } else if (hash.includes('access_token_')) {
-        // Поймали токены групп
-        const groupTokens = {};
-        for (const [key, value] of params.entries()) {
-          if (key.startsWith('access_token_')) {
-            groupTokens[key.replace('access_token_', '')] = value;
-          }
-        }
-        window.opener.postMessage({ type: 'VK_GROUP_TOKENS', tokens: groupTokens }, '*');
-        window.close();
-      } else if (params.has('error')) {
-        window.opener.postMessage({ type: 'VK_ERROR', error: params.get('error_description') }, '*');
-        window.close();
-      }
-    }
-  }, []);
 
   // Вспомогательная функция для JSONP
   const fetchGroupsViaJsonp = (token) => {
@@ -335,6 +337,7 @@ export default function AccountsManager() {
     window.open(`https://oauth.vk.com/authorize?client_id=2685278&scope=groups,manage,wall,photos,offline&response_type=token&redirect_uri=https://oauth.vk.com/blank.html&display=popup`, '_blank', 'width=600,height=500');
   };
 
+  // Загружаем список групп для проставления галочек
   const handlePasteUrl = async () => {
     const url = vkHackModal.pastedUrl;
     const tokenMatch = url.match(/access_token=([^&]+)/);
@@ -342,87 +345,44 @@ export default function AccountsManager() {
     if (!tokenMatch) return alert('Ссылка не содержит токен! Скопируйте всю адресную строку из окна ВК.');
     
     const extractedToken = tokenMatch[1];
-    setVkHackModal(prev => ({ ...prev, tempToken: extractedToken }));
     setIsFetchingGroups(true);
-
-    // ЕСЛИ ЭТО ПОДКЛЮЧЕНИЕ ЛИЧНОЙ СТРАНИЦЫ
-    if (vkHackModal.mode === 'personal') {
-      const profile = vkHackModal.profile;
-      const personalGroupToSave = [{
-        id: profile.providerAccountId, 
-        name: profile.name + ' (Стена)',
-        avatarUrl: profile.avatarUrl,
-        accessToken: extractedToken
-      }];
-
-      try {
-        const res = await fetch('/api/accounts/vk/save-group-tokens', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ userId: user.id, profileId: profile.id, groups: personalGroupToSave })
-        });
-        const data = await res.json();
-        if (data.success) {
-          await fetchAccounts(user.id);
-          alert('Постинг на стену активирован!');
-          setVkHackModal({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '', mode: 'groups', profile: null });
-        } else { alert(data.error || 'Ошибка'); }
-      } catch (e) { alert('Ошибка сети'); }
-      setIsFetchingGroups(false);
-      return;
-    }
-
-    // ЕСЛИ ЭТО ПОДКЛЮЧЕНИЕ ГРУПП
     setVkHackModal(prev => ({ ...prev, step: 2 }));
+
+    // Получаем группы нативно
     const res = await fetchGroupsViaJsonp(extractedToken);
     
     if (res.error) {
       alert(`Ошибка ВК: ${res.error}`);
       setVkHackModal(prev => ({ ...prev, step: 1 }));
     } else {
-      const existingIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId);
+      // Исключаем те, что уже добавлены в систему
+      const existingIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId.replace('group_', ''));
       setVkGroupsList(res.groups.filter(g => !existingIds.includes(String(g.id))));
     }
     setIsFetchingGroups(false);
   };
 
- const saveHackGroups = async () => {
+  // Пакетно отправляем выбранные группы в шлюз Kom-od
+  const saveHackGroups = async () => {
     if (vkSelectedGroups.length === 0) return;
+    setIsSyncingVk(true);
     
-    const profileId = vkHackModal.profileId;
-    const vkToken = vkHackModal.tempToken; 
+    let addedCount = 0;
     
-    setLoadingStates(prev => ({...prev, [profileId]: true}));
-    setVkHackModal({ isOpen: false, profileId: null, step: 1, pastedUrl: '', tempToken: '' });
-
-    // Формируем готовые объекты групп со всей инфой с фронтенда!
-    const groupsToSave = vkGroupsList
-      .filter(g => vkSelectedGroups.includes(g.id))
-      .map(g => ({
-        id: g.id,
-        name: g.name,
-        avatarUrl: g.photo_50,
-        accessToken: vkToken
-      }));
-
-    try {
-      const res = await fetch('/api/accounts/vk/save-group-tokens', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ userId: user.id, profileId, groups: groupsToSave })
-      });
-      const data = await res.json();
-      
-      if (data.success) {
-        await fetchAccounts(user.id);
-        alert('Сообщества успешно подключены!');
-      } else {
-        alert(data.error || 'Ошибка при сохранении');
+    // Отправляем каждую выбранную группу в Kom-od по очереди
+    for (const groupId of vkSelectedGroups) {
+      const group = vkGroupsList.find(g => g.id === groupId);
+      if (group) {
+        const groupUrl = `https://vk.com/${group.screen_name || 'club' + group.id}`;
+        const res = await useStore.getState().addVkKomodGroup(groupUrl, group.name);
+        if (res.success) addedCount++;
       }
-    } catch (e) {
-      alert('Ошибка соединения с сервером');
     }
-    setLoadingStates(prev => ({...prev, [profileId]: false}));
+    
+    setIsSyncingVk(false);
+    alert(`Успешно подключено сообществ: ${addedCount} из ${vkSelectedGroups.length}!`);
+    setVkHackModal({ isOpen: false, step: 1, pastedUrl: '' });
+    handleRefreshProfiles(); // Обновляем интерфейс
   };
 
   const PositionGridButtons = () => {
@@ -1201,62 +1161,112 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* НОВОЕ ОКНО ВКОНТАКТЕ (ТОЛЬКО ДОБАВЛЕНИЕ ПО ССЫЛКЕ) */}
+      {/* НОВОЕ ОКНО ВКОНТАКТЕ (ЗАГРУЗКА И ВЫБОР ГРУПП ГАЛОЧКАМИ) */}
       {vkHackModal.isOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setVkHackModal({isOpen: false})}></div>
-          <div className="relative w-full max-w-md bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col z-10">
+          <div className="relative w-full max-w-lg bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] z-10">
             
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Users size={20} className="text-[#0077FF]" /> 
-                Добавить сообщество ВК
+                Подключение сообществ
               </h3>
               <button onClick={() => setVkHackModal({isOpen: false})} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 sm:p-6 space-y-4">
-              <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-gray-300">
-                <p className="mb-2 font-semibold text-white">Как подключить группу:</p>
-                <ol className="list-decimal pl-4 space-y-1.5 text-xs">
-                  <li>Зайдите в вашу группу ВКонтакте.</li>
-                  <li>Скопируйте ссылку из адресной строки (например: <span className="font-mono text-white">vk.com/myclub</span>).</li>
-                  <li>Вставьте ссылку в поле ниже и нажмите добавить.</li>
-                </ol>
-              </div>
-
-              <div className="space-y-2 mt-4">
-                <input 
-                  type="text" 
-                  placeholder="Ссылка на группу..." 
-                  value={vkHackModal.pastedUrl || ''}
-                  onChange={(e) => setVkHackModal(prev => ({...prev, pastedUrl: e.target.value}))}
-                  className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-[#0077FF] outline-none transition-colors"
-                />
-              </div>
+            <div className="p-5 sm:p-6 overflow-y-auto custom-scrollbar">
               
-              <button 
-                onClick={async () => {
-                  if (!vkHackModal.pastedUrl) return alert('Введите ссылку на группу!');
-                  setIsSyncingVk(true);
-                  const result = await useStore.getState().addVkKomodGroup(vkHackModal.pastedUrl, 'Новое сообщество');
-                  setIsSyncingVk(false);
+              {/* ШАГ 1: ПОЛУЧЕНИЕ КЛЮЧА */}
+              {vkHackModal.step === 1 && (
+                <div className="space-y-5">
+                  <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-gray-300">
+                    <p className="mb-2 font-semibold text-white">Шаг 1. Загрузка списка сообществ:</p>
+                    <ol className="list-decimal pl-4 space-y-2 text-xs">
+                      <li>Нажмите кнопку <b className="text-white">«Получить ключ»</b>. Откроется окно ВКонтакте.</li>
+                      <li>Разрешите доступ. После этого появится страница с предупреждением "Пожалуйста, не копируйте...".</li>
+                      <li>Скопируйте <b>ВСЮ ссылку из адресной строки</b> браузера и вставьте в поле ниже.</li>
+                    </ol>
+                  </div>
+
+                  <button 
+                    onClick={openKateMobileAuth}
+                    className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-sm"
+                  >
+                    <UserSquare2 size={18} /> Получить ключ доступа
+                  </button>
+
+                  <div className="space-y-2">
+                    <input 
+                      type="text" 
+                      placeholder="Вставьте скопированную ссылку сюда..." 
+                      value={vkHackModal.pastedUrl || ''}
+                      onChange={(e) => setVkHackModal(prev => ({...prev, pastedUrl: e.target.value}))}
+                      className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-[#0077FF] outline-none transition-colors"
+                    />
+                  </div>
                   
-                  if (result.success) {
-                    alert('Группа успешно добавлена!');
-                    setVkHackModal({isOpen: false, pastedUrl: ''});
-                  } else {
-                    alert('Ошибка: ' + result.error);
-                  }
-                }}
-                disabled={isSyncingVk}
-                className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20 mt-2"
-              >
-                {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                Добавить
-              </button>
+                  <button 
+                    onClick={handlePasteUrl}
+                    disabled={isFetchingGroups || !vkHackModal.pastedUrl}
+                    className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20"
+                  >
+                    {isFetchingGroups ? <Loader2 size={18} className="animate-spin" /> : <RotateCw size={18} />}
+                    Загрузить мои группы
+                  </button>
+                </div>
+              )}
+
+              {/* ШАГ 2: ВЫБОР ГРУПП (ГАЛОЧКИ) */}
+              {vkHackModal.step === 2 && (
+                <div className="space-y-4">
+                  <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-[#0077FF] font-semibold flex items-center justify-between">
+                    <span>Шаг 2. Выберите сообщества для постинга</span>
+                    <span className="bg-[#0077FF] text-white px-2 py-0.5 rounded-md text-xs">{vkGroupsList.length} найдено</span>
+                  </div>
+
+                  {vkGroupsList.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500 bg-gray-900/30 rounded-xl border border-gray-800">
+                      Новых сообществ не найдено или все уже добавлены.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
+                      {vkGroupsList.map(group => (
+                        <label key={group.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${vkSelectedGroups.includes(group.id) ? 'bg-[#0077FF]/10 border-[#0077FF]/40' : 'bg-gray-900/30 border-gray-800 hover:bg-gray-800/50'}`}>
+                          <input 
+                            type="checkbox" 
+                            checked={vkSelectedGroups.includes(group.id)}
+                            onChange={() => toggleVkGroupSelection(group.id)}
+                            className="w-5 h-5 rounded border-gray-600 text-[#0077FF] focus:ring-[#0077FF] bg-gray-800 cursor-pointer"
+                          />
+                          <img src={group.photo_50} alt="" className="w-10 h-10 rounded-full border border-gray-700" />
+                          <span className="text-sm font-semibold text-white truncate flex-1">{group.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <button 
+                      onClick={() => setVkHackModal(prev => ({...prev, step: 1}))}
+                      className="w-1/3 bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold transition-all text-sm"
+                    >
+                      Назад
+                    </button>
+                    <button 
+                      onClick={saveHackGroups}
+                      disabled={vkSelectedGroups.length === 0 || isSyncingVk}
+                      className="w-2/3 bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20 text-sm"
+                    >
+                      {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+                      Добавить выбранные ({vkSelectedGroups.length})
+                    </button>
+                  </div>
+                </div>
+              )}
+
             </div>
           </div>
         </div>
