@@ -128,6 +128,7 @@ export default function AccountsManager() {
   }, []);
 
   // Перехватываем хэш из LocalStorage (защита от потери при редиректах)
+  // Перехватываем хэш из LocalStorage (защита от потери при редиректах)
   useEffect(() => {
     const pendingHash = localStorage.getItem('vk_pending_hash');
     
@@ -136,21 +137,26 @@ export default function AccountsManager() {
 
       const finalizeAuth = async () => {
         setIsSyncingVk(true);
-        const confirmResult = await useStore.getState().confirmVkKomod(pendingHash);
         
-        if (confirmResult.success) {
-          await useStore.getState().syncVkKomod();
-          await handleRefreshProfiles(); // Скачиваем обновленный профиль из базы
-          setIsSyncingVk(false);
-          
+        // 1. Пытаемся подтвердить новый хэш (шлюз может выдать ошибку, если акк уже в базе)
+        await useStore.getState().confirmVkKomod(pendingHash);
+        
+        // 2. ИГНОРИРУЕМ ОШИБКУ подтверждения и принудительно скачиваем профили из Kom-od!
+        // Если аккаунт уже был привязан ранее, он успешно скачается.
+        const syncResult = await useStore.getState().syncVkKomod();
+        await handleRefreshProfiles(); // Обновляем картинку на экране
+        setIsSyncingVk(false);
+        
+        if (syncResult.success) {
           if (window.confirm('Профиль ВКонтакте успешно подключен!\nХотите сразу загрузить и выбрать ваши сообщества для постинга?')) {
+            // Открываем то самое красивое окно с галочками
             setVkHackModal({ isOpen: true, step: 1, pastedUrl: '' });
           }
         } else {
-          alert('Ошибка привязки: ' + confirmResult.error);
-          setIsSyncingVk(false);
+          alert('Не удалось загрузить профиль ВК. Попробуйте нажать кнопку "Синхронизировать".');
         }
       };
+      
       finalizeAuth();
     }
   }, []);
