@@ -507,7 +507,7 @@ export const useStore = create(
           });
           const data = await res.json();
           if (data.success) {
-            await get().fetchAccounts(); // Обновляем список на клиенте
+            await get().fetchAccounts(get().user?.id); // Обновляем список на клиенте
             return { success: true };
           }
           return { success: false, error: data.error };
@@ -573,7 +573,7 @@ export const useStore = create(
           });
           const data = await res.json();
           if (data.success) {
-            await get().fetchAccounts(); // Обновляем список в UI
+            await get().fetchAccounts(get().user?.id);// Обновляем список в UI
             return { success: true };
           }
           return { success: false, error: data.error };

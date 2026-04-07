@@ -86,6 +86,26 @@ export default function AccountsManager() {
     setIsRefreshingProfiles(false);
   };
 
+  // Слушаем ответ от официального окна ВКонтакте
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.data?.type === 'VK_FETCH_SUCCESS') {
+        const fetchedGroups = event.data.groups;
+        const existingIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId.replace('group_', ''));
+        setVkGroupsList(fetchedGroups.filter(g => !existingIds.includes(String(g.id))));
+        setVkHackModal(prev => ({ ...prev, step: 2 }));
+        setIsFetchingGroups(false);
+      }
+      if (event.data?.type === 'VK_FETCH_ERROR') {
+        alert('Ошибка загрузки групп: ' + event.data.error);
+        setIsFetchingGroups(false);
+        setVkHackModal(prev => ({ ...prev, step: 1 }));
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [accounts]);
+
   useEffect(() => {
     if (user?.id) {
       fetchProfiles(user.id);
@@ -339,33 +359,17 @@ export default function AccountsManager() {
     setVkHackModal({ isOpen: true, profileId, step: 1, pastedUrl: '', tempToken: '', mode, profile });
   };
 
-  const openKateMobileAuth = () => {
-    window.open(`https://oauth.vk.com/authorize?client_id=2685278&scope=groups,manage,wall,photos,offline&response_type=token&redirect_uri=https://oauth.vk.com/blank.html&display=popup`, '_blank', 'width=600,height=500');
-  };
+  
 
-  // Загружаем список групп для проставления галочек
-  const handlePasteUrl = async () => {
-    const url = vkHackModal.pastedUrl;
-    const tokenMatch = url.match(/access_token=([^&]+)/);
-    
-    if (!tokenMatch) return alert('Ссылка не содержит токен! Скопируйте всю адресную строку из окна ВК.');
-    
-    const extractedToken = tokenMatch[1];
+  // Официальная и безопасная загрузка групп через ваше VK Приложение
+  const handleLoadGroupsOfficial = () => {
     setIsFetchingGroups(true);
-    setVkHackModal(prev => ({ ...prev, step: 2 }));
-
-    // Получаем группы нативно
-    const res = await fetchGroupsViaJsonp(extractedToken);
+    // ВАЖНО: Укажи здесь ID твоего приложения ВКонтакте (из кабинета разработчика ВК)
+    const clientId = import.meta.env.VITE_VK_APP_ID || '51888496'; // <-- Вставь свой ID
+    const redirectUri = `${window.location.origin}/api/accounts/vk/fetch-groups-callback`;
+    const authUrl = `https://oauth.vk.com/authorize?client_id=${clientId}&display=popup&redirect_uri=${redirectUri}&scope=groups,offline&response_type=code&v=5.199`;
     
-    if (res.error) {
-      alert(`Ошибка ВК: ${res.error}`);
-      setVkHackModal(prev => ({ ...prev, step: 1 }));
-    } else {
-      // Исключаем те, что уже добавлены в систему
-      const existingIds = accounts.filter(a => a.provider === 'VK').map(a => a.providerId.replace('group_', ''));
-      setVkGroupsList(res.groups.filter(g => !existingIds.includes(String(g.id))));
-    }
-    setIsFetchingGroups(false);
+    window.open(authUrl, '_blank', 'width=600,height=600');
   };
 
   // Пакетно отправляем выбранные группы в шлюз Kom-od
@@ -1185,42 +1189,26 @@ export default function AccountsManager() {
 
             <div className="p-5 sm:p-6 overflow-y-auto custom-scrollbar">
               
-              {/* ШАГ 1: ПОЛУЧЕНИЕ КЛЮЧА */}
+              {/* ШАГ 1: ОФИЦИАЛЬНАЯ ЗАГРУЗКА */}
               {vkHackModal.step === 1 && (
                 <div className="space-y-5">
                   <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-gray-300">
-                    <p className="mb-2 font-semibold text-white">Шаг 1. Загрузка списка сообществ:</p>
-                    <ol className="list-decimal pl-4 space-y-2 text-xs">
-                      <li>Нажмите кнопку <b className="text-white">«Получить ключ»</b>. Откроется окно ВКонтакте.</li>
-                      <li>Разрешите доступ. После этого появится страница с предупреждением "Пожалуйста, не копируйте...".</li>
-                      <li>Скопируйте <b>ВСЮ ссылку из адресной строки</b> браузера и вставьте в поле ниже.</li>
-                    </ol>
+                    <p className="mb-2 font-semibold text-white flex items-center gap-2">
+                      <ShieldAlert size={16} className="text-[#0077FF]" />
+                      Безопасное подключение
+                    </p>
+                    <p className="text-xs leading-relaxed">
+                      Нажмите кнопку ниже, чтобы безопасно загрузить список ваших сообществ. Откроется официальное окно ВКонтакте — просто разрешите доступ. Никакие ссылки копировать не нужно.
+                    </p>
                   </div>
 
                   <button 
-                    onClick={openKateMobileAuth}
-                    className="w-full bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-sm"
-                  >
-                    <UserSquare2 size={18} /> Получить ключ доступа
-                  </button>
-
-                  <div className="space-y-2">
-                    <input 
-                      type="text" 
-                      placeholder="Вставьте скопированную ссылку сюда..." 
-                      value={vkHackModal.pastedUrl || ''}
-                      onChange={(e) => setVkHackModal(prev => ({...prev, pastedUrl: e.target.value}))}
-                      className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 px-4 text-sm text-white focus:border-[#0077FF] outline-none transition-colors"
-                    />
-                  </div>
-                  
-                  <button 
-                    onClick={handlePasteUrl}
-                    disabled={isFetchingGroups || !vkHackModal.pastedUrl}
-                    className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20"
+                    onClick={handleLoadGroupsOfficial}
+                    disabled={isFetchingGroups}
+                    className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-4 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20"
                   >
                     {isFetchingGroups ? <Loader2 size={18} className="animate-spin" /> : <RotateCw size={18} />}
-                    Загрузить мои группы
+                    {isFetchingGroups ? 'Загрузка списка...' : 'Авторизоваться и загрузить группы'}
                   </button>
                 </div>
               )}
