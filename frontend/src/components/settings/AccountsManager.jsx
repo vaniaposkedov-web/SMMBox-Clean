@@ -106,13 +106,13 @@ export default function AccountsManager() {
     for (const uniqueId of komodSelected) {
       const group = selectableGroups.find((g, i) => (g.id || g.group_id || `idx-${i}`) === uniqueId);
       if (group) {
-        const groupUrl = `https://vk.com/${group.screen_name || 'club' + (group.id || group.group_id)}`;
+        const url = `https://vk.com/${group.screen_name || 'club' + (group.id || group.group_id)}`;
         const res = await useStore.getState().addVkKomodGroup(groupUrl, group.name || group.title, komodModal.profileId);
         if (res.success) addedCount++;
       }
     }
     
-    // Вызываем синхронизацию только один раз после всех добавлений
+    // Вызываем синхронизацию только ОДИН РАЗ в самом конце
     await useStore.getState().syncVkKomod();
     
     setIsSyncingVk(false);
@@ -120,7 +120,6 @@ export default function AccountsManager() {
     setKomodModal({ isOpen: false, profileId: null });
     await handleRefreshProfiles();
   };
-
 
   const handleRefreshProfiles = async () => {
     setIsRefreshingProfiles(true);
@@ -1217,7 +1216,8 @@ export default function AccountsManager() {
                 <p className="text-center text-gray-400 py-10">Сообществ не найдено. Убедитесь, что вы являетесь администратором.</p>
               ) : (
                 selectableGroups.map((group, index) => {
-                  const uniqueId = group.id || group.group_id || `idx-${index}`; // Железно уникальный ID
+  
+                  const uniqueId = group.id || group.group_id || `idx-${index}`;
                   const isSelected = komodSelected.includes(uniqueId);
                   return (
                     <div 
@@ -1225,11 +1225,11 @@ export default function AccountsManager() {
                       onClick={() => setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
                       className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF]/50' : 'bg-gray-900/50 border-gray-800 hover:bg-gray-800'}`}
                     >
-                      <div className="flex items-center gap-3 min-w-0 pr-2">
-                        <img src={group.photo_50 || group.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(group.name || group.title)}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full shrink-0 object-cover" alt="Group" />
-                        <span className="text-white font-medium truncate text-sm">{group.name || group.title}</span>
+                      <div className="flex items-center gap-3 pr-2">
+                        <img src={group.photo_50 || `https://ui-avatars.com/api/?name=VK&background=0077FF&color=fff`} className="w-10 h-10 rounded-full" alt="avatar" />
+                        <span className="text-white font-medium text-sm">{group.name || group.title}</span>
                       </div>
-                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600 bg-black/50'}`}>
+                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600 bg-black/50'}`}>
                         {isSelected && <Check size={14} className="text-white" />}
                       </div>
                     </div>
