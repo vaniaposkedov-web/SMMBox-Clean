@@ -96,8 +96,8 @@ async function sendToKomodVK(token, providerId, text, imageBuffers) {
 
     form.append('group_id', targetGroupId);
     
-    // ВАЖНО: Мы убрали параметр "direct", так как он ломает ВК-публикации из-за связи с ok.ru.
-    // Просто не передаем publish_at, и Kom-od отправит пост в порядке штатной очереди.
+    // ВОЗВРАЩАЕМ МГНОВЕННУЮ ПУБЛИКАЦИЮ
+    form.append('direct', '1'); 
     
     const media = [];
     if (text) {
@@ -109,7 +109,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers) {
         imageBuffers.forEach((buf, index) => {
             const fileName = `file_${index + 1}`;
             images.push({ name: fileName });
-            // Делаем имя файла уникальным, чтобы шлюз не перезаписывал картинки
             form.append(fileName, buf, { filename: `photo_${Date.now()}_${index}.jpg`, contentType: 'image/jpeg' });
         });
         media.push({ type: 'photo', images: images });
@@ -131,6 +130,36 @@ async function sendToKomodVK(token, providerId, text, imageBuffers) {
 
     if (postRes.data && postRes.data.success === false) {
         throw new Error('Ошибка шлюза при публикации: ' + JSON.stringify(postRes.data.errors));
+    }
+
+    // === ШПИОН ЗА ЛОГАМИ KOM-OD ===
+    const postId = postRes.data?.data?.id;
+    if (postId) {
+        setTimeout(async () => {
+            try {
+                console.log(`\n⏳ Проверяем статус поста ${postId} в шлюзе...`);
+                const checkRes = await axios.get(`${KOMOD_BASE_URL}/post/${postId}?logs=1`, {
+                    headers: { 'Access-Token': token },
+                    validateStatus: () => true
+                });
+                
+                const postData = checkRes.data?.data;
+                if (postData) {
+                    console.log(`\n=== СТАТУС ПОСТА ${postId} ===`);
+                    console.log(`Опубликован в ВК: ${postData.published === '1' ? 'ДА ✅' : 'НЕТ ❌'}`);
+                    console.log(`Произошла ошибка: ${postData.fail === '1' ? 'ДА ❌' : 'НЕТ ✅'}`);
+                    if (postData.logs && postData.logs.length > 0) {
+                        console.log('ЛОГИ ШЛЮЗА:');
+                        postData.logs.forEach(l => console.log(`[${l.created}] ${l.message}`));
+                    } else if (postData.fail === '1') {
+                        console.log('ЛОГИ ШЛЮЗА: Ошибка произошла, но шлюз не записал текст ошибки.');
+                    }
+                    console.log(`================================\n`);
+                }
+            } catch (e) {
+                console.log('Не удалось получить логи поста из шлюза:', e.message);
+            }
+        }, 8000); // Ждем 8 секунд, чтобы шлюз успел связаться с ВК
     }
 }
 
