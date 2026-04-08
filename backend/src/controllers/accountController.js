@@ -187,19 +187,18 @@ exports.saveVkGroupWithToken = async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Внутренняя ошибка сервера' }); }
 };
 
-
 exports.confirmVkKomod = async (req, res) => {
   try {
     const { hash } = req.body;
-    console.log(`[VK AUTH] Пытаемся подтвердить хэш: ${hash}`);
     
     const response = await axios.post(
       `${KOMOD_BASE_URL}/account/confirm-vk`,
       { hash },
-      { headers: { 'Access-Token': KOMOD_TOKEN } }
+      { 
+        headers: { 'Access-Token': KOMOD_TOKEN },
+        validateStatus: function (status) { return status < 500; } // Защита от 500-й ошибки axios
+      }
     );
-
-    console.log(`[VK AUTH] Ответ от Kom-od:`, JSON.stringify(response.data, null, 2));
 
     if (response.data && response.data.success === false) {
       return res.status(400).json({ error: 'Ошибка шлюза: ' + JSON.stringify(response.data.errors) });
@@ -207,10 +206,10 @@ exports.confirmVkKomod = async (req, res) => {
 
     res.json({ success: true, data: response.data });
   } catch (error) {
-    console.error('[VK AUTH] Критическая ошибка сети/шлюза:', error.response?.data || error.message);
     res.status(500).json({ error: 'Ошибка сервера при обращении к Kom-od' });
   }
 };
+
 
 exports.saveTgAccounts = async (req, res) => {
   const { userId, channels } = req.body;
