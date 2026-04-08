@@ -79,6 +79,47 @@ export default function AccountsManager() {
 
   const [isRefreshingProfiles, setIsRefreshingProfiles] = useState(false);
 
+  const [isGroupsLoading, setIsGroupsLoading] = useState(false);
+  const [selectableGroups, setSelectableGroups] = useState([]);
+  const [komodModal, setKomodModal] = useState({ isOpen: false, profileId: null });
+  const [showGroupsModal, setShowGroupsModal] = useState(false);
+  const [komodSelected, setKomodSelected] = useState([]);
+
+  const handleOpenGroupsSelector = async (profileId) => {
+    setIsGroupsLoading(true);
+    const data = await useStore.getState().fetchKomodGroups(profileId);
+    if (data.success) {
+      setSelectableGroups(data.groups || []);
+      setKomodSelected([]); // Сбрасываем старые галочки
+      setKomodModal({ isOpen: true, profileId });
+    } else {
+      alert(data.error);
+    }
+    setIsGroupsLoading(false);
+  };
+
+  const handleSaveKomodGroups = async () => {
+    if (komodSelected.length === 0) return;
+    setIsSyncingVk(true);
+    let addedCount = 0;
+    
+    for (const groupId of komodSelected) {
+      const group = selectableGroups.find(g => g.id === groupId);
+      if (group) {
+        // У ВК урлы формируются как vk.com/club{id} или screen_name
+        const groupUrl = `https://vk.com/${group.screen_name || 'club' + group.id}`;
+        const res = await useStore.getState().addVkKomodGroup(groupUrl, group.name || group.title, komodModal.profileId);
+        if (res.success) addedCount++;
+      }
+    }
+    
+    setIsSyncingVk(false);
+    alert(`Успешно подключено сообществ: ${addedCount}`);
+    setKomodModal({ isOpen: false, profileId: null });
+    await handleRefreshProfiles();
+  };
+
+
   const handleRefreshProfiles = async () => {
     setIsRefreshingProfiles(true);
     await fetchProfiles(user.id);
@@ -950,7 +991,14 @@ export default function AccountsManager() {
                   <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
                     <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                     
-                  
+                    {/* НОВАЯ КНОПКА ВЫБОРА ГРУПП */}
+                    <button 
+                      onClick={() => handleOpenGroupsSelector(profile.id)}
+                      className="flex-1 w-full sm:w-auto bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-5 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95"
+                    >
+                      {isGroupsLoading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                      <span>Добавить сообщества</span>
+                    </button>
 
                     <button 
                       onClick={handleVkSync}

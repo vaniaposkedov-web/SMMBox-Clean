@@ -5,16 +5,36 @@ const prisma = new PrismaClient();
 const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6d359a019';
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 
+// 1. Получение списка групп, где юзер — админ (через новый метод шлюза)
+exports.getKomodGroupsForSelection = async (req, res) => {
+  try {
+    const { profileId } = req.query;
+    const profile = await prisma.socialProfile.findUnique({ where: { id: profileId } });
+
+    if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
+
+    // Дергаем тот самый новый метод Алексея
+    const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
+      headers: { 'Access-Token': KOMOD_TOKEN }
+    });
+
+    // Шлюз отдает массив групп в data или items
+    const groups = response.data?.data || [];
+    res.json({ success: true, groups });
+  } catch (error) {
+    console.error('Ошибка получения групп из Komod:', error.message);
+    res.status(500).json({ error: 'Не удалось загрузить список групп из шлюза' });
+  }
+};
+
+// Идеальный Sync (защита от дублей и точный userId)
 exports.syncVkKomod = async (req, res) => {
   try {
-    // ИСПРАВЛЕНИЕ: Надежно достаем ID пользователя, как в остальных методах
     const userId = String(req.user?.userId || req.user?.id);
-
     if (!userId || userId === 'undefined') {
-      return res.status(401).json({ error: 'Не удалось определить пользователя из токена' });
+      return res.status(401).json({ error: 'Не удалось определить пользователя' });
     }
 
-    // Запрашиваем только аккаунты, группы нам пока не нужны
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { 
       headers: { 'Access-Token': KOMOD_TOKEN } 
     });
@@ -23,40 +43,37 @@ exports.syncVkKomod = async (req, res) => {
     let addedCount = 0;
 
     for (const acc of accountsList) {
-      const profileName = acc.title || acc.name || 'Мой профиль ВК';
       const providerAccountId = String(acc.id);
+      
+      // ИЩЕМ СУЩЕСТВУЮЩИЙ ПРОФИЛЬ, чтобы не плодить дубликаты
+      const existingProfile = await prisma.socialProfile.findFirst({
+        where: { provider: 'VK', providerAccountId: providerAccountId }
+      });
 
-      // 1. Создаем/обновляем шапку профиля
+      // Если профиль уже есть у другого юзера — пропускаем из соображений безопасности
+      if (existingProfile && existingProfile.userId !== userId) continue;
+
+      const profileName = acc.title || acc.name || 'Профиль ВК';
+
+      // Создаем/Обновляем профиль с жесткой привязкой к userId
       const vkProfile = await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
-        update: { name: profileName },
+        update: { name: profileName, userId: userId }, 
         create: {
-          userId: userId, 
-          provider: 'VK', 
-          providerAccountId,
-          name: profileName, 
-          accessToken: KOMOD_TOKEN
+          userId: userId, provider: 'VK', providerAccountId,
+          name: profileName, accessToken: KOMOD_TOKEN
         }
       });
 
-      // 2. Создаем КАРТОЧКУ СТЕНЫ для публикации
+      // Создаем только Стену
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId: `wall_${acc.id}` } },
-        update: { 
-          name: `Стена: ${profileName}`, 
-          isValid: true, 
-          profileId: vkProfile.id, 
-          errorMsg: null 
-        },
+        update: { name: `Стена: ${profileName}`, isValid: true, userId: userId, errorMsg: null },
         create: {
-          userId: userId, 
-          provider: 'VK', 
-          providerId: `wall_${acc.id}`, 
-          name: `Стена: ${profileName}`,
-          accessToken: KOMOD_TOKEN, 
+          userId: userId, provider: 'VK', providerId: `wall_${acc.id}`,
+          name: `Стена: ${profileName}`, accessToken: KOMOD_TOKEN, 
           avatarUrl: `https://ui-avatars.com/api/?name=VK&background=0077FF&color=fff`,
-          isValid: true, 
-          profileId: vkProfile.id
+          isValid: true, profileId: vkProfile.id
         }
       });
       addedCount++;
@@ -65,7 +82,7 @@ exports.syncVkKomod = async (req, res) => {
     res.json({ success: true, count: addedCount });
   } catch (error) {
     console.error('Komod Sync Error:', error.message);
-    res.status(500).json({ error: 'Ошибка при синхронизации со шлюзом' });
+    res.status(500).json({ error: 'Ошибка синхронизации' });
   }
 };
 
