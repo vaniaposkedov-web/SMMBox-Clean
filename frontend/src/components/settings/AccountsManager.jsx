@@ -1194,7 +1194,61 @@ export default function AccountsManager() {
         </div>
       )}
 
-      
+      {/* МОДАЛЬНОЕ ОКНО ВЫБОРА ГРУПП KOM-OD */}
+      {komodModal.isOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setKomodModal({ isOpen: false, profileId: null })}></div>
+          <div className="relative w-full max-w-lg bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] z-10">
+            
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Users size={20} className="text-[#0077FF]" />
+                Выберите сообщества
+              </h3>
+              <button onClick={() => setKomodModal({ isOpen: false, profileId: null })} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5 overflow-y-auto custom-scrollbar flex-1 space-y-2">
+              {selectableGroups.length === 0 ? (
+                <p className="text-center text-gray-400 py-10">Сообществ не найдено. Убедитесь, что вы являетесь администратором.</p>
+              ) : (
+                selectableGroups.map(group => {
+                  const isSelected = komodSelected.includes(group.id);
+                  return (
+                    <div 
+                      key={group.id} 
+                      onClick={() => setKomodSelected(prev => prev.includes(group.id) ? prev.filter(id => id !== group.id) : [...prev, group.id])}
+                      className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF]/50' : 'bg-gray-900/50 border-gray-800 hover:bg-gray-800'}`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 pr-2">
+                        <img src={group.photo_50 || group.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(group.name || group.title)}&background=0077FF&color=fff`} className="w-10 h-10 rounded-full shrink-0 object-cover" alt="Group" />
+                        <span className="text-white font-medium truncate text-sm">{group.name || group.title}</span>
+                      </div>
+                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600 bg-black/50'}`}>
+                        {isSelected && <Check size={14} className="text-white" />}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] shrink-0">
+              <button 
+                onClick={handleSaveKomodGroups}
+                disabled={isSyncingVk || komodSelected.length === 0}
+                className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-lg shadow-[#0077FF]/20 active:scale-95"
+              >
+                {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+                Добавить выбранные ({komodSelected.length})
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
