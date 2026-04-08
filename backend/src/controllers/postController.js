@@ -96,8 +96,8 @@ async function sendToKomodVK(token, providerId, text, imageBuffers) {
 
     form.append('group_id', targetGroupId);
     
-    // ВОЗВРАЩАЕМ МГНОВЕННУЮ ПУБЛИКАЦИЮ
-    form.append('direct', '1'); 
+    // ВАЖНО: Никаких direct=1! Этот параметр уводит посты в Одноклассники.
+    // Оставляем шлюзу возможность самому обработать пост для ВКонтакте.
     
     const media = [];
     if (text) {
@@ -126,40 +126,43 @@ async function sendToKomodVK(token, providerId, text, imageBuffers) {
         validateStatus: status => status < 500
     });
 
-    console.log(`[KOMOD POST RESPONSE] Статус: ${postRes.status}, Ответ:`, JSON.stringify(postRes.data));
-
     if (postRes.data && postRes.data.success === false) {
         throw new Error('Ошибка шлюза при публикации: ' + JSON.stringify(postRes.data.errors));
     }
 
-    // === ШПИОН ЗА ЛОГАМИ KOM-OD ===
+    // === УМНЫЙ ШПИОН ЗА ОЧЕРЕДЬЮ KOM-OD ===
     const postId = postRes.data?.data?.id;
     if (postId) {
-        setTimeout(async () => {
-            try {
-                console.log(`\n⏳ Проверяем статус поста ${postId} в шлюзе...`);
-                const checkRes = await axios.get(`${KOMOD_BASE_URL}/post/${postId}?logs=1`, {
-                    headers: { 'Access-Token': token },
-                    validateStatus: () => true
-                });
-                
-                const postData = checkRes.data?.data;
-                if (postData) {
-                    console.log(`\n=== СТАТУС ПОСТА ${postId} ===`);
-                    console.log(`Опубликован в ВК: ${postData.published === '1' ? 'ДА ✅' : 'НЕТ ❌'}`);
-                    console.log(`Произошла ошибка: ${postData.fail === '1' ? 'ДА ❌' : 'НЕТ ✅'}`);
-                    if (postData.logs && postData.logs.length > 0) {
-                        console.log('ЛОГИ ШЛЮЗА:');
-                        postData.logs.forEach(l => console.log(`[${l.created}] ${l.message}`));
-                    } else if (postData.fail === '1') {
-                        console.log('ЛОГИ ШЛЮЗА: Ошибка произошла, но шлюз не записал текст ошибки.');
+        const checkStatus = async (delay, attempt) => {
+            setTimeout(async () => {
+                try {
+                    console.log(`\n⏳ [Проверка #${attempt}] Запрашиваем статус поста ${postId}...`);
+                    const checkRes = await axios.get(`${KOMOD_BASE_URL}/post/${postId}?logs=1`, {
+                        headers: { 'Access-Token': token },
+                        validateStatus: () => true
+                    });
+                    
+                    const postData = checkRes.data?.data;
+                    if (postData) {
+                        console.log(`=== СТАТУС ПОСТА ${postId} (Через ${delay/1000} сек) ===`);
+                        console.log(`Опубликован в ВК: ${postData.published === '1' ? 'ДА ✅' : 'В ОЧЕРЕДИ ⏳'}`);
+                        console.log(`Произошла ошибка: ${postData.fail === '1' ? 'ДА ❌' : 'НЕТ ✅'}`);
+                        if (postData.logs && postData.logs.length > 0) {
+                            console.log('ЛОГИ ШЛЮЗА:');
+                            postData.logs.forEach(l => console.log(`> ${l.message}`));
+                        }
+                        console.log(`===========================================\n`);
                     }
-                    console.log(`================================\n`);
+                } catch (e) {
+                    // Игнорируем ошибки сети при проверке
                 }
-            } catch (e) {
-                console.log('Не удалось получить логи поста из шлюза:', e.message);
-            }
-        }, 8000); // Ждем 8 секунд, чтобы шлюз успел связаться с ВК
+            }, delay);
+        };
+
+        // Проверяем статус 3 раза: через 15, 30 и 60 секунд
+        checkStatus(15000, 1);
+        checkStatus(30000, 2);
+        checkStatus(60000, 3);
     }
 }
 
