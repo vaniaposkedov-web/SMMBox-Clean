@@ -191,12 +191,20 @@ exports.confirmVkKomod = async (req, res) => {
   try {
     const { hash } = req.body;
     
+    // ВАЖНО: Шлюз Kom-od написан на PHP и игнорирует JSON. 
+    // Мы обязаны упаковать данные как обычную HTML-форму (x-www-form-urlencoded).
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+
     const response = await axios.post(
       `${KOMOD_BASE_URL}/account/confirm-vk`,
-      { hash },
+      params, // Передаем параметры как форму
       { 
-        headers: { 'Access-Token': KOMOD_TOKEN },
-        validateStatus: function (status) { return status < 500; } // Защита от 500-й ошибки axios
+        headers: { 
+          'Access-Token': KOMOD_TOKEN,
+          'Content-Type': 'application/x-www-form-urlencoded' // Явно указываем тип данных
+        },
+        validateStatus: function (status) { return status < 500; }
       }
     );
 
