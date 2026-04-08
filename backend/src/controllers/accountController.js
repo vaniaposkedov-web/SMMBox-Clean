@@ -27,7 +27,7 @@ exports.getKomodGroupsForSelection = async (req, res) => {
   }
 };
 
-// 1. УМНАЯ СИНХРОНИЗАЦИЯ (Защита от дублей шлюза)
+// 1. УМНАЯ СИНХРОНИЗАЦИЯ (С фильтром дублей шлюза)
 exports.syncVkKomod = async (req, res) => {
   try {
     const userId = String(req.user?.userId || req.user?.id);
@@ -39,11 +39,12 @@ exports.syncVkKomod = async (req, res) => {
 
     const rawAccounts = accRes.data?.data?.items || accRes.data?.data || [];
     
-    // ФИЛЬТР: Если в шлюзе несколько записей с одним именем, берем только последнюю
+    // ФИЛЬТР: Оставляем только ОДНУ запись для каждого имени (Иван Поскедов)
     const uniqueMap = new Map();
     for (const acc of rawAccounts) {
       const name = acc.title || acc.name || String(acc.id);
-      uniqueMap.set(name, acc); // Перезаписывает старые, оставляя последнюю
+      // Если такое имя уже есть, мы просто проигнорируем дубликат
+      if (!uniqueMap.has(name)) uniqueMap.set(name, acc);
     }
     const accountsList = Array.from(uniqueMap.values());
 
@@ -52,48 +53,54 @@ exports.syncVkKomod = async (req, res) => {
       const providerAccountId = String(acc.id);
       const profileName = acc.title || acc.name || 'Профиль ВК';
 
-      // 1. Создаем/обновляем профиль
+      // 1. Создаем/обновляем шапку профиля
       const vkProfile = await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
         update: { name: profileName, userId: userId },
         create: { userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN }
       });
 
-      // 2. Создаем Стену (всегда привязана к профилю)
+      // 2. Создаем карточку Стены
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId: `wall_${acc.id}` } },
         update: { name: `Стена: ${profileName}`, isValid: true, userId: userId },
         create: {
           userId, provider: 'VK', providerId: `wall_${acc.id}`,
           name: `Стена: ${profileName}`, accessToken: KOMOD_TOKEN,
+          avatarUrl: `https://ui-avatars.com/api/?name=VK&background=0077FF&color=fff`,
           isValid: true, profileId: vkProfile.id
         }
       });
       addedCount++;
     }
 
-    // ТАКЖЕ: Подгружаем уже добавленные группы, чтобы они не пропадали
-    const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-    const groupsList = grpRes.data?.data?.items || grpRes.data?.data || [];
-    for (const grp of groupsList) {
-      await prisma.account.upsert({
-        where: { provider_providerId: { provider: 'VK', providerId: `group_${grp.id}` } },
-        update: { name: grp.title, isValid: true, userId: userId },
-        create: {
-          userId, provider: 'VK', providerId: `group_${grp.id}`,
-          name: grp.title, accessToken: KOMOD_TOKEN, isValid: true
-        }
-      });
-    }
+    // Также подтягиваем уже добавленные группы из шлюза
+    try {
+      const groupRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+      const groups = groupRes.data?.data?.items || groupRes.data?.data || [];
+      for (const g of groups) {
+        await prisma.account.upsert({
+          where: { provider_providerId: { provider: 'VK', providerId: `group_${g.id}` } },
+          update: { name: g.title, isValid: true, userId: userId },
+          create: {
+            userId, provider: 'VK', providerId: `group_${g.id}`,
+            name: g.title, accessToken: KOMOD_TOKEN,
+            avatarUrl: `https://ui-avatars.com/api/?name=VK&background=0077FF&color=fff`,
+            isValid: true
+          }
+        });
+        addedCount++;
+      }
+    } catch (e) { /* Игнорируем если групп нет */ }
 
     res.json({ success: true, count: addedCount });
   } catch (error) {
     console.error('Sync Error:', error.message);
-    res.status(500).json({ error: 'Ошибка синхронизации' });
+    res.status(500).json({ error: 'Ошибка синхронизации со шлюзом' });
   }
 };
 
-// 2. ДОБАВЛЕНИЕ ГРУППЫ (ИСПРАВЛЕНА ОШИБКА 500)
+// 2. ДОБАВЛЕНИЕ ГРУППЫ (ФИКС ОШИБКИ 500)
 exports.addVkKomodGroup = async (req, res) => {
   try {
     const { url, title, profileId } = req.body;
@@ -113,10 +120,10 @@ exports.addVkKomodGroup = async (req, res) => {
       return res.status(400).json({ error: response.data.errors });
     }
 
-    // ФИКС: Просто возвращаем успех. Синхронизацию запустит фронтенд ОДИН РАЗ в конце.
+    // ГЛАВНОЕ: Мы просто возвращаем успех. Синхронизацию вызовет фронтенд ОДИН РАЗ после всех добавлений.
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: 'Ошибка при добавлении группы' });
+    res.status(500).json({ error: 'Ошибка добавления группы' });
   }
 };
 
