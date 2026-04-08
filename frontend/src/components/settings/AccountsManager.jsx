@@ -105,23 +105,28 @@ export default function AccountsManager() {
     let lastError = null;
     
     for (const uniqueId of komodSelected) {
-      // Ищем группу
+      // Ищем выбранную группу
       const group = selectableGroups.find((g, i) => String(g.id || g.group_id || `idx-${i}`) === String(uniqueId));
       
       if (group) {
-        const groupUrl = `https://vk.com/${group.screen_name || 'club' + (group.id || group.group_id)}`;
+        // УМНАЯ ГЕНЕРАЦИЯ ССЫЛКИ (Защита от clubundefined)
+        let screenName = group.screen_name;
+        if (!screenName || screenName.includes('undefined')) {
+          screenName = 'club' + (group.id || group.group_id);
+        }
+        const groupUrl = group.url || `https://vk.com/${screenName}`;
         
         const res = await useStore.getState().addVkKomodGroup(groupUrl, group.name || group.title, komodModal.profileId);
         if (res.success) {
           addedCount++;
         } else {
-          lastError = res.error; // Запоминаем ошибку, если она была
+          lastError = res.error;
         }
       }
     }
     
-    // Синхронизируем один раз в конце
-    if (addedCount > 0) {
+    // Синхронизируем базу только 1 раз в конце
+    if (addedCount > 0 || !lastError) {
       await useStore.getState().syncVkKomod();
     }
     
@@ -130,7 +135,7 @@ export default function AccountsManager() {
     if (addedCount > 0) {
       alert(`Успешно подключено сообществ: ${addedCount}`);
     } else if (lastError) {
-      alert(`Не удалось подключить сообщества. Ошибка шлюза: ${JSON.stringify(lastError)}`);
+      alert(`Ошибка: ${JSON.stringify(lastError)}`);
     }
     
     setKomodModal({ isOpen: false, profileId: null });
