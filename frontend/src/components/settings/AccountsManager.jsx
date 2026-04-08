@@ -104,8 +104,7 @@ export default function AccountsManager() {
     let addedCount = 0;
     
     for (const uniqueId of komodSelected) {
-      // Ищем группу по уникальному ключу
-      const group = selectableGroups.find((g, i) => (g.id || g.group_id || g.screen_name || String(i)) === uniqueId);
+      const group = selectableGroups.find((g, i) => (g.id || g.group_id || `idx-${i}`) === uniqueId);
       if (group) {
         const groupUrl = `https://vk.com/${group.screen_name || 'club' + (group.id || group.group_id)}`;
         const res = await useStore.getState().addVkKomodGroup(groupUrl, group.name || group.title, komodModal.profileId);
@@ -113,10 +112,8 @@ export default function AccountsManager() {
       }
     }
     
-    // Теперь синхронизируем базу ТОЛЬКО ОДИН РАЗ, когда все группы уже отправлены
-    if (addedCount > 0) {
-      await useStore.getState().syncVkKomod();
-    }
+    // Вызываем синхронизацию только один раз после всех добавлений
+    await useStore.getState().syncVkKomod();
     
     setIsSyncingVk(false);
     alert(`Успешно подключено сообществ: ${addedCount}`);
@@ -1220,14 +1217,12 @@ export default function AccountsManager() {
                 <p className="text-center text-gray-400 py-10">Сообществ не найдено. Убедитесь, что вы являетесь администратором.</p>
               ) : (
                 selectableGroups.map((group, index) => {
-                  // Генерируем железный уникальный ID для галочек
-                  const uniqueId = group.id || group.group_id || group.screen_name || String(index);
+                  const uniqueId = group.id || group.group_id || `idx-${index}`; // Железно уникальный ID
                   const isSelected = komodSelected.includes(uniqueId);
-                  
                   return (
                     <div 
                       key={uniqueId} 
-                      onClick={() => setKomodSelected(prev => prev.includes(uniqueId) ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
+                      onClick={() => setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
                       className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF]/50' : 'bg-gray-900/50 border-gray-800 hover:bg-gray-800'}`}
                     >
                       <div className="flex items-center gap-3 min-w-0 pr-2">

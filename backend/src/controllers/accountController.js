@@ -27,105 +27,93 @@ exports.getKomodGroupsForSelection = async (req, res) => {
   }
 };
 
-// Идеальный Sync (защита от дублей Kom-od и загрузка групп)
+// 1. УМНАЯ СИНХРОНИЗАЦИЯ (Защита от дублей шлюза)
 exports.syncVkKomod = async (req, res) => {
   try {
     const userId = String(req.user?.userId || req.user?.id);
-    if (!userId || userId === 'undefined') {
-      return res.status(401).json({ error: 'Не удалось определить пользователя' });
-    }
+    if (!userId || userId === 'undefined') return res.status(401).json({ error: 'Не авторизован' });
 
-    // 1. ЗАГРУЖАЕМ И ФИЛЬТРУЕМ АККАУНТЫ (СТЕНЫ)
-    const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-    const rawAccountsList = accRes.data?.data?.items || accRes.data?.data || [];
+    const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { 
+      headers: { 'Access-Token': KOMOD_TOKEN } 
+    });
+
+    const rawAccounts = accRes.data?.data?.items || accRes.data?.data || [];
     
-    // Убиваем дубликаты от самого Kom-od (оставляем только один профиль на каждое имя)
-    const uniqueAccountsMap = new Map();
-    for (const acc of rawAccountsList) {
-       uniqueAccountsMap.set(acc.title || acc.name || String(acc.id), acc);
+    // ФИЛЬТР: Если в шлюзе несколько записей с одним именем, берем только последнюю
+    const uniqueMap = new Map();
+    for (const acc of rawAccounts) {
+      const name = acc.title || acc.name || String(acc.id);
+      uniqueMap.set(name, acc); // Перезаписывает старые, оставляя последнюю
     }
-    const accountsList = Array.from(uniqueAccountsMap.values());
+    const accountsList = Array.from(uniqueMap.values());
 
     let addedCount = 0;
-    const profileIdsMap = {}; // Карта для связи групп с профилями
-
     for (const acc of accountsList) {
       const providerAccountId = String(acc.id);
       const profileName = acc.title || acc.name || 'Профиль ВК';
 
+      // 1. Создаем/обновляем профиль
       const vkProfile = await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
-        update: { name: profileName, userId: userId }, 
-        create: { userId: userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN }
+        update: { name: profileName, userId: userId },
+        create: { userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN }
       });
-      
-      profileIdsMap[providerAccountId] = vkProfile.id; // Запоминаем ID профиля
 
+      // 2. Создаем Стену (всегда привязана к профилю)
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId: `wall_${acc.id}` } },
-        update: { name: `Стена: ${profileName}`, isValid: true, userId: userId, errorMsg: null },
+        update: { name: `Стена: ${profileName}`, isValid: true, userId: userId },
         create: {
-          userId: userId, provider: 'VK', providerId: `wall_${acc.id}`,
-          name: `Стена: ${profileName}`, accessToken: KOMOD_TOKEN, 
-          avatarUrl: `https://ui-avatars.com/api/?name=VK&background=0077FF&color=fff`,
+          userId, provider: 'VK', providerId: `wall_${acc.id}`,
+          name: `Стена: ${profileName}`, accessToken: KOMOD_TOKEN,
           isValid: true, profileId: vkProfile.id
         }
       });
       addedCount++;
     }
 
-    // 2. ЗАГРУЖАЕМ ПОДКЛЮЧЕННЫЕ ГРУППЫ ИЗ KOM-OD
-    try {
-      const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-      const groupsList = grpRes.data?.data?.items || grpRes.data?.data || [];
-      
-      for (const grp of groupsList) {
-        const parentProfileId = profileIdsMap[String(grp.account_id)] || null;
-        await prisma.account.upsert({
-          where: { provider_providerId: { provider: 'VK', providerId: `group_${grp.id}` } },
-          update: { name: grp.title || 'Группа ВК', isValid: true, userId: userId },
-          create: {
-            userId: userId, provider: 'VK', providerId: `group_${grp.id}`,
-            name: grp.title || 'Группа ВК', accessToken: KOMOD_TOKEN, 
-            avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(grp.title || 'Группа')}&background=0077FF&color=fff`,
-            isValid: true, profileId: parentProfileId
-          }
-        });
-        addedCount++;
-      }
-    } catch (grpErr) {
-      console.log('Группы пока не добавлены или ошибка получения');
+    // ТАКЖЕ: Подгружаем уже добавленные группы, чтобы они не пропадали
+    const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+    const groupsList = grpRes.data?.data?.items || grpRes.data?.data || [];
+    for (const grp of groupsList) {
+      await prisma.account.upsert({
+        where: { provider_providerId: { provider: 'VK', providerId: `group_${grp.id}` } },
+        update: { name: grp.title, isValid: true, userId: userId },
+        create: {
+          userId, provider: 'VK', providerId: `group_${grp.id}`,
+          name: grp.title, accessToken: KOMOD_TOKEN, isValid: true
+        }
+      });
     }
 
     res.json({ success: true, count: addedCount });
   } catch (error) {
-    console.error('Komod Sync Error:', error.message);
+    console.error('Sync Error:', error.message);
     res.status(500).json({ error: 'Ошибка синхронизации' });
   }
 };
 
-// Добавление новой группы в шлюз Komod (Без 500-й ошибки!)
+// 2. ДОБАВЛЕНИЕ ГРУППЫ (ИСПРАВЛЕНА ОШИБКА 500)
 exports.addVkKomodGroup = async (req, res) => {
   try {
     const { url, title, profileId } = req.body;
     const profile = await prisma.socialProfile.findUnique({ where: { id: profileId } });
 
-    const payload = { url: url, title: title || 'Новая группа ВК', join_to_group: true };
-
+    const payload = { url, title, join_to_group: true };
     if (profile && profile.providerAccountId) {
-        payload.random_account = false;
-        payload.account_id = profile.providerAccountId;
+      payload.random_account = false;
+      payload.account_id = profile.providerAccountId;
     }
 
     const response = await axios.post(`${KOMOD_BASE_URL}/group`, payload, {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
-    if (response.data && response.data.success === false) {
-      return res.status(400).json({ error: 'Ошибка шлюза: ' + JSON.stringify(response.data.errors) });
+    if (response.data?.success === false) {
+      return res.status(400).json({ error: response.data.errors });
     }
 
-    // ВАЖНО: Мы больше не вызываем syncVkKomod здесь, чтобы не сломать цикл на фронтенде!
+    // ФИКС: Просто возвращаем успех. Синхронизацию запустит фронтенд ОДИН РАЗ в конце.
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка при добавлении группы' });
