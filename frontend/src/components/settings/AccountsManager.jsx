@@ -104,16 +104,25 @@ export default function AccountsManager() {
     let addedCount = 0;
     
     for (const uniqueId of komodSelected) {
-      const group = selectableGroups.find((g, i) => (g.id || g.group_id || `idx-${i}`) === uniqueId);
+      // Ищем группу
+      const group = selectableGroups.find((g, i) => {
+        const gId = g.id || g.group_id || `idx-${i}`;
+        return String(gId) === String(uniqueId);
+      });
+      
       if (group) {
-        const url = `https://vk.com/${group.screen_name || 'club' + (group.id || group.group_id)}`;
+        // ИСПРАВЛЕНИЕ ОШИБКИ: теперь переменная называется groupUrl
+        const groupUrl = `https://vk.com/${group.screen_name || 'club' + (group.id || group.group_id)}`;
+        
         const res = await useStore.getState().addVkKomodGroup(groupUrl, group.name || group.title, komodModal.profileId);
         if (res.success) addedCount++;
       }
     }
     
-    // Вызываем синхронизацию только ОДИН РАЗ в самом конце
-    await useStore.getState().syncVkKomod();
+    // Синхронизируем один раз в конце
+    if (addedCount > 0) {
+      await useStore.getState().syncVkKomod();
+    }
     
     setIsSyncingVk(false);
     alert(`Успешно подключено сообществ: ${addedCount}`);
