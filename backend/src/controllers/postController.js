@@ -44,47 +44,93 @@ async function sendToKomodVK(token, providerId, text, imageBuffers) {
 
     let targetGroupId = null;
 
+    // 1. Получаем список групп из шлюза
+    const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
+    const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
+
     if (providerId.startsWith('group_')) {
         const vkUid = providerId.replace('group_', '');
-        const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
-        const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
         const targetGroup = groups.find(g => String(g.uid) === String(vkUid) || String(g.url).includes(vkUid) || String(g.id) === String(vkUid));
         
-        if (!targetGroup) throw new Error(`Группа не найдена в шлюзе Kom-od`);
+        if (!targetGroup) throw new Error(`Группа не найдена в шлюзе Kom-od. Попробуйте переподключить её.`);
         targetGroupId = targetGroup.id;
     } else if (providerId.startsWith('wall_')) {
-        targetGroupId = providerId.replace('wall_', '');
-    } else {
-        throw new Error('Неизвестный тип VK аккаунта Kom-od');
+        const accId = providerId.replace('wall_', '');
+        
+        // Проверяем, зарегистрирована ли стена как цель для постинга в шлюзе
+        let targetGroup = groups.find(g => String(g.account_id) === String(accId) && (String(g.url).includes('vk.com/id') || String(g.uid) === String(g.user_id)));
+        
+        if (!targetGroup) {
+            // ДИНАМИЧЕСКАЯ РЕГИСТРАЦИЯ СТЕНЫ: получаем инфу об аккаунте и добавляем стену как цель
+            const accInfoRes = await axios.get(`${KOMOD_BASE_URL}/account/${accId}`, { headers: { 'Access-Token': token } });
+            const accData = accInfoRes.data?.data;
+            
+            if (!accData) throw new Error('Аккаунт стены не найден в шлюзе');
+            
+            const realUid = accData.uid || accData.id; 
+            const wallUrl = accData.url || `https://vk.com/id${realUid}`;
+            
+            const params = new URLSearchParams();
+            params.append('url', wallUrl);
+            params.append('title', accData.title || accData.name || 'Стена (Личная страница)');
+            params.append('join_to_group', '0');
+            params.append('random_account', '0');
+            params.append('account_id', String(accId));
+
+            const addRes = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
+                headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
+                validateStatus: s => s < 500
+            });
+
+            if (addRes.data?.success && addRes.data?.data) {
+                targetGroupId = addRes.data.data.group?.id || addRes.data.data.id;
+            } else {
+                throw new Error('Шлюз отклонил привязку личной страницы: ' + JSON.stringify(addRes.data?.errors));
+            }
+        } else {
+            targetGroupId = targetGroup.id;
+        }
     }
 
-    form.append('group_id', targetGroupId);
-    form.append('direct', '1'); // Прямая публикация, минуя внутреннюю очередь шлюза
+    if (!targetGroupId) throw new Error('Не удалось определить ID цели для публикации шлюза.');
 
+    form.append('group_id', targetGroupId);
+    
+    // ВАЖНО: Мы убрали параметр "direct", так как он ломает ВК-публикации из-за связи с ok.ru.
+    // Просто не передаем publish_at, и Kom-od отправит пост в порядке штатной очереди.
+    
     const media = [];
     if (text) {
         media.push({ type: 'text', text: text });
     }
 
-    if (imageBuffers.length > 0) {
+    if (imageBuffers && imageBuffers.length > 0) {
         const images = [];
         imageBuffers.forEach((buf, index) => {
             const fileName = `file_${index + 1}`;
             images.push({ name: fileName });
-            form.append(fileName, buf, { filename: `image${index + 1}.jpg`, contentType: 'image/jpeg' });
+            // Делаем имя файла уникальным, чтобы шлюз не перезаписывал картинки
+            form.append(fileName, buf, { filename: `photo_${Date.now()}_${index}.jpg`, contentType: 'image/jpeg' });
         });
         media.push({ type: 'photo', images: images });
     }
 
     form.append('media', JSON.stringify(media));
 
+    console.log(`\n=== [KOMOD POST START] Отправка поста в targetGroupId: ${targetGroupId} ===`);
+    
     const postRes = await axios.post(`${KOMOD_BASE_URL}/post`, form, {
-        headers: { ...form.getHeaders(), 'Access-Token': token },
+        headers: { 
+            ...form.getHeaders(), 
+            'Access-Token': token 
+        },
         validateStatus: status => status < 500
     });
 
+    console.log(`[KOMOD POST RESPONSE] Статус: ${postRes.status}, Ответ:`, JSON.stringify(postRes.data));
+
     if (postRes.data && postRes.data.success === false) {
-        throw new Error('Ошибка шлюза: ' + JSON.stringify(postRes.data.errors));
+        throw new Error('Ошибка шлюза при публикации: ' + JSON.stringify(postRes.data.errors));
     }
 }
 
