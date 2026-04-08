@@ -861,6 +861,11 @@ export default function Publish() {
                           const isWatermarkActive = getEffectiveSetting(acc.id, 'watermark');
                           const isSignatureActive = getEffectiveSetting(acc.id, 'signature');
                           
+                          // === ВОТ ЭТИ ДВЕ СТРОКИ МЫ ВОЗВРАЩАЕМ ===
+                          const avatarSrc = acc.avatarUrl || acc.photo_url || acc.avatar;
+                          const iconColor = provider === 'vk' ? 'text-blue-500' : 'text-sky-400';
+                          // ========================================
+                          
                           return (
                             <div key={acc.id} className={`flex flex-col rounded-2xl border transition-all overflow-hidden group ${isSelected ? (publishMode === 'schedule' ? 'bg-gray-800 border-purple-500/50 shadow-md shadow-purple-500/10' : 'bg-gray-800 border-blue-500/50 shadow-md shadow-blue-500/10') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'}`}>
                               <div onClick={() => toggleAccount(acc.id)} className="flex items-center gap-3 p-3 w-full text-left cursor-pointer min-h-[56px]">
