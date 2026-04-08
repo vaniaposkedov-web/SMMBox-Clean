@@ -27,7 +27,10 @@ exports.getKomodGroupsForSelection = async (req, res) => {
   }
 };
 
-// 1. УМНАЯ СИНХРОНИЗАЦИЯ (С авто-удалением старых дублей)
+
+
+
+// 1. УМНАЯ СИНХРОНИЗАЦИЯ (С абсолютной защитой от дублей групп и профилей)
 exports.syncVkKomod = async (req, res) => {
   try {
     const userId = String(req.user?.userId || req.user?.id);
@@ -36,49 +39,44 @@ exports.syncVkKomod = async (req, res) => {
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const rawAccounts = accRes.data?.data?.items || accRes.data?.data || [];
     
-    // 1. Фильтруем: оставляем только ОДИН самый свежий аккаунт для каждого имени
-    const uniqueMap = new Map();
+    // --- 1. ФИЛЬТР И ОЧИСТКА ПРОФИЛЕЙ (СТЕН) ---
+    const uniqueAccMap = new Map();
     for (const acc of rawAccounts) {
       const name = (acc.title || acc.name || 'Профиль ВК').trim();
-      const existing = uniqueMap.get(name);
+      const existing = uniqueAccMap.get(name);
       if (!existing || Number(acc.id) > Number(existing.id)) {
-        uniqueMap.set(name, acc);
+        uniqueAccMap.set(name, acc);
       }
     }
-    const validAccounts = Array.from(uniqueMap.values());
-    const validAccountIds = validAccounts.map(a => String(a.id));
+    const validAccounts = Array.from(uniqueAccMap.values());
+    const validAccProviderIds = validAccounts.map(a => String(a.id));
 
-    // 2. ГЕНЕРАЛЬНАЯ УБОРКА: Удаляем старые дубликаты профилей ВК из базы
-    const existingProfiles = await prisma.socialProfile.findMany({
-      where: { userId: userId, provider: 'VK' }
-    });
-    
-    for (const profile of existingProfiles) {
-      if (!validAccountIds.includes(profile.providerAccountId)) {
-        // Если ID профиля устарел - стираем его (Prisma сама удалит и привязанные стены)
-        await prisma.socialProfile.delete({ where: { id: profile.id } });
+    // Удаляем устаревшие профили из нашей базы
+    const existingProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
+    for (const p of existingProfiles) {
+      if (!validAccProviderIds.includes(p.providerAccountId)) {
+        await prisma.socialProfile.delete({ where: { id: p.id } });
       }
     }
 
     let addedCount = 0;
     const profileIdsMap = {};
 
-    // 3. Сохраняем актуальный профиль и стену
+    // Сохраняем актуальные профили
     for (const acc of validAccounts) {
       const providerAccountId = String(acc.id);
       const profileName = acc.title || acc.name || 'Профиль ВК';
 
       const vkProfile = await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
-        update: { name: profileName, userId: userId },
+        update: { name: profileName, userId },
         create: { userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN }
       });
-      
       profileIdsMap[providerAccountId] = vkProfile.id;
 
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId: `wall_${acc.id}` } },
-        update: { name: `Стена: ${profileName}`, isValid: true, userId: userId, errorMsg: null },
+        update: { name: `Стена: ${profileName}`, isValid: true, userId, errorMsg: null },
         create: {
           userId, provider: 'VK', providerId: `wall_${acc.id}`,
           name: `Стена: ${profileName}`, accessToken: KOMOD_TOKEN,
@@ -89,19 +87,48 @@ exports.syncVkKomod = async (req, res) => {
       addedCount++;
     }
 
-    // 4. Подгружаем ТОЛЬКО те группы, которые привязаны к актуальным профилям
+    // --- 2. ФИЛЬТР И ОЧИСТКА ГРУПП ---
     try {
       const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-      const groupsList = grpRes.data?.data?.items || grpRes.data?.data || [];
-      for (const grp of groupsList) {
+      const rawGroups = grpRes.data?.data?.items || grpRes.data?.data || [];
+
+      // Фильтруем группы по РЕАЛЬНОМУ ID ВКонтакте (uid), чтобы исключить дубли из шлюза
+      const uniqueGrpMap = new Map();
+      for (const grp of rawGroups) {
+        // Достаем настоящий ID группы
+        const realVkId = grp.uid || String(grp.url).match(/club(\d+)/)?.[1] || grp.id;
+        const existing = uniqueGrpMap.get(realVkId);
+        // Если дубль - оставляем самую свежую привязку
+        if (!existing || Number(grp.id) > Number(existing.id)) {
+          uniqueGrpMap.set(realVkId, grp);
+        }
+      }
+      const validGroups = Array.from(uniqueGrpMap.values());
+      const validGroupProviderIds = validGroups.map(g => `group_${g.uid || String(g.url).match(/club(\d+)/)?.[1] || g.id}`);
+
+      // ГЕНЕРАЛЬНАЯ УБОРКА: Удаляем все группы из базы, которых нет в актуальном списке
+      const existingGroups = await prisma.account.findMany({ 
+        where: { userId, provider: 'VK', providerId: { startsWith: 'group_' } } 
+      });
+      for (const g of existingGroups) {
+        if (!validGroupProviderIds.includes(g.providerId)) {
+          await prisma.account.delete({ where: { id: g.id } });
+        }
+      }
+
+      // Сохраняем только уникальные группы
+      for (const grp of validGroups) {
         const parentProfileId = profileIdsMap[String(grp.account_id)];
-        if (!parentProfileId) continue; // Пропускаем группы от старых аккаунтов
+        if (!parentProfileId) continue; // Пропускаем группы, привязанные к удаленным профилям
+
+        const realVkId = grp.uid || String(grp.url).match(/club(\d+)/)?.[1] || grp.id;
+        const providerId = `group_${realVkId}`;
 
         await prisma.account.upsert({
-          where: { provider_providerId: { provider: 'VK', providerId: `group_${grp.id}` } },
-          update: { name: grp.title || 'Группа ВК', isValid: true, userId: userId, profileId: parentProfileId },
+          where: { provider_providerId: { provider: 'VK', providerId } },
+          update: { name: grp.title || 'Группа ВК', isValid: true, userId, profileId: parentProfileId },
           create: {
-            userId, provider: 'VK', providerId: `group_${grp.id}`,
+            userId, provider: 'VK', providerId,
             name: grp.title || 'Группа ВК', accessToken: KOMOD_TOKEN,
             avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(grp.title || 'VK')}&background=0077FF&color=fff`,
             isValid: true, profileId: parentProfileId
@@ -109,7 +136,9 @@ exports.syncVkKomod = async (req, res) => {
         });
         addedCount++;
       }
-    } catch (e) { console.error('Ошибка подгрузки групп'); }
+    } catch (e) {
+      console.error('Ошибка обработки групп:', e.message);
+    }
 
     res.json({ success: true, count: addedCount });
   } catch (error) {
@@ -117,53 +146,44 @@ exports.syncVkKomod = async (req, res) => {
     res.status(500).json({ error: 'Ошибка синхронизации' });
   }
 };
-// ДОБАВЛЕНИЕ ГРУППЫ (В правильном PHP-формате URLSearchParams)
+
+
+// 2. ДОБАВЛЕНИЕ ГРУППЫ (С подробным логом для отлова 404)
 exports.addVkKomodGroup = async (req, res) => {
+  console.log(`\n=== [VK ADD START] Запрос на добавление: ${req.body?.url} ===`);
   try {
     const { url, title, profileId } = req.body;
     const profile = await prisma.socialProfile.findUnique({ where: { id: profileId } });
 
     if (!profile) {
-      console.error('❌ [VK ADD] Профиль не найден в нашей БД');
-      return res.status(404).json({ error: 'Профиль не найден в базе SMMBOX' });
+      console.error('❌ Профиль не найден в БД. ID:', profileId);
+      return res.status(404).json({ error: 'Профиль не найден' });
     }
 
-    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Формируем как стандартную веб-форму (PHP не понимает JSON)
     const params = new URLSearchParams();
     params.append('url', url);
     params.append('title', title || 'Группа ВК');
-    params.append('join_to_group', '1'); // PHP лучше понимает '1' чем 'true'
-    
+    params.append('join_to_group', '1');
     if (profile.providerAccountId) {
       params.append('random_account', '0');
       params.append('account_id', String(profile.providerAccountId));
     }
 
-    console.log(`\n=== [VK GROUP ADD] ОТПРАВЛЯЕМ В KOM-OD ===`);
-    console.log(`URL: ${KOMOD_BASE_URL}/group`);
-    console.log(`Параметры:`, params.toString());
-
     const response = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
-      headers: { 
-        'Access-Token': KOMOD_TOKEN,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      // Указываем Axios не выкидывать ошибку (catch), если статус 400 или 404, чтобы прочитать ответ
+      headers: { 'Access-Token': KOMOD_TOKEN, 'Content-Type': 'application/x-www-form-urlencoded' },
       validateStatus: status => status < 500 
     });
 
-    console.log(`Ответ шлюза: Статус ${response.status}`);
-    console.log(`Тело ответа:`, JSON.stringify(response.data));
-    console.log(`=== [VK GROUP ADD] КОНЕЦ ===\n`);
-
     if (response.data?.success === false || response.status >= 400) {
-      return res.status(400).json({ error: response.data?.errors || `Ошибка шлюза ${response.status}` });
+      console.error(`❌ Ошибка шлюза ${response.status}:`, response.data);
+      return res.status(400).json({ error: response.data?.errors || 'Ошибка шлюза' });
     }
 
+    console.log(`✅ Группа ${url} успешно отправлена в шлюз!`);
     res.json({ success: true });
   } catch (error) {
-    console.error('\n=== [VK GROUP ADD] КРИТИЧЕСКАЯ ОШИБКА ===', error.message);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера при обращении к Kom-od' });
+    console.error('❌ КРИТИЧЕСКАЯ ОШИБКА ДОБАВЛЕНИЯ:', error.message);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 };
 
