@@ -560,7 +560,6 @@ export const useStore = create(
         } catch (error) { return { success: false }; }
       },
 
-      // Внутри actions в store.js
       syncVkKomod: async () => {
         try {
           const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/accounts/vk/komod-sync`, {
@@ -572,8 +571,9 @@ export const useStore = create(
           });
           const data = await res.json();
           if (data.success) {
-            await get().fetchAccounts(get().user?.id);// Обновляем список в UI
-            return { success: true };
+            await get().fetchAccounts(get().user?.id);
+            // ИСПРАВЛЕНИЕ: Теперь мы возвращаем count, чтобы окно показало успех
+            return { success: true, count: data.count }; 
           }
           return { success: false, error: data.error };
         } catch (error) {
