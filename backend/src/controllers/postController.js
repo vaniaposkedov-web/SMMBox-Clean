@@ -37,6 +37,57 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
     }
 }
 
+// === НОВАЯ ЛОГИКА: ОТПРАВКА В ВКОНТАКТЕ ЧЕРЕЗ ШЛЮЗ KOM-OD ===
+async function sendToKomodVK(token, providerId, text, imageBuffers) {
+    const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
+    const form = new FormData();
+
+    let targetGroupId = null;
+
+    if (providerId.startsWith('group_')) {
+        const vkUid = providerId.replace('group_', '');
+        const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
+        const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
+        const targetGroup = groups.find(g => String(g.uid) === String(vkUid) || String(g.url).includes(vkUid) || String(g.id) === String(vkUid));
+        
+        if (!targetGroup) throw new Error(`Группа не найдена в шлюзе Kom-od`);
+        targetGroupId = targetGroup.id;
+    } else if (providerId.startsWith('wall_')) {
+        targetGroupId = providerId.replace('wall_', '');
+    } else {
+        throw new Error('Неизвестный тип VK аккаунта Kom-od');
+    }
+
+    form.append('group_id', targetGroupId);
+    form.append('direct', '1'); // Прямая публикация, минуя внутреннюю очередь шлюза
+
+    const media = [];
+    if (text) {
+        media.push({ type: 'text', text: text });
+    }
+
+    if (imageBuffers.length > 0) {
+        const images = [];
+        imageBuffers.forEach((buf, index) => {
+            const fileName = `file_${index + 1}`;
+            images.push({ name: fileName });
+            form.append(fileName, buf, { filename: `image${index + 1}.jpg`, contentType: 'image/jpeg' });
+        });
+        media.push({ type: 'photo', images: images });
+    }
+
+    form.append('media', JSON.stringify(media));
+
+    const postRes = await axios.post(`${KOMOD_BASE_URL}/post`, form, {
+        headers: { ...form.getHeaders(), 'Access-Token': token },
+        validateStatus: status => status < 500
+    });
+
+    if (postRes.data && postRes.data.success === false) {
+        throw new Error('Ошибка шлюза: ' + JSON.stringify(postRes.data.errors));
+    }
+}
+
 // === ЗАЩИТА АВТОРИЗАЦИИ ===
 const getUserId = (req) => {
     if (req.user && typeof req.user === 'object') return req.user.id || req.user.userId;
@@ -358,7 +409,12 @@ exports.createPost = async (req, res) => {
                             const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                             await sendToTelegram(botToken, job.account.providerId, job.finalText, job.processedBuffers);
                         } else if (providerType === 'vk') {
-                            await sendToVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
+                            const isKomod = job.account.providerId.startsWith('wall_') || job.account.providerId.startsWith('group_');
+                            if (isKomod) {
+                                await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
+                            } else {
+                                await sendToVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
+                            }
                         }
                     } catch (err) {
                         console.error(`[BACKGROUND ERROR] ${job.account.name}:`, err.message);
@@ -399,7 +455,12 @@ exports.initCron = () => {
                         const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                         await sendToTelegram(botToken, account.providerId, post.text, imageBuffers);
                     } else if (providerType === 'vk') {
-                        await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
+                        const isKomod = account.providerId.startsWith('wall_') || account.providerId.startsWith('group_');
+                        if (isKomod) {
+                            await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers);
+                        } else {
+                            await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
+                        }
                     }
 
                     // ПОСЛЕ успешной публикации, сжимаем эти фото до миниатюр (чтобы БД не распухла)
