@@ -148,11 +148,11 @@ export default function AccountsManager() {
             await handleRefreshProfiles();
             
             if (syncResult.success) {
-              if (window.confirm('Профиль успешно подключен! Хотите выбрать сообщества?')) {
-                const vkProfile = useStore.getState().profiles.find(p => p.provider === 'VK');
-                setVkHackModal({ isOpen: true, step: 1, profileId: vkProfile?.id });
-              }
-            }
+          // Просто уведомляем об успехе, без всяких модалок с галочками
+          alert('Профиль ВКонтакте и личная страница успешно подключены!');
+        } else {
+          alert('Не удалось загрузить профиль ВК. Попробуйте нажать кнопку "Синхронизировать".');
+        }
           } else {
             console.error('Ошибка подтверждения хэша:', confirmResult.error);
           }

@@ -9,69 +9,57 @@ exports.syncVkKomod = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-    const groupRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+    // Запрашиваем только аккаунты, группы нам пока не нужны
+    const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { 
+      headers: { 'Access-Token': KOMOD_TOKEN } 
+    });
 
-    // Учитываем структуру ответа Kom-od
     const accountsList = accRes.data?.data?.items || accRes.data?.data || [];
-    const groupsList = groupRes.data?.data?.items || groupRes.data?.data || [];
-
     let addedCount = 0;
-    const profileMap = {}; // Карта для связи ID Kom-od с ID профиля в Prisma
 
-    // 1. Создаем ПРОФИЛИ (шапка дерева) и СТЕНЫ (карточки для постинга)
     for (const acc of accountsList) {
       const profileName = acc.title || acc.name || 'Мой профиль ВК';
       const providerAccountId = String(acc.id);
 
-      // Создаем шапку профиля
+      // 1. Создаем/обновляем шапку профиля
       const vkProfile = await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
         update: { name: profileName },
         create: {
-          userId: userId, provider: 'VK', providerAccountId,
-          name: profileName, accessToken: KOMOD_TOKEN
+          userId: userId, 
+          provider: 'VK', 
+          providerAccountId,
+          name: profileName, 
+          accessToken: KOMOD_TOKEN
         }
       });
 
-      profileMap[acc.id] = vkProfile.id;
-
-      // Создаем КАРТОЧКУ СТЕНЫ (именно она появится в UI с настройками дизайна)
+      // 2. Создаем КАРТОЧКУ СТЕНЫ для публикации
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId: `wall_${acc.id}` } },
-        update: { name: `Стена: ${profileName}`, isValid: true, profileId: vkProfile.id, errorMsg: null },
+        update: { 
+          name: `Стена: ${profileName}`, 
+          isValid: true, 
+          profileId: vkProfile.id, 
+          errorMsg: null 
+        },
         create: {
-          userId: userId, provider: 'VK', providerId: `wall_${acc.id}`, name: `Стена: ${profileName}`,
-          accessToken: KOMOD_TOKEN, avatarUrl: `https://ui-avatars.com/api/?name=Стена&background=0077FF&color=fff`,
-          isValid: true, profileId: vkProfile.id
+          userId: userId, 
+          provider: 'VK', 
+          providerId: `wall_${acc.id}`, 
+          name: `Стена: ${profileName}`,
+          accessToken: KOMOD_TOKEN, 
+          avatarUrl: `https://ui-avatars.com/api/?name=VK&background=0077FF&color=fff`,
+          isValid: true, 
+          profileId: vkProfile.id
         }
       });
       addedCount++;
     }
 
-    // 2. Создаем КАРТОЧКИ ГРУПП
-    for (const group of groupsList) {
-      const groupName = group.title || group.name || 'Сообщество ВК';
-      // Ищем, к какому профилю привязана группа (если данных нет, кидаем в первый попавшийся)
-      const parentProfileId = profileMap[group.account_id] || Object.values(profileMap)[0];
-
-      if (parentProfileId) {
-        await prisma.account.upsert({
-          where: { provider_providerId: { provider: 'VK', providerId: `group_${group.id}` } },
-          update: { name: groupName, isValid: true, profileId: parentProfileId, errorMsg: null },
-          create: {
-            userId: userId, provider: 'VK', providerId: `group_${group.id}`, name: groupName,
-            accessToken: KOMOD_TOKEN, avatarUrl: group.photo_50 || `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName)}&background=0077FF&color=fff`,
-            isValid: true, profileId: parentProfileId
-          }
-        });
-        addedCount++;
-      }
-    }
-
     res.json({ success: true, count: addedCount });
   } catch (error) {
-    console.error('Komod Sync Error:', error.response?.data || error.message);
+    console.error('Komod Sync Error:', error.message);
     res.status(500).json({ error: 'Ошибка при синхронизации со шлюзом' });
   }
 };
