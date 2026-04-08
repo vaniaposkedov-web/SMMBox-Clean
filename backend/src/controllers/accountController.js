@@ -71,32 +71,53 @@ exports.syncVkKomod = async (req, res) => {
   }
 };
 
-// 2. ДОБАВЛЕНИЕ ГРУППЫ (Строго по документации Kom-od)
+// ДОБАВЛЕНИЕ ГРУППЫ (В правильном PHP-формате URLSearchParams)
 exports.addVkKomodGroup = async (req, res) => {
   try {
     const { url, title, profileId } = req.body;
     const profile = await prisma.socialProfile.findUnique({ where: { id: profileId } });
 
-    if (!profile) return res.status(404).json({ error: 'Профиль не найден в базе' });
+    if (!profile) {
+      console.error('❌ [VK ADD] Профиль не найден в нашей БД');
+      return res.status(404).json({ error: 'Профиль не найден в базе SMMBOX' });
+    }
 
-    const payload = { 
-      url, 
-      title: title || 'Группа ВК', 
-      join_to_group: true,
-      random_account: false,
-      account_id: Number(profile.providerAccountId) // Важно: числом
-    };
+    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Формируем как стандартную веб-форму (PHP не понимает JSON)
+    const params = new URLSearchParams();
+    params.append('url', url);
+    params.append('title', title || 'Группа ВК');
+    params.append('join_to_group', '1'); // PHP лучше понимает '1' чем 'true'
+    
+    if (profile.providerAccountId) {
+      params.append('random_account', '0');
+      params.append('account_id', String(profile.providerAccountId));
+    }
 
-    const response = await axios.post(`${KOMOD_BASE_URL}/group`, payload, {
-      headers: { 'Access-Token': KOMOD_TOKEN }
+    console.log(`\n=== [VK GROUP ADD] ОТПРАВЛЯЕМ В KOM-OD ===`);
+    console.log(`URL: ${KOMOD_BASE_URL}/group`);
+    console.log(`Параметры:`, params.toString());
+
+    const response = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
+      headers: { 
+        'Access-Token': KOMOD_TOKEN,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      // Указываем Axios не выкидывать ошибку (catch), если статус 400 или 404, чтобы прочитать ответ
+      validateStatus: status => status < 500 
     });
+
+    console.log(`Ответ шлюза: Статус ${response.status}`);
+    console.log(`Тело ответа:`, JSON.stringify(response.data));
+    console.log(`=== [VK GROUP ADD] КОНЕЦ ===\n`);
+
+    if (response.data?.success === false || response.status >= 400) {
+      return res.status(400).json({ error: response.data?.errors || `Ошибка шлюза ${response.status}` });
+    }
 
     res.json({ success: true });
   } catch (error) {
-    // Если шлюз вернул 404, не валим сервер, а отдаем ошибку красиво
-    const status = error.response?.status || 500;
-    const msg = error.response?.data?.errors?.account || 'Ошибка шлюза 404';
-    res.status(status).json({ error: msg });
+    console.error('\n=== [VK GROUP ADD] КРИТИЧЕСКАЯ ОШИБКА ===', error.message);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера при обращении к Kom-od' });
   }
 };
 
