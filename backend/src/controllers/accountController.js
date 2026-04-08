@@ -191,21 +191,26 @@ exports.confirmVkKomod = async (req, res) => {
   try {
     const { hash } = req.body;
     
-    // СТРОГАЯ ИМИТАЦИЯ PHP cURL (Формат multipart/form-data)
-    const form = new FormData();
-    form.append('hash', hash);
+    console.log(`\n=== [VK AUTH] НАЧАЛО ПОДТВЕРЖДЕНИЯ ===`);
+    console.log(`1. Хэш, полученный от браузера: "${hash}"`);
+    console.log(`2. Токен, который мы отправляем: "${KOMOD_TOKEN}"`);
 
+    // Заставляем Axios автоматически собрать правильный multipart/form-data
     const response = await axios.post(
       `${KOMOD_BASE_URL}/account/confirm-vk`,
-      form, // Передаем объект формы
+      { hash: hash }, 
       { 
         headers: { 
-          'Access-Token': KOMOD_TOKEN
-          // Axios сам подставит нужный Content-Type с границами (boundaries)
+          'Access-Token': KOMOD_TOKEN,
+          'Content-Type': 'multipart/form-data'
         },
         validateStatus: function (status) { return status < 500; }
       }
     );
+
+    console.log(`3. Статус ответа шлюза: ${response.status}`);
+    console.log(`4. Тело ответа шлюза:`, JSON.stringify(response.data));
+    console.log(`=== [VK AUTH] КОНЕЦ ПОДТВЕРЖДЕНИЯ ===\n`);
 
     if (response.data && response.data.success === false) {
       return res.status(400).json({ error: 'Ошибка шлюза: ' + JSON.stringify(response.data.errors) });
@@ -213,7 +218,7 @@ exports.confirmVkKomod = async (req, res) => {
 
     res.json({ success: true, data: response.data });
   } catch (error) {
-    console.error('Ошибка подтверждения:', error.message);
+    console.error('=== [VK AUTH] КРИТИЧЕСКАЯ ОШИБКА ===', error.message);
     res.status(500).json({ error: 'Ошибка сервера при обращении к Kom-od' });
   }
 };
