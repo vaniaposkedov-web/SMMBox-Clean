@@ -27,23 +27,44 @@ exports.getKomodGroupsForSelection = async (req, res) => {
   }
 };
 
+// 1. УМНАЯ СИНХРОНИЗАЦИЯ (С авто-удалением старых дублей)
 exports.syncVkKomod = async (req, res) => {
   try {
     const userId = String(req.user?.userId || req.user?.id);
+    if (!userId || userId === 'undefined') return res.status(401).json({ error: 'Не авторизован' });
+
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const rawAccounts = accRes.data?.data?.items || accRes.data?.data || [];
     
-    // Оставляем только ОДИН самый свежий аккаунт для этого пользователя
+    // 1. Фильтруем: оставляем только ОДИН самый свежий аккаунт для каждого имени
     const uniqueMap = new Map();
     for (const acc of rawAccounts) {
       const name = (acc.title || acc.name || 'Профиль ВК').trim();
-      if (!uniqueMap.has(name) || Number(acc.id) > Number(uniqueMap.get(name).id)) {
+      const existing = uniqueMap.get(name);
+      if (!existing || Number(acc.id) > Number(existing.id)) {
         uniqueMap.set(name, acc);
       }
     }
-    const accountsList = Array.from(uniqueMap.values());
+    const validAccounts = Array.from(uniqueMap.values());
+    const validAccountIds = validAccounts.map(a => String(a.id));
 
-    for (const acc of accountsList) {
+    // 2. ГЕНЕРАЛЬНАЯ УБОРКА: Удаляем старые дубликаты профилей ВК из базы
+    const existingProfiles = await prisma.socialProfile.findMany({
+      where: { userId: userId, provider: 'VK' }
+    });
+    
+    for (const profile of existingProfiles) {
+      if (!validAccountIds.includes(profile.providerAccountId)) {
+        // Если ID профиля устарел - стираем его (Prisma сама удалит и привязанные стены)
+        await prisma.socialProfile.delete({ where: { id: profile.id } });
+      }
+    }
+
+    let addedCount = 0;
+    const profileIdsMap = {};
+
+    // 3. Сохраняем актуальный профиль и стену
+    for (const acc of validAccounts) {
       const providerAccountId = String(acc.id);
       const profileName = acc.title || acc.name || 'Профиль ВК';
 
@@ -52,6 +73,8 @@ exports.syncVkKomod = async (req, res) => {
         update: { name: profileName, userId: userId },
         create: { userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN }
       });
+      
+      profileIdsMap[providerAccountId] = vkProfile.id;
 
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId: `wall_${acc.id}` } },
@@ -63,14 +86,37 @@ exports.syncVkKomod = async (req, res) => {
           isValid: true, profileId: vkProfile.id
         }
       });
+      addedCount++;
     }
 
-    res.json({ success: true, count: accountsList.length });
+    // 4. Подгружаем ТОЛЬКО те группы, которые привязаны к актуальным профилям
+    try {
+      const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+      const groupsList = grpRes.data?.data?.items || grpRes.data?.data || [];
+      for (const grp of groupsList) {
+        const parentProfileId = profileIdsMap[String(grp.account_id)];
+        if (!parentProfileId) continue; // Пропускаем группы от старых аккаунтов
+
+        await prisma.account.upsert({
+          where: { provider_providerId: { provider: 'VK', providerId: `group_${grp.id}` } },
+          update: { name: grp.title || 'Группа ВК', isValid: true, userId: userId, profileId: parentProfileId },
+          create: {
+            userId, provider: 'VK', providerId: `group_${grp.id}`,
+            name: grp.title || 'Группа ВК', accessToken: KOMOD_TOKEN,
+            avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(grp.title || 'VK')}&background=0077FF&color=fff`,
+            isValid: true, profileId: parentProfileId
+          }
+        });
+        addedCount++;
+      }
+    } catch (e) { console.error('Ошибка подгрузки групп'); }
+
+    res.json({ success: true, count: addedCount });
   } catch (error) {
+    console.error('Критическая ошибка синхронизации:', error.message);
     res.status(500).json({ error: 'Ошибка синхронизации' });
   }
 };
-
 // ДОБАВЛЕНИЕ ГРУППЫ (В правильном PHP-формате URLSearchParams)
 exports.addVkKomodGroup = async (req, res) => {
   try {
