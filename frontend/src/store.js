@@ -581,6 +581,14 @@ export const useStore = create(
         }
       },
 
+      
+      fetchKomodGroups: async (profileId) => {
+        const res = await fetch(`/api/accounts/vk/komod-groups?profileId=${profileId}`, {
+          headers: { 'Authorization': `Bearer ${get().token}` }
+        });
+        return await res.json();
+      },
+
      createPostAction: async (text, mediaUrls, accountIds, accountsData, publishAt) => {
         try {
           const res = await fetch('/api/posts/create', {
