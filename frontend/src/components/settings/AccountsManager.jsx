@@ -126,41 +126,34 @@ export default function AccountsManager() {
     
     const hashToProcess = urlHash || pendingHash;
 
-    // Если хэш есть и мы его еще не обрабатываем в текущем сеансе
     if (hashToProcess && processingHash.current !== hashToProcess) {
-      processingHash.current = hashToProcess; // Помечаем хэш как обрабатываемый
+      processingHash.current = hashToProcess; 
 
-      // Очищаем URL и локальное хранилище немедленно
       if (urlHash) window.history.replaceState({}, document.title, window.location.pathname);
       if (pendingHash) localStorage.removeItem('vk_pending_hash');
 
       const finalizeAuth = async () => {
         setIsSyncingVk(true);
-        console.log('Отправка хэша на подтверждение:', hashToProcess);
         
-        try {
-          // 1. Подтверждаем хэш в шлюзе
-          const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
-          
-          if (confirmResult.success) {
-            // 2. Если успех — синхронизируем данные
-            const syncResult = await useStore.getState().syncVkKomod();
-            await handleRefreshProfiles();
-            
-            if (syncResult.success) {
-          // Просто уведомляем об успехе, без всяких модалок с галочками
+        // 1. Подтверждаем хэш и ЖДЕМ ОТВЕТ
+        const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
+        
+        if (!confirmResult.success) {
+           // Если шлюз отклонил хэш, говорим правду и ОСТАНАВЛИВАЕМСЯ
+           alert('Ошибка шлюза: ' + (confirmResult.error || 'Account not found. Ждем ответ от техподдержки Kom-od.'));
+           setIsSyncingVk(false);
+           return; 
+        }
+
+        // 2. Если шлюз принял хэш, скачиваем Стену ВК
+        const syncResult = await useStore.getState().syncVkKomod();
+        await handleRefreshProfiles();
+        setIsSyncingVk(false);
+        
+        if (syncResult.success && syncResult.count > 0) {
           alert('Профиль ВКонтакте и личная страница успешно подключены!');
         } else {
-          alert('Не удалось загрузить профиль ВК. Попробуйте нажать кнопку "Синхронизировать".');
-        }
-          } else {
-            console.error('Ошибка подтверждения хэша:', confirmResult.error);
-          }
-        } catch (err) {
-          console.error('Критическая ошибка при авторизации:', err);
-        } finally {
-          setIsSyncingVk(false);
-          // Не обнуляем processingHash.current, чтобы предотвратить повтор на этой же странице
+          alert('Шлюз подтвердил хэш, но список аккаунтов пуст.');
         }
       };
       
@@ -957,14 +950,7 @@ export default function AccountsManager() {
                   <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
                     <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                     
-                    <button 
-                        // Было: onClick={() => setVkHackModal({isOpen: true})}
-                        onClick={() => setVkHackModal({isOpen: true, profileId: profile.id, step: 1})}
-                        className="flex-1 w-full bg-[#0077FF]/10..."
-                      >
-                      <Plus size={18} />
-                      <span>Добавить сообщество (по ссылке)</span>
-                    </button>
+                  
 
                     <button 
                       onClick={handleVkSync}
@@ -1160,100 +1146,7 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* НОВОЕ ОКНО ВКОНТАКТЕ (ЗАГРУЗКА И ВЫБОР ГРУПП ГАЛОЧКАМИ) */}
-      {vkHackModal.isOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setVkHackModal({isOpen: false})}></div>
-          <div className="relative w-full max-w-lg bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] z-10">
-            
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Users size={20} className="text-[#0077FF]" /> 
-                Подключение сообществ
-              </h3>
-              <button onClick={() => setVkHackModal({isOpen: false})} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-5 sm:p-6 overflow-y-auto custom-scrollbar">
-              
-              {/* ШАГ 1: ОФИЦИАЛЬНАЯ ЗАГРУЗКА */}
-              {vkHackModal.step === 1 && (
-                <div className="space-y-5">
-                  <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-gray-300">
-                    <p className="mb-2 font-semibold text-white flex items-center gap-2">
-                      <ShieldAlert size={16} className="text-[#0077FF]" />
-                      Безопасное подключение
-                    </p>
-                    <p className="text-xs leading-relaxed">
-                      Нажмите кнопку ниже, чтобы безопасно загрузить список ваших сообществ. Откроется официальное окно ВКонтакте — просто разрешите доступ. Никакие ссылки копировать не нужно.
-                    </p>
-                  </div>
-
-                  <button 
-                    onClick={handleLoadGroupsOfficial}
-                    disabled={isFetchingGroups}
-                    className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-4 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20"
-                  >
-                    {isFetchingGroups ? <Loader2 size={18} className="animate-spin" /> : <RotateCw size={18} />}
-                    {isFetchingGroups ? 'Загрузка списка...' : 'Авторизоваться и загрузить группы'}
-                  </button>
-                </div>
-              )}
-
-              {/* ШАГ 2: ВЫБОР ГРУПП (ГАЛОЧКИ) */}
-              {vkHackModal.step === 2 && (
-                <div className="space-y-4">
-                  <div className="bg-[#0077FF]/10 border border-[#0077FF]/20 rounded-xl p-4 text-sm text-[#0077FF] font-semibold flex items-center justify-between">
-                    <span>Шаг 2. Выберите сообщества для постинга</span>
-                    <span className="bg-[#0077FF] text-white px-2 py-0.5 rounded-md text-xs">{vkGroupsList.length} найдено</span>
-                  </div>
-
-                  {vkGroupsList.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500 bg-gray-900/30 rounded-xl border border-gray-800">
-                      Новых сообществ не найдено или все уже добавлены.
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
-                      {vkGroupsList.map(group => (
-                        <label key={group.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${vkSelectedGroups.includes(group.id) ? 'bg-[#0077FF]/10 border-[#0077FF]/40' : 'bg-gray-900/30 border-gray-800 hover:bg-gray-800/50'}`}>
-                          <input 
-                            type="checkbox" 
-                            checked={vkSelectedGroups.includes(group.id)}
-                            onChange={() => toggleVkGroupSelection(group.id)}
-                            className="w-5 h-5 rounded border-gray-600 text-[#0077FF] focus:ring-[#0077FF] bg-gray-800 cursor-pointer"
-                          />
-                          <img src={group.photo_50} alt="" className="w-10 h-10 rounded-full border border-gray-700" />
-                          <span className="text-sm font-semibold text-white truncate flex-1">{group.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex gap-3 pt-2">
-                    <button 
-                      onClick={() => setVkHackModal(prev => ({...prev, step: 1}))}
-                      className="w-1/3 bg-gray-800 hover:bg-gray-700 text-white py-3.5 rounded-xl font-bold transition-all text-sm"
-                    >
-                      Назад
-                    </button>
-                    <button 
-                      onClick={saveHackGroups}
-                      disabled={vkSelectedGroups.length === 0 || isSyncingVk}
-                      className="w-2/3 bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-[#0077FF]/20 text-sm"
-                    >
-                      {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
-                      Добавить выбранные ({vkSelectedGroups.length})
-                    </button>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
-        </div>
-      )}
+      
     </div>
   );
 }
