@@ -7,7 +7,12 @@ const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 
 exports.syncVkKomod = async (req, res) => {
   try {
-    const userId = req.user.id;
+    // ИСПРАВЛЕНИЕ: Надежно достаем ID пользователя, как в остальных методах
+    const userId = String(req.user?.userId || req.user?.id);
+
+    if (!userId || userId === 'undefined') {
+      return res.status(401).json({ error: 'Не удалось определить пользователя из токена' });
+    }
 
     // Запрашиваем только аккаунты, группы нам пока не нужны
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { 
