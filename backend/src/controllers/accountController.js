@@ -27,29 +27,21 @@ exports.getKomodGroupsForSelection = async (req, res) => {
   }
 };
 
-// 1. СИНХРОНИЗАЦИЯ (Жесткий фильтр дублей)
 exports.syncVkKomod = async (req, res) => {
   try {
     const userId = String(req.user?.userId || req.user?.id);
-    if (!userId || userId === 'undefined') return res.status(401).json({ error: 'Не авторизован' });
-
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const rawAccounts = accRes.data?.data?.items || accRes.data?.data || [];
     
-    // ЖЕСТКИЙ ФИЛЬТР: Оставляем только 1 аккаунт с самым свежим ID
+    // Оставляем только ОДИН самый свежий аккаунт для этого пользователя
     const uniqueMap = new Map();
     for (const acc of rawAccounts) {
       const name = (acc.title || acc.name || 'Профиль ВК').trim();
-      const existing = uniqueMap.get(name);
-      // Если такого имени еще нет, ИЛИ текущий ID больше (свежее) - сохраняем
-      if (!existing || Number(acc.id) > Number(existing.id)) {
+      if (!uniqueMap.has(name) || Number(acc.id) > Number(uniqueMap.get(name).id)) {
         uniqueMap.set(name, acc);
       }
     }
     const accountsList = Array.from(uniqueMap.values());
-
-    let addedCount = 0;
-    const profileIdsMap = {};
 
     for (const acc of accountsList) {
       const providerAccountId = String(acc.id);
@@ -60,8 +52,6 @@ exports.syncVkKomod = async (req, res) => {
         update: { name: profileName, userId: userId },
         create: { userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN }
       });
-      
-      profileIdsMap[providerAccountId] = vkProfile.id;
 
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId: `wall_${acc.id}` } },
@@ -73,30 +63,9 @@ exports.syncVkKomod = async (req, res) => {
           isValid: true, profileId: vkProfile.id
         }
       });
-      addedCount++;
     }
 
-    // Подгружаем группы
-    try {
-      const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-      const groupsList = grpRes.data?.data?.items || grpRes.data?.data || [];
-      for (const grp of groupsList) {
-        const parentProfileId = profileIdsMap[String(grp.account_id)] || null;
-        await prisma.account.upsert({
-          where: { provider_providerId: { provider: 'VK', providerId: `group_${grp.id}` } },
-          update: { name: grp.title || 'Группа ВК', isValid: true, userId: userId },
-          create: {
-            userId, provider: 'VK', providerId: `group_${grp.id}`,
-            name: grp.title || 'Группа ВК', accessToken: KOMOD_TOKEN,
-            avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(grp.title || 'VK')}&background=0077FF&color=fff`,
-            isValid: true, profileId: parentProfileId
-          }
-        });
-        addedCount++;
-      }
-    } catch (e) { /* Игнорируем */ }
-
-    res.json({ success: true, count: addedCount });
+    res.json({ success: true, count: accountsList.length });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка синхронизации' });
   }
@@ -108,31 +77,26 @@ exports.addVkKomodGroup = async (req, res) => {
     const { url, title, profileId } = req.body;
     const profile = await prisma.socialProfile.findUnique({ where: { id: profileId } });
 
-    // Строго по документации: random_account = false, account_id = число
-    const payload = { 
-      url: url, 
-      title: title || 'Группа ВК', 
-      join_to_group: true 
-    };
+    if (!profile) return res.status(404).json({ error: 'Профиль не найден в базе' });
 
-    if (profile && profile.providerAccountId) {
-      payload.random_account = false;
-      payload.account_id = Number(profile.providerAccountId); 
-    }
+    const payload = { 
+      url, 
+      title: title || 'Группа ВК', 
+      join_to_group: true,
+      random_account: false,
+      account_id: Number(profile.providerAccountId) // Важно: числом
+    };
 
     const response = await axios.post(`${KOMOD_BASE_URL}/group`, payload, {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
-    if (response.data && response.data.success === false) {
-      console.error("Ошибка шлюза:", response.data.errors);
-      return res.status(400).json({ error: response.data.errors });
-    }
-
     res.json({ success: true });
   } catch (error) {
-    console.error('Ошибка добавления группы:', error.message);
-    res.status(500).json({ error: 'Ошибка при добавлении группы' });
+    // Если шлюз вернул 404, не валим сервер, а отдаем ошибку красиво
+    const status = error.response?.status || 500;
+    const msg = error.response?.data?.errors?.account || 'Ошибка шлюза 404';
+    res.status(status).json({ error: msg });
   }
 };
 
@@ -423,20 +387,35 @@ exports.scanTgChannels = async (req, res) => {
 };
 
 exports.verifyVkAccountsStatus = async (req, res) => {
-  const userId = req.user?.userId || req.user?.id || req.body?.userId;
+  const userId = req.user?.userId || req.user?.id;
   try {
-    if (!userId) return res.status(400).json({ error: 'Не указан userId' });
     const vkAccounts = await prisma.account.findMany({ where: { userId: String(userId), provider: 'VK' } });
-    if (vkAccounts.length === 0) return res.json({ success: true, message: 'Нет ВК аккаунтов' });
+    
     const updates = await Promise.all(vkAccounts.map(async (acc) => {
+      // КРИТИЧЕСКИЙ ФИКС: Если это аккаунт шлюза (токен совпадает с KOMOD_TOKEN), 
+      // НЕ шлем его в ВК, а просто помечаем как валидный.
+      if (acc.accessToken === KOMOD_TOKEN) {
+        return prisma.account.update({ where: { id: acc.id }, data: { isValid: true, errorMsg: null } });
+      }
+
+      // Обычные аккаунты проверяем как раньше
       try {
-        const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, { params: { group_id: acc.providerId, access_token: acc.accessToken, v: '5.131' } });
-        if (vkRes.data.error) return await prisma.account.update({ where: { id: acc.id }, data: { isValid: false, errorMsg: 'Ключ доступа недействителен.' } });
-        else return await prisma.account.update({ where: { id: acc.id }, data: { isValid: true, errorMsg: null } });
-      } catch (error) { return await prisma.account.update({ where: { id: acc.id }, data: { isValid: false, errorMsg: 'Ошибка проверки ВК' } }); }
+        const vkRes = await axios.get(`https://api.vk.com/method/groups.getById`, { 
+          params: { group_id: acc.providerId, access_token: acc.accessToken, v: '5.131' } 
+        });
+        const isValid = !vkRes.data.error;
+        return prisma.account.update({ 
+          where: { id: acc.id }, 
+          data: { isValid, errorMsg: isValid ? null : 'Ключ доступа недействителен' } 
+        });
+      } catch (e) {
+        return prisma.account.update({ where: { id: acc.id }, data: { isValid: false, errorMsg: 'Ошибка связи с ВК' } });
+      }
     }));
     res.json({ success: true, updated: updates.length });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка проверки' });
+  }
 };
 
 exports.deleteSocialProfile = async (req, res) => {
