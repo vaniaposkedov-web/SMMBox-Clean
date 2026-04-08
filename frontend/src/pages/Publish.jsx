@@ -223,8 +223,16 @@ export default function Publish() {
   };
 
   const getEffectiveSetting = (accountId, settingType) => {
-    if (accountOverrides[accountId] && accountOverrides[accountId].mode === 'custom') {
-      return accountOverrides[accountId][settingType];
+    const acc = accounts.find(a => a.id === accountId);
+    // Проверяем, есть ли у аккаунта индивидуальные настройки в БД
+    const hasCustomConfig = acc?.watermark !== null || acc?.signature !== null;
+    const mode = accountOverrides[accountId]?.mode || (hasCustomConfig ? 'custom' : 'template');
+    
+    if (mode === 'custom') {
+      if (accountOverrides[accountId] && accountOverrides[accountId][settingType] !== undefined) {
+         return accountOverrides[accountId][settingType];
+      }
+      return true; // Если включен режим "Свои", по умолчанию применяем их
     }
     return settingType === 'watermark' ? applyWatermark : applySignature;
   };
@@ -381,21 +389,32 @@ export default function Publish() {
         
         const accountsData = selectedAccounts.map(id => {
           const acc = accounts.find(a => a.id === id);
+          const hasCustomConfig = acc?.watermark !== null || acc?.signature !== null;
+          const mode = accountOverrides[id]?.mode || (hasCustomConfig ? 'custom' : 'template');
+          
           let wmConfig = null;
           let sigText = '';
           
-          if (accountOverrides[id]?.mode === 'custom') {
-              wmConfig = acc?.watermark || globalSettings?.watermark || watermarkSettings;
-              sigText = acc?.signature || globalSettings?.signature || '';
+          if (mode === 'custom') {
+              wmConfig = acc?.watermark !== null ? acc.watermark : (globalSettings?.watermark || watermarkSettings);
+              sigText = acc?.signature !== null ? acc.signature : (globalSettings?.signature || '');
           } else {
               wmConfig = globalSettings?.watermark || watermarkSettings;
               sigText = globalSettings?.signature || '';
           }
 
+          const activeWM = accountOverrides[id]?.watermark !== undefined 
+              ? accountOverrides[id].watermark 
+              : (mode === 'custom' ? true : applyWatermark);
+              
+          const activeSig = accountOverrides[id]?.signature !== undefined 
+              ? accountOverrides[id].signature 
+              : (mode === 'custom' ? true : applySignature);
+
           return {
             accountId: id,
-            applyWatermark: getEffectiveSetting(id, 'watermark'),
-            applySignature: getEffectiveSetting(id, 'signature'),
+            applyWatermark: activeWM,
+            applySignature: activeSig,
             watermarkConfig: wmConfig,
             signatureText: sigText
           };
@@ -837,11 +856,10 @@ export default function Publish() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                         {providerAccounts.map(acc => {
                           const isSelected = selectedAccounts.includes(acc.id);
+                          const hasCustomConfig = acc.watermark !== null || acc.signature !== null;
+                          const overrideMode = accountOverrides[acc.id]?.mode || (hasCustomConfig ? 'custom' : 'template');
                           const isWatermarkActive = getEffectiveSetting(acc.id, 'watermark');
                           const isSignatureActive = getEffectiveSetting(acc.id, 'signature');
-                          const overrideMode = accountOverrides[acc.id]?.mode || 'template';
-                          const avatarSrc = acc.avatarUrl || acc.photo_url || acc.avatar;
-                          const iconColor = provider === 'vk' ? 'text-blue-500' : 'text-sky-400';
                           
                           return (
                             <div key={acc.id} className={`flex flex-col rounded-2xl border transition-all overflow-hidden group ${isSelected ? (publishMode === 'schedule' ? 'bg-gray-800 border-purple-500/50 shadow-md shadow-purple-500/10' : 'bg-gray-800 border-blue-500/50 shadow-md shadow-blue-500/10') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'}`}>
