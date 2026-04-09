@@ -59,9 +59,8 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         let targetGroup = groups.find(g => String(g.account_id) === String(accId) && (String(g.url).includes('vk.com/id') || String(g.uid) === String(g.user_id)));
         
         if (!targetGroup) {
-            // === ЗАЩИТА: Пока разработчик Kom-od не выкатит обнову для стен, просто пропускаем ===
-            console.log(`[KOMOD] Постинг на личную стену временно не поддерживается шлюзом. Ожидаем обновления API.`);
-            throw new Error('API шлюза пока не поддерживает публикацию на личную стену.');
+            console.log(`[KOMOD] Целевой профиль-стена не найден в списке групп шлюза.`);
+            throw new Error('Стена не найдена в Kom-od. Добавьте ссылку на вашу личную страницу через кнопку "Добавить сообщества".');
         } else {
             targetGroupId = targetGroup.id;
         }
