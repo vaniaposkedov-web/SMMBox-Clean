@@ -33,8 +33,16 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 // 1. УМНАЯ СИНХРОНИЗАЦИЯ (С абсолютной генеральной уборкой базы)
 exports.syncVkKomod = async (req, res) => {
   try {
-    const userId = String(req.user?.userId || req.user?.id);
+    let userIdStr = req.user?.userId || req.user?.id || req.userId;
+    if (typeof req.user === 'string') userIdStr = req.user;
+    const userId = String(userIdStr);
+    
     if (!userId || userId === 'undefined') return res.status(401).json({ error: 'Не авторизован' });
+
+    // === ЗАЩИТА ОТ ПРИЗРАКОВ ===
+    // Проверяем, существует ли реально юзер в базе
+    const userExists = await prisma.user.findUnique({ where: { id: userId } });
+    if (!userExists) return res.status(401).json({ error: 'Пользователь не найден. Пожалуйста, выйдите из аккаунта на сайте и войдите заново.' });
 
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const rawAccounts = accRes.data?.data?.items || accRes.data?.data || [];
@@ -95,9 +103,7 @@ exports.syncVkKomod = async (req, res) => {
 
       const uniqueGrpMap = new Map();
       for (const grp of rawGroups) {
-        // Жесткая проверка: достаем чистый uid
         let realVkId = String(grp.uid && grp.uid !== '0' && grp.uid !== 'undefined' ? grp.uid : (String(grp.url).match(/(?:club|public|event)(\d+)/)?.[1] || grp.id));
-        
         const existing = uniqueGrpMap.get(realVkId);
         if (!existing || Number(grp.id) > Number(existing.id)) {
           uniqueGrpMap.set(realVkId, grp);
@@ -109,7 +115,6 @@ exports.syncVkKomod = async (req, res) => {
     }
 
     // --- 3. АБСОЛЮТНАЯ ОЧИСТКА БАЗЫ ОТ ДУБЛЕЙ ---
-    // Находим ВСЕ карточки ВК, привязанные через шлюз (KOMOD_TOKEN)
     const allKomodAccounts = await prisma.account.findMany({
       where: { userId, provider: 'VK', accessToken: KOMOD_TOKEN }
     });
@@ -121,7 +126,6 @@ exports.syncVkKomod = async (req, res) => {
     });
     const allValidIds = [...validWallIds, ...validGroupIds];
 
-    // Удаляем любые артефакты, которых нет в актуальном списке
     for (const acc of allKomodAccounts) {
       if (!allValidIds.includes(acc.providerId)) {
         await prisma.account.delete({ where: { id: acc.id } });
