@@ -31,6 +31,9 @@ router.post('/vk/komod-sync', authMiddleware, accountController.syncVkKomod);
 router.post('/vk/komod-confirm', authMiddleware, accountController.confirmVkKomod);
 router.post('/vk/komod-add', authMiddleware, accountController.addVkKomodGroup);
 router.get('/vk/komod-groups', authMiddleware, accountController.getKomodGroupsForSelection);
+router.post('/vk/komod-add', authMiddleware, accountController.addVkKomodGroup);
+// Добавь эту строчку:
+router.post('/vk/komod-add-profile', authMiddleware, accountController.addVkKomodProfile);
 
 
 module.exports = router;
