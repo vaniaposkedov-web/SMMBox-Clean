@@ -98,6 +98,33 @@ export default function AccountsManager() {
     setIsGroupsLoading(false);
   };
 
+
+  const handleAddMyWall = async (profileId) => {
+    try {
+      // Имитируем загрузку (если у тебя есть стейт для этого, например setIsSyncingVk)
+      const res = await fetch('/api/accounts/vk/komod-add-profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`
+        },
+        body: JSON.stringify({ profileId })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        alert('Личная стена успешно добавлена!');
+        // Тут можно вызвать обновление списка подключенных групп
+        fetchAccounts();
+      } else {
+        alert('Ошибка: ' + data.error);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Внутренняя ошибка');
+    }
+  };
+
   const handleSaveKomodGroups = async () => {
     if (komodSelected.length === 0) return;
     setIsSyncingVk(true);
@@ -877,38 +904,36 @@ export default function AccountsManager() {
                     </div>
                   ))}
                   
-                  {/* === НОВАЯ МАГИЧЕСКАЯ КНОПКА TELEGRAM === */}
                   <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
                     <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                     
-                    {/* Кнопка с проверкой лимита */}
-                    {isLimitReached ? (
-                      <button 
-                        onClick={() => alert('Лимит аккаунтов исчерпан! Оформите PRO тариф для снятия ограничений.')}
-                        className="flex-1 w-full bg-[#0088CC]/5 text-[#0088CC]/50 border border-[#0088CC]/10 px-6 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold cursor-not-allowed text-center"
-                      >
-                        <Plus size={18} />
-                        <span>Добавить бота в канал</span>
-                      </button>
-                    ) : (
-                      <a 
-                        href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 w-full bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-6 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-center"
-                      >
-                        <Plus size={18} />
-                        <span>Добавить бота в канал</span>
-                      </a>
-                    )}
-
+                    {/* КНОПКА ВЫБОРА ГРУПП */}
                     <button 
-                      onClick={handleRefreshTg}
-                      disabled={isRefreshingTg}
-                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-5 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95"
+                      onClick={() => handleOpenGroupsSelector(profile.id)}
+                      className="flex-1 w-full sm:w-auto bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
                     >
-                      <RefreshCw size={18} className={isRefreshingTg ? "animate-spin" : ""} />
-                      <span className="sm:hidden">{isRefreshingTg ? 'Обновление...' : 'Обновить'}</span>
+                      {isGroupsLoading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
+                      <span className="truncate">Добавить сообщества</span>
+                    </button>
+
+                    {/* === НОВАЯ КНОПКА: ПОДКЛЮЧИТЬ ЛИЧНУЮ СТЕНУ === */}
+                    <button 
+                      onClick={() => handleAddMyWall(profile.id)}
+                      disabled={isSyncingVk}
+                      className="flex-1 w-full sm:w-auto bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
+                    >
+                      <UserCircle size={18} />
+                      <span className="truncate">Подключить стену</span>
+                    </button>
+
+                    {/* КНОПКА СИНХРОНИЗАЦИИ */}
+                    <button 
+                      onClick={handleVkSync}
+                      disabled={isSyncingVk}
+                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
+                    >
+                      <RefreshCw size={18} className={isSyncingVk ? "animate-spin" : ""} />
+                      <span className="sm:hidden">{isSyncingVk ? 'Обновление...' : 'Синхронизировать'}</span>
                     </button>
                   </div>
                 </div>

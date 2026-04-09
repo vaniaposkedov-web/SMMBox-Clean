@@ -743,6 +743,33 @@ exports.saveVkGroupTokens = async (req, res) => {
   }
 };
 
+
+// === ДОБАВЛЕНИЕ ЛИЧНОЙ СТЕНЫ (ПРОФИЛЯ) В KOM-OD ===
+exports.addVkKomodProfile = async (req, res) => {
+    try {
+        const { profileId } = req.body;
+        // Находим профиль в нашей БД, чтобы получить его ID в системе Kom-od (providerAccountId)
+        const profile = await prisma.socialProfile.findUnique({ where: { id: profileId } });
+        
+        if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
+
+        // Формируем параметры точно по документации разработчика
+        const params = new URLSearchParams();
+        params.append('account_id', profile.providerAccountId);
+        params.append('is_profile', '1'); // 1 воспринимается PHP как true
+
+        // Отправляем запрос на создание "группы-профиля"
+        const response = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
+            headers: { 'Access-Token': KOMOD_TOKEN }
+        });
+
+        res.json({ success: true, data: response.data });
+    } catch (error) {
+        console.error('[KOMOD] Ошибка добавления личной стены:', error?.response?.data || error.message);
+        res.status(500).json({ error: 'Не удалось добавить личную стену' });
+    }
+};
+
 exports.telegramWebhook = async (req, res) => {
   try {
     const update = req.body;
