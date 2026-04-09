@@ -56,11 +56,16 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         targetGroupId = targetGroup.id;
     } else if (providerId.startsWith('wall_')) {
         const accId = providerId.replace('wall_', '');
-        let targetGroup = groups.find(g => String(g.account_id) === String(accId) && (String(g.url).includes('vk.com/id') || String(g.uid) === String(g.user_id)));
+        
+        // Умный поиск: ищем стену по новому флагу is_profile от шлюза, либо по старым признакам
+        let targetGroup = groups.find(g => 
+            String(g.account_id) === String(accId) && 
+            (String(g.is_profile) === '1' || g.is_profile === true || g.type === 'profile' || String(g.url).includes('vk.com/id') || String(g.uid) === String(g.user_id))
+        );
         
         if (!targetGroup) {
-            console.log(`[KOMOD] Целевой профиль-стена не найден в списке групп шлюза.`);
-            throw new Error('Стена не найдена в Kom-od. Добавьте ссылку на вашу личную страницу через кнопку "Добавить сообщества".');
+            console.log(`[KOMOD ERROR] Стена для account_id ${accId} не активирована в шлюзе.`);
+            throw new Error('Стена еще не активирована! Зайдите в "Мои социальные сети" и обязательно нажмите фиолетовую кнопку "Подключить стену".');
         } else {
             targetGroupId = targetGroup.id;
         }
