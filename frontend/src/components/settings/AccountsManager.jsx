@@ -209,7 +209,6 @@ export default function AccountsManager() {
     }
   }, [user]);
 
-// Реф для предотвращения двойной обработки одного и того же хэша
   const processingHash = useRef(null);
 
   useEffect(() => {
@@ -222,8 +221,8 @@ export default function AccountsManager() {
     if (hashToProcess && processingHash.current !== hashToProcess) {
       processingHash.current = hashToProcess; 
 
-      // === ФИКС РЕДИРЕКТА НА ШАБЛОНЫ ===
-      // Сообщаем React Router, что нужно очистить URL от мусора, оставаясь на текущей странице
+      // === ПРАВИЛЬНАЯ ОЧИСТКА ССЫЛКИ ДЛЯ REACT ROUTER ===
+      // Если мы вернулись с параметром от шлюза, говорим роутеру: "Останься на этой странице, но убери мусор из ссылки"
       if (urlHash) {
         navigate(window.location.pathname, { replace: true });
       }
@@ -236,7 +235,7 @@ export default function AccountsManager() {
         const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
         
         if (!confirmResult.success) {
-           alert('Ошибка шлюза: ' + (confirmResult.error || 'Account not found. Ждем ответ от техподдержки Kom-od.'));
+           alert('Ошибка шлюза: ' + (confirmResult.error || 'Аккаунт не найден.'));
            setIsSyncingVk(false);
            return; 
         }
@@ -247,7 +246,7 @@ export default function AccountsManager() {
         
         if (syncResult.success) {
           alert('Профиль ВКонтакте успешно подключен!');
-          // ПЛАВНЫЙ СКРОЛЛ К БЛОКУ ВК
+          // Плавный скролл к блоку ВК
           setTimeout(() => {
             document.getElementById('vk-management-block')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }, 300);
@@ -258,21 +257,18 @@ export default function AccountsManager() {
       
       finalizeAuth();
     }
-  }, [handleRefreshProfiles, navigate]); // добавили navigate в зависимости
+  }, [handleRefreshProfiles, navigate]);
 
-  // Функция для генерации ссылки и отправки пользователя
-  // Функция для генерации ссылки и отправки пользователя
+ 
   const handleConnectVkOAuth = () => {
     const hash = 'vk_' + user.id + '_' + Date.now();
     localStorage.setItem('vk_pending_hash', hash);
     
-    // ИСПРАВЛЕНИЕ: Берем только чистый путь (origin + pathname), отсекая любые лишние параметры,
-    // чтобы роутер сайта не путался и не выкидывал на страницу "Шаблоны".
+    // БЕРЕМ ИДЕАЛЬНО ЧИСТЫЙ URL без всяких параметров и мусора
     const cleanUrl = window.location.origin + window.location.pathname;
     const redirectUrl = encodeURIComponent(cleanUrl);
     
-    const authUrl = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_url=${redirectUrl}`;
-    window.location.href = authUrl; 
+    window.location.href = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_url=${redirectUrl}`; 
   };
 
   // Вспомогательная функция для JSONP
