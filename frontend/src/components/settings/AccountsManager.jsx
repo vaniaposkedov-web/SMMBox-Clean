@@ -228,23 +228,24 @@ export default function AccountsManager() {
       const finalizeAuth = async () => {
         setIsSyncingVk(true);
         
-        // 1. Подтверждаем хэш и ЖДЕМ ОТВЕТ
         const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
         
         if (!confirmResult.success) {
-           // Если шлюз отклонил хэш, говорим правду и ОСТАНАВЛИВАЕМСЯ
            alert('Ошибка шлюза: ' + (confirmResult.error || 'Account not found. Ждем ответ от техподдержки Kom-od.'));
            setIsSyncingVk(false);
            return; 
         }
 
-        // 2. Если шлюз принял хэш, скачиваем Стену ВК
         const syncResult = await useStore.getState().syncVkKomod();
         await handleRefreshProfiles();
         setIsSyncingVk(false);
         
-        if (syncResult.success && syncResult.count > 0) {
-          alert('Профиль ВКонтакте и личная страница успешно подключены!');
+        if (syncResult.success) {
+          alert('Профиль ВКонтакте успешно подключен!');
+          // ПЛАВНЫЙ СКРОЛЛ К БЛОКУ ВК
+          setTimeout(() => {
+            document.getElementById('vk-management-block')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 300);
         } else {
           alert('Шлюз подтвердил хэш, но список аккаунтов пуст.');
         }
@@ -257,10 +258,10 @@ export default function AccountsManager() {
   // Функция для генерации ссылки и отправки пользователя
   const handleConnectVkOAuth = () => {
     const hash = 'vk_' + user.id + '_' + Date.now();
-    // СОХРАНЯЕМ ХЭШ В ПАМЯТЬ, чтобы он пережил любые редиректы
     localStorage.setItem('vk_pending_hash', hash);
     
-    const redirectUrl = encodeURIComponent(`${window.location.origin}/settings`);
+    // БЕРЕМ ТЕКУЩИЙ URL, чтобы вернуть юзера ровно туда, откуда он ушел
+    const redirectUrl = encodeURIComponent(window.location.href);
     const authUrl = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_url=${redirectUrl}`;
     window.location.href = authUrl; 
   };
