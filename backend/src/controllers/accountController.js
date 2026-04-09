@@ -181,7 +181,7 @@ exports.addVkKomodGroup = async (req, res) => {
     const params = new URLSearchParams();
     params.append('url', url);
     params.append('title', title || 'Группа ВК');
-    params.append('join_to_group', '1');
+    params.append('join_to_group', '0');
     if (profile.providerAccountId) {
       params.append('random_account', '0');
       params.append('account_id', String(profile.providerAccountId));
