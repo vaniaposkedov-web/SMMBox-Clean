@@ -256,12 +256,16 @@ export default function AccountsManager() {
   }, [handleRefreshProfiles]);
 
   // Функция для генерации ссылки и отправки пользователя
+  // Функция для генерации ссылки и отправки пользователя
   const handleConnectVkOAuth = () => {
     const hash = 'vk_' + user.id + '_' + Date.now();
     localStorage.setItem('vk_pending_hash', hash);
     
-    // БЕРЕМ ТЕКУЩИЙ URL, чтобы вернуть юзера ровно туда, откуда он ушел
-    const redirectUrl = encodeURIComponent(window.location.href);
+    // ИСПРАВЛЕНИЕ: Берем только чистый путь (origin + pathname), отсекая любые лишние параметры,
+    // чтобы роутер сайта не путался и не выкидывал на страницу "Шаблоны".
+    const cleanUrl = window.location.origin + window.location.pathname;
+    const redirectUrl = encodeURIComponent(cleanUrl);
+    
     const authUrl = `https://kom-od.ru/connect/vk?hash=${hash}&redirect_url=${redirectUrl}`;
     window.location.href = authUrl; 
   };
@@ -1020,25 +1024,17 @@ export default function AccountsManager() {
                       <span className="truncate">Добавить сообщества</span>
                     </button>
 
-                    {/* === НОВАЯ КНОПКА: ПОДКЛЮЧИТЬ ЛИЧНУЮ СТЕНУ === */}
+                    {/* КНОПКА: ПОДКЛЮЧИТЬ ЛИЧНУЮ СТЕНУ */}
                     <button 
                       onClick={() => handleAddMyWall(profile.id)}
                       disabled={isSyncingVk}
                       className="flex-1 w-full sm:w-auto bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
                     >
-                      <UserCircle size={18} />
-                      <span className="truncate">Подключить стену</span>
+                      {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <UserCircle size={18} />}
+                      <span className="truncate">{isSyncingVk ? 'Подключение...' : 'Подключить стену'}</span>
                     </button>
-
-                    {/* КНОПКА СИНХРОНИЗАЦИИ */}
-                    <button 
-                      onClick={handleVkSync}
-                      disabled={isSyncingVk}
-                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
-                    >
-                      <RefreshCw size={18} className={isSyncingVk ? "animate-spin" : ""} />
-                      <span className="sm:hidden">{isSyncingVk ? 'Обновление...' : 'Синхронизировать'}</span>
-                    </button>
+                    
+                    {/* Кнопка "Синхронизировать" удалена, так как синхронизация теперь автоматическая */}
                   </div>
                 </div>
               </div>
