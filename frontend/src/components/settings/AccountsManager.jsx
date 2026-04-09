@@ -221,13 +221,18 @@ export default function AccountsManager() {
     if (hashToProcess && processingHash.current !== hashToProcess) {
       processingHash.current = hashToProcess; 
 
-      // === ПРАВИЛЬНАЯ ОЧИСТКА ССЫЛКИ ДЛЯ REACT ROUTER ===
-      // Если мы вернулись с параметром от шлюза, говорим роутеру: "Останься на этой странице, но убери мусор из ссылки"
+      // Очищаем ссылку от мусора
       if (urlHash) {
         navigate(window.location.pathname, { replace: true });
       }
       
       if (pendingHash) localStorage.removeItem('vk_pending_hash');
+
+      // === ИСПРАВЛЕНИЕ: СКРОЛЛИМ ВНИЗ МОМЕНТАЛЬНО ===
+      // Не заставляем пользователя смотреть на "Шаблоны", пока идут запросы к серверу
+      setTimeout(() => {
+        document.getElementById('vk-management-block')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
 
       const finalizeAuth = async () => {
         setIsSyncingVk(true);
@@ -245,11 +250,10 @@ export default function AccountsManager() {
         setIsSyncingVk(false);
         
         if (syncResult.success) {
-          alert('Профиль ВКонтакте успешно подключен!');
-          // Плавный скролл к блоку ВК
+          // Задержка алерта, чтобы страница точно успела проскроллиться вниз и показать кнопку ВК
           setTimeout(() => {
-            document.getElementById('vk-management-block')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }, 300);
+            alert('Профиль ВКонтакте успешно подключен!');
+          }, 150);
         } else {
           alert('Шлюз подтвердил хэш, но список аккаунтов пуст.');
         }
