@@ -69,16 +69,27 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     if (!targetGroupId) throw new Error('Не удалось определить ID цели для публикации шлюза.');
 
-    // === ФОРМАТИРОВАНИЕ ДАТЫ (КРИТИЧНО ДЛЯ API) ===
-    const targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
-    const yyyy = targetDate.getFullYear();
-    const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(targetDate.getDate()).padStart(2, '0');
-    const hh = String(targetDate.getHours()).padStart(2, '0');
-    const min = String(targetDate.getMinutes()).padStart(2, '0');
+    let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
+
+    if (!publishAtDate) {
+        // Для мгновенных постов накидываем 1-2 минуты к текущему времени, 
+        // чтобы планировщик шлюза гарантированно успел его подхватить "прямо сейчас"
+        targetDate.setMinutes(targetDate.getMinutes() + 1);
+    }
+
+    // === БРОНЕБОЙНОЕ РЕШЕНИЕ ДЛЯ ЧАСОВЫХ ПОЯСОВ ===
+    // Здесь мы указываем тот пояс, который ты сохранил в настройках ЛК Kom-od.
+    // Если в Kom-od стоит Москва -> 'Europe/Moscow'
+    // Если оставил ЕКБ -> 'Asia/Yekaterinburg'
+    const komodTimezone = 'Europe/Moscow'; 
+
+    // Используем встроенный трюк JS: локаль 'sv-SE' (Швеция) 
+    // автоматически отдает дату в идеальном формате "YYYY-MM-DD HH:mm:ss", 
+    // при этом мы принудительно заставляем ее считать время по поясу шлюза.
+    const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
     
-    // Формат: 2015-10-17 15:16
-    const formattedDate = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    // Отрезаем секунды, чтобы получить строго то, что требует API: "YYYY-MM-DD HH:mm"
+    const formattedDate = tzString.substring(0, 16);
 
     form.append('group_id', targetGroupId);
     form.append('publish_at', formattedDate); // <--- ВОТ ОНО!
