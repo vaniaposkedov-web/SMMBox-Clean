@@ -530,7 +530,8 @@ exports.initCron = () => {
                     } else if (providerType === 'vk') {
                         const isKomod = account.providerId.startsWith('wall_') || account.providerId.startsWith('group_');
                         if (isKomod) {
-                            await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers);
+                            // === ПЕРЕДАЕМ ЗАПЛАНИРОВАННУЮ ДАТУ ===
+                            await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, post.publishAt);
                         } else {
                             await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
                         }
