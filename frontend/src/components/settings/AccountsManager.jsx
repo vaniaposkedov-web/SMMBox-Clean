@@ -106,7 +106,7 @@ export default function AccountsManager() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.token}`
+          'Authorization': `Bearer ${token}` // Исправили user.token на token
         },
         body: JSON.stringify({ profileId })
       });
