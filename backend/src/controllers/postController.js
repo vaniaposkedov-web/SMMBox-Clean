@@ -95,10 +95,14 @@ async function sendToKomodVK(token, providerId, text, imageBuffers) {
     if (!targetGroupId) throw new Error('Не удалось определить ID цели для публикации шлюза.');
 
     form.append('group_id', targetGroupId);
+    form.append('via_api', '1'); // <--- ДОБАВИТЬ ЭТО: Принудительная отправка через API ВКонтакте
     
     // ВАЖНО: Никаких direct=1! Этот параметр уводит посты в Одноклассники.
     // Оставляем шлюзу возможность самому обработать пост для ВКонтакте.
-    
+    if (!text && (!imageBuffers || imageBuffers.length === 0)) {
+        throw new Error('Невозможно опубликовать пустой пост');
+    }
+
     const media = [];
     if (text) {
         media.push({ type: 'text', text: text });
@@ -496,7 +500,15 @@ exports.createPost = async (req, res) => {
                         }
                     } catch (err) {
                         console.error(`[BACKGROUND ERROR] ${job.account.name}:`, err.message);
-                    }
+                    
+                        await prisma.post.updateMany({
+                                where: { 
+                                    accountId: job.account.id, 
+                                    status: 'PUBLISHED' // Ищем именно тот пост, который только что пометили успешным
+                                },
+                                data: { status: 'FAILED' }
+                            });
+                }
                 }
             }, 100);
         }
