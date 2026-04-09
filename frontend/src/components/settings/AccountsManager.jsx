@@ -101,7 +101,7 @@ export default function AccountsManager() {
 
   const handleAddMyWall = async (profileId) => {
     try {
-      // Имитируем загрузку (если у тебя есть стейт для этого, например setIsSyncingVk)
+      setIsSyncingVk(true);
       const res = await fetch('/api/accounts/vk/komod-add-profile', {
         method: 'POST',
         headers: {
@@ -113,15 +113,18 @@ export default function AccountsManager() {
       
       const data = await res.json();
       if (data.success) {
+        // Вызываем авто-синхронизацию, чтобы стена сразу подтянулась на экран!
+        await useStore.getState().syncVkKomod();
         alert('Личная стена успешно добавлена!');
-        // Тут можно вызвать обновление списка подключенных групп
-        fetchAccounts();
+        await handleRefreshProfiles();
       } else {
         alert('Ошибка: ' + data.error);
       }
     } catch (err) {
       console.error(err);
       alert('Внутренняя ошибка');
+    } finally {
+      setIsSyncingVk(false);
     }
   };
 
