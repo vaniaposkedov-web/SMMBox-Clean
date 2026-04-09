@@ -907,38 +907,7 @@ export default function AccountsManager() {
                     </div>
                   ))}
                   
-                  <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
-                    <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                    
-                    {/* КНОПКА ВЫБОРА ГРУПП */}
-                    <button 
-                      onClick={() => handleOpenGroupsSelector(profile.id)}
-                      className="flex-1 w-full sm:w-auto bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
-                    >
-                      {isGroupsLoading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                      <span className="truncate">Добавить сообщества</span>
-                    </button>
-
-                    {/* === НОВАЯ КНОПКА: ПОДКЛЮЧИТЬ ЛИЧНУЮ СТЕНУ === */}
-                    <button 
-                      onClick={() => handleAddMyWall(profile.id)}
-                      disabled={isSyncingVk}
-                      className="flex-1 w-full sm:w-auto bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
-                    >
-                      <UserCircle size={18} />
-                      <span className="truncate">Подключить стену</span>
-                    </button>
-
-                    {/* КНОПКА СИНХРОНИЗАЦИИ */}
-                    <button 
-                      onClick={handleVkSync}
-                      disabled={isSyncingVk}
-                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
-                    >
-                      <RefreshCw size={18} className={isSyncingVk ? "animate-spin" : ""} />
-                      <span className="sm:hidden">{isSyncingVk ? 'Обновление...' : 'Синхронизировать'}</span>
-                    </button>
-                  </div>
+                  
                 </div>
               </div>
             </div>
@@ -1041,22 +1010,33 @@ export default function AccountsManager() {
                   <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
                     <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
                     
-                    {/* НОВАЯ КНОПКА ВЫБОРА ГРУПП */}
+                    {/* КНОПКА ВЫБОРА ГРУПП */}
                     <button 
                       onClick={() => handleOpenGroupsSelector(profile.id)}
-                      className="flex-1 w-full sm:w-auto bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-5 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95"
+                      className="flex-1 w-full sm:w-auto bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
                     >
                       {isGroupsLoading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                      <span>Добавить сообщества</span>
+                      <span className="truncate">Добавить сообщества</span>
                     </button>
 
+                    {/* === НОВАЯ КНОПКА: ПОДКЛЮЧИТЬ ЛИЧНУЮ СТЕНУ === */}
+                    <button 
+                      onClick={() => handleAddMyWall(profile.id)}
+                      disabled={isSyncingVk}
+                      className="flex-1 w-full sm:w-auto bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
+                    >
+                      <UserCircle size={18} />
+                      <span className="truncate">Подключить стену</span>
+                    </button>
+
+                    {/* КНОПКА СИНХРОНИЗАЦИИ */}
                     <button 
                       onClick={handleVkSync}
                       disabled={isSyncingVk}
-                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-5 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95"
+                      className="shrink-0 w-full sm:w-auto bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
                     >
                       <RefreshCw size={18} className={isSyncingVk ? "animate-spin" : ""} />
-                      <span className="sm:hidden">{isSyncingVk ? 'Синхронизация...' : 'Синхронизировать'}</span>
+                      <span className="sm:hidden">{isSyncingVk ? 'Обновление...' : 'Синхронизировать'}</span>
                     </button>
                   </div>
                 </div>
