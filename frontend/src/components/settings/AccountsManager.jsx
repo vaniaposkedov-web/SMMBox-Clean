@@ -851,8 +851,9 @@ export default function AccountsManager() {
 
       </div>
 
-      {/* ================= УПРАВЛЕНИЕ КАНАЛАМИ TELEGRAM ================= */}
-      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 mt-6 sm:mt-8 shadow-xl">
+      
+      {/* ================= УПРАВЛЕНИЕ ВКОНТАКТЕ ================= */}
+      <div id="vk-management-block" className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 mt-6 sm:mt-8 shadow-xl">
         <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
           <div className="w-10 h-10 rounded-full bg-[#0088CC]/10 flex items-center justify-center text-[#0088CC]">
             <Send size={20} />
