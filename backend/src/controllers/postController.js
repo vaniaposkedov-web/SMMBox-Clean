@@ -37,8 +37,8 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
     }
 }
 
-// === НОВАЯ ЛОГИКА: ОТПРАВКА В ВКОНТАКТЕ ЧЕРЕЗ ШЛЮЗ KOM-OD ===
-async function sendToKomodVK(token, providerId, text, imageBuffers) {
+// === ДОБАВЛЕН ПАРАМЕТР publishAtDate ===
+async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null) {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
 
@@ -56,37 +56,12 @@ async function sendToKomodVK(token, providerId, text, imageBuffers) {
         targetGroupId = targetGroup.id;
     } else if (providerId.startsWith('wall_')) {
         const accId = providerId.replace('wall_', '');
-        
-        // Проверяем, зарегистрирована ли стена как цель для постинга в шлюзе
         let targetGroup = groups.find(g => String(g.account_id) === String(accId) && (String(g.url).includes('vk.com/id') || String(g.uid) === String(g.user_id)));
         
         if (!targetGroup) {
-            // ДИНАМИЧЕСКАЯ РЕГИСТРАЦИЯ СТЕНЫ: получаем инфу об аккаунте и добавляем стену как цель
-            const accInfoRes = await axios.get(`${KOMOD_BASE_URL}/account/${accId}`, { headers: { 'Access-Token': token } });
-            const accData = accInfoRes.data?.data;
-            
-            if (!accData) throw new Error('Аккаунт стены не найден в шлюзе');
-            
-            const realUid = accData.uid || accData.id; 
-            const wallUrl = accData.url || `https://vk.com/id${realUid}`;
-            
-            const params = new URLSearchParams();
-            params.append('url', wallUrl);
-            params.append('title', accData.title || accData.name || 'Стена (Личная страница)');
-            params.append('join_to_group', '0');
-            params.append('random_account', '0');
-            params.append('account_id', String(accId));
-
-            const addRes = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
-                headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
-                validateStatus: s => s < 500
-            });
-
-            if (addRes.data?.success && addRes.data?.data) {
-                targetGroupId = addRes.data.data.group?.id || addRes.data.data.id;
-            } else {
-                throw new Error('Шлюз отклонил привязку личной страницы: ' + JSON.stringify(addRes.data?.errors));
-            }
+            // === ЗАЩИТА: Пока разработчик Kom-od не выкатит обнову для стен, просто пропускаем ===
+            console.log(`[KOMOD] Постинг на личную стену временно не поддерживается шлюзом. Ожидаем обновления API.`);
+            throw new Error('API шлюза пока не поддерживает публикацию на личную стену.');
         } else {
             targetGroupId = targetGroup.id;
         }
@@ -94,14 +69,22 @@ async function sendToKomodVK(token, providerId, text, imageBuffers) {
 
     if (!targetGroupId) throw new Error('Не удалось определить ID цели для публикации шлюза.');
 
-    form.append('group_id', targetGroupId);
-    form.append('via_api', '1'); // <--- ДОБАВИТЬ ЭТО: Принудительная отправка через API ВКонтакте
+    // === ФОРМАТИРОВАНИЕ ДАТЫ (КРИТИЧНО ДЛЯ API) ===
+    const targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
+    const yyyy = targetDate.getFullYear();
+    const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(targetDate.getDate()).padStart(2, '0');
+    const hh = String(targetDate.getHours()).padStart(2, '0');
+    const min = String(targetDate.getMinutes()).padStart(2, '0');
     
-    // ВАЖНО: Никаких direct=1! Этот параметр уводит посты в Одноклассники.
-    // Оставляем шлюзу возможность самому обработать пост для ВКонтакте.
-    if (!text && (!imageBuffers || imageBuffers.length === 0)) {
-        throw new Error('Невозможно опубликовать пустой пост');
-    }
+    // Формат: 2015-10-17 15:16
+    const formattedDate = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+
+    form.append('group_id', targetGroupId);
+    form.append('publish_at', formattedDate); // <--- ВОТ ОНО!
+    form.append('via_api', '1'); // <--- Принудительно через API
+    
+    // ... остальной код сборки media оставляем без изменений ...
 
     const media = [];
     if (text) {
@@ -483,6 +466,7 @@ exports.createPost = async (req, res) => {
             res.status(200).json({ success: true, message: 'Отправка запущена' });
 
             // А сами тяжелые файлы отправляем в ВК/ТГ в фоновом режиме
+            // А сами тяжелые файлы отправляем в ВК/ТГ в фоновом режиме
             setTimeout(async () => {
                 for (const job of accountJobs) {
                     try {
@@ -493,22 +477,21 @@ exports.createPost = async (req, res) => {
                         } else if (providerType === 'vk') {
                             const isKomod = job.account.providerId.startsWith('wall_') || job.account.providerId.startsWith('group_');
                             if (isKomod) {
-                                await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
+                                // === ПЕРЕДАЕМ ТЕКУЩУЮ ДАТУ ===
+                                await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, new Date());
                             } else {
                                 await sendToVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
                             }
                         }
                     } catch (err) {
                         console.error(`[BACKGROUND ERROR] ${job.account.name}:`, err.message);
-                    
+                        
+                        // Меняем статус на ошибку, чтобы юзер не ждал вечно
                         await prisma.post.updateMany({
-                                where: { 
-                                    accountId: job.account.id, 
-                                    status: 'PUBLISHED' // Ищем именно тот пост, который только что пометили успешным
-                                },
-                                data: { status: 'FAILED' }
-                            });
-                }
+                            where: { accountId: job.account.id, status: 'PUBLISHED' },
+                            data: { status: 'FAILED' }
+                        });
+                    }
                 }
             }, 100);
         }
