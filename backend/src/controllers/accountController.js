@@ -30,7 +30,7 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 
 
 
-// 1. УМНАЯ СИНХРОНИЗАЦИЯ (Без автоматических стен и с аватарками)
+// 1. УМНАЯ СИНХРОНИЗАЦИЯ (Без автоматических стен и с вытягиванием аватарок)
 exports.syncVkKomod = async (req, res) => {
   try {
     let userIdStr = req.user?.userId || req.user?.id || req.userId;
@@ -66,7 +66,7 @@ exports.syncVkKomod = async (req, res) => {
     let addedCount = 0;
     const profileIdsMap = {};
 
-    // --- 1. СОХРАНЯЕМ ТОЛЬКО ПРОФИЛИ (Стены тут больше не создаются автоматически!) ---
+    // --- 1. СОХРАНЯЕМ ТОЛЬКО ПРОФИЛИ ---
     for (const acc of validAccounts) {
       const providerAccountId = String(acc.id);
       const profileName = acc.title || acc.name || 'Профиль ВК';
@@ -98,7 +98,7 @@ exports.syncVkKomod = async (req, res) => {
       console.error('Ошибка получения групп из Kom-od');
     }
 
-    // --- 3. СОЗДАЕМ КАРТОЧКИ ГРУПП И СТЕН (только если они есть в шлюзе) ---
+    // --- 3. СОЗДАЕМ КАРТОЧКИ ГРУПП И ОБНОВЛЯЕМ АВАТАРКИ ПРОФИЛЕЙ ---
     const validGroupIds = [];
 
     for (const grp of validGroups) {
@@ -107,10 +107,19 @@ exports.syncVkKomod = async (req, res) => {
 
       let isProfile = String(grp.is_profile) === '1' || grp.is_profile === true || grp.type === 'profile' || String(grp.url).includes('vk.com/id') || String(grp.uid) === String(grp.user_id);
 
-      let providerId;
       let name = grp.title || grp.name || 'ВК';
-      let avatar = grp.photo_50 || grp.avatar || grp.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
+      let avatar = grp.photo_50 || grp.photo_100 || grp.avatar || grp.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
 
+      // === ФИКС АВАТАРОК МАСТЕР-ПРОФИЛЯ ===
+      // Если это личная стена и у нее есть фото из ВК, копируем это фото в главный профиль!
+      if (isProfile && avatar && !avatar.includes('ui-avatars.com')) {
+        await prisma.socialProfile.update({
+          where: { id: parentProfileId },
+          data: { avatarUrl: avatar }
+        });
+      }
+
+      let providerId;
       if (isProfile) {
         providerId = `wall_${grp.account_id}`;
         name = `Стена: ${name}`;

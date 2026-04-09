@@ -222,7 +222,12 @@ export default function AccountsManager() {
     if (hashToProcess && processingHash.current !== hashToProcess) {
       processingHash.current = hashToProcess; 
 
-      if (urlHash) window.history.replaceState({}, document.title, window.location.pathname);
+      // === ФИКС РЕДИРЕКТА НА ШАБЛОНЫ ===
+      // Сообщаем React Router, что нужно очистить URL от мусора, оставаясь на текущей странице
+      if (urlHash) {
+        navigate(window.location.pathname, { replace: true });
+      }
+      
       if (pendingHash) localStorage.removeItem('vk_pending_hash');
 
       const finalizeAuth = async () => {
@@ -253,7 +258,7 @@ export default function AccountsManager() {
       
       finalizeAuth();
     }
-  }, [handleRefreshProfiles]);
+  }, [handleRefreshProfiles, navigate]); // добавили navigate в зависимости
 
   // Функция для генерации ссылки и отправки пользователя
   // Функция для генерации ссылки и отправки пользователя
@@ -1033,8 +1038,6 @@ export default function AccountsManager() {
                       {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <UserCircle size={18} />}
                       <span className="truncate">{isSyncingVk ? 'Подключение...' : 'Подключить стену'}</span>
                     </button>
-                    
-                    {/* Кнопка "Синхронизировать" удалена, так как синхронизация теперь автоматическая */}
                   </div>
                 </div>
               </div>
