@@ -30,7 +30,7 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 
 
 
-// 1. УМНАЯ СИНХРОНИЗАЦИЯ (С абсолютной генеральной уборкой базы)
+// 1. УМНАЯ СИНХРОНИЗАЦИЯ (Без автоматических стен и с аватарками)
 exports.syncVkKomod = async (req, res) => {
   try {
     let userIdStr = req.user?.userId || req.user?.id || req.userId;
@@ -39,15 +39,12 @@ exports.syncVkKomod = async (req, res) => {
     
     if (!userId || userId === 'undefined') return res.status(401).json({ error: 'Не авторизован' });
 
-    // === ЗАЩИТА ОТ ПРИЗРАКОВ ===
-    // Проверяем, существует ли реально юзер в базе
     const userExists = await prisma.user.findUnique({ where: { id: userId } });
-    if (!userExists) return res.status(401).json({ error: 'Пользователь не найден. Пожалуйста, выйдите из аккаунта на сайте и войдите заново.' });
+    if (!userExists) return res.status(401).json({ error: 'Пользователь не найден.' });
 
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const rawAccounts = accRes.data?.data?.items || accRes.data?.data || [];
     
-    // --- 1. ФИЛЬТР ПРОФИЛЕЙ (Оставляем самый свежий) ---
     const uniqueAccMap = new Map();
     for (const acc of rawAccounts) {
       const name = (acc.title || acc.name || 'Профиль ВК').trim();
@@ -59,7 +56,6 @@ exports.syncVkKomod = async (req, res) => {
     const validAccounts = Array.from(uniqueAccMap.values());
     const validAccProviderIds = validAccounts.map(a => String(a.id));
 
-    // Удаляем устаревшие профили
     const existingProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
     for (const p of existingProfiles) {
       if (!validAccProviderIds.includes(p.providerAccountId)) {
@@ -70,7 +66,7 @@ exports.syncVkKomod = async (req, res) => {
     let addedCount = 0;
     const profileIdsMap = {};
 
-    // Сохраняем актуальные стены
+    // --- 1. СОХРАНЯЕМ ТОЛЬКО ПРОФИЛИ (Стены тут больше не создаются автоматически!) ---
     for (const acc of validAccounts) {
       const providerAccountId = String(acc.id);
       const profileName = acc.title || acc.name || 'Профиль ВК';
@@ -81,21 +77,9 @@ exports.syncVkKomod = async (req, res) => {
         create: { userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN }
       });
       profileIdsMap[providerAccountId] = vkProfile.id;
-
-      await prisma.account.upsert({
-        where: { provider_providerId: { provider: 'VK', providerId: `wall_${acc.id}` } },
-        update: { name: `Стена: ${profileName}`, isValid: true, userId, errorMsg: null },
-        create: {
-          userId, provider: 'VK', providerId: `wall_${acc.id}`,
-          name: `Стена: ${profileName}`, accessToken: KOMOD_TOKEN,
-          avatarUrl: `https://ui-avatars.com/api/?name=VK&background=0077FF&color=fff`,
-          isValid: true, profileId: vkProfile.id
-        }
-      });
-      addedCount++;
     }
 
-    // --- 2. ФИЛЬТР ГРУПП ---
+    // --- 2. ПОЛУЧАЕМ ВСЕ ГРУППЫ И АКТИВНЫЕ СТЕНЫ ИЗ KOM-OD ---
     let validGroups = [];
     try {
       const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
@@ -114,43 +98,51 @@ exports.syncVkKomod = async (req, res) => {
       console.error('Ошибка получения групп из Kom-od');
     }
 
-    // --- 3. АБСОЛЮТНАЯ ОЧИСТКА БАЗЫ ОТ ДУБЛЕЙ ---
-    const allKomodAccounts = await prisma.account.findMany({
-      where: { userId, provider: 'VK', accessToken: KOMOD_TOKEN }
-    });
+    // --- 3. СОЗДАЕМ КАРТОЧКИ ГРУПП И СТЕН (только если они есть в шлюзе) ---
+    const validGroupIds = [];
 
-    const validWallIds = validAccounts.map(a => `wall_${a.id}`);
-    const validGroupIds = validGroups.map(g => {
-      let realVkId = String(g.uid && g.uid !== '0' && g.uid !== 'undefined' ? g.uid : (String(g.url).match(/(?:club|public|event)(\d+)/)?.[1] || g.id));
-      return `group_${realVkId}`;
-    });
-    const allValidIds = [...validWallIds, ...validGroupIds];
-
-    for (const acc of allKomodAccounts) {
-      if (!allValidIds.includes(acc.providerId)) {
-        await prisma.account.delete({ where: { id: acc.id } });
-      }
-    }
-
-    // --- 4. ДОБАВЛЕНИЕ ПРАВИЛЬНЫХ ГРУПП ---
     for (const grp of validGroups) {
       const parentProfileId = profileIdsMap[String(grp.account_id)];
       if (!parentProfileId) continue;
 
-      let realVkId = String(grp.uid && grp.uid !== '0' && grp.uid !== 'undefined' ? grp.uid : (String(grp.url).match(/(?:club|public|event)(\d+)/)?.[1] || grp.id));
-      const providerId = `group_${realVkId}`;
+      let isProfile = String(grp.is_profile) === '1' || grp.is_profile === true || grp.type === 'profile' || String(grp.url).includes('vk.com/id') || String(grp.uid) === String(grp.user_id);
+
+      let providerId;
+      let name = grp.title || grp.name || 'ВК';
+      let avatar = grp.photo_50 || grp.avatar || grp.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
+
+      if (isProfile) {
+        providerId = `wall_${grp.account_id}`;
+        name = `Стена: ${name}`;
+      } else {
+        let realVkId = String(grp.uid && grp.uid !== '0' && grp.uid !== 'undefined' ? grp.uid : (String(grp.url).match(/(?:club|public|event)(\d+)/)?.[1] || grp.id));
+        providerId = `group_${realVkId}`;
+      }
+
+      validGroupIds.push(providerId);
 
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId } },
-        update: { name: grp.title || 'Группа ВК', isValid: true, userId, profileId: parentProfileId },
+        update: { name: name, isValid: true, userId, profileId: parentProfileId, avatarUrl: avatar },
         create: {
           userId, provider: 'VK', providerId,
-          name: grp.title || 'Группа ВК', accessToken: KOMOD_TOKEN,
-          avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(grp.title || 'VK')}&background=0077FF&color=fff`,
+          name: name, accessToken: KOMOD_TOKEN,
+          avatarUrl: avatar,
           isValid: true, profileId: parentProfileId
         }
       });
       addedCount++;
+    }
+
+    // --- 4. ОЧИСТКА БАЗЫ ---
+    const allKomodAccounts = await prisma.account.findMany({
+      where: { userId, provider: 'VK', accessToken: KOMOD_TOKEN }
+    });
+
+    for (const acc of allKomodAccounts) {
+      if (!validGroupIds.includes(acc.providerId)) {
+        await prisma.account.delete({ where: { id: acc.id } });
+      }
     }
 
     res.json({ success: true, count: addedCount });
