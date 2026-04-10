@@ -752,9 +752,19 @@ export default function AccountsManager() {
               )}
 
               <div className="pt-4 border-t border-gray-800/50 flex justify-end">
-                <button onClick={() => removeAccount(acc.id)} className="w-full sm:w-auto flex items-center justify-center gap-1.5 text-xs font-medium text-rose-500 hover:text-rose-400 transition-colors py-3 sm:py-2 px-3 bg-rose-500/5 hover:bg-rose-500/10 rounded-lg min-h-[44px] sm:min-h-0">
-                  <Trash2 size={16} /> Отключить
-                </button>
+                {/* БЕЗОПАСНОСТЬ: Стену (isProfile) отключать нельзя, только сообщества */}
+                {!acc.providerId.startsWith('wall_') ? (
+                  <button 
+                    onClick={() => removeAccount(acc.id)} 
+                    className="w-full sm:w-auto flex items-center justify-center gap-1.5 text-xs font-medium text-rose-500 hover:text-rose-400 transition-colors py-3 sm:py-2 px-3 bg-rose-500/5 hover:bg-rose-500/10 rounded-lg min-h-[44px] sm:min-h-0"
+                  >
+                    <Trash2 size={16} /> Отключить
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 text-[10px] text-gray-500 italic px-2">
+                    <Info size={12} /> Личный профиль нельзя отключить отдельно
+                  </div>
+                )}
               </div>
 
             </div>
@@ -1030,15 +1040,7 @@ export default function AccountsManager() {
                       <span className="truncate">Добавить сообщества</span>
                     </button>
 
-                    {/* КНОПКА: ПОДКЛЮЧИТЬ ЛИЧНУЮ СТЕНУ */}
-                    <button 
-                      onClick={() => handleAddMyWall(profile.id)}
-                      disabled={isSyncingVk}
-                      className="flex-1 w-full sm:w-auto bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
-                    >
-                      {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <UserCircle size={18} />}
-                      <span className="truncate">{isSyncingVk ? 'Подключение...' : 'Подключить стену'}</span>
-                    </button>
+                    
                   </div>
                 </div>
               </div>
