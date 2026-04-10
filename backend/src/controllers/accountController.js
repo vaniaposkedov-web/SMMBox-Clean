@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6d359a019';
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 
-// 1. Получение списка групп, где юзер — админ (через новый метод шлюза)
+// 1. Получение списка групп, где юзер — админ (через API Kom-od)
 exports.getKomodGroupsForSelection = async (req, res) => {
   try {
     const { profileId } = req.query;
@@ -13,13 +13,14 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 
     if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
 
-    // Дергаем тот самый новый метод Алексея
+    // Дергаем метод сервиса (без лишних запросов в ВК)
     const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
-    // Шлюз отдает массив групп в data или items
+    // Шлюз отдает массив групп, в котором уже есть photo_50 / photo_100
     const groups = response.data?.data || [];
+    
     res.json({ success: true, groups });
   } catch (error) {
     console.error('Ошибка получения групп из Komod:', error.message);
@@ -30,7 +31,7 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 
 
 
-// 1. УМНАЯ СИНХРОНИЗАЦИЯ (Без автоматических стен и с вытягиванием аватарок)
+// 2. УМНАЯ СИНХРОНИЗАЦИЯ (через API Kom-od)
 exports.syncVkKomod = async (req, res) => {
   try {
     let userIdStr = req.user?.userId || req.user?.id || req.userId;
@@ -42,6 +43,7 @@ exports.syncVkKomod = async (req, res) => {
     const userExists = await prisma.user.findUnique({ where: { id: userId } });
     if (!userExists) return res.status(401).json({ error: 'Пользователь не найден.' });
 
+    // --- 1. ПОЛУЧАЕМ АККАУНТЫ (ПРОФИЛИ) ИЗ KOM-OD ---
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const rawAccounts = accRes.data?.data?.items || accRes.data?.data || [];
     
@@ -56,6 +58,7 @@ exports.syncVkKomod = async (req, res) => {
     const validAccounts = Array.from(uniqueAccMap.values());
     const validAccProviderIds = validAccounts.map(a => String(a.id));
 
+    // Очистка старых профилей
     const existingProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
     for (const p of existingProfiles) {
       if (!validAccProviderIds.includes(p.providerAccountId)) {
@@ -66,15 +69,17 @@ exports.syncVkKomod = async (req, res) => {
     let addedCount = 0;
     const profileIdsMap = {};
 
-    // --- 1. СОХРАНЯЕМ ТОЛЬКО ПРОФИЛИ ---
+    // СОХРАНЯЕМ ТОЛЬКО ПРОФИЛИ (Вытягиваем аватарку профиля из ответа сервиса)
     for (const acc of validAccounts) {
       const providerAccountId = String(acc.id);
       const profileName = acc.title || acc.name || 'Профиль ВК';
+      // Ищем фото профиля в данных, которые вернул Kom-od
+      const profileAvatar = acc.photo_100 || acc.photo_50 || acc.avatar || acc.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileName)}&background=0077FF&color=fff`;
 
       const vkProfile = await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
-        update: { name: profileName, userId },
-        create: { userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN }
+        update: { name: profileName, userId, avatarUrl: profileAvatar },
+        create: { userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN, avatarUrl: profileAvatar }
       });
       profileIdsMap[providerAccountId] = vkProfile.id;
     }
@@ -108,10 +113,11 @@ exports.syncVkKomod = async (req, res) => {
       let isProfile = String(grp.is_profile) === '1' || grp.is_profile === true || grp.type === 'profile' || String(grp.url).includes('vk.com/id') || String(grp.uid) === String(grp.user_id);
 
       let name = grp.title || grp.name || 'ВК';
-      let avatar = grp.photo_50 || grp.photo_100 || grp.avatar || grp.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
+      
+      // Вытаскиваем аватарку стены или группы напрямую из API сервиса Kom-od
+      let avatar = grp.photo_100 || grp.photo_50 || grp.avatar || grp.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
 
-      // === ФИКС АВАТАРОК МАСТЕР-ПРОФИЛЯ ===
-      // Если это личная стена и у нее есть фото из ВК, копируем это фото в главный профиль!
+      // Если это личная стена, дублируем её красивое фото в родительский профиль
       if (isProfile && avatar && !avatar.includes('ui-avatars.com')) {
         await prisma.socialProfile.update({
           where: { id: parentProfileId },
