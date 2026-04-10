@@ -52,14 +52,16 @@ export default function PartnersManager() {
   };
 
   return (
-    <div className="w-full animate-fade-in font-sans">
+    <div className="w-full max-w-[98%] 2xl:max-w-[1800px] mx-auto px-4 md:px-8 pt-6 lg:pt-10 pb-[calc(100px+env(safe-area-inset-bottom))] md:pb-12 animate-fade-in font-sans">
       
+      {/* ГЛАВНЫЙ ЗАГОЛОВОК СТРАНИЦЫ */}
       <div className="mb-6 sm:mb-8">
-        <h2 className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2 flex items-center gap-2 sm:gap-3">
-          <Users className="text-blue-500" size={24} /> <span>Партнерская сеть</span>
-        </h2>
-        <p className="text-xs sm:text-sm text-gray-400">
-          Объединяйтесь с другими павильонами и обменивайтесь контентом в один клик.
+        <h1 className="text-2xl sm:text-3xl font-extrabold mb-2 flex items-center gap-2 sm:gap-3 text-white">
+          <Users className="text-[#0077FF]" size={28} /> 
+          <span>Партнеры</span>
+        </h1>
+        <p className="text-gray-400 text-sm sm:text-base">
+          Находите партнеров для совместного кросс-постинга и делитесь контентом.
         </p>
       </div>
 
@@ -67,20 +69,20 @@ export default function PartnersManager() {
       <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-6 sm:mb-8 pb-2 sm:pb-0 -mx-4 px-4 sm:mx-0 sm:px-0">
         <button 
           onClick={() => setActiveTab('partners')} 
-          className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-all min-h-[44px] shrink-0 ${activeTab === 'partners' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800'}`}
+          className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-all min-h-[44px] shrink-0 ${activeTab === 'partners' ? 'bg-[#0077FF] text-white shadow-lg shadow-[#0077FF]/20' : 'bg-admin-card border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800'}`}
         >
           Мои партнеры 
           {myPartners.length > 0 && <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'partners' ? 'bg-white/20' : 'bg-gray-800'}`}>{myPartners.length}</span>}
         </button>
         <button 
           onClick={() => setActiveTab('search')} 
-          className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-all min-h-[44px] shrink-0 ${activeTab === 'search' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800'}`}
+          className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-all min-h-[44px] shrink-0 ${activeTab === 'search' ? 'bg-[#0077FF] text-white shadow-lg shadow-[#0077FF]/20' : 'bg-admin-card border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800'}`}
         >
           Поиск новых
         </button>
         <button 
           onClick={() => setActiveTab('outgoing')} 
-          className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-all min-h-[44px] shrink-0 ${activeTab === 'outgoing' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800'}`}
+          className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold whitespace-nowrap transition-all min-h-[44px] shrink-0 ${activeTab === 'outgoing' ? 'bg-[#0077FF] text-white shadow-lg shadow-[#0077FF]/20' : 'bg-admin-card border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800'}`}
         >
           Исходящие заявки
           {outgoingRequests.length > 0 && <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'outgoing' ? 'bg-white/20' : 'bg-gray-800'}`}>{outgoingRequests.length}</span>}
@@ -96,7 +98,7 @@ export default function PartnersManager() {
               <div className="text-center text-gray-500 py-10 sm:py-12 bg-gray-900/50 rounded-2xl border border-gray-800 border-dashed">
                 <Users size={40} className="mx-auto mb-3 sm:mb-4 opacity-20" />
                 <p className="text-sm sm:text-base px-4">У вас пока нет добавленных партнеров.</p>
-                <button onClick={() => setActiveTab('search')} className="mt-4 text-blue-500 font-bold hover:underline text-sm min-h-[44px] px-4">
+                <button onClick={() => setActiveTab('search')} className="mt-4 text-[#0077FF] font-bold hover:underline text-sm min-h-[44px] px-4">
                   Найти партнеров
                 </button>
               </div>
@@ -109,7 +111,7 @@ export default function PartnersManager() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <h3 className="font-bold text-white text-base sm:text-lg truncate pr-2">{partner.name || 'Без имени'}</h3>
-                      <p className="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1 truncate">Павильон: <span className="text-blue-400 font-bold bg-blue-500/10 px-2 py-0.5 rounded ml-1">{partner.pavilion || '?'}</span></p>
+                      <p className="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1 truncate">Павильон: <span className="text-[#0077FF] font-bold bg-[#0077FF]/10 px-2 py-0.5 rounded ml-1">{partner.pavilion || '?'}</span></p>
                     </div>
                   </div>
                   
@@ -137,9 +139,9 @@ export default function PartnersManager() {
                 value={searchQuery} 
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Введите ID, имя или павильон..." 
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 sm:py-4 pl-10 sm:pl-12 pr-4 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder:text-gray-600 shadow-inner min-h-[48px] sm:min-h-[52px]"
+                className="w-full bg-gray-900 border border-gray-800 rounded-xl py-3 sm:py-4 pl-10 sm:pl-12 pr-4 text-base sm:text-sm text-white focus:outline-none focus:border-[#0077FF] transition-colors placeholder:text-gray-600 shadow-inner min-h-[48px] sm:min-h-[52px]"
               />
-              {isSearching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-blue-500" size={18} />}
+              {isSearching && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-[#0077FF]" size={18} />}
             </div>
 
             <div className="space-y-3 sm:space-y-4">
@@ -162,7 +164,7 @@ export default function PartnersManager() {
                           <span className="truncate">{name || 'Без имени'}</span>
                           <span className="text-[10px] sm:text-xs font-mono text-gray-500 bg-gray-950 px-2 py-0.5 rounded border border-gray-800 shrink-0">ID: {id?.split('-')[0]}</span>
                         </h3>
-                        <p className="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1 truncate">Павильон: <span className="text-blue-400 font-bold bg-blue-500/10 px-2 py-0.5 rounded ml-1">{pavilion || '?'}</span></p>
+                        <p className="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1 truncate">Павильон: <span className="text-[#0077FF] font-bold bg-[#0077FF]/10 px-2 py-0.5 rounded ml-1">{pavilion || '?'}</span></p>
                       </div>
                     </div>
                     
@@ -170,7 +172,7 @@ export default function PartnersManager() {
                       {status === 'NONE' && (
                         <button 
                           onClick={() => handleSendRequest(id)} 
-                          className="w-full md:w-auto flex flex-1 items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-5 sm:px-6 py-3 sm:py-3.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95 min-h-[48px]"
+                          className="w-full md:w-auto flex flex-1 items-center justify-center gap-2 bg-[#0077FF] hover:bg-[#0066CC] text-white px-5 sm:px-6 py-3 sm:py-3.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-[#0077FF]/20 active:scale-95 min-h-[48px]"
                         >
                           <UserPlus size={18} /> <span className="truncate">Отправить заявку</span>
                         </button>
@@ -225,7 +227,7 @@ export default function PartnersManager() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <h3 className="font-bold text-white text-base sm:text-lg truncate">{req.receiver?.name || 'Без имени'}</h3>
-                      <p className="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1 truncate">Павильон: <span className="text-blue-400 font-bold bg-blue-500/10 px-2 py-0.5 rounded ml-1">{req.receiver?.pavilion || '?'}</span></p>
+                      <p className="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1 truncate">Павильон: <span className="text-[#0077FF] font-bold bg-[#0077FF]/10 px-2 py-0.5 rounded ml-1">{req.receiver?.pavilion || '?'}</span></p>
                     </div>
                   </div>
                   

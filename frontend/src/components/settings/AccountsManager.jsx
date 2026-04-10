@@ -85,6 +85,10 @@ export default function AccountsManager() {
   const [showGroupsModal, setShowGroupsModal] = useState(false);
   const [komodSelected, setKomodSelected] = useState([]);
 
+  const [vkConnectStatus, setVkConnectStatus] = useState('idle');
+  const [newlyAddedProfileId, setNewlyAddedProfileId] = useState(null);
+  const [addedGroupsCount, setAddedGroupsCount] = useState(0);
+
   const handleOpenGroupsSelector = async (profileId) => {
     setIsGroupsLoading(true);
     const data = await useStore.getState().fetchKomodGroups(profileId);
@@ -131,15 +135,15 @@ export default function AccountsManager() {
   const handleSaveKomodGroups = async () => {
     if (komodSelected.length === 0) return;
     setIsSyncingVk(true);
+    setVkConnectStatus('syncing_groups'); // ВКЛЮЧАЕМ ПРОГРЕСС-БАР ГРУПП
+    setKomodModal({ isOpen: false, profileId: null }); // Прячем окно выбора
+    
     let addedCount = 0;
     let lastError = null;
     
     for (const uniqueId of komodSelected) {
-      // Ищем выбранную группу
       const group = selectableGroups.find((g, i) => String(g.id || g.group_id || `idx-${i}`) === String(uniqueId));
-      
       if (group) {
-        // УМНАЯ ГЕНЕРАЦИЯ ССЫЛКИ (Защита от clubundefined)
         let screenName = group.screen_name;
         if (!screenName || screenName.includes('undefined')) {
           screenName = 'club' + (group.id || group.group_id);
@@ -147,29 +151,27 @@ export default function AccountsManager() {
         const groupUrl = group.url || `https://vk.com/${screenName}`;
         
         const res = await useStore.getState().addVkKomodGroup(groupUrl, group.name || group.title, komodModal.profileId);
-        if (res.success) {
-          addedCount++;
-        } else {
-          lastError = res.error;
-        }
+        if (res.success) addedCount++;
+        else lastError = res.error;
       }
     }
     
-    // Синхронизируем базу только 1 раз в конце
     if (addedCount > 0 || !lastError) {
       await useStore.getState().syncVkKomod();
     }
     
+    await handleRefreshProfiles();
     setIsSyncingVk(false);
     
     if (addedCount > 0) {
-      alert(`Успешно подключено сообществ: ${addedCount}`);
+      setAddedGroupsCount(addedCount);
+      setVkConnectStatus('groups_success'); // ПОКАЗЫВАЕМ ФИНАЛЬНЫЙ УСПЕХ
     } else if (lastError) {
       alert(`Ошибка: ${JSON.stringify(lastError)}`);
+      setVkConnectStatus('idle');
+    } else {
+      setVkConnectStatus('idle');
     }
-    
-    setKomodModal({ isOpen: false, profileId: null });
-    await handleRefreshProfiles();
   };
 
   const handleRefreshProfiles = async () => {
@@ -221,48 +223,46 @@ export default function AccountsManager() {
     if (hashToProcess && processingHash.current !== hashToProcess) {
       processingHash.current = hashToProcess; 
 
-      // Очищаем ссылку от мусора
-      if (urlHash) {
-        navigate(window.location.pathname, { replace: true });
-      }
-      
+      if (urlHash) navigate(window.location.pathname, { replace: true });
       if (pendingHash) localStorage.removeItem('vk_pending_hash');
 
-      // === ИСПРАВЛЕНИЕ: СКРОЛЛИМ ВНИЗ МОМЕНТАЛЬНО ===
-      // Не заставляем пользователя смотреть на "Шаблоны", пока идут запросы к серверу
       setTimeout(() => {
         document.getElementById('vk-management-block')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
 
       const finalizeAuth = async () => {
         setIsSyncingVk(true);
+        setVkConnectStatus('syncing_profile'); // ВКЛЮЧАЕМ ПРОГРЕСС-БАР ПРОФИЛЯ
         
         const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
         
         if (!confirmResult.success) {
            alert('Ошибка шлюза: ' + (confirmResult.error || 'Аккаунт не найден.'));
            setIsSyncingVk(false);
+           setVkConnectStatus('idle');
            return; 
         }
 
         const syncResult = await useStore.getState().syncVkKomod();
-        await handleRefreshProfiles();
+        await handleRefreshProfiles(); // Ждем обновления профилей
         setIsSyncingVk(false);
         
         if (syncResult.success) {
-          // Задержка алерта, чтобы страница точно успела проскроллиться вниз и показать кнопку ВК
-          setTimeout(() => {
-            alert('Профиль ВКонтакте успешно подключен!');
-          }, 150);
+          // Ищем ID свежего профиля ВК, чтобы передать его кнопке "Добавить сообщества"
+          const updatedProfiles = useStore.getState().profiles;
+          const vkProf = updatedProfiles.find(p => p.provider === 'VK');
+          setNewlyAddedProfileId(vkProf?.id);
+          
+          setVkConnectStatus('profile_success'); // ПОКАЗЫВАЕМ ОКНО УСПЕХА
         } else {
           alert('Шлюз подтвердил хэш, но список аккаунтов пуст.');
+          setVkConnectStatus('idle');
         }
       };
       
       finalizeAuth();
     }
   }, [handleRefreshProfiles, navigate]);
-
  
   const handleConnectVkOAuth = () => {
     const hash = 'vk_' + user.id + '_' + Date.now();
@@ -1282,6 +1282,100 @@ export default function AccountsManager() {
           </div>
         </div>
       )}
+
+      {/* CSS Анимация для прогресс-бара */}
+      <style>{`
+        @keyframes custom-progress {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
+        .animate-custom-progress {
+          animation: custom-progress 1.5s infinite linear;
+        }
+      `}</style>
+
+      {/* 1. ЭКРАН ЗАГРУЗКИ (ПРОГРЕСС-БАР) */}
+      {(vkConnectStatus === 'syncing_profile' || vkConnectStatus === 'syncing_groups') && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-black/80 backdrop-blur-md"></div>
+           <div className="relative bg-[#111318] border border-gray-700/50 rounded-3xl p-8 shadow-2xl flex flex-col items-center w-full max-w-sm animate-in zoom-in-95 duration-300">
+              <div className="relative mb-6">
+                <div className="absolute inset-0 bg-[#0077FF] blur-xl opacity-20 rounded-full"></div>
+                <Loader2 size={56} className="text-[#0077FF] animate-spin relative z-10" />
+              </div>
+              <h3 className="text-white font-extrabold text-xl text-center mb-3">
+                {vkConnectStatus === 'syncing_profile' ? 'Подключение профиля...' : 'Добавление сообществ...'}
+              </h3>
+              <p className="text-gray-400 text-sm text-center mb-8">Пожалуйста, подождите, идет безопасная синхронизация данных с ВКонтакте.</p>
+              
+              <div className="w-full h-1.5 bg-gray-800/80 rounded-full overflow-hidden shadow-inner">
+                <div className="h-full w-1/2 bg-gradient-to-r from-blue-600 to-[#0077FF] rounded-full animate-custom-progress shadow-[0_0_10px_rgba(0,119,255,0.5)]"></div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* 2. ЭКРАН УСПЕХА: ПРОФИЛЬ */}
+      {vkConnectStatus === 'profile_success' && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setVkConnectStatus('idle')}></div>
+           <div className="relative bg-[#111318] border border-emerald-500/30 rounded-3xl p-8 shadow-2xl flex flex-col items-center w-full max-w-md animate-in zoom-in-95 duration-300">
+              <div className="relative mb-5">
+                <div className="absolute inset-0 bg-emerald-500 blur-xl opacity-20 rounded-full"></div>
+                <div className="w-20 h-20 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center relative z-10">
+                   <CheckCircle2 size={40} />
+                </div>
+              </div>
+              <h3 className="text-white font-extrabold text-2xl text-center mb-3">Профиль подключен!</h3>
+              <p className="text-gray-300 text-center mb-8 leading-relaxed">Ваша личная стена успешно добавлена. Хотите сразу выбрать и подключить свои сообщества для постинга?</p>
+
+              <div className="flex flex-col gap-3 w-full">
+                 <button
+                   onClick={() => {
+                      setVkConnectStatus('idle');
+                      if (newlyAddedProfileId) handleOpenGroupsSelector(newlyAddedProfileId);
+                   }}
+                   className="w-full py-4 bg-[#0077FF] hover:bg-[#0066CC] text-white rounded-xl font-bold shadow-lg shadow-[#0077FF]/20 transition-all active:scale-95 text-base flex justify-center items-center gap-2"
+                 >
+                   <Plus size={20}/> Выбрать сообщества
+                 </button>
+                 <button
+                   onClick={() => setVkConnectStatus('idle')}
+                   className="w-full py-3.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl font-bold transition-colors text-sm"
+                 >
+                   Сделать это позже
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* 3. ЭКРАН УСПЕХА: ГРУППЫ */}
+      {vkConnectStatus === 'groups_success' && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setVkConnectStatus('idle')}></div>
+           <div className="relative bg-[#111318] border border-emerald-500/30 rounded-3xl p-8 shadow-2xl flex flex-col items-center w-full max-w-sm animate-in zoom-in-95 duration-300">
+              <div className="relative mb-5">
+                <div className="absolute inset-0 bg-emerald-500 blur-xl opacity-20 rounded-full"></div>
+                <div className="w-20 h-20 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center relative z-10">
+                   <CheckCircle2 size={40} />
+                </div>
+              </div>
+              <h3 className="text-white font-extrabold text-2xl text-center mb-3">Всё готово!</h3>
+              <p className="text-gray-300 text-center mb-8 leading-relaxed">
+                Выбранные сообщества <span className="text-white font-bold bg-white/10 px-2 py-0.5 rounded">({addedGroupsCount} шт.)</span> успешно добавлены. Теперь вы можете отправлять в них посты.
+              </p>
+
+              <button
+                onClick={() => setVkConnectStatus('idle')}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-600/20 transition-all active:scale-95 text-base"
+              >
+                Отлично
+              </button>
+           </div>
+        </div>
+      )}
+
     </div>
   );
 }
