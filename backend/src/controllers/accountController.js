@@ -33,7 +33,7 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 
 
 
-// 1. БЕЗОПАСНАЯ И УМНАЯ СИНХРОНИЗАЦИЯ (Изоляция пользователей)
+// 1. БЕЗОПАСНАЯ И УМНАЯ СИНХРОНИЗАЦИЯ (С гарантированным авто-добавлением стены)
 exports.syncVkKomod = async (req, res) => {
   try {
     let userIdStr = req.user?.userId || req.user?.id || req.userId;
@@ -57,17 +57,14 @@ exports.syncVkKomod = async (req, res) => {
     for (const acc of rawAccounts) {
       const providerAccountId = String(acc.id);
 
-      // БЕЗОПАСНОСТЬ: Ищем, кому принадлежит этот аккаунт в нашей базе
       const existingProfile = await prisma.socialProfile.findFirst({
         where: { provider: 'VK', providerAccountId }
       });
 
-      // Если профиль уже занят ДРУГИМ пользователем — строго игнорируем! (Защита от кражи)
       if (existingProfile && existingProfile.userId !== userId) {
         continue;
       }
 
-      // Если ничей или принадлежит текущему юзеру — сохраняем
       const profileName = acc.title || acc.name || 'Профиль ВК';
       const profileAvatar = acc.photo_100 || acc.photo_50 || acc.avatar || acc.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileName)}&background=0077FF&color=fff`;
 
@@ -80,7 +77,12 @@ exports.syncVkKomod = async (req, res) => {
       currentUserProfileIds.push(vkProfile.id);
     }
 
-    // --- 3. ПОЛУЧАЕМ И ФИЛЬТРУЕМ ГРУППЫ ---
+    // Получаем список профилей ТОЛЬКО текущего юзера
+    const userProfilesMap = {};
+    const userProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
+    userProfiles.forEach(p => { userProfilesMap[String(p.providerAccountId)] = p.id; });
+
+    // --- 3. ПОЛУЧАЕМ ГРУППЫ ИЗ KOM-OD ---
     let rawGroups = [];
     try {
       const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
@@ -89,16 +91,51 @@ exports.syncVkKomod = async (req, res) => {
       console.error('Ошибка получения групп из Kom-od');
     }
 
-    // Получаем список профилей ТОЛЬКО текущего юзера
-    const userProfilesMap = {};
-    const userProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
-    userProfiles.forEach(p => { userProfilesMap[String(p.providerAccountId)] = p.id; });
+    // --- 3.5 ЖЕЛЕЗНОЕ АВТОМАТИЧЕСКОЕ ПОДКЛЮЧЕНИЕ СТЕНЫ ---
+    let addedNewWalls = false;
+    for (const providerAccountId of Object.keys(userProfilesMap)) {
+       // Ищем стену. Проверяем все возможные варианты ответа Kom-od
+       const wallExists = rawGroups.some(g => 
+          String(g.account_id) === providerAccountId && 
+          (String(g.is_profile) === '1' || g.is_profile === true || g.type === 'profile' || String(g.url).includes('vk.com/id'))
+       );
+       
+       if (!wallExists) {
+          try {
+             console.log(`[KOMOD] Пытаемся автоматически добавить стену для ID: ${providerAccountId}`);
+             
+             const params = new URLSearchParams();
+             params.append('account_id', providerAccountId);
+             params.append('is_profile', '1'); 
+             
+             // ОБЯЗАТЕЛЬНО отправляем URLENCODED заголовок
+             await axios.post(`${KOMOD_BASE_URL}/group`, params, { 
+                headers: { 
+                    'Access-Token': KOMOD_TOKEN,
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                } 
+             });
+             addedNewWalls = true;
+          } catch(e) { 
+             console.error(`[KOMOD ERROR] Ошибка добавления стены:`, e?.response?.data || e.message);
+          }
+       }
+    }
+
+    // Если сервер добавил стену, ДАЕМ ЕМУ 1 СЕКУНДУ НА ОБНОВЛЕНИЕ БАЗЫ и перезапрашиваем
+    if (addedNewWalls) {
+       console.log(`[KOMOD] Ждем 1 секунду для обновления базы шлюза...`);
+       await new Promise(resolve => setTimeout(resolve, 1000));
+       try {
+         const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+         rawGroups = grpRes.data?.data?.items || grpRes.data?.data || [];
+       } catch (e) {}
+    }
 
     // --- 4. ИЗОЛИРОВАННОЕ СОХРАНЕНИЕ ГРУПП И СТЕН ---
     for (const grp of rawGroups) {
       const komodAccountId = String(grp.account_id);
 
-      // БЕЗОПАСНОСТЬ: Если эта группа привязана к профилю Kom-od, которого НЕТ у текущего юзера — пропускаем!
       if (!userProfilesMap[komodAccountId]) {
         continue;
       }
@@ -109,7 +146,6 @@ exports.syncVkKomod = async (req, res) => {
       let name = grp.title || grp.name || 'ВК';
       let avatar = grp.photo_100 || grp.photo_50 || grp.avatar || grp.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
 
-      // Обновляем фото личной стены в главном профиле
       if (isProfile && avatar && !avatar.includes('ui-avatars.com')) {
         await prisma.socialProfile.update({ where: { id: parentProfileId }, data: { avatarUrl: avatar } });
         name = `Стена: ${name}`;
@@ -123,7 +159,6 @@ exports.syncVkKomod = async (req, res) => {
         providerId = `group_${realVkId}`;
       }
 
-      // БЕЗОПАСНОСТЬ: Проверяем, не привязана ли сама карточка группы к другому юзеру
       const existingGroup = await prisma.account.findFirst({ where: { provider: 'VK', providerId } });
       if (existingGroup && existingGroup.userId !== userId) {
         continue;
@@ -145,7 +180,6 @@ exports.syncVkKomod = async (req, res) => {
     }
 
     // --- 5. БЕЗОПАСНАЯ ОЧИСТКА ---
-    // Удаляем отвалившиеся аккаунты ТОЛЬКО у текущего пользователя
     const userAccounts = await prisma.account.findMany({ where: { userId, provider: 'VK', accessToken: KOMOD_TOKEN } });
     for (const acc of userAccounts) {
       if (!validGroupProviderIds.includes(acc.providerId)) {
