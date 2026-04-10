@@ -13,6 +13,7 @@ import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import Onboarding from './pages/Onboarding'; 
+import PartnersManager from './components/settings/PartnersManager';
 
 // --- СТРАНИЦЫ АВТОРИЗАЦИИ И ВОССТАНОВЛЕНИЯ ---
 import Auth from './pages/Auth'; 
@@ -46,6 +47,21 @@ function Sidebar() {
         <NavLink to="/profile" className={linkClass}><User size={20} /> Профиль</NavLink>
         <NavLink to="/publish" className={linkClass}><PlusSquare size={20} /> Опубликовать</NavLink>
         
+        {/* Добавь эту кнопку сразу после кнопки "Пост" или "Профиль" */}
+        <NavLink 
+          to="/partners" 
+          className={({ isActive }) => `flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isActive ? 'bg-[#0077FF] text-white font-bold shadow-lg shadow-[#0077FF]/20' : 'text-gray-400 hover:bg-[#13151A] hover:text-white'}`}
+        >
+          <div className="relative">
+            <Users size={22} />
+            {/* Бейдж для новых заявок, если нужно */}
+            {incomingRequests.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-admin-bg"></span>
+            )}
+          </div>
+          <span className="text-[15px] hidden sm:block">Партнеры</span>
+        </NavLink>
+
         {/* === ОБНОВЛЕННАЯ КНОПКА "ЗАЯВКИ" С ИНДИКАТОРОМ === */}
         <NavLink to="/requests" className={({isActive}) => `flex items-center justify-between p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
           <div className="flex items-center gap-3">
@@ -195,6 +211,7 @@ function App() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/publish" element={<Publish />} />
           <Route path="/requests" element={<Requests />} />
+          <Route path="/partners" element={<PartnersManager />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
         </Route>
