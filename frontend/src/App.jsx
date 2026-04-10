@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
-import { PlusSquare, Inbox, Settings as SettingsIcon, User, Crown, Box, LogOut, ShieldAlert } from 'lucide-react';
+// === ИСПРАВЛЕНИЕ: ДОБАВИЛИ ИМПОРТ Users ===
+import { PlusSquare, Inbox, Settings as SettingsIcon, User, Users, Crown, Box, LogOut, ShieldAlert } from 'lucide-react';
 import { useStore } from './store'; 
 
 import AdminLogin from './pages/admin/AdminLogin';
@@ -47,32 +48,26 @@ function Sidebar() {
         <NavLink to="/profile" className={linkClass}><User size={20} /> Профиль</NavLink>
         <NavLink to="/publish" className={linkClass}><PlusSquare size={20} /> Опубликовать</NavLink>
         
-        {/* Добавь эту кнопку сразу после кнопки "Пост" или "Профиль" */}
+        {/* КНОПКА ПАРТНЕРОВ */}
         <NavLink 
           to="/partners" 
-          className={({ isActive }) => `flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isActive ? 'bg-[#0077FF] text-white font-bold shadow-lg shadow-[#0077FF]/20' : 'text-gray-400 hover:bg-[#13151A] hover:text-white'}`}
+          className={({ isActive }) => `flex items-center gap-3 p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
         >
           <div className="relative">
-            <Users size={22} />
-            {/* Бейдж для новых заявок, если нужно */}
-            {incomingRequests.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-admin-bg"></span>
-            )}
+            <Users size={20} />
           </div>
-          <span className="text-[15px] hidden sm:block">Партнеры</span>
+          <span>Партнеры</span>
         </NavLink>
 
-        {/* === ОБНОВЛЕННАЯ КНОПКА "ЗАЯВКИ" С ИНДИКАТОРОМ === */}
+        {/* КНОПКА "ЗАЯВКИ" С ИНДИКАТОРОМ */}
         <NavLink to="/requests" className={({isActive}) => `flex items-center justify-between p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
           <div className="flex items-center gap-3">
             <div className="relative">
               <Inbox size={20} />
-              {/* Пульсирующая точка, если есть уведомления */}
               {badgeCount > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse border-2 border-admin-card" />}
             </div>
             <span>Заявки</span>
           </div>
-          {/* Цифра с количеством уведомлений */}
           {badgeCount > 0 && (
             <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{badgeCount}</span>
           )}
@@ -93,7 +88,6 @@ function Sidebar() {
 
 // --- НИЖНЕЕ МЕНЮ ДЛЯ ТЕЛЕФОНОВ (ОБЫЧНЫЙ ЮЗЕР) ---
 function BottomNav() {
-  // Достаем заявки и уведомления для счетчика на мобилке
   const incomingRequests = useStore((state) => state.incomingRequests) || [];
   const unreadNotifications = (useStore((state) => state.notifications) || []).filter(n => !n.isRead);
   const unreadShared = (useStore((state) => state.sharedIncoming) || []).filter(p => !p.isRead);
@@ -103,12 +97,18 @@ function BottomNav() {
     `flex flex-col items-center flex-1 p-2 rounded-xl transition-colors ${isActive ? 'text-admin-accent' : 'text-gray-500 hover:text-gray-300'}`;
 
   return (
-    // Используем жесткую привязку, padding для безопасных зон iPhone (через env) и z-[100]
-    <nav className="md:hidden fixed bottom-0 left-0 w-full bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 flex justify-between px-2 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] z-[100] transform-gpu">
+    <nav className="md:hidden fixed bottom-0 left-0 w-full bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 flex justify-between px-1 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] z-[100] transform-gpu">
       <NavLink to="/profile" className={linkClass}><User size={22} /><span className="text-[10px] mt-1 font-medium">Профиль</span></NavLink>
       <NavLink to="/publish" className={linkClass}><PlusSquare size={22} /><span className="text-[10px] mt-1 font-medium">Пост</span></NavLink>
       
-      {/* === ОБНОВЛЕННАЯ КНОПКА "ЗАЯВКИ" ДЛЯ ТЕЛЕФОНА === */}
+      {/* === ДОБАВЛЕНА КНОПКА ПАРТНЕРОВ ДЛЯ МОБИЛОК === */}
+      <NavLink to="/partners" className={linkClass}>
+        <div className="relative">
+          <Users size={22} />
+        </div>
+        <span className="text-[10px] mt-1 font-medium">Партнеры</span>
+      </NavLink>
+
       <NavLink to="/requests" className={linkClass}>
         <div className="relative">
           <Inbox size={22} />
@@ -123,20 +123,16 @@ function BottomNav() {
 }
 
 // --- КАРКАС ОБЫЧНОГО ПОЛЬЗОВАТЕЛЯ ---
-// --- КАРКАС ОБЫЧНОГО ПОЛЬЗОВАТЕЛЯ ---
 function UserLayout() {
   const user = useStore((state) => state.user);
   const fetchPartnerData = useStore((state) => state.fetchPartnerData);
   const fetchSharedPosts = useStore((state) => state.fetchSharedPosts);
 
-  // === ГЛОБАЛЬНАЯ ПОДГРУЗКА И ФОНОВЫЙ ПОЛЛИНГ (Без перезагрузки) ===
   useEffect(() => {
     if (user?.id) {
-      // Первичная загрузка
       fetchPartnerData(user.id);
       fetchSharedPosts();
 
-      // Тихий опрос сервера каждые 15 секунд
       const interval = setInterval(() => {
         fetchPartnerData(user.id);
         fetchSharedPosts();
@@ -165,7 +161,6 @@ function App() {
   const logout = useStore((state) => state.logout);
   const token = localStorage.getItem('token'); 
 
-  // === ЖЕСТКАЯ ПРОВЕРКА СЕССИИ ===
   useEffect(() => {
     if (user && !token) {
       logout();
@@ -186,11 +181,9 @@ function App() {
           <Route path="/reset-password/:token" element={<ResetPassword />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           
-          {/* СЕКРЕТНАЯ АДМИНКА */}
           <Route path="/boss-login" element={<AdminLogin />} />
           <Route path="/system-core-dashboard" element={<AdminDashboard />} />
 
-          {/* Catch-all ДОЛЖЕН БЫТЬ В САМОМ НИЗУ */}
           <Route path="*" element={<Navigate to="/auth" replace />} />
         </Routes>
       </BrowserRouter>
@@ -201,11 +194,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        
-        {/* --- ПУТЕВОДИТЕЛЬ (ДЛЯ НОВИЧКОВ) --- */}
         <Route path="/onboarding" element={<Onboarding />} />
 
-        {/* --- СТАНДАРТНЫЙ ИНТЕРФЕЙС (ТЕПЕРЬ ПУСКАЕМ ВСЕХ СРАЗУ) --- */}
         <Route element={<UserLayout />}>
           <Route path="/" element={<Navigate to="/profile" replace />} />
           <Route path="/profile" element={<Profile />} />
@@ -218,11 +208,9 @@ function App() {
 
         <Route path="/reset-password/:token" element={<ResetPassword />} />
 
-        {/* СЕКРЕТНАЯ АДМИНКА ДЛЯ АВТОРИЗОВАННЫХ */}
         <Route path="/boss-login" element={<AdminLogin />} />
         <Route path="/system-core-dashboard" element={<AdminDashboard />} />
 
-        {/* Catch-all ДОЛЖЕН БЫТЬ В САМОМ НИЗУ (Если адрес не найден - кидаем в профиль) */}
         <Route path="*" element={<Navigate to="/profile" replace />} />
       </Routes>
     </BrowserRouter>
