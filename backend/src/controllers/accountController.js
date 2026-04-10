@@ -702,8 +702,8 @@ exports.vkFetchGroupsCallback = async (req, res) => {
   }
 };
 
+// БЕЗОПАСНОЕ СОХРАНЕНИЕ ТОКЕНОВ ГРУПП (Защита от BOLA/IDOR)
 exports.saveVkGroupTokens = async (req, res) => {
-  // Надежно достаем твой ID
   const userId = req.user?.userId || req.user?.id || req.body.userId;
   const { profileId, groups } = req.body; 
 
@@ -714,7 +714,16 @@ exports.saveVkGroupTokens = async (req, res) => {
     let savedCount = 0;
 
     for (const group of groups) {
-      // Сохраняем группу НАПРЯМУЮ, без запросов к ВКонтакте!
+      // БЕЗОПАСНОСТЬ: Проверяем, не занята ли уже эта группа другим пользователем!
+      const existingAccount = await prisma.account.findUnique({
+        where: { provider_providerId: { provider: 'VK', providerId: String(group.id) } }
+      });
+
+      if (existingAccount && existingAccount.userId !== String(userId)) {
+        console.warn(`[SECURITY] Попытка перехвата группы ${group.id} пользователем ${userId}`);
+        continue; // Строго игнорируем чужую группу
+      }
+
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId: String(group.id) } },
         update: { 
