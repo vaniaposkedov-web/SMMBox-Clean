@@ -255,13 +255,18 @@ export default function AccountsManager() {
         setIsSyncingVk(false);
         
         if (syncResult.success) {
-          // Ищем ID свежего профиля ВК, чтобы передать его кнопке "Добавить сообщества"
           const updatedProfiles = useStore.getState().profiles;
           const vkProf = updatedProfiles.find(p => p.provider === 'VK');
-          setNewlyAddedProfileId(vkProf?.id);
           
-          setVkConnectStatus('profile_success'); // ПОКАЗЫВАЕМ ОКНО УСПЕХА
-        } else {
+          // Убираем статус загрузки
+          setVkConnectStatus('idle'); 
+          
+          // Сразу автоматически открываем окно выбора групп и стены!
+          if (vkProf?.id) {
+            handleOpenGroupsSelector(vkProf.id);
+          }
+        }
+         else {
           alert('Шлюз подтвердил хэш, но список аккаунтов пуст.');
           setVkConnectStatus('idle');
         }
@@ -821,18 +826,22 @@ export default function AccountsManager() {
         <div className="flex gap-4">
           {/* Переключатель: ВКонтакте */}
           <button
-            onClick={() => setSelectedNetwork('VK')}
-            className={`flex-1 p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${
-              selectedNetwork === 'VK' 
-                ? 'border-[#0077FF] bg-[#0077FF]/10 shadow-[0_0_20px_rgba(0,119,255,0.15)]' 
-                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800'
-            }`}
-          >
-            <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform ${selectedNetwork === 'VK' ? 'bg-[#0077FF] text-white scale-110' : 'bg-gray-800 text-gray-400'}`}>
-              <Users size={28} />
-            </div>
-            <span className={`font-bold text-lg ${selectedNetwork === 'VK' ? 'text-[#0077FF]' : 'text-gray-400'}`}>ВКонтакте</span>
-          </button>
+          onClick={() => {
+            if (selectedNetwork === 'VK') {
+              handleConnectVkOAuth(); // Сразу летим в ВК
+            } else {
+              setShowTgHelperModal(true); // Сразу открываем окно ТГ
+            }
+          }}
+          className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg text-base active:scale-95 flex justify-center items-center gap-3 ${
+            selectedNetwork === 'VK' 
+              ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[#0077FF]/20' 
+              : 'bg-[#0088CC] hover:bg-[#0077B3] shadow-[#0088CC]/20'
+          }`}
+        >
+          {selectedNetwork === 'VK' ? <Users size={20} /> : <Send size={20} />}
+          Авторизовать {selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}
+        </button>
 
           {/* Переключатель: Telegram */}
           <button
@@ -1023,70 +1032,7 @@ export default function AccountsManager() {
 
 
 
-      {/* === 1. ОКНО ВЫБОРА ОПЦИЙ (ВК/ТГ) === */}
-      {showPreConnectModal && (
-        <div key="modal-preview" className="fixed inset-0 z-[140] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-[#0d0f13]/80 backdrop-blur-sm" onClick={() => setShowPreConnectModal(null)}></div>
-          <div className="relative w-full max-w-md bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl flex flex-col z-10 overflow-hidden">
-            
-            <div className={`p-6 border-b border-gray-800 flex items-center gap-4 ${showPreConnectModal === 'VK' ? 'bg-[#0077FF]/5' : 'bg-[#0088CC]/5'}`}>
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg ${showPreConnectModal === 'VK' ? 'bg-[#0077FF] shadow-[#0077FF]/30' : 'bg-[#0088CC] shadow-[#0088CC]/30'}`}>
-                 {showPreConnectModal === 'VK' ? <Users size={24}/> : <Send size={24}/>}
-              </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-bold text-white">Подключение {showPreConnectModal === 'VK' ? 'ВКонтакте' : 'Telegram'}</h3>
-                <p className="text-xs text-gray-400 mt-1">Доступно для подключения:</p>
-              </div>
-              <button onClick={() => setShowPreConnectModal(null)} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-xl transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-3">
-              {showPreConnectModal === 'VK' ? (
-                <>
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-4 flex items-center gap-4 hover:border-[#0077FF]/50 transition-colors">
-                    <div className="w-12 h-12 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF] shrink-0"><UserCircle size={22} /></div>
-                    <div><h4 className="text-white font-bold text-base">Личная страница (Стена)</h4><p className="text-xs text-gray-400 mt-1">Возможность публиковать посты на вашей личной стене ВК</p></div>
-                  </div>
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-4 flex items-center gap-4 hover:border-[#0077FF]/50 transition-colors">
-                    <div className="w-12 h-12 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF] shrink-0"><Users size={22} /></div>
-                    <div><h4 className="text-white font-bold text-base">Сообщества и Группы</h4><p className="text-xs text-gray-400 mt-1">Публикация в сообществах, где вы являетесь администратором</p></div>
-                  </div>
-                </>
-              ) : (
-                <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-4 flex items-center gap-4 hover:border-[#0088CC]/50 transition-colors">
-                  <div className="w-12 h-12 rounded-full bg-[#0088CC]/10 flex items-center justify-center text-[#0088CC] shrink-0"><Send size={22} /></div>
-                  <div><h4 className="text-white font-bold text-base">Каналы и Группы</h4><p className="text-xs text-gray-400 mt-1">Публикация постов в ваши Telegram-каналы и чаты через бота</p></div>
-                </div>
-              )}
-            </div>
-            
-            <div className="p-6 pt-0">
-               <button 
-                  onClick={() => {
-                     // 1. Сохраняем, что выбрали
-                     const targetNetwork = showPreConnectModal;
-                     // 2. ЗАКРЫВАЕМ текущее окно
-                     setShowPreConnectModal(null);
-                     
-                     // 3. ЖДЕМ 150 миллисекунд (это решает баг с NotFoundError)
-                     setTimeout(() => {
-                         if (targetNetwork === 'VK') { 
-                             handleConnectVkOAuth(); 
-                         } else { 
-                             setShowTgHelperModal(true); 
-                         }
-                     }, 150);
-                  }}
-                  className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg active:scale-95 text-base ${showPreConnectModal === 'VK' ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[#0077FF]/20' : 'bg-[#0088CC] hover:bg-[#0077B3] shadow-[#0088CC]/20'}`}
-               >
-                  Продолжить авторизацию
-               </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
 
       {/* === 2. ОКНО ИНСТРУКЦИИ ТЕЛЕГРАМ === */}
       {showTgHelperModal && (
