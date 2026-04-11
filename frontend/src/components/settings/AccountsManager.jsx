@@ -1005,9 +1005,12 @@ export default function AccountsManager() {
       )}
 
 
-      {/* === ОКНО ПРЕДВАРИТЕЛЬНОГО ПРОСМОТРА ОПЦИЙ === */}
+
+
+
+      {/* === 1. ОКНО ВЫБОРА ОПЦИЙ (ВК/ТГ) === */}
       {showPreConnectModal && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+        <div key="modal-preview" className="fixed inset-0 z-[140] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-[#0d0f13]/80 backdrop-blur-sm" onClick={() => setShowPreConnectModal(null)}></div>
           <div className="relative w-full max-w-md bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl flex flex-col z-10 overflow-hidden">
             
@@ -1047,10 +1050,19 @@ export default function AccountsManager() {
             <div className="p-6 pt-0">
                <button 
                   onClick={() => {
-                     // === ТУТ ВЫЗЫВАЮТСЯ ТВОИ СТАНДАРТНЫЕ ФУНКЦИИ ===
-                     if (showPreConnectModal === 'VK') { handleConnectVkOAuth(); }
-                     else { setShowTgHelperModal(true); }
+                     // 1. Сохраняем, что выбрали
+                     const targetNetwork = showPreConnectModal;
+                     // 2. ЗАКРЫВАЕМ текущее окно
                      setShowPreConnectModal(null);
+                     
+                     // 3. ЖДЕМ 150 миллисекунд (это решает баг с NotFoundError)
+                     setTimeout(() => {
+                         if (targetNetwork === 'VK') { 
+                             handleConnectVkOAuth(); 
+                         } else { 
+                             setShowTgHelperModal(true); 
+                         }
+                     }, 150);
                   }}
                   className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg active:scale-95 text-base ${showPreConnectModal === 'VK' ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[#0077FF]/20' : 'bg-[#0088CC] hover:bg-[#0077B3] shadow-[#0088CC]/20'}`}
                >
@@ -1061,13 +1073,10 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* === ИСПРАВЛЕННОЕ ОКНО ТЕЛЕГРАМ === */}
+      {/* === 2. ОКНО ИНСТРУКЦИИ ТЕЛЕГРАМ === */}
       {showTgHelperModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-          {/* Оверлей-фон */}
+        <div key="modal-tg" className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowTgHelperModal(false)}></div>
-          
-          {/* Контент модалки */}
           <div className="relative z-10 w-full max-w-md bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
             <div className="flex items-center justify-between p-5 sm:p-6 border-b border-gray-800 bg-[#0088CC]/5">
               <h3 className="text-xl font-bold text-white flex items-center gap-3">
@@ -1115,39 +1124,53 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* МОДАЛЬНОЕ ОКНО ВЫБОРА ГРУПП KOM-OD */}
+      {/* === 3. ОКНО ВЫБОРА ГРУПП ВК (С ЛИЧНОЙ СТРАНИЦЕЙ) === */}
       {komodModal.isOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+        <div key="modal-vk" className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setKomodModal({ isOpen: false, profileId: null })}></div>
-          <div className="relative w-full max-w-lg bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] z-10">
+          <div className="relative z-10 w-full max-w-lg bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
             
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Users size={20} className="text-[#0077FF]" />
-                Выберите сообщества
+            <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-[#0077FF]/5 shrink-0">
+              <h3 className="text-lg font-bold text-white flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#0077FF] flex items-center justify-center text-white shadow-lg shadow-[#0077FF]/30">
+                  <Users size={20} />
+                </div>
+                Выберите страницы
               </h3>
-              <button onClick={() => setKomodModal({ isOpen: false, profileId: null })} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
+              <button onClick={() => setKomodModal({ isOpen: false, profileId: null })} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-xl transition-colors">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-4 sm:p-5 overflow-y-auto custom-scrollbar flex-1 space-y-2">
+            <div className="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-2">
               {selectableGroups.map((group, index) => {
-                // Вытаскиваем данные из нового свойства apiGroupData
                 const uniqueId = group.apiGroupData?.id || group.id || group.group_id || `idx-${index}`;
                 const isSelected = komodSelected.includes(uniqueId);
                 const avatar = group.apiGroupData?.photo_50 || group.photo_50 || 'https://via.placeholder.com/50';
                 const name = group.apiGroupData?.name || group.name || group.title;
+                const isPersonal = group.is_profile_dummy;
 
                 return (
                   <div 
                     key={uniqueId} 
                     onClick={() => setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
-                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF] shadow-inner' : 'bg-gray-900 border-gray-800 hover:bg-gray-800'}`}
+                    className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF] shadow-inner' : 'bg-gray-900 border-gray-800 hover:bg-gray-800'}`}
                   >
-                    <img src={avatar} className="w-12 h-12 rounded-full object-cover" alt="avatar" />
-                    <span className="text-white font-medium text-sm flex-1 truncate">{name}</span>
-                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 border ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600 bg-transparent'}`}>
+                    <div className="relative shrink-0">
+                      <img src={avatar} className="w-12 h-12 rounded-full object-cover border border-gray-700" alt="avatar" />
+                      {isPersonal && (
+                        <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#0077FF] border-2 border-[#111318] rounded-full flex items-center justify-center text-white" title="Личный профиль">
+                          <UserCircle size={12} />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <span className="text-white font-bold text-sm block truncate">{name}</span>
+                      {isPersonal && <span className="text-[10px] text-[#0077FF] font-bold uppercase mt-0.5 block tracking-wide">Ваша стена</span>}
+                    </div>
+
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600 bg-transparent'}`}>
                       {isSelected && <Check size={14} className="text-white" />}
                     </div>
                   </div>
@@ -1155,13 +1178,13 @@ export default function AccountsManager() {
               })}
             </div>
 
-            <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] shrink-0">
+            <div className="p-5 border-t border-gray-800 bg-[#0d0f13] shrink-0">
               <button 
                 onClick={handleSaveKomodGroups}
                 disabled={isSyncingVk || komodSelected.length === 0}
-                className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-lg shadow-[#0077FF]/20 active:scale-95"
+                className="w-full bg-[#0077FF] hover:bg-[#0066CC] disabled:opacity-50 text-white py-4 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-lg shadow-[#0077FF]/20 active:scale-95 text-base"
               >
-                {isSyncingVk ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+                {isSyncingVk ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle2 size={20} />}
                 Добавить выбранные ({komodSelected.length})
               </button>
             </div>
@@ -1170,6 +1193,10 @@ export default function AccountsManager() {
         </div>
       )}
 
+
+      
+
+     
       {/* CSS Анимация для прогресс-бара */}
       <style>{`
         @keyframes custom-progress {
