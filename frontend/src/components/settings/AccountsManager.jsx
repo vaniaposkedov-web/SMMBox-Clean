@@ -33,6 +33,9 @@ export default function AccountsManager() {
   const token = useStore((state) => state.token);
 
   const [isSyncingVk, setIsSyncingVk] = useState(false);
+  // Состояния для нового блока подключения
+  const [selectedNetwork, setSelectedNetwork] = useState('VK'); 
+  const [showPreConnectModal, setShowPreConnectModal] = useState(null);
   
 
   const [inputs, setInputs] = useState({});
@@ -811,18 +814,44 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* === СЕТКА ПОДКЛЮЧЕНИЯ SMMBOX === */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 max-w-2xl gap-5 mt-6 mb-8">
-        <SocialGridItem 
-          icon={Users} name="ВКонтакте" colorClass="bg-[#0077FF]" 
-          onConnect={handleConnectVkOAuth} 
-        />
-        <SocialGridItem 
-          icon={Send} name="Telegram" colorClass="bg-[#0088CC]" 
-          onConnect={() => setShowTgHelperModal(true)} 
-        />
+      {/* === НОВЫЙ ДИНАМИЧЕСКИЙ БЛОК ПОДКЛЮЧЕНИЯ === */}
+      <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 sm:p-8 flex flex-col gap-6 mt-6 mb-8 shadow-xl max-w-2xl">
+        <h2 className="text-xl sm:text-2xl font-bold text-white text-center">Выберите соцсеть для подключения</h2>
+
+        <div className="flex gap-4">
+          {/* Кнопка ВКонтакте */}
+          <button
+            onClick={() => setSelectedNetwork('VK')}
+            className={`flex-1 p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${selectedNetwork === 'VK' ? 'border-[#0077FF] bg-[#0077FF]/10 shadow-[0_0_20px_rgba(0,119,255,0.1)]' : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800'}`}
+          >
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform ${selectedNetwork === 'VK' ? 'bg-[#0077FF] text-white scale-110' : 'bg-gray-800 text-gray-400'}`}>
+              <Users size={28} />
+            </div>
+            <span className={`font-bold text-lg ${selectedNetwork === 'VK' ? 'text-[#0077FF]' : 'text-gray-400'}`}>ВКонтакте</span>
+          </button>
+
+          {/* Кнопка Telegram */}
+          <button
+            onClick={() => setSelectedNetwork('TG')}
+            className={`flex-1 p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${selectedNetwork === 'TG' ? 'border-[#0088CC] bg-[#0088CC]/10 shadow-[0_0_20px_rgba(0,136,204,0.1)]' : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800'}`}
+          >
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform ${selectedNetwork === 'TG' ? 'bg-[#0088CC] text-white scale-110' : 'bg-gray-800 text-gray-400'}`}>
+              <Send size={28} />
+            </div>
+            <span className={`font-bold text-lg ${selectedNetwork === 'TG' ? 'text-[#0088CC]' : 'text-gray-400'}`}>Telegram</span>
+          </button>
+        </div>
+
+        {/* Динамическая кнопка авторизации */}
+        <button
+          onClick={() => setShowPreConnectModal(selectedNetwork)}
+          className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg text-base sm:text-lg active:scale-95 flex justify-center items-center gap-3 ${selectedNetwork === 'VK' ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[#0077FF]/20' : 'bg-[#0088CC] hover:bg-[#0077B3] shadow-[#0088CC]/20'}`}
+        >
+          {selectedNetwork === 'VK' ? <Users size={20} /> : <Send size={20} />}
+          Авторизовать {selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}
+        </button>
       </div>
-      {/* ================================== */}
+      {/* ============================================== */}
       
 
       {/* ================= ИНФОРМАЦИОННЫЕ БЛОКИ (СПРАВОЧНИК) ================= */}
@@ -1213,6 +1242,84 @@ export default function AccountsManager() {
           </div>
         </div>
       )}
+
+
+      {/* === ОКНО ВЫБОРА ДОСТУПНЫХ ОПЦИЙ ПОДКЛЮЧЕНИЯ === */}
+      {showPreConnectModal && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowPreConnectModal(null)}></div>
+          <div className="relative w-full max-w-md bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl flex flex-col z-10 overflow-hidden">
+            
+            {/* Шапка модалки */}
+            <div className={`p-6 border-b border-gray-800 flex items-center gap-4 ${showPreConnectModal === 'VK' ? 'bg-[#0077FF]/5' : 'bg-[#0088CC]/5'}`}>
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg ${showPreConnectModal === 'VK' ? 'bg-[#0077FF] shadow-[#0077FF]/30' : 'bg-[#0088CC] shadow-[#0088CC]/30'}`}>
+                 {showPreConnectModal === 'VK' ? <Users size={24}/> : <Send size={24}/>}
+              </div>
+              <div className="flex-1">
+                <h3 className="text-xl font-bold text-white">Подключение {showPreConnectModal === 'VK' ? 'ВКонтакте' : 'Telegram'}</h3>
+                <p className="text-xs sm:text-sm text-gray-400 mt-1">Доступно для подключения:</p>
+              </div>
+              <button onClick={() => setShowPreConnectModal(null)} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-xl transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Карточки доступных опций */}
+            <div className="p-6 space-y-3">
+              {showPreConnectModal === 'VK' ? (
+                <>
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-4 flex items-center gap-4 hover:border-[#0077FF]/50 transition-colors">
+                    <div className="w-12 h-12 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF] shrink-0">
+                      <UserCircle size={22} />
+                    </div>
+                    <div>
+                      <h4 className="text-white font-bold text-base">Личная страница (Стена)</h4>
+                      <p className="text-xs text-gray-400 mt-1">Возможность публиковать посты на вашей личной стене ВК</p>
+                    </div>
+                  </div>
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-4 flex items-center gap-4 hover:border-[#0077FF]/50 transition-colors">
+                    <div className="w-12 h-12 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF] shrink-0">
+                      <Users size={22} />
+                    </div>
+                    <div>
+                      <h4 className="text-white font-bold text-base">Сообщества и Группы</h4>
+                      <p className="text-xs text-gray-400 mt-1">Публикация в сообществах, где вы являетесь администратором</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-4 flex items-center gap-4 hover:border-[#0088CC]/50 transition-colors">
+                    <div className="w-12 h-12 rounded-full bg-[#0088CC]/10 flex items-center justify-center text-[#0088CC] shrink-0">
+                      <Send size={22} />
+                    </div>
+                    <div>
+                      <h4 className="text-white font-bold text-base">Каналы и Группы</h4>
+                      <p className="text-xs text-gray-400 mt-1">Публикация постов в ваши Telegram-каналы и чаты</p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            {/* Кнопка запуска */}
+            <div className="p-6 pt-0">
+               <button 
+                  onClick={() => {
+                     if (showPreConnectModal === 'VK') { handleConnectVkOAuth(); }
+                     else { setShowTgHelperModal(true); }
+                     setShowPreConnectModal(null);
+                  }}
+                  className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg active:scale-95 text-base ${showPreConnectModal === 'VK' ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[#0077FF]/20' : 'bg-[#0088CC] hover:bg-[#0077B3] shadow-[#0088CC]/20'}`}
+               >
+                  Продолжить авторизацию
+               </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+      {/* ======================================================= */}
 
       {/* МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ НОВОГО ПРОФИЛЯ ТГ */}
       {showTgHelperModal && (
