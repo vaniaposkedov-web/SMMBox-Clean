@@ -109,7 +109,7 @@ function Sidebar() {
           )}
         </div>
 
-        <NavLink to="/settings" className={linkClass}><SettingsIcon size={20} /> Настройки</NavLink>
+        
       </nav>
 
       <div className="p-4 border-t border-gray-800 space-y-2">
@@ -189,9 +189,7 @@ function BottomNav() {
           <span className="text-[10px] mt-1 font-medium">Заявки</span>
         </NavLink>
 
-        <NavLink to="/settings" className={linkClass} onClick={() => setIsMoreMenuOpen(false)}>
-          <SettingsIcon size={22} /><span className="text-[10px] mt-1 font-medium">Настройки</span>
-        </NavLink>
+        
 
         <button onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)} className={`flex flex-col items-center flex-1 p-2 rounded-xl transition-colors ${isMoreMenuOpen ? 'text-admin-accent' : 'text-gray-500 hover:text-gray-300'}`}>
           <MoreHorizontal size={22} />
