@@ -819,49 +819,57 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* === БЛОК ВЫБОРА СОЦСЕТИ (SMMBOX STYLE) === */}
+     {/* === БЛОК ВЫБОРА СОЦСЕТИ (SMMBOX STYLE) === */}
       <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 sm:p-8 flex flex-col gap-6 mt-6 shadow-xl max-w-2xl">
         <h2 className="text-xl sm:text-2xl font-bold text-white text-center">Выберите соцсеть для подключения</h2>
 
-        <div className="flex gap-4">
-          {/* Переключатель: ВКонтакте */}
-          <button
-          onClick={() => {
-            if (selectedNetwork === 'VK') {
-              handleConnectVkOAuth(); // Сразу летим в ВК
-            } else {
-              setShowTgHelperModal(true); // Сразу открываем окно ТГ
-            }
-          }}
-          className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg text-base active:scale-95 flex justify-center items-center gap-3 ${
-            selectedNetwork === 'VK' 
-              ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[#0077FF]/20' 
-              : 'bg-[#0088CC] hover:bg-[#0077B3] shadow-[#0088CC]/20'
-          }`}
-        >
-          {selectedNetwork === 'VK' ? <Users size={20} /> : <Send size={20} />}
-          Авторизовать {selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}
-        </button>
-
-          {/* Переключатель: Telegram */}
-          <button
-            onClick={() => setSelectedNetwork('TG')}
-            className={`flex-1 p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${
-              selectedNetwork === 'TG' 
-                ? 'border-[#0088CC] bg-[#0088CC]/10 shadow-[0_0_20px_rgba(0,136,204,0.15)]' 
-                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800'
+        <div className="grid grid-cols-2 gap-4">
+          {/* Строгая карточка ВК */}
+          <div
+            onClick={() => setSelectedNetwork('VK')}
+            className={`border rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
+              selectedNetwork === 'VK' 
+                ? 'border-[#0077FF] bg-gray-800/80 shadow-[0_0_15px_rgba(0,119,255,0.1)]' 
+                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800/50'
             }`}
           >
-            <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform ${selectedNetwork === 'TG' ? 'bg-[#0088CC] text-white scale-110' : 'bg-gray-800 text-gray-400'}`}>
-              <Send size={28} />
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-[#0077FF] text-white">
+              <Users size={32} />
             </div>
-            <span className={`font-bold text-lg ${selectedNetwork === 'TG' ? 'text-[#0088CC]' : 'text-gray-400'}`}>Telegram</span>
-          </button>
+            <h3 className="text-white font-bold text-lg mb-1">ВКонтакте</h3>
+            <span className="text-sm font-medium text-gray-400">
+              {selectedNetwork === 'VK' ? 'Выбрано' : 'Нажмите для выбора'}
+            </span>
+          </div>
+
+          {/* Строгая карточка Telegram */}
+          <div
+            onClick={() => setSelectedNetwork('TG')}
+            className={`border rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
+              selectedNetwork === 'TG' 
+                ? 'border-[#0088CC] bg-gray-800/80 shadow-[0_0_15px_rgba(0,136,204,0.1)]' 
+                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800/50'
+            }`}
+          >
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-[#0088CC] text-white">
+              <Send size={32} />
+            </div>
+            <h3 className="text-white font-bold text-lg mb-1">Telegram</h3>
+            <span className="text-sm font-medium text-gray-400">
+              {selectedNetwork === 'TG' ? 'Выбрано' : 'Нажмите для выбора'}
+            </span>
+          </div>
         </div>
 
-        {/* Динамическая кнопка действия */}
+        {/* Динамическая кнопка действия (Прямой вызов) */}
         <button
-          onClick={() => setShowPreConnectModal(selectedNetwork)}
+          onClick={() => {
+            if (selectedNetwork === 'VK') {
+              handleConnectVkOAuth(); // Сразу открывает ВК
+            } else {
+              setShowTgHelperModal(true); // Сразу открывает окно ТГ
+            }
+          }}
           className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg text-base active:scale-95 flex justify-center items-center gap-3 ${
             selectedNetwork === 'VK' 
               ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[#0077FF]/20' 
