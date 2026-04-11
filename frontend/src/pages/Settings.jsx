@@ -1,6 +1,5 @@
 import { Settings as SettingsIcon, Share2, Droplet } from 'lucide-react';
-import WatermarkConstructor from '../components/settings/WatermarkConstructor';
-import AccountsManager from '../components/settings/AccountsManager';
+
 
 export default function Settings() {
   return (
@@ -15,30 +14,6 @@ export default function Settings() {
         <p className="text-gray-400 text-sm sm:text-base">Управление вашими аккаунтами и шаблонами постов.</p>
       </div>
 
-      {/* СЕКЦИЯ: МОИ АККАУНТЫ */}
-      <section className="flex flex-col gap-4 sm:gap-6">
-        <h2 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-white">
-          <Share2 className="text-gray-400" size={22} />
-          Мои аккаунты
-        </h2>
-        <div className="bg-[#13151A] border border-[#1E2028] rounded-2xl p-4 sm:p-6 shadow-lg">
-          <AccountsManager />
-        </div>
-      </section>
-
-      {/* Разделитель */}
-      <div className="w-full h-px bg-gray-800/60"></div>
-
-      {/* СЕКЦИЯ: ШАБЛОНЫ (ВОТЕРМАРКИ) */}
-      <section className="flex flex-col gap-4 sm:gap-6">
-        <h2 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-white">
-          <Droplet className="text-gray-400" size={22} />
-          Шаблоны
-        </h2>
-        <div className="bg-[#13151A] border border-[#1E2028] rounded-2xl p-4 sm:p-6 shadow-lg">
-          <WatermarkConstructor />
-        </div>
-      </section>
 
     </div>
   );
