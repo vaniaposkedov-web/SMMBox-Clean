@@ -135,22 +135,26 @@ export default function AccountsManager() {
   const handleSaveKomodGroups = async () => {
     if (komodSelected.length === 0) return;
     setIsSyncingVk(true);
-    setVkConnectStatus('syncing_groups'); // ВКЛЮЧАЕМ ПРОГРЕСС-БАР ГРУПП
-    setKomodModal({ isOpen: false, profileId: null }); // Прячем окно выбора
+    setVkConnectStatus('syncing_groups'); 
+    setKomodModal({ isOpen: false, profileId: null }); 
     
     let addedCount = 0;
     let lastError = null;
     
     for (const uniqueId of komodSelected) {
-      const group = selectableGroups.find((g, i) => String(g.id || g.group_id || `idx-${i}`) === String(uniqueId));
+      // Ищем группу, учитывая новый объект apiGroupData
+      const group = selectableGroups.find((g, i) => {
+        const gId = g.apiGroupData?.id || g.id || g.group_id || `idx-${i}`;
+        return String(gId) === String(uniqueId);
+      });
+
       if (group) {
-        let screenName = group.screen_name;
-        if (!screenName || screenName.includes('undefined')) {
-          screenName = 'club' + (group.id || group.group_id);
-        }
+        const groupId = group.apiGroupData?.id || group.id || group.group_id;
+        const screenName = group.apiGroupData?.screen_name || group.screen_name || `club${groupId}`;
         const groupUrl = group.url || `https://vk.com/${screenName}`;
+        const title = group.apiGroupData?.name || group.name || group.title;
         
-        const res = await useStore.getState().addVkKomodGroup(groupUrl, group.name || group.title, komodModal.profileId);
+        const res = await useStore.getState().addVkKomodGroup(groupUrl, title, komodModal.profileId);
         if (res.success) addedCount++;
         else lastError = res.error;
       }
@@ -165,7 +169,7 @@ export default function AccountsManager() {
     
     if (addedCount > 0) {
       setAddedGroupsCount(addedCount);
-      setVkConnectStatus('groups_success'); // ПОКАЗЫВАЕМ ФИНАЛЬНЫЙ УСПЕХ
+      setVkConnectStatus('groups_success'); 
     } else if (lastError) {
       alert(`Ошибка: ${JSON.stringify(lastError)}`);
       setVkConnectStatus('idle');
@@ -583,6 +587,22 @@ export default function AccountsManager() {
     setLoadingStates(prev => ({...prev, [profileId]: false}));
   };
 
+  const SocialGridItem = ({ icon: Icon, name, colorClass, onConnect, buttonText = "Подключить" }) => (
+    <div className="bg-admin-card border border-gray-800 rounded-xl p-5 flex flex-col items-center justify-center text-center transition-all hover:border-gray-700 hover:shadow-lg">
+      <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-3 ${colorClass} text-white`}>
+        <Icon size={28} />
+      </div>
+      <h3 className="text-white font-bold text-base mb-4">{name}</h3>
+      <button 
+        onClick={onConnect} 
+        disabled={buttonText === "Скоро"}
+        className="w-full bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-bold transition-colors"
+      >
+        {buttonText}
+      </button>
+    </div>
+  );
+
 
   const renderAccountCard = (acc, providerIcon, providerColor) => {
     const isExpanded = expandedId === acc.id;
@@ -793,6 +813,23 @@ export default function AccountsManager() {
           </button>
         </div>
       )}
+
+      {/* === ВСТАВЛЯЕШЬ СЕТКУ ПРЯМО СЮДА === */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 mb-8">
+        <SocialGridItem 
+          icon={Users} name="ВКонтакте" colorClass="bg-[#0077FF]" 
+          onConnect={handleConnectVkOAuth} 
+        />
+        <SocialGridItem 
+          icon={Send} name="Telegram" colorClass="bg-[#0088CC]" 
+          onConnect={() => setShowTgHelperModal(true)} 
+        />
+        <SocialGridItem icon={Users} name="Одноклассники" colorClass="bg-[#EE8208]" buttonText="Скоро" onConnect={()=>{}} />
+        <SocialGridItem icon={ImageIcon} name="Instagram" colorClass="bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-500" buttonText="Скоро" onConnect={()=>{}} />
+      </div>
+      {/* ==================================== */}
+
+      
 
       {/* ================= ИНФОРМАЦИОННЫЕ БЛОКИ (СПРАВОЧНИК) ================= */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-stretch">
@@ -1244,30 +1281,27 @@ export default function AccountsManager() {
             </div>
 
             <div className="p-4 sm:p-5 overflow-y-auto custom-scrollbar flex-1 space-y-2">
-              {selectableGroups.length === 0 ? (
-                <p className="text-center text-gray-400 py-10">Сообществ не найдено. Убедитесь, что вы являетесь администратором.</p>
-              ) : (
-                selectableGroups.map((group, index) => {
-  
-                  const uniqueId = group.id || group.group_id || `idx-${index}`;
-                  const isSelected = komodSelected.includes(uniqueId);
-                  return (
-                    <div 
-                      key={uniqueId} 
-                      onClick={() => setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
-                      className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF]/50' : 'bg-gray-900/50 border-gray-800 hover:bg-gray-800'}`}
-                    >
-                      <div className="flex items-center gap-3 pr-2">
-                        <img src={group.photo_50 || `https://ui-avatars.com/api/?name=VK&background=0077FF&color=fff`} className="w-10 h-10 rounded-full" alt="avatar" />
-                        <span className="text-white font-medium text-sm">{group.name || group.title}</span>
-                      </div>
-                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600 bg-black/50'}`}>
-                        {isSelected && <Check size={14} className="text-white" />}
-                      </div>
+              {selectableGroups.map((group, index) => {
+                // Вытаскиваем данные из нового свойства apiGroupData
+                const uniqueId = group.apiGroupData?.id || group.id || group.group_id || `idx-${index}`;
+                const isSelected = komodSelected.includes(uniqueId);
+                const avatar = group.apiGroupData?.photo_50 || group.photo_50 || 'https://via.placeholder.com/50';
+                const name = group.apiGroupData?.name || group.name || group.title;
+
+                return (
+                  <div 
+                    key={uniqueId} 
+                    onClick={() => setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
+                    className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF] shadow-inner' : 'bg-gray-900 border-gray-800 hover:bg-gray-800'}`}
+                  >
+                    <img src={avatar} className="w-12 h-12 rounded-full object-cover" alt="avatar" />
+                    <span className="text-white font-medium text-sm flex-1 truncate">{name}</span>
+                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 border ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600 bg-transparent'}`}>
+                      {isSelected && <Check size={14} className="text-white" />}
                     </div>
-                  );
-                })
-              )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="p-4 sm:p-5 border-t border-gray-800 bg-[#0d0f13] shrink-0">
@@ -1296,23 +1330,14 @@ export default function AccountsManager() {
         }
       `}</style>
 
-      {/* 1. ЭКРАН ЗАГРУЗКИ (ПРОГРЕСС-БАР) */}
+      {/* ЭКРАН ЗАГРУЗКИ (SMMBox Style) */}
       {(vkConnectStatus === 'syncing_profile' || vkConnectStatus === 'syncing_groups') && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-           <div className="absolute inset-0 bg-black/80 backdrop-blur-md"></div>
-           <div className="relative bg-[#111318] border border-gray-700/50 rounded-3xl p-8 shadow-2xl flex flex-col items-center w-full max-w-sm animate-in zoom-in-95 duration-300">
-              <div className="relative mb-6">
-                <div className="absolute inset-0 bg-[#0077FF] blur-xl opacity-20 rounded-full"></div>
-                <Loader2 size={56} className="text-[#0077FF] animate-spin relative z-10" />
-              </div>
-              <h3 className="text-white font-extrabold text-xl text-center mb-3">
-                {vkConnectStatus === 'syncing_profile' ? 'Подключение профиля...' : 'Добавление сообществ...'}
-              </h3>
-              <p className="text-gray-400 text-sm text-center mb-8">Пожалуйста, подождите, идет безопасная синхронизация данных с ВКонтакте.</p>
-              
-              <div className="w-full h-1.5 bg-gray-800/80 rounded-full overflow-hidden shadow-inner">
-                <div className="h-full w-1/2 bg-gradient-to-r from-blue-600 to-[#0077FF] rounded-full animate-custom-progress shadow-[0_0_10px_rgba(0,119,255,0.5)]"></div>
-              </div>
+           <div className="absolute inset-0 bg-[#121212]/90 backdrop-blur-sm"></div>
+           <div className="relative bg-[#1e1e1e] border border-gray-800 rounded-2xl p-8 shadow-2xl flex flex-col items-center max-w-sm w-full animate-in zoom-in-95 duration-200">
+              <Loader2 size={48} className="text-[#0077FF] animate-spin mb-5" />
+              <h3 className="text-white font-bold text-xl text-center mb-2">Пожалуйста, подождите...</h3>
+              <p className="text-gray-400 text-sm text-center">Идет загрузка страниц для подключения.</p>
            </div>
         </div>
       )}
