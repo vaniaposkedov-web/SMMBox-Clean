@@ -587,19 +587,16 @@ export default function AccountsManager() {
     setLoadingStates(prev => ({...prev, [profileId]: false}));
   };
 
-  const SocialGridItem = ({ icon: Icon, name, colorClass, onConnect, buttonText = "Подключить" }) => (
-    <div className="bg-admin-card border border-gray-800 rounded-xl p-5 flex flex-col items-center justify-center text-center transition-all hover:border-gray-700 hover:shadow-lg">
-      <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-3 ${colorClass} text-white`}>
-        <Icon size={28} />
+ const SocialGridItem = ({ icon: Icon, name, colorClass, onConnect }) => (
+    <div 
+      onClick={onConnect}
+      className="bg-admin-card border border-gray-800 rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all hover:border-gray-700 hover:bg-gray-800/50 cursor-pointer shadow-sm hover:shadow-lg group"
+    >
+      <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${colorClass} text-white transition-transform group-hover:scale-110`}>
+        <Icon size={32} />
       </div>
-      <h3 className="text-white font-bold text-base mb-4">{name}</h3>
-      <button 
-        onClick={onConnect} 
-        disabled={buttonText === "Скоро"}
-        className="w-full bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-bold transition-colors"
-      >
-        {buttonText}
-      </button>
+      <h3 className="text-white font-bold text-lg mb-1">{name}</h3>
+      <span className="text-sm font-medium text-gray-400 group-hover:text-white transition-colors">Подключить</span>
     </div>
   );
 
@@ -814,8 +811,8 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* === ВСТАВЛЯЕШЬ СЕТКУ ПРЯМО СЮДА === */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 mb-8">
+      {/* === СЕТКА ПОДКЛЮЧЕНИЯ SMMBOX === */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 max-w-2xl gap-5 mt-6 mb-8">
         <SocialGridItem 
           icon={Users} name="ВКонтакте" colorClass="bg-[#0077FF]" 
           onConnect={handleConnectVkOAuth} 
@@ -824,11 +821,8 @@ export default function AccountsManager() {
           icon={Send} name="Telegram" colorClass="bg-[#0088CC]" 
           onConnect={() => setShowTgHelperModal(true)} 
         />
-        <SocialGridItem icon={Users} name="Одноклассники" colorClass="bg-[#EE8208]" buttonText="Скоро" onConnect={()=>{}} />
-        <SocialGridItem icon={ImageIcon} name="Instagram" colorClass="bg-gradient-to-tr from-yellow-400 via-pink-500 to-purple-500" buttonText="Скоро" onConnect={()=>{}} />
       </div>
-      {/* ==================================== */}
-
+      {/* ================================== */}
       
 
       {/* ================= ИНФОРМАЦИОННЫЕ БЛОКИ (СПРАВОЧНИК) ================= */}
