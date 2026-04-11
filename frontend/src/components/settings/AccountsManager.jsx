@@ -850,283 +850,48 @@ export default function AccountsManager() {
       </div>
       {/* ========================================= */}
 
-      {/* ================= ИНФОРМАЦИОННЫЕ БЛОКИ (СПРАВОЧНИК) ================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-stretch">
-        
-        {/* ИНСТРУКЦИЯ TELEGRAM */}
-        <div className="bg-gradient-to-br from-[#0088CC]/10 to-transparent border border-[#0088CC]/20 rounded-3xl p-5 sm:p-8 relative overflow-hidden flex flex-col h-full shadow-lg shadow-[#0088CC]/5">
-          <div className="absolute -top-12 -right-12 w-40 h-40 bg-[#0088CC]/20 blur-[60px] rounded-full pointer-events-none"></div>
+     
+
+      {/* === ЕДИНЫЙ СПИСОК ПОДКЛЮЧЕННЫХ АККАУНТОВ === */}
+      {accounts.length > 0 && (
+        <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 sm:p-8 flex flex-col mt-6 mb-8 shadow-xl max-w-2xl">
+          <h2 className="text-xl font-bold text-white mb-6">Подключенные страницы и каналы</h2>
           
-          <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-3 mb-6 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-[#0088CC]/10 border border-[#0088CC]/20 flex items-center justify-center shrink-0">
-              <Info size={20} className="text-[#0088CC]" />
-            </div>
-            Инструкция Telegram
-          </h2>
-          
-          <ol className="relative border-l border-[#0088CC]/30 ml-4 space-y-6 flex-1 z-10">
-             <li className="pl-6 relative">
-               <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0088CC] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,136,204,0.3)]">1</span>
-               <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 В блоке ниже (под вашим профилем) нажмите кнопку <b className="text-white">«Добавить бота в канал»</b>.
-               </p>
-             </li>
-             <li className="pl-6 relative">
-               <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0088CC] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,136,204,0.3)]">2</span>
-               <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 В открывшемся приложении Telegram <b>выберите ваш канал</b> (все права настроятся автоматически) и нажмите «Добавить».
-               </p>
-             </li>
-             <li className="pl-6 relative">
-               <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0088CC] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,136,204,0.3)]">3</span>
-               <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 Вернитесь на эту страницу и нажмите кнопку <b className="text-white">«Обновить»</b> — канал моментально появится в списке!
-               </p>
-             </li>
-          </ol>
-        </div>
-
-        {/* ИНСТРУКЦИЯ ВКОНТАКТЕ */}
-        <div className="bg-gradient-to-br from-[#0077FF]/10 to-transparent border border-[#0077FF]/20 rounded-3xl p-5 sm:p-8 relative overflow-hidden flex flex-col h-full shadow-lg shadow-[#0077FF]/5">
-          <div className="absolute -top-12 -right-12 w-40 h-40 bg-[#0077FF]/20 blur-[60px] rounded-full pointer-events-none"></div>
-          
-          <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-3 mb-6 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 border border-[#0077FF]/20 flex items-center justify-center shrink-0">
-              <Info size={20} className="text-[#0077FF]" />
-            </div>
-            Инструкция ВКонтакте
-          </h2>
-          
-          <ol className="relative border-l border-[#0077FF]/30 ml-4 space-y-6 flex-1 z-10">
-             <li className="pl-6 relative">
-               <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0077FF] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,119,255,0.3)]">1</span>
-               <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 В блоке ниже нажмите <b className="text-white">«Добавить сообщества»</b> или <b>«Подключить стену»</b> в шапке вашего профиля.
-               </p>
-             </li>
-             <li className="pl-6 relative">
-               <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0077FF] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,119,255,0.3)]">2</span>
-               <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 Нажмите <b>«Получить безопасный ключ ВК»</b> и разрешите доступ приложению в открывшемся окне.
-               </p>
-             </li>
-             <li className="pl-6 relative">
-               <span className="absolute -left-[13px] top-0 w-6 h-6 bg-[#0d0f13] border-2 border-[#0077FF] rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-[0_0_10px_rgba(0,119,255,0.3)]">3</span>
-               <p className="text-sm sm:text-[15px] text-gray-300 leading-relaxed mt-0.5">
-                 Вы увидите пустую страницу. <b>Скопируйте всю ссылку</b> из адресной строки браузера, вставьте её на нашем сайте и выберите нужные группы галочками!
-               </p>
-             </li>
-          </ol>
-        </div>
-
-      </div>
-
-      
-      {/* ================= УПРАВЛЕНИЕ ВКОНТАКТЕ ================= */}
-      <div id="vk-management-block" className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 mt-6 sm:mt-8 shadow-xl">
-        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
-          <div className="w-10 h-10 rounded-full bg-[#0088CC]/10 flex items-center justify-center text-[#0088CC]">
-            <Send size={20} />
-          </div>
-          <h2 className="text-lg font-bold text-white">Управление каналами Telegram</h2>
-        </div>
-
-        {tgProfiles.length === 0 && (
-          <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
-            <p className="text-gray-400 text-sm px-4 mb-4">Для добавления каналов сначала привяжите ваш профиль Telegram.</p>
-          </div>
-        )}
-
-        {tgProfiles.map(profile => (
-          <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
-            
-            {/* Шапка профиля ТГ (Идеальная и без стены) */}
-            <div 
-              className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0088CC]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors gap-2" 
-              onClick={() => toggleProfileCollapse(profile.id)}
-            >
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${profile.name}&background=0088CC&color=fff`} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="TG" />
-                <div className="min-w-0">
-                  <div className="text-white font-bold text-sm sm:text-base truncate leading-tight">
-                    {profile.name}
+          <div className="space-y-3">
+            {accounts.map(acc => (
+              <div key={acc.id} className="flex items-center justify-between p-4 bg-gray-900/50 hover:bg-gray-800/80 border border-gray-800 rounded-2xl transition-colors group">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="relative shrink-0">
+                    <img src={acc.avatarUrl || 'https://via.placeholder.com/50'} className="w-12 h-12 rounded-full object-cover border border-gray-700" alt="avatar" />
+                    <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-white border-2 border-[#0d0f13] ${acc.provider === 'VK' ? 'bg-[#0077FF]' : 'bg-[#0088CC]'}`}>
+                      {acc.provider === 'VK' ? <Users size={10}/> : <Send size={10}/>}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-white font-bold text-sm sm:text-base truncate block">{acc.name}</h4>
+                    <span className="text-xs text-gray-500 font-medium block mt-0.5">
+                      {acc.provider === 'VK' ? 'ВКонтакте' : 'Telegram'}
+                    </span>
                   </div>
                 </div>
-              </div>
-              
-              <div className="flex items-center gap-0.5 shrink-0 ml-auto pl-1.5 sm:pl-3">
-                <button className="p-1 text-gray-400 hover:text-white rounded-md transition-all">
-                  <ChevronDown size={18} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
-                </button>
+                
                 <button 
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (window.confirm(`Отключить профиль Telegram "${profile.name}" и все связанные каналы?`)) {
-                      await removeSocialProfile(profile.id);
-                    }
-                  }}
-                  className="p-1 text-gray-500 hover:text-rose-500 rounded-md transition-all"
+                  onClick={() => removeAccount(acc.id)} 
+                  className="text-gray-500 hover:text-rose-500 p-2.5 bg-gray-800 hover:bg-rose-500/10 rounded-xl transition-all opacity-100 sm:opacity-0 group-hover:opacity-100 shrink-0"
+                  title="Отключить"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={18} />
                 </button>
               </div>
-            </div>
-
-            {/* Дерево элементов ТГ (Плавное скрытие) */}
-            <div className={`grid transition-all duration-300 ease-in-out ${collapsedProfiles[profile.id] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
-              <div className="overflow-hidden">
-                <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
-                  {accounts.filter(a => a.provider === 'TELEGRAM' && (a.profileId === profile.id || (!a.profileId && profile.id === tgProfiles[0]?.id))).map(acc => (
-                    <div key={acc.id} className="relative">
-                      {/* Горизонтальная линия связи */}
-                      <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                      {renderAccountCard(acc, <Send size={8} className="text-white"/>, 'bg-[#0088CC]')}
-                    </div>
-                  ))}
-                  
-                  
-                </div>
-              </div>
-            </div>
-
-          </div>
-        ))}
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 bg-gray-800/30 rounded-xl border border-gray-700/50 border-dashed hover:bg-gray-800/50 transition-colors gap-4 mt-2">
-          <div className="flex flex-col">
-            <span className="text-gray-300 font-bold text-sm flex items-center gap-2">
-              <UserPlus size={18} className="text-gray-400"/> Подключить {tgProfiles.length > 0 ? 'еще один ' : ''}профиль
-            </span>
-            <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-              Безопасная привязка напрямую через Telegram-бота (без блокировок и сбоев).
-            </span>
-          </div>
-
-          <div className="flex gap-2 w-full sm:w-auto shrink-0">
-            <button 
-              onClick={handleRefreshProfiles} 
-              disabled={isRefreshingProfiles} 
-              className="shrink-0 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white w-12 h-12 flex items-center justify-center rounded-xl transition-all shadow-sm active:scale-95"
-              title="Обновить список профилей"
-            >
-              <RefreshCw size={18} className={isRefreshingProfiles ? "animate-spin" : ""} />
-            </button>
-            <button 
-              onClick={() => setShowTgHelperModal(true)} 
-              className="flex-1 sm:flex-none shrink-0 whitespace-nowrap bg-[#0088CC] hover:bg-[#0077B3] text-white px-5 h-12 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0088CC]/20 active:scale-95"
-            >
-               {tgProfiles.length > 0 ? 'Добавить аккаунт' : 'Привязать Telegram'}
-            </button>
+            ))}
           </div>
         </div>
-      </div> {/* <--- Этот закрывающий DIV держит структуру страницы */}
-
+      )}
+      {/* ============================================== */}
+      
     
 
-      {/* ================= УПРАВЛЕНИЕ ВКОНТАКТЕ ================= */}
-      <div className="bg-[#0d0f13] border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-5 mt-6 sm:mt-8 shadow-xl">
-        <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
-          <div className="w-10 h-10 rounded-full bg-[#0077FF]/10 flex items-center justify-center text-[#0077FF]">
-            <Users size={20} />
-          </div>
-          <h2 className="text-lg font-bold text-white">Управление ВКонтакте</h2>
-        </div>
-
-        {vkProfiles.length === 0 && (
-          <div className="text-center py-10 bg-gray-900/20 border border-gray-800/50 rounded-2xl border-dashed">
-            <p className="text-gray-400 text-sm px-4 mb-4">Для добавления сообществ сначала авторизуйте профиль ВКонтакте.</p>
-          </div>
-        )}
-
-        {vkProfiles.map(profile => (
-          <div key={profile.id} className="mb-2 bg-gray-900/30 p-4 sm:p-5 rounded-2xl border border-gray-800 flex flex-col">
-            
-            {/* Шапка профиля ВК */}
-            <div 
-              className="flex items-center justify-between p-3 bg-gray-800/60 rounded-xl border border-[#0077FF]/30 relative z-10 cursor-pointer hover:bg-gray-800/80 transition-colors gap-2" 
-              onClick={() => toggleProfileCollapse(profile.id)}
-            >
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                <img src={profile.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name)}&background=0077FF&color=fff`} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-700 shrink-0" alt="VK" />
-                <div className="min-w-0">
-                  <div className="text-white font-bold text-sm sm:text-base truncate leading-tight">
-                    {profile.name}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-0.5 shrink-0 ml-auto pl-1.5 sm:pl-3">
-                <button className="p-1 text-gray-400 hover:text-white rounded-md transition-all">
-                  <ChevronDown size={18} className={`transition-transform duration-300 ${collapsedProfiles[profile.id] ? '-rotate-90' : 'rotate-0'}`} />
-                </button>
-                <button 
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (window.confirm(`Отключить профиль ВКонтакте "${profile.name}" и все связанные с ним страницы?`)) {
-                      await removeSocialProfile(profile.id);
-                    }
-                  }}
-                  className="p-1 text-gray-500 hover:text-rose-500 rounded-md transition-all"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-
-            {/* Дерево элементов ВК */}
-            <div className={`grid transition-all duration-300 ease-in-out ${collapsedProfiles[profile.id] ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}>
-              <div className="overflow-hidden">
-                <div className="flex flex-col gap-4 mt-3 ml-[28px] sm:ml-[31px] pl-4 sm:pl-5 border-l-2 border-gray-800/60 pb-2 relative">
-                  {accounts.filter(a => a.provider === 'VK' && a.profileId === profile.id).map(acc => (
-                    <div key={acc.id} className="relative">
-                      <div className="absolute top-[31px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                      {renderAccountCard(acc, <Users size={8} className="text-white"/>, 'bg-[#0077FF]')}
-                    </div>
-                  ))}
-                  
-                  <div className="relative flex flex-col sm:flex-row gap-3 w-full mt-2">
-                    <div className="absolute top-[24px] sm:top-[24px] -left-4 sm:-left-5 w-4 sm:w-5 h-[2px] bg-gray-800/60"></div>
-                    
-                    {/* КНОПКА ВЫБОРА ГРУПП */}
-                    <button 
-                      onClick={() => handleOpenGroupsSelector(profile.id)}
-                      className="flex-1 w-full sm:w-auto bg-[#0077FF]/10 hover:bg-[#0077FF]/20 text-[#0077FF] border border-[#0077FF]/30 px-4 py-3.5 rounded-xl transition-all flex justify-center items-center gap-2 font-bold shadow-sm active:scale-95 text-sm"
-                    >
-                      {isGroupsLoading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                      <span className="truncate">Добавить сообщества</span>
-                    </button>
-
-                    
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        ))}
-
-        {/* Кнопка авторизации (Вынесена вниз как в ТГ) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 bg-gray-800/30 rounded-xl border border-gray-700/50 border-dashed hover:bg-gray-800/50 transition-colors gap-4 mt-2">
-          <div className="flex flex-col">
-            <span className="text-gray-300 font-bold text-sm flex items-center gap-2">
-              <UserPlus size={18} className="text-gray-400"/> Подключить {vkProfiles.length > 0 ? 'еще один ' : ''}профиль ВК
-            </span>
-            <span className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-              Основной аккаунт для постинга на стену и привязки сообществ.
-            </span>
-          </div>
-
-          <div className="flex gap-2 w-full sm:w-auto shrink-0">
-            <button 
-              onClick={handleConnectVkOAuth} 
-              className="flex-1 sm:flex-none shrink-0 whitespace-nowrap bg-[#0077FF] hover:bg-[#0066CC] text-white px-5 h-12 rounded-xl font-bold transition-all text-sm shadow-lg shadow-[#0077FF]/20 active:scale-95 flex items-center justify-center gap-2"
-            >
-              <UserCircle size={18} />
-               {vkProfiles.length > 0 ? 'Добавить аккаунт' : 'Авторизовать ВК'}
-            </button>
-          </div>
-        </div>
-      </div>
+     
 
        
 
@@ -1296,46 +1061,56 @@ export default function AccountsManager() {
         </div>
       )}
 
-      {/* МОДАЛЬНОЕ ОКНО ДОБАВЛЕНИЯ НОВОГО ПРОФИЛЯ ТГ */}
+      {/* === ИСПРАВЛЕННОЕ ОКНО ТЕЛЕГРАМ === */}
       {showTgHelperModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          {/* Оверлей-фон */}
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowTgHelperModal(false)}></div>
-          <div className="relative w-full max-w-md bg-[#111318] border border-gray-700 rounded-2xl shadow-2xl flex flex-col z-10">
-            
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 shrink-0">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <UserPlus size={20} className="text-[#0088CC]" />
-                Новый профиль Telegram
+          
+          {/* Контент модалки */}
+          <div className="relative z-10 w-full max-w-md bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-5 sm:p-6 border-b border-gray-800 bg-[#0088CC]/5">
+              <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#0088CC] flex items-center justify-center text-white shadow-lg shadow-[#0088CC]/30">
+                  <Send size={20} />
+                </div>
+                Подключение Telegram
               </h3>
-              <button onClick={() => setShowTgHelperModal(false)} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-lg transition-colors">
+              <button onClick={() => setShowTgHelperModal(false)} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-xl transition-colors">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 sm:p-6 space-y-4 text-sm text-gray-300">
-              <div className="bg-[#0088CC]/10 border border-[#0088CC]/20 rounded-xl p-4 text-sm text-gray-300">
-                <p className="mb-3 font-semibold text-white">Чтобы привязать дополнительный аккаунт:</p>
-                <ol className="list-decimal pl-4 space-y-2">
-                  <li>Нажмите кнопку ниже — откроется наш бот.</li>
-                  <li><b>Важно:</b> Убедитесь, что в приложении Telegram вы переключились на тот аккаунт, который хотите привязать.</li>
-                  <li>Нажмите <b>«Запустить»</b> (или отправьте команду <span className="text-white font-mono">/start</span>).</li>
-                  <li>Вернитесь сюда и обновите страницу.</li>
-                </ol>
-              </div>
+            <div className="p-6 space-y-5">
+              <p className="text-sm text-gray-300 leading-relaxed">
+                Для безопасности и моментальной синхронизации, выбор сообществ и каналов происходит <b className="text-white">прямо в нашем официальном Telegram-боте</b>.
+              </p>
               
-              <div className="pt-2">
-                <a
-                  href={`https://t.me/smmbox_auth_bot?start=bind_${user.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setShowTgHelperModal(false)}
-                  className="w-full bg-[#0088CC] hover:bg-[#0077B3] text-white py-3.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-lg shadow-[#0088CC]/20 active:scale-95"
-                >
-                  <Send size={18} /> Перейти в бота
-                </a>
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
+                <div className="flex gap-3 items-start">
+                  <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5">1</div>
+                  <p className="text-sm text-gray-400">Перейдите в бота по кнопке ниже.</p>
+                </div>
+                <div className="flex gap-3 items-start">
+                  <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5">2</div>
+                  <p className="text-sm text-gray-400">Нажмите <b className="text-white">Запустить</b> и следуйте инструкциям в чате.</p>
+                </div>
+                <div className="flex gap-3 items-start">
+                  <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5">3</div>
+                  <p className="text-sm text-gray-400">Вернитесь на эту страницу — ваши каналы появятся автоматически!</p>
+                </div>
               </div>
-            </div>
 
+              <a
+                href={`https://t.me/smmbox_auth_bot?start=bind_${user?.id || ''}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setShowTgHelperModal(false)}
+                className="w-full py-4 rounded-xl font-bold text-white transition-all flex justify-center items-center gap-3 bg-[#0088CC] hover:bg-[#0077B3] shadow-lg shadow-[#0088CC]/20 active:scale-95 text-base mt-2"
+              >
+                <Send size={20} /> Открыть Telegram-бота
+              </a>
+            </div>
           </div>
         </div>
       )}
