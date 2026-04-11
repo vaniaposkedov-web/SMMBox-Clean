@@ -819,9 +819,14 @@ export default function AccountsManager() {
         <h2 className="text-xl sm:text-2xl font-bold text-white text-center">Выберите соцсеть для подключения</h2>
 
         <div className="flex gap-4">
+          {/* Переключатель: ВКонтакте */}
           <button
             onClick={() => setSelectedNetwork('VK')}
-            className={`flex-1 p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${selectedNetwork === 'VK' ? 'border-[#0077FF] bg-[#0077FF]/10 shadow-[0_0_20px_rgba(0,119,255,0.15)]' : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800'}`}
+            className={`flex-1 p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${
+              selectedNetwork === 'VK' 
+                ? 'border-[#0077FF] bg-[#0077FF]/10 shadow-[0_0_20px_rgba(0,119,255,0.15)]' 
+                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800'
+            }`}
           >
             <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform ${selectedNetwork === 'VK' ? 'bg-[#0077FF] text-white scale-110' : 'bg-gray-800 text-gray-400'}`}>
               <Users size={28} />
@@ -829,9 +834,14 @@ export default function AccountsManager() {
             <span className={`font-bold text-lg ${selectedNetwork === 'VK' ? 'text-[#0077FF]' : 'text-gray-400'}`}>ВКонтакте</span>
           </button>
 
+          {/* Переключатель: Telegram */}
           <button
             onClick={() => setSelectedNetwork('TG')}
-            className={`flex-1 p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${selectedNetwork === 'TG' ? 'border-[#0088CC] bg-[#0088CC]/10 shadow-[0_0_20px_rgba(0,136,204,0.15)]' : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800'}`}
+            className={`flex-1 p-5 rounded-2xl border-2 transition-all flex flex-col items-center gap-4 ${
+              selectedNetwork === 'TG' 
+                ? 'border-[#0088CC] bg-[#0088CC]/10 shadow-[0_0_20px_rgba(0,136,204,0.15)]' 
+                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800'
+            }`}
           >
             <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-transform ${selectedNetwork === 'TG' ? 'bg-[#0088CC] text-white scale-110' : 'bg-gray-800 text-gray-400'}`}>
               <Send size={28} />
@@ -840,9 +850,14 @@ export default function AccountsManager() {
           </button>
         </div>
 
+        {/* Динамическая кнопка действия */}
         <button
           onClick={() => setShowPreConnectModal(selectedNetwork)}
-          className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg text-base active:scale-95 flex justify-center items-center gap-3 ${selectedNetwork === 'VK' ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[#0077FF]/20' : 'bg-[#0088CC] hover:bg-[#0077B3] shadow-[#0088CC]/20'}`}
+          className={`w-full py-4 rounded-xl font-bold text-white transition-all shadow-lg text-base active:scale-95 flex justify-center items-center gap-3 ${
+            selectedNetwork === 'VK' 
+              ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[#0077FF]/20' 
+              : 'bg-[#0088CC] hover:bg-[#0077B3] shadow-[#0088CC]/20'
+          }`}
         >
           {selectedNetwork === 'VK' ? <Users size={20} /> : <Send size={20} />}
           Авторизовать {selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}
