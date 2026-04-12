@@ -207,6 +207,15 @@ exports.syncVkKomod = async (req, res) => {
 
     // 3. Синхронизируем профили (SocialProfile)
     const validAccIds = allAccounts.map(a => String(a.id));
+
+    const existingVkProfiles = await prisma.socialProfile.findMany({ 
+      where: { userId, provider: 'VK' } 
+    });
+    for (const p of existingVkProfiles) {
+      if (!validAccIds.includes(String(p.providerAccountId))) {
+        await prisma.socialProfile.delete({ where: { id: p.id } });
+      }
+    }
     
     for (const acc of allAccounts) {
       const pId = String(acc.id);

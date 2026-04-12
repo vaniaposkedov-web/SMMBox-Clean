@@ -374,8 +374,14 @@ export default function AccountsManager() {
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
 
-        // 1. Достаем ID аккаунта прямо из ответа Kom-od (самый надежный способ не перепутать аккаунты)
-        const confirmedKomodId = confirmResult.data?.data?.id || confirmResult.data?.data?.account_id;
+        // 1. Улучшенное извлечение ID аккаунта из ответа Kom-od (Исправление)
+        let confirmedKomodId = null;
+        if (confirmResult.data?.data) {
+           confirmedKomodId = confirmResult.data.data.id || confirmResult.data.data.account_id;
+        }
+        if (!confirmedKomodId && confirmResult.data) {
+           confirmedKomodId = confirmResult.data.id || confirmResult.data.account_id;
+        }
 
         await useStore.getState().syncVkKomod();
         await handleRefreshProfiles();
@@ -430,7 +436,6 @@ export default function AccountsManager() {
             setKomodSelected([]); 
             setKomodModal({ isOpen: true, profileId: vkProf.id });
           } else {
-            // Теперь вместо краша покажет аккуратное предупреждение
             alert('Внимание: ' + (data.error || 'Пустой ответ сервера'));
           }
         } else {
