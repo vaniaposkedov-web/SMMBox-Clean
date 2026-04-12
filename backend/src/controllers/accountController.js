@@ -7,30 +7,56 @@ const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 
 
 // --- ХЕЛПЕРЫ ДЛЯ ПАРСИНГА ОТВЕТОВ KOM-OD ---
-const extractKomodAvatar = (obj) => {
-  if (!obj || typeof obj !== 'object') return null;
+const extractKomodAvatar = (obj, label = 'Unknown') => {
+  console.log(`\n[DEBUG-AVATAR] === Старт парсинга для: ${label} ===`);
+  if (!obj || typeof obj !== 'object') {
+    console.log(`[DEBUG-AVATAR] Передан пустой объект!`);
+    return null;
+  }
   
   let info = obj.info;
-  if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e) {} }
-  
-  let apiUser = obj.apiUserData;
-  if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e) {} }
+  console.log(`[DEBUG-AVATAR] Тип поля info:`, typeof info);
+  if (typeof info === 'string') {
+    try { 
+      info = JSON.parse(info); 
+      console.log(`[DEBUG-AVATAR] info успешно распарсился из строки.`);
+    } catch(e) { 
+      console.log(`[DEBUG-AVATAR] ОШИБКА: info это строка, но не JSON!`); 
+    } 
+  }
   
   if (info && info.rawData) {
     let raw = info.rawData;
-    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e) {} }
-    if (raw.photo_200) return raw.photo_200;
-    if (raw.photo_100) return raw.photo_100;
-    if (raw.photo_50) return raw.photo_50;
+    console.log(`[DEBUG-AVATAR] Тип поля rawData:`, typeof raw);
+    if (typeof raw === 'string') {
+      try { 
+        raw = JSON.parse(raw); 
+        console.log(`[DEBUG-AVATAR] rawData успешно распарсился из строки.`);
+      } catch(e) {
+        console.log(`[DEBUG-AVATAR] ОШИБКА: rawData это строка, но не JSON!`);
+      }
+    }
+    
+    if (raw.photo_200) { console.log(`[DEBUG-AVATAR] Найдено photo_200 в rawData:`, raw.photo_200); return raw.photo_200; }
+    if (raw.photo_100) { console.log(`[DEBUG-AVATAR] Найдено photo_100 в rawData:`, raw.photo_100); return raw.photo_100; }
+    if (raw.photo_50) { console.log(`[DEBUG-AVATAR] Найдено photo_50 в rawData:`, raw.photo_50); return raw.photo_50; }
+    
+    console.log(`[DEBUG-AVATAR] В rawData нет полей photo_*. Доступные ключи:`, Object.keys(raw));
+  } else {
+    console.log(`[DEBUG-AVATAR] Поле info.rawData отсутствует.`);
   }
   
+  let apiUser = obj.apiUserData;
+  if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e) {} }
   if (apiUser) {
     if (apiUser.photo_200) return apiUser.photo_200;
     if (apiUser.photo_100) return apiUser.photo_100;
     if (apiUser.photo_50) return apiUser.photo_50;
   }
   
-  return obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo || null;
+  const fallback = obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo || null;
+  console.log(`[DEBUG-AVATAR] Поиск по корню объекта. Результат:`, fallback);
+  return fallback;
 };
 
 const extractKomodName = (obj) => {
@@ -145,14 +171,17 @@ exports.syncVkKomod = async (req, res) => {
       const extractedName = extractKomodName(acc);
       const profileName = extractedName || (existingProfile ? existingProfile.name : 'Профиль ВК');
       
-      const extractedAvatar = extractKomodAvatar(acc);
+      const extractedAvatar = extractKomodAvatar(acc, `ПРОФИЛЬ: ${profileName}`);
       let profileAvatar = extractedAvatar;
+
+      console.log(`[DEBUG-DB] Итог перед сохранением ПРОФИЛЯ "${profileName}": extracted=${extractedAvatar}, старый из БД=${existingProfile?.avatarUrl}`);
       
-      // ФИКС: Если шлюз не отдал картинку, берем старую из базы, чтобы не затереть синей заглушкой
       if (!profileAvatar && existingProfile && existingProfile.avatarUrl && !existingProfile.avatarUrl.includes('ui-avatars')) {
          profileAvatar = existingProfile.avatarUrl;
+         console.log(`[DEBUG-DB] -> Беру старую аватарку из БД:`, profileAvatar);
       }
       profileAvatar = profileAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileName)}&background=0077FF&color=fff`;
+      
 
       const vkProfile = await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
@@ -244,15 +273,17 @@ exports.syncVkKomod = async (req, res) => {
       const extractedName = extractKomodName(grp);
       let name = extractedName || (existingGroup ? existingGroup.name : 'ВК');
       
-      const extractedAvatar = extractKomodAvatar(grp);
+      const extractedAvatar = extractKomodAvatar(grp, `ГРУППА: ${name}`);
       let avatar = extractedAvatar;
       
-      // ФИКС АВАТАРОК: Если шлюз не отдал фото, сохраняем то, что уже было корректно передано с фронтенда!
+      console.log(`[DEBUG-DB] Итог перед сохранением ГРУППЫ "${name}": extracted=${extractedAvatar}, старый из БД=${existingGroup?.avatarUrl}`);
+
       if (!avatar && existingGroup && existingGroup.avatarUrl && !existingGroup.avatarUrl.includes('ui-avatars')) {
          avatar = existingGroup.avatarUrl;
+         console.log(`[DEBUG-DB] -> Беру старую аватарку из БД:`, avatar);
       }
       avatar = avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
-
+      // .
       if (isProfile && avatar && !avatar.includes('ui-avatars.com')) {
         await prisma.socialProfile.update({ where: { id: parentProfileId }, data: { avatarUrl: avatar } });
         name = `Стена: ${name}`;
