@@ -106,25 +106,23 @@ export default function AccountsManager() {
 
   const handleOpenGroupsSelector = async (profileId) => {
     setIsGroupsLoading(true);
-    // Находим профиль, чтобы взять актуальные ФИО и Аватарку для "Стены"
     const profile = profiles.find(p => p.id === profileId);
     const data = await useStore.getState().fetchKomodGroups(profileId);
     
     if (data.success) {
+      const groupsArray = Array.isArray(data.groups) ? data.groups : (data.groups?.items || []);
       const personalWall = {
         id: 'wall_profile', 
-        name: profile?.name || 'Личная страница',
-        // Исправляем битое фото: используем avatarUrl из профиля
-        photo_50: profile?.avatarUrl || '', 
+        name: profile?.name || 'Профиль ВКонтакте', 
+        photo_50: profile?.avatarUrl || 'https://via.placeholder.com/50', 
         is_profile_dummy: true 
       };
 
-      // Соединяем: Личная страница всегда первая
-      setSelectableGroups([personalWall, ...(data.groups || [])]);
+      setSelectableGroups([personalWall, ...groupsArray]);
       setKomodSelected([]); 
       setKomodModal({ isOpen: true, profileId });
     } else {
-      alert(data.error);
+      alert(data.error || 'Не удалось загрузить список групп');
     }
     setIsGroupsLoading(false);
   };
@@ -218,7 +216,7 @@ export default function AccountsManager() {
 
       const finalizeAuth = async () => {
         setIsSyncingVk(true);
-        setVkConnectStatus('syncing_profile'); 
+        setVkConnectStatus('syncing_profile'); // ВКЛЮЧАЕМ СПИННЕР
         
         const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
         if (!confirmResult.success) {
@@ -226,32 +224,47 @@ export default function AccountsManager() {
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
 
-        // 1. ВОЗВРАЩАЕМ СИНХРОНИЗАЦИЮ! Это критически важно для бэкенда.
-        // Без нее бэкенд не привяжет профиль и выдаст 500 ошибку при запросе групп.
+        // Синхронизируем бэкенд
         await useStore.getState().syncVkKomod();
         await handleRefreshProfiles();
         
-        // 2. ХИТРЫЙ ОБХОД: бэкенд при синхронизации автоматически добавляет личную стену.
-        // Мы ее тихо удаляем из аккаунтов прямо сейчас, чтобы пользователь сам выбрал её в модалке.
+        // Тихо удаляем авто-добавленную стену
         const currentAccounts = useStore.getState().accounts;
         const autoAddedWall = currentAccounts.find(a => a.provider === 'VK' && a.providerId.startsWith('wall_'));
-        
         if (autoAddedWall) {
-          // Вызываем удаление прямо из стора
           await useStore.getState().removeAccount(autoAddedWall.id);
-          await handleRefreshProfiles(); // Обновляем стейт после удаления
+          await handleRefreshProfiles();
         }
 
-        setIsSyncingVk(false);
-        
         const updatedProfiles = useStore.getState().profiles;
         const vkProf = updatedProfiles.find(p => p.provider === 'VK');
         
-        setVkConnectStatus('idle');
-        
-        // Теперь безопасно открываем окно выбора
+        // ЕСЛИ ПРОФИЛЬ ЕСТЬ — СРАЗУ ГРУЗИМ ГРУППЫ (СПИННЕР ВСЁ ЕЩЁ КРУТИТСЯ)
         if (vkProf?.id) {
-          handleOpenGroupsSelector(vkProf.id);
+          const profile = updatedProfiles.find(p => p.id === vkProf.id);
+          const data = await useStore.getState().fetchKomodGroups(vkProf.id);
+          
+          // ТОЛЬКО ТЕПЕРЬ ВЫКЛЮЧАЕМ СПИННЕР
+          setIsSyncingVk(false);
+          setVkConnectStatus('idle');
+          
+          if (data.success) {
+            const groupsArray = Array.isArray(data.groups) ? data.groups : (data.groups?.items || []);
+            const personalWall = {
+              id: 'wall_profile', 
+              name: profile?.name || 'Профиль ВКонтакте', // Вытаскиваем реальное ФИО
+              photo_50: profile?.avatarUrl || 'https://via.placeholder.com/50', // Реальная аватарка
+              is_profile_dummy: true 
+            };
+            setSelectableGroups([personalWall, ...groupsArray]);
+            setKomodSelected([]); 
+            setKomodModal({ isOpen: true, profileId: vkProf.id });
+          } else {
+            alert('Не удалось загрузить список групп');
+          }
+        } else {
+          setIsSyncingVk(false);
+          setVkConnectStatus('idle');
         }
       };
       
@@ -898,16 +911,21 @@ export default function AccountsManager() {
           <div className="grid grid-cols-2 gap-2">
             {[...connectedVk, ...connectedTg].map(acc => {
               const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
+              // Железобетонный поиск названия и фото сохраненного аккаунта
+              const accountName = acc.name || acc.title || (acc.provider === 'VK' ? 'ВК' : 'ТГ');
+              const avatar = acc.avatarUrl || acc.photo_50 || 'https://via.placeholder.com/40';
 
               return (
                 <div key={acc.id} className="flex items-center justify-between p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <img src={acc.avatarUrl || 'https://via.placeholder.com/40'} className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" alt="" />
+                    <img src={avatar} className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" alt="" />
                     
                     <div className="flex flex-col min-w-0">
+                      {/* Реальное ФИО или Название */}
                       <span className="text-white font-bold text-xs truncate">
-                        {isPersonal ? acc.name : (acc.provider === 'VK' ? 'ВК' : 'ТГ')}
+                        {accountName}
                       </span>
+                      {/* Приписка для стены */}
                       {isPersonal && (
                         <span className="text-[8px] text-gray-500 uppercase font-bold leading-none mt-0.5">
                           Личная страница
@@ -1121,8 +1139,9 @@ export default function AccountsManager() {
                 const isSelected = komodSelected.includes(uniqueId);
                 const isPersonal = group.is_profile_dummy;
                 
-                // Исправляем битые фото
-                const avatar = isPersonal ? group.photo_50 : (group.photo_50 || group.apiGroupData?.photo_50 || 'https://via.placeholder.com/50');
+                // Железобетонный поиск названия и фото
+                const groupName = group.name || group.title || group.apiGroupData?.name || 'Без названия';
+                const avatar = group.photo_50 || group.photo_100 || group.avatar || group.apiGroupData?.photo_50 || 'https://via.placeholder.com/50';
 
                 return (
                   <div 
@@ -1133,8 +1152,10 @@ export default function AccountsManager() {
                     <img src={avatar} className="w-12 h-12 rounded-full object-cover border border-gray-700 shrink-0" alt="" />
                     
                     <div className="flex-1 min-w-0">
-                      <span className="text-white font-bold text-sm block truncate">{group.name}</span>
-                      {isPersonal && <span className="text-[10px] text-[#0077FF] font-bold uppercase mt-0.5 block tracking-wide">Личная страница</span>}
+                      {/* ФИО или Название сообщества */}
+                      <span className="text-white font-bold text-sm block truncate">{groupName}</span>
+                      {/* Серая подпись "Личная страница" только для стены */}
+                      {isPersonal && <span className="text-[10px] text-gray-500 font-bold uppercase mt-0.5 block tracking-wide">Личная страница</span>}
                     </div>
 
                     <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'}`}>
