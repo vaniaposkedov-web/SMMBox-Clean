@@ -300,50 +300,51 @@ exports.syncVkKomod = async (req, res) => {
     const myProfileAccountIds = myProfiles.map(p => String(p.providerAccountId));
 
     // 5. СОХРАНЯЕМ ГРУППЫ И ПОДСТАВЛЯЕМ ФОТО
-    for (const grp of allGroups) {
-      if (!myProfileAccountIds.includes(String(grp.account_id))) continue;
+      for (const grp of allGroups) {
+        if (!myProfileAccountIds.includes(String(grp.account_id))) continue;
 
-      const parentProfile = myProfiles.find(p => String(p.providerAccountId) === String(grp.account_id));
-      
-      const urlStr = String(grp.url || '');
-      const isProfileByUrl = /^https?:\/\/(www\.)?vk\.com\/id\d+\/?$/i.test(urlStr);
-      const isProfileById = String(grp.uid || grp.id) === String(grp.account_id);
-      const isProfileByFlag = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
-      
-      const isWall = isProfileByFlag || isProfileByUrl || isProfileById;
-      const vkUid = String(grp.uid || grp.id);
-      const providerId = isWall ? `wall_${vkUid}` : `group_${vkUid}`;
-      validGroupProviderIds.push(providerId);
+        const parentProfile = myProfiles.find(p => String(p.providerAccountId) === String(grp.account_id));
+        
+        const urlStr = String(grp.url || '');
+        const isProfileByUrl = /^https?:\/\/(www\.)?vk\.com\/id\d+\/?$/i.test(urlStr);
+        const isProfileById = String(grp.uid || grp.id) === String(grp.account_id);
+        const isProfileByFlag = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
+        
+        const isWall = isProfileByFlag || isProfileByUrl || isProfileById;
+        const vkUid = String(grp.uid || grp.id);
+        const providerId = isWall ? `wall_${vkUid}` : `group_${vkUid}`;
+        validGroupProviderIds.push(providerId);
 
-      let finalName = grp.title || grp.name || 'Сообщество';
-      let finalAvatar = null;
-      
-      const existingAcc = await prisma.account.findUnique({ where: { provider_providerId: { provider: 'VK', providerId } } });
+        let finalName = grp.title || grp.name || 'Сообщество';
+        let finalAvatar = null;
+        
+        const existingAcc = await prisma.account.findUnique({ where: { provider_providerId: { provider: 'VK', providerId } } });
 
-      if (isWall) {
-        // Для стены берем фотку профиля
-        finalAvatar = parentProfile?.avatarUrl;
-      } else {
-        // Для группы берем идеальную фотку из словаря!
-        finalAvatar = groupAvatarsMap[vkUid];
+        if (isWall) {
+          // Для стены берем фотку профиля
+          finalAvatar = parentProfile?.avatarUrl;
+        } else {
+          // ✅ ИСПРАВЛЕНИЕ: Пропускаем объект группы через парсер для извлечения info.rawData
+          // Если парсер ничего не найдет, откатываемся к резервному словарю
+          finalAvatar = extractKomodAvatar(grp, finalName) || groupAvatarsMap[vkUid];
+        }
+
+        // ГЛАВНАЯ ЗАЩИТА АВАТАРОК: Если нигде нет фотки, оставляем старую из нашей базы
+        if (!finalAvatar && existingAcc?.avatarUrl && !existingAcc.avatarUrl.includes('ui-avatars')) {
+          finalAvatar = existingAcc.avatarUrl;
+        }
+        
+        // Заглушка, если фотки нет вообще
+        if (!finalAvatar) {
+          finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=0d0f13&color=0077FF&rounded=true`;
+        }
+
+        await prisma.account.upsert({
+          where: { provider_providerId: { provider: 'VK', providerId } },
+          update: { isValid: true, profileId: parentProfile.id, userId, name: finalName, avatarUrl: finalAvatar },
+          create: { userId, provider: 'VK', providerId, name: finalName, avatarUrl: finalAvatar, accessToken: KOMOD_TOKEN, profileId: parentProfile.id }
+        });
       }
-
-      // ГЛАВНАЯ ЗАЩИТА АВАТАРОК: Если нигде нет фотки, оставляем старую из нашей базы
-      if (!finalAvatar && existingAcc?.avatarUrl && !existingAcc.avatarUrl.includes('ui-avatars')) {
-        finalAvatar = existingAcc.avatarUrl;
-      }
-      
-      // Заглушка, если фотки нет вообще
-      if (!finalAvatar) {
-        finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=0d0f13&color=0077FF&rounded=true`;
-      }
-
-      await prisma.account.upsert({
-        where: { provider_providerId: { provider: 'VK', providerId } },
-        update: { isValid: true, profileId: parentProfile.id, userId, name: finalName, avatarUrl: finalAvatar },
-        create: { userId, provider: 'VK', providerId, name: finalName, avatarUrl: finalAvatar, accessToken: KOMOD_TOKEN, profileId: parentProfile.id }
-      });
-    }
 
     // 6. ОЧИСТКА СТАРЫХ ДУБЛИКАТОВ ИЗ БАЗЫ
     const existingVkAccounts = await prisma.account.findMany({ where: { userId, provider: 'VK' } });
