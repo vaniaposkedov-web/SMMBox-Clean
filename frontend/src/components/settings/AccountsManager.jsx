@@ -109,15 +109,16 @@ export default function AccountsManager() {
   // --- АГРЕССИВНЫЙ ПОИСК ДАННЫХ И ИСПРАВЛЕНИЕ ССЫЛОК ---
   const extractAvatar = (obj) => {
     if (!obj || typeof obj !== 'object') return null;
-    if (obj.photo_100) return obj.photo_100;
-    if (obj.photo_50) return obj.photo_50;
-    if (obj.avatar) return obj.avatar;
-    // Ищем вглубь
-    for (let key in obj) {
-       if (obj[key] && typeof obj[key] === 'object') {
-         if (obj[key].photo_100) return obj[key].photo_100;
-         if (obj[key].photo_50) return obj[key].photo_50;
-       }
+    const direct = obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo_200;
+    if (direct && typeof direct === 'string') return direct;
+    
+    if (obj.apiGroupData && typeof obj.apiGroupData === 'object') {
+      const nested = obj.apiGroupData.photo_100 || obj.apiGroupData.photo_50 || obj.apiGroupData.avatar;
+      if (nested && typeof nested === 'string') return nested;
+    }
+    if (obj.apiUserData && typeof obj.apiUserData === 'object') {
+      const nestedU = obj.apiUserData.photo_100 || obj.apiUserData.photo_50 || obj.apiUserData.avatar;
+      if (nestedU && typeof nestedU === 'string') return nestedU;
     }
     return null;
   };
@@ -125,26 +126,36 @@ export default function AccountsManager() {
   const extractName = (obj) => {
     if (!obj || typeof obj !== 'object') return null;
     if (obj.first_name) return `${obj.first_name} ${obj.last_name || ''}`.trim();
-    if (obj.name) return obj.name;
-    if (obj.title) return obj.title;
-    // Ищем вглубь
-    for (let key in obj) {
-       if (obj[key] && typeof obj[key] === 'object') {
-         if (obj[key].first_name) return `${obj[key].first_name} ${obj[key].last_name || ''}`.trim();
-         if (obj[key].name) return obj[key].name;
-         if (obj[key].title) return obj[key].title;
-       }
+    
+    const direct = obj.name || obj.title;
+    if (direct && typeof direct === 'string') return direct;
+    
+    if (obj.apiGroupData && typeof obj.apiGroupData === 'object') {
+      const nested = obj.apiGroupData.name || obj.apiGroupData.title;
+      if (nested && typeof nested === 'string') return nested;
+    }
+    if (obj.apiUserData && typeof obj.apiUserData === 'object') {
+      if (obj.apiUserData.first_name) return `${obj.apiUserData.first_name} ${obj.apiUserData.last_name || ''}`.trim();
     }
     return null;
   };
 
   const getValidAvatar = (url, fallbackName) => {
-    if (!url || url.includes('camera_50.png') || url.includes('camera_100.png') || url.includes('camera_200.png')) {
-      return `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackName || 'VK')}&background=0d0f13&color=0077FF&rounded=true&bold=true`;
-    }
-    if (url.startsWith('//')) return `https:${url}`;
-    if (url.startsWith('http://')) return url.replace('http://', 'https://');
-    return url;
+    const generateFallback = () => {
+       const safeName = fallbackName ? String(fallbackName).replace(/[^a-zA-Zа-яА-Я0-9\s]/g, '').trim().substring(0, 2) : 'VK';
+       return `https://ui-avatars.com/api/?name=${encodeURIComponent(safeName || 'VK')}&background=0d0f13&color=0077FF&rounded=true&bold=true`;
+    };
+
+    if (!url || typeof url !== 'string' || url.trim() === '') return generateFallback();
+    
+    let finalUrl = url.trim();
+    if (finalUrl.includes('camera_') || finalUrl.includes('deactivated')) return generateFallback();
+    
+    if (finalUrl.startsWith('//')) finalUrl = `https:${finalUrl}`;
+    else if (finalUrl.startsWith('http://')) finalUrl = finalUrl.replace('http://', 'https://');
+    
+    if (!finalUrl.startsWith('http')) return generateFallback();
+    return finalUrl;
   };
   
 
@@ -155,10 +166,16 @@ export default function AccountsManager() {
     
     if (data.success) {
       const groupsArray = Array.isArray(data.groups) ? data.groups : (data.groups?.items || []);
+      
+      // ИЩЕМ ДАННЫЕ ЛИЧНОЙ СТРАНИЦЫ НАПРЯМУЮ ИЗ ШЛЮЗА
+      const apiUser = data.auth?.apiUserData || data.auth || profile?.auth?.apiUserData;
+      const fullName = extractName(apiUser) || profile?.name || 'Личная страница';
+      const photoUrl = extractAvatar(apiUser) || profile?.avatarUrl;
+
       const personalWall = {
         id: 'wall_profile', 
-        name: profile?.name || 'Профиль ВКонтакте', 
-        photo_50: profile?.avatarUrl || 'https://via.placeholder.com/50', 
+        name: fullName,
+        photo_50: photoUrl, 
         is_profile_dummy: true 
       };
 
@@ -295,8 +312,8 @@ export default function AccountsManager() {
           if (data.success) {
             const groupsArray = Array.isArray(data.groups) ? data.groups : (data.groups?.items || []);
             
-            // Теперь data.auth доходит с бэкенда! Вытаскиваем реальные данные
-            const apiUser = data.auth?.apiUserData || profile?.auth?.apiUserData;
+            // Точно так же вытаскиваем данные для личной страницы
+            const apiUser = data.auth?.apiUserData || data.auth || profile?.auth?.apiUserData;
             const fullName = extractName(apiUser) || profile?.name || 'Личная страница';
             const photoUrl = extractAvatar(apiUser) || profile?.avatarUrl;
 
@@ -964,13 +981,17 @@ export default function AccountsManager() {
               const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
               const accountName = acc.name || acc.title || (acc.provider === 'VK' ? 'ВК' : 'ТГ');
               
-              // Если в базе аватарка пустая, она сгенерируется красиво
-              const avatar = getValidAvatar(acc.avatarUrl || acc.photo_100 || acc.photo_50, accountName);
+              const avatar = getValidAvatar(acc.avatarUrl || extractAvatar(acc), accountName);
 
               return (
                 <div key={acc.id} className="flex items-center justify-between p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <img src={avatar} className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" alt="" />
+                    <img 
+                      src={avatar} 
+                      onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, accountName); }} 
+                      className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" 
+                      alt="" 
+                    />
                     
                     <div className="flex flex-col min-w-0">
                       <span className="text-white font-bold text-xs truncate">
@@ -1189,7 +1210,6 @@ export default function AccountsManager() {
                 const isSelected = komodSelected.includes(uniqueId);
                 const isPersonal = group.is_profile_dummy;
                 
-                // Используем наши мощные искатели
                 const groupName = extractName(group) || 'Без названия';
                 const avatar = getValidAvatar(extractAvatar(group), groupName);
 
@@ -1199,7 +1219,13 @@ export default function AccountsManager() {
                     onClick={() => setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
                     className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF]' : 'bg-gray-900 border-gray-800 hover:bg-gray-800'}`}
                   >
-                    <img src={avatar} className="w-12 h-12 rounded-full object-cover border border-gray-700 shrink-0" alt="" />
+                    {/* ДОБАВЛЕН onError ДЛЯ ЗАЩИТЫ ОТ БИТЫХ ССЫЛОК ВК */}
+                    <img 
+                      src={avatar} 
+                      onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, groupName); }} 
+                      className="w-12 h-12 rounded-full object-cover border border-gray-700 shrink-0" 
+                      alt="" 
+                    />
                     
                     <div className="flex-1 min-w-0">
                       <span className="text-white font-bold text-sm block truncate">{groupName}</span>
