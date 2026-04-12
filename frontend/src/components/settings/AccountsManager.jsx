@@ -106,53 +106,56 @@ export default function AccountsManager() {
   };
 
 
-  // --- АГРЕССИВНЫЙ ПОИСК С УЧЕТОМ ФОРМАТА KOM-OD (info.rawData) ---
+ // --- АГРЕССИВНЫЙ ПОИСК С УЧЕТОМ ФОРМАТА KOM-OD (info.rawData) ---
   const extractAvatar = (obj) => {
     if (!obj || typeof obj !== 'object') return null;
     
-    // 1. Проверяем НОВЫЙ ФОРМАТ ШЛЮЗА (то, что скинул разраб)
-    if (obj.info?.rawData) {
-       const raw = obj.info.rawData;
+    // Распаковываем info из строки, если нужно
+    let info = obj.info;
+    if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
+    
+    // Распаковываем rawData из строки, если нужно
+    let raw = info?.rawData;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
+    
+    if (raw) {
        if (raw.photo_200) return raw.photo_200;
        if (raw.photo_100) return raw.photo_100;
        if (raw.photo_50) return raw.photo_50;
     }
     
-    // 2. Личная страница (apiUserData)
-    if (obj.apiUserData) {
-       if (obj.apiUserData.photo_200) return obj.apiUserData.photo_200;
-       if (obj.apiUserData.photo_100) return obj.apiUserData.photo_100;
-       if (obj.apiUserData.photo_50) return obj.apiUserData.photo_50;
+    // Распаковываем apiUserData из строки
+    let apiUser = obj.apiUserData;
+    if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e){} }
+    
+    if (apiUser) {
+       if (apiUser.photo_200) return apiUser.photo_200;
+       if (apiUser.photo_100) return apiUser.photo_100;
+       if (apiUser.photo_50) return apiUser.photo_50;
     }
     
-    // 3. Стандартные ключи
-    if (obj.photo_200) return obj.photo_200;
-    if (obj.photo_100) return obj.photo_100;
-    if (obj.photo_50) return obj.photo_50;
-    if (obj.avatar) return obj.avatar;
-    
-    return null;
+    return obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo || null;
   };
 
- const extractName = (obj) => {
+  const extractName = (obj) => {
     if (!obj || typeof obj !== 'object') return null;
     
-    // 1. НОВЫЙ ФОРМАТ ШЛЮЗА
-    if (obj.info) {
-       if (obj.info.title) return obj.info.title;
-       if (obj.info.rawData?.name) return obj.info.rawData.name;
-    }
+    let info = obj.info;
+    if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
     
-    // 2. Личная страница
-    if (obj.apiUserData || obj.first_name) {
-      const target = obj.apiUserData || obj;
-      if (target.first_name) return `${target.first_name} ${target.last_name || ''}`.trim();
-    }
+    let raw = info?.rawData;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
     
-    if (obj.name) return obj.name;
-    if (obj.title) return obj.title;
+    if (info && info.title) return info.title;
+    if (raw && raw.name) return raw.name;
     
-    return null;
+    let apiUser = obj.apiUserData;
+    if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e){} }
+    
+    const target = apiUser || obj;
+    if (target.first_name) return `${target.first_name} ${target.last_name || ''}`.trim();
+    
+    return obj.name || obj.title || null;
   };
 
   const extractId = (obj) => {
