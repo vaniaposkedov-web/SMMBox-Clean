@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import { 
   Save, Image as ImageIcon, Type, Loader2, Check,
-  Upload, Edit3, X, Plus, Trash2, CheckCircle2, ChevronLeft
+  Upload, Edit3, X, Plus, Trash2, CheckCircle2, ChevronLeft,
+  Search, ChevronDown
 } from 'lucide-react';
 
 const defaultWatermark = {
@@ -54,6 +55,10 @@ export default function WatermarkConstructor() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   
+  // Новые состояния для поиска и раскрывающихся плашек
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedCardId, setExpandedCardId] = useState(null);
+  
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -71,7 +76,11 @@ export default function WatermarkConstructor() {
     return () => clearInterval(interval);
   }, [view]);
 
+  // Фильтрация настроенных аккаунтов по поиску
   const configuredAccounts = accounts.filter(acc => acc.watermark);
+  const filteredConfiguredAccounts = configuredAccounts.filter(acc => 
+    acc.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   // --- УПРАВЛЕНИЕ ---
   const handleSelectAccount = (acc) => {
@@ -173,6 +182,7 @@ export default function WatermarkConstructor() {
       <div className="max-w-4xl mx-auto px-4 py-6 animate-in fade-in duration-500 font-sans">
         
         {configuredAccounts.length === 0 ? (
+          // ЗАГЛУШКА (Если нет знаков)
           <div className="bg-admin-card border border-gray-800 rounded-xl p-8 sm:p-12 text-center shadow-lg relative overflow-hidden flex flex-col items-center">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50" />
             
@@ -201,46 +211,90 @@ export default function WatermarkConstructor() {
             </button>
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-admin-card border border-gray-800 p-4 sm:p-5 rounded-xl shadow-sm">
-              <div>
-                <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">Водяные знаки</h1>
-                <p className="text-gray-400 text-xs mt-1">Управление дизайном постов</p>
+          // СПИСОК АККАУНТОВ (Компактный вид)
+          <div className="space-y-4">
+            
+            {/* Панель: Поиск + Добавить */}
+            <div className="flex items-center justify-between gap-3 bg-transparent">
+              <div className="relative flex-1 max-w-xs sm:max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" />
+                <input 
+                  type="text" 
+                  placeholder="Поиск аккаунта..." 
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full bg-admin-card border border-gray-800 focus:border-blue-500 rounded-lg py-2 pl-9 pr-3 text-sm text-white outline-none transition-colors shadow-sm"
+                />
               </div>
               <button 
                 onClick={() => setIsAccountModalOpen(true)}
-                className="bg-[#5C9E42] hover:bg-[#4d8636] text-white px-5 py-2.5 rounded-lg font-bold transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2 w-full sm:w-auto text-sm"
+                className="bg-[#5C9E42] hover:bg-[#4d8636] text-white px-4 py-2 rounded-lg font-bold transition-all shadow-sm active:scale-95 flex items-center justify-center gap-1.5 shrink-0 text-sm"
               >
-                <Plus size={16} /> Добавить знак
+                <Plus size={16} /> <span className="hidden sm:inline">Добавить</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {configuredAccounts.map(acc => (
-                <div key={acc.id} className="bg-admin-card border border-gray-800 p-4 rounded-xl flex flex-col gap-4 hover:border-gray-700 transition-all shadow-sm group">
-                  <div className="flex items-center gap-3">
-                    <img src={acc.avatarUrl} className="w-10 h-10 rounded-full border border-gray-700 object-cover" alt="" />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-white font-bold text-sm truncate">{acc.name}</h3>
-                      <span className="text-[9px] text-emerald-500 font-black uppercase tracking-wider bg-emerald-500/10 px-1.5 py-0.5 rounded">Настроен</span>
+            {/* Сетка компактных плашек */}
+            {filteredConfiguredAccounts.length === 0 ? (
+              <div className="text-center py-10 text-gray-500 text-sm">Аккаунты не найдены</div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {filteredConfiguredAccounts.map(acc => {
+                  const isExpanded = expandedCardId === acc.id;
+                  
+                  return (
+                    <div 
+                      key={acc.id} 
+                      onClick={() => setExpandedCardId(isExpanded ? null : acc.id)}
+                      className={`bg-admin-card border border-gray-800 rounded-lg transition-all cursor-pointer shadow-sm hover:border-gray-700 overflow-hidden ${isExpanded ? 'bg-gray-900/50' : ''}`}
+                    >
+                      {/* Основная строка карточки */}
+                      <div className="flex items-center gap-3 p-3">
+                        <div className="relative">
+                          <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700 object-cover" alt="" />
+                          <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-gray-900" title="Настроен"></div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-white font-bold text-sm truncate">{acc.name}</h3>
+                        </div>
+                        <div className={`text-gray-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                          <ChevronDown size={18} />
+                        </div>
+                      </div>
+
+                      {/* Раскрывающаяся область (Кнопки действий) */}
+                      <div className={`transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'}`}>
+                        <div className="flex gap-2 p-3 pt-0 border-t border-gray-800/50 mt-1">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleSelectAccount(acc); }} 
+                            className="flex-1 py-1.5 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white rounded-md text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <Edit3 size={14}/> Настроить
+                          </button>
+                          <button 
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (window.confirm('Удалить водяной знак?')) {
+                                await saveAccountDesign(acc.id, undefined, null);
+                                fetchAccounts(user.id);
+                              }
+                            }} 
+                            className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-md transition-colors flex items-center justify-center"
+                            title="Удалить знак"
+                          >
+                            <Trash2 size={16}/>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleSelectAccount(acc)} className="flex-1 py-2 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"><Edit3 size={14}/> Изменить</button>
-                    <button onClick={async () => {
-                      if (window.confirm('Удалить водяной знак?')) {
-                        await saveAccountDesign(acc.id, undefined, null);
-                        fetchAccounts(user.id);
-                      }
-                    }} className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-lg transition-colors"><Trash2 size={16}/></button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
-        {/* МОДАЛЬНОЕ ОКНО */}
+        {/* МОДАЛЬНОЕ ОКНО ВЫБОРА */}
         {isAccountModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsAccountModalOpen(false)} />
