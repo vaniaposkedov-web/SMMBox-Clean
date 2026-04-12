@@ -190,7 +190,7 @@ exports.syncVkKomod = async (req, res) => {
     const userId = String(req.user?.userId || req.user?.id);
     if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-    // 1. ПОЛУЧАЕМ АККАУНТЫ И УБИРАЕМ ДУБЛИКАТЫ (оставляем только уникальные uid ВК)
+    // 1. ПОЛУЧАЕМ АККАУНТЫ И УБИРАЕМ ДУБЛИКАТЫ
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const allAccountsRaw = accRes.data?.data?.items || [];
 
@@ -203,7 +203,7 @@ exports.syncVkKomod = async (req, res) => {
     }
     const allAccounts = Array.from(accountsMap.values());
 
-    // 2. ВЫТЯГИВАЕМ АВАТАРКИ ЛИЧНЫХ СТРАНИЦ СТРОГО ИЗ /account/<id>
+    // 2. ВЫТЯГИВАЕМ АВАТАРКИ ЛИЧНЫХ СТРАНИЦ
     const metaMap = {};
     for (const acc of allAccounts) {
       try {
@@ -211,7 +211,7 @@ exports.syncVkKomod = async (req, res) => {
         const data = detailRes.data?.data;
         if (data && data.auth) {
           const auth = typeof data.auth === 'string' ? JSON.parse(data.auth) : data.auth;
-          const apiUser = auth.apiUserData; // Идем четко по структуре от Алексея
+          const apiUser = auth.apiUserData; 
           if (apiUser) {
             metaMap[String(acc.id)] = {
               avatar: apiUser.photo_200 || apiUser.photo_max || apiUser.photo_100,
@@ -222,7 +222,6 @@ exports.syncVkKomod = async (req, res) => {
       } catch (e) { console.log(`Ошибка парсинга аккаунта ${acc.id}`); }
     }
 
-    // 3. СОХРАНЯЕМ ПРОФИЛИ В БАЗУ
     const validAccIds = allAccounts.map(a => String(a.id));
     const existingVkProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
 
@@ -232,10 +231,20 @@ exports.syncVkKomod = async (req, res) => {
       }
     }
 
+    // 3. СОХРАНЯЕМ ПРОФИЛИ С ЗАЩИТОЙ АВАТАРОК
     for (const acc of allAccounts) {
       const pId = String(acc.id);
-      const name = metaMap[pId]?.name || acc.title || 'Профиль ВК';
-      const avatar = metaMap[pId]?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
+      const existingProfile = existingVkProfiles.find(p => p.providerAccountId === pId);
+      
+      const name = metaMap[pId]?.name || acc.title || existingProfile?.name || 'Профиль ВК';
+      let avatar = metaMap[pId]?.avatar;
+      
+      if (!avatar && existingProfile?.avatarUrl && !existingProfile.avatarUrl.includes('ui-avatars')) {
+         avatar = existingProfile.avatarUrl;
+      }
+      if (!avatar) {
+         avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
+      }
 
       await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId: pId } },
@@ -250,7 +259,13 @@ exports.syncVkKomod = async (req, res) => {
 
     const groupsMap = new Map();
     for (const grp of allGroupsRaw) {
-      const isWall = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
+      // ВОЗВРАЩЕНО: Ультимативное определение стены
+      const urlStr = String(grp.url || '');
+      const isProfileByUrl = /^https?:\/\/(www\.)?vk\.com\/id\d+\/?$/i.test(urlStr);
+      const isProfileById = String(grp.uid || grp.id) === String(grp.account_id);
+      const isProfileByFlag = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
+      
+      const isWall = isProfileByFlag || isProfileByUrl || isProfileById;
       const vkUid = String(grp.uid || grp.id);
       const groupKey = isWall ? `wall_${vkUid}` : `group_${vkUid}`;
 
@@ -264,41 +279,51 @@ exports.syncVkKomod = async (req, res) => {
     const myProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
     const myProfileAccountIds = myProfiles.map(p => String(p.providerAccountId));
 
-    // 5. ВЫТЯГИВАЕМ АВАТАРКИ СООБЩЕСТВ СТРОГО ИЗ /group/<id>
+    // 5. СОХРАНЯЕМ ГРУППЫ С ЗАЩИТОЙ АВАТАРОК
     for (const grp of allGroups) {
       if (!myProfileAccountIds.includes(String(grp.account_id))) continue;
 
       const parentProfile = myProfiles.find(p => String(p.providerAccountId) === String(grp.account_id));
-      const isWall = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
+      
+      const urlStr = String(grp.url || '');
+      const isProfileByUrl = /^https?:\/\/(www\.)?vk\.com\/id\d+\/?$/i.test(urlStr);
+      const isProfileById = String(grp.uid || grp.id) === String(grp.account_id);
+      const isProfileByFlag = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
+      
+      const isWall = isProfileByFlag || isProfileByUrl || isProfileById;
       const vkUid = String(grp.uid || grp.id);
       const providerId = isWall ? `wall_${vkUid}` : `group_${vkUid}`;
       validGroupProviderIds.push(providerId);
 
       let finalName = grp.title || grp.name || 'Сообщество';
       let finalAvatar = null;
+      
+      const existingAcc = await prisma.account.findUnique({ where: { provider_providerId: { provider: 'VK', providerId } } });
 
       if (isWall) {
-        // Для личной страницы берем фотку из её профиля, которую мы обновили выше
         finalAvatar = parentProfile?.avatarUrl;
       } else {
-        // Для сообщества делаем точечный запрос за сырыми данными
         try {
           const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${grp.id}`, { headers: { 'Access-Token': KOMOD_TOKEN } });
           const infoData = detailRes.data?.data?.info;
           if (infoData) {
             const info = typeof infoData === 'string' ? JSON.parse(infoData) : infoData;
             const raw = typeof info.rawData === 'string' ? JSON.parse(info.rawData) : info.rawData;
-            if (raw) {
+            if (raw && (raw.photo_200 || raw.photo_100 || raw.photo_50 || raw.photo)) {
               finalAvatar = raw.photo_200 || raw.photo_100 || raw.photo_50 || raw.photo;
               if (raw.name) finalName = raw.name;
             }
           }
         } catch (e) { console.log(`Ошибка расширенных данных для ${grp.id}`); }
+      }
 
-        // Заглушка, если ВК по какой-то причине не отдал фотку
-        if (!finalAvatar || finalAvatar.includes('ui-avatars')) {
-          finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=0d0f13&color=0077FF&rounded=true`;
-        }
+      // ГЛАВНАЯ ЗАЩИТА АВАТАРОК: Если шлюз отдал пустоту, оставляем хорошую фотку из базы
+      if (!finalAvatar && existingAcc?.avatarUrl && !existingAcc.avatarUrl.includes('ui-avatars')) {
+        finalAvatar = existingAcc.avatarUrl;
+      }
+      
+      if (!finalAvatar) {
+        finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=0d0f13&color=0077FF&rounded=true`;
       }
 
       await prisma.account.upsert({
@@ -308,7 +333,6 @@ exports.syncVkKomod = async (req, res) => {
       });
     }
 
-    // 6. ОЧИСТКА СТАРЫХ ДУБЛИКАТОВ ИЗ БАЗЫ
     const existingVkAccounts = await prisma.account.findMany({ where: { userId, provider: 'VK' } });
     for (const acc of existingVkAccounts) {
       if (acc.providerId.startsWith('group_') || acc.providerId.startsWith('wall_')) {
