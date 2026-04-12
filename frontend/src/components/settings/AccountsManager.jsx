@@ -364,19 +364,22 @@ export default function AccountsManager() {
 
       const finalizeAuth = async () => {
         setIsSyncingVk(true);
-        setVkConnectStatus('syncing_profile'); // ВКЛЮЧАЕМ СПИННЕР
+        setVkConnectStatus('syncing_profile'); 
         
+        // 1. ЗАПОМИНАЕМ ID СТАРЫХ ПРОФИЛЕЙ ДО СИНХРОНИЗАЦИИ
+        const beforeProfiles = useStore.getState().profiles
+          .filter(p => p.provider === 'VK')
+          .map(p => p.id);
+
         const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
         if (!confirmResult.success) {
            alert('Ошибка шлюза: ' + (confirmResult.error || 'Аккаунт не найден.'));
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
 
-        // Синхронизируем бэкенд
         await useStore.getState().syncVkKomod();
         await handleRefreshProfiles();
         
-        // Тихо удаляем авто-добавленную стену
         const currentAccounts = useStore.getState().accounts;
         const autoAddedWall = currentAccounts.find(a => a.provider === 'VK' && a.providerId.startsWith('wall_'));
         if (autoAddedWall) {
@@ -384,22 +387,28 @@ export default function AccountsManager() {
           await handleRefreshProfiles();
         }
 
+        // 2. ИЩЕМ ИМЕННО НОВЫЙ ПОДКЛЮЧЕННЫЙ ПРОФИЛЬ
         const updatedProfiles = useStore.getState().profiles;
-        const vkProf = updatedProfiles.find(p => p.provider === 'VK');
+        const vkProfilesAfter = updatedProfiles.filter(p => p.provider === 'VK');
         
-        // ЕСЛИ ПРОФИЛЬ ЕСТЬ — СРАЗУ ГРУЗИМ ГРУППЫ (СПИННЕР ВСЁ ЕЩЁ КРУТИТСЯ)
+        // Находим профиль, которого не было в списке beforeProfiles
+        let vkProf = vkProfilesAfter.find(p => !beforeProfiles.includes(p.id));
+        
+        // Если переподключили уже существующий, берем самый последний в списке
+        if (!vkProf) {
+          vkProf = vkProfilesAfter[vkProfilesAfter.length - 1]; 
+        }
+        
         if (vkProf?.id) {
           const profile = updatedProfiles.find(p => p.id === vkProf.id);
           const data = await useStore.getState().fetchKomodGroups(vkProf.id);
           
-          // ТОЛЬКО ТЕПЕРЬ ВЫКЛЮЧАЕМ СПИННЕР
           setIsSyncingVk(false);
           setVkConnectStatus('idle');
           
           if (data.success) {
             const groupsArray = Array.isArray(data.groups) ? data.groups : (data.groups?.items || []);
             
-            // Точно так же вытаскиваем данные для личной страницы
             const apiUser = data.auth?.apiUserData || data.auth || profile?.auth?.apiUserData;
             const fullName = extractName(apiUser) || profile?.name || 'Личная страница';
             const photoUrl = extractAvatar(apiUser) || profile?.avatarUrl;
@@ -415,7 +424,8 @@ export default function AccountsManager() {
             setKomodSelected([]); 
             setKomodModal({ isOpen: true, profileId: vkProf.id });
           } else {
-            alert('Не удалось загрузить список групп');
+            // Выводим точную причину, если шлюз всё же откажет
+            alert('Не удалось загрузить список сообществ: ' + (data.error || 'Пустой ответ сервера'));
           }
         } else {
           setIsSyncingVk(false);
