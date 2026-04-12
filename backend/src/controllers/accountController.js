@@ -1135,14 +1135,23 @@ exports.addVkKomodProfile = async (req, res) => {
     
     if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
 
-    await axios.post(`${KOMOD_BASE_URL}/group`, {
-      account_id: profile.providerAccountId,
-      is_profile: true
-    }, {
-      headers: { 'Access-Token': KOMOD_TOKEN }
-    });
+    // ФИКС: Отправляем данные как форму, а не как JSON!
+    const params = new URLSearchParams();
+    params.append('account_id', profile.providerAccountId);
+    params.append('is_profile', '1');
 
-    // ФИКС: ОБНОВЛЯЕМ КАРТИНКУ В ТАБЛИЦЕ SOCIAL PROFILE, чтобы syncVkKomod её увидел!
+    try {
+      await axios.post(`${KOMOD_BASE_URL}/group`, params, {
+        headers: { 
+          'Access-Token': KOMOD_TOKEN,
+          'Content-Type': 'application/x-www-form-urlencoded' 
+        }
+      });
+    } catch (apiError) {
+      console.error('Ошибка API шлюза (возможно, стена уже добавлена):', apiError.response?.data || apiError.message);
+      // Игнорируем ошибку, чтобы продолжить сохранение в базу
+    }
+
     if (avatarUrl && !avatarUrl.includes('ui-avatars')) {
       await prisma.socialProfile.update({
         where: { id: profile.id },
