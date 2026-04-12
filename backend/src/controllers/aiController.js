@@ -6,10 +6,14 @@ exports.generateText = async (req, res) => {
     try {
         const { text, systemPrompt } = req.body;
         const apiKey = '7374972655d53927687b3f7d8418580c';
-        const apiUrl = 'https://api.kie.ai/v1/chat/completions'; 
+        
+        // 2. У Kie.ai название модели ОБЯЗАТЕЛЬНО должно быть в URL!
+        const modelName = 'gpt-4o-mini'; // или gpt-4o, claude-3-5-sonnet и т.д.
+        const apiUrl = `https://api.kie.ai/${modelName}/v1/chat/completions`; 
 
         const response = await axios.post(apiUrl, {
-            model: "gpt-4o-mini", // Возможно, в твоем тарифе доступна другая модель
+            // Название модели внутри body тоже оставим для надежности
+            model: modelName, 
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: text }
@@ -20,12 +24,8 @@ exports.generateText = async (req, res) => {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
-            // Заставляем axios не падать при ошибках, чтобы прочитать ответ
-            validateStatus: function (status) {
-                return status < 500; 
-            }
+            validateStatus: function (status) { return status < 500; }
         });
-
         // === 🛠 ЛОГ ДЛЯ ОТЛАДКИ (ПОСМОТРИМ, ЧТО ОНИ ОТВЕТИЛИ) ===
         console.log('\n=== ОТВЕТ ОТ KIE API ===');
         console.log(`Статус-код: ${response.status}`);
