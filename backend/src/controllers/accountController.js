@@ -194,19 +194,30 @@ exports.syncVkKomod = async (req, res) => {
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const allAccounts = accRes.data?.data?.items || [];
     
-    // 2. Метаданные аккаунтов (для аватарок личных страниц)
+    // 2. Метаданные аккаунтов (ДЛЯ АВАТАРОК ЛИЧНЫХ СТРАНИЦ)
     const metaMap = {};
     for (const acc of allAccounts) {
       try {
-        const gRes = await axios.get(`${KOMOD_BASE_URL}/account/${acc.id}/api-groups`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-        if (gRes.data?.auth) {
-          const auth = typeof gRes.data.auth === 'string' ? JSON.parse(gRes.data.auth) : gRes.data.auth;
-          metaMap[acc.id] = {
-            avatar: auth.photo_200 || auth.photo_100 || auth.photo_50,
-            name: `${auth.first_name || ''} ${auth.last_name || ''}`.trim()
-          };
+        // Делаем запрос к конкретному аккаунту, как показал Алексей в JSON
+        const accDetailRes = await axios.get(`${KOMOD_BASE_URL}/account/${acc.id}`, { 
+          headers: { 'Access-Token': KOMOD_TOKEN } 
+        });
+        
+        const detailData = accDetailRes.data?.data;
+        if (detailData && detailData.auth) {
+          const auth = typeof detailData.auth === 'string' ? JSON.parse(detailData.auth) : detailData.auth;
+          const apiUser = auth.apiUserData; 
+          
+          if (apiUser) {
+            metaMap[acc.id] = {
+              avatar: apiUser.photo_200 || apiUser.photo_max || apiUser.photo_100,
+              name: `${apiUser.first_name || ''} ${apiUser.last_name || ''}`.trim() || detailData.title
+            };
+          }
         }
-      } catch (e) { console.log(`Ошибка метаданных для ${acc.id}`); }
+      } catch (e) { 
+        console.log(`[KOM-OD] Ошибка метаданных для аккаунта ${acc.id}`); 
+      }
     }
 
     // 3. Синхронизируем профили (SocialProfile)
@@ -252,13 +263,12 @@ exports.syncVkKomod = async (req, res) => {
 
       const parentProfile = myProfiles.find(p => String(p.providerAccountId) === String(grp.account_id));
       
-      // === ИСПРАВЛЕНИЕ 1: УЛЬТИМАТИВНОЕ ОПРЕДЕЛЕНИЕ СТЕНЫ БЕЗ ДУБЛЕЙ ===
+      // УЛЬТИМАТИВНОЕ ОПРЕДЕЛЕНИЕ СТЕНЫ (БЕЗ ДУБЛЕЙ)
       const urlStr = String(grp.url || '');
-      const isProfileByUrl = /^https?:\/\/(www\.)?vk\.com\/id\d+\/?$/i.test(urlStr); // Жесткая проверка ссылки профиля
-      const isProfileById = String(grp.uid || grp.id) === String(grp.account_id); // Совпадение ID группы с ID владельца
+      const isProfileByUrl = /^https?:\/\/(www\.)?vk\.com\/id\d+\/?$/i.test(urlStr); 
+      const isProfileById = String(grp.uid || grp.id) === String(grp.account_id); 
       const isProfileByFlag = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
 
-      // Если сработало хоть одно условие — это 100% стена
       const isWall = isProfileByFlag || isProfileByUrl || isProfileById;
       const providerId = isWall ? `wall_${grp.account_id}` : `group_${grp.uid || grp.id}`;
       validGroupProviderIds.push(providerId);
@@ -266,28 +276,31 @@ exports.syncVkKomod = async (req, res) => {
       let finalAvatar = parentProfile.avatarUrl; 
       let finalName = grp.title || grp.name || 'Сообщество';
 
-      try {
-        const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${grp.id}`, { 
-          headers: { 'Access-Token': KOMOD_TOKEN } 
-        });
-        const detailData = detailRes.data?.data;
-        
-        if (detailData) {
-          if (detailData.title) finalName = detailData.title;
+      // ДЛЯ АВАТАРОК СООБЩЕСТВ (если это не стена)
+      if (!isWall) {
+        try {
+          const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${grp.id}`, { 
+            headers: { 'Access-Token': KOMOD_TOKEN } 
+          });
+          const detailData = detailRes.data?.data;
+          
+          if (detailData) {
+            if (detailData.title) finalName = detailData.title;
 
-          let info = detailData.info;
-          if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
-          
-          let raw = info?.rawData;
-          if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
-          
-          if (raw) {
-            finalAvatar = raw.photo_200 || raw.photo_100 || raw.photo_50 || raw.photo || finalAvatar;
-            if (raw.name) finalName = raw.name;
+            let info = detailData.info;
+            if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
+            
+            let raw = info?.rawData;
+            if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
+            
+            if (raw) {
+              finalAvatar = raw.photo_200 || raw.photo_100 || raw.photo_50 || raw.photo || finalAvatar;
+              if (raw.name) finalName = raw.name;
+            }
           }
+        } catch (e) {
+           console.log(`[KOM-OD] Не удалось загрузить расширенные данные для группы ${grp.id}`);
         }
-      } catch (e) {
-         console.log(`[KOM-OD] Не удалось загрузить расширенные данные для группы ${grp.id}`);
       }
 
       await prisma.account.upsert({
@@ -311,15 +324,13 @@ exports.syncVkKomod = async (req, res) => {
       });
     }
 
-    // === ИСПРАВЛЕНИЕ 2: АВТОМАТИЧЕСКАЯ ОЧИСТКА ДУБЛИКАТОВ И ФАНТОМОВ ===
+    // ОЧИСТКА ДУБЛИКАТОВ И ФАНТОМОВ
     const existingVkAccounts = await prisma.account.findMany({ 
       where: { userId, provider: 'VK' } 
     });
 
     for (const acc of existingVkAccounts) {
-      // Чистим только аккаунты шлюза (у которых есть префиксы group_ или wall_)
       if (acc.providerId.startsWith('group_') || acc.providerId.startsWith('wall_')) {
-        // Если шлюз больше не возвращает этот ID (или он стал wall_ вместо group_) - удаляем!
         if (!validGroupProviderIds.includes(acc.providerId)) {
           await prisma.account.delete({ where: { id: acc.id } });
         }
