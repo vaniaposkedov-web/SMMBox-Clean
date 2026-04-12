@@ -72,6 +72,10 @@ function Sidebar() {
           <span>Партнеры</span>
         </NavLink>
 
+        <NavLink to="/publish" className={linkClass}>
+          <PlusSquare size={20} /> Создать пост
+        </NavLink>
+
         <NavLink to="/requests" className={({isActive}) => `flex items-center justify-between p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -182,6 +186,13 @@ function BottomNav() {
           <span className="text-[10px] mt-1 font-medium">Партнеры</span>
         </NavLink>
 
+        <NavLink to="/publish" onClick={() => setIsMoreMenuOpen(false)} className="relative flex flex-col items-center justify-center px-2 -mt-6">
+           <div className="w-14 h-14 bg-[#0077FF] rounded-full flex items-center justify-center text-white shadow-[0_4px_20px_rgba(0,119,255,0.4)] border-[4px] border-admin-card active:scale-95 transition-transform">
+              <PlusSquare size={26} className="ml-0.5" />
+           </div>
+           <span className="text-[10px] mt-1.5 font-bold text-gray-300">Пост</span>
+        </NavLink>
+
         <NavLink to="/requests" className={linkClass} onClick={() => setIsMoreMenuOpen(false)}>
           <div className="relative">
             <Inbox size={22} />
@@ -189,9 +200,6 @@ function BottomNav() {
           </div>
           <span className="text-[10px] mt-1 font-medium">Заявки</span>
         </NavLink>
-
-        
-
         <button onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)} className={`flex flex-col items-center flex-1 p-2 rounded-xl transition-colors ${isMoreMenuOpen ? 'text-admin-accent' : 'text-gray-500 hover:text-gray-300'}`}>
           <MoreHorizontal size={22} />
           <span className="text-[10px] mt-1 font-medium">Еще</span>

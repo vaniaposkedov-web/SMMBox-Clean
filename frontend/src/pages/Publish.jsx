@@ -75,6 +75,8 @@ export default function Publish() {
   const MAX_PHOTOS = 10;
   const MAX_CHARS = 1000;
 
+  const axios = require('axios');
+
   const scheduledPostsRaw = useStore(state => state.scheduledPosts) || [];
   const watermarkSettings = useStore(state => state.watermarkSettings);
   const fetchScheduledPosts = useStore(state => state.fetchScheduledPosts);
@@ -152,6 +154,9 @@ export default function Publish() {
       return d;
     });
   }, []);
+
+
+  
 
   const groupedAccounts = useMemo(() => {
     const filtered = accounts.filter(acc => 
@@ -329,14 +334,15 @@ export default function Publish() {
     });
   };
 
-  const handleAiAction = async (actionType, customPrompt = '') => {
-    const textToProcess = actionType === 'rewrite' ? text : customPrompt;
-    if (!textToProcess) return;
+  // Найди старую функцию handleAiAction и замени её на эту:
+  const handleAiAction = async () => {
+    if (!text.trim()) return;
 
     setIsImprovingAI(true);
-    setShowAiModal(false);
-    setAiPrompt('');
     setAiProgress(0);
+
+    // 📌 ЗАГЛУШКА СИСТЕМНОГО ПРОМПТА (Потом можно брать из globalSettings)
+    const systemPrompt = "Ты профессиональный SMM-маркетолог. Твоя задача: улучшить предоставленный текст поста. Исправь ошибки, сделай текст более вовлекающим, разбей на удобные абзацы и добавь 2-3 подходящих эмодзи. Не выдумывай факты и цены, которых нет в оригинале.";
 
     let currentProgress = 0;
     const progressInterval = setInterval(() => {
@@ -346,17 +352,14 @@ export default function Publish() {
     }, 400);
 
     try {
-        let base64Images = [];
-        if (photos.length > 0) {
-            const photosToProcess = photos.slice(0, 2);
-            base64Images = await Promise.all(photosToProcess.map(p => fileToBase64(p.file)));
-        }
-
         const token = localStorage.getItem('token');
         const response = await fetch('/api/ai/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ prompt: textToProcess, action: actionType, images: base64Images })
+            body: JSON.stringify({ 
+              text: text, // Оригинальный текст пользователя
+              systemPrompt: systemPrompt // Инструкция для ИИ
+            })
         });
 
         const data = await response.json();
@@ -364,16 +367,14 @@ export default function Publish() {
         setAiProgress(100);
         
         setTimeout(() => {
-            if (data.success) setText(data.text);
+            if (data.success && data.text) setText(data.text);
             else alert(data.error || 'Ошибка при генерации текста');
             setIsImprovingAI(false);
-            setAiProgress(0);
         }, 500);
 
     } catch (error) {
         clearInterval(progressInterval);
         setIsImprovingAI(false);
-        setAiProgress(0);
         alert('Ошибка соединения с нейросетью.');
     }
   };
@@ -512,6 +513,45 @@ export default function Publish() {
       alert('Ошибка соединения с сервером');
     }
     setIsUpdatingPost(false);
+  };
+
+    exports.generateText = async (req, res) => {
+      try {
+          const { text, systemPrompt } = req.body;
+          
+          // 1. Безопасно получаем ключ из .env (C:\Users\vanap\Desktop\smmbox-clone\backend\.env)
+          const apiKey = process.env.KIE_API_KEY;
+          
+          // 2. Официальный универсальный эндпоинт Kie.ai
+          const apiUrl = 'https://api.kie.ai/v1/chat/completions'; 
+
+          const response = await axios.post(apiUrl, {
+              // Выбираешь нужную модель, которая доступна в твоем тарифе Kie
+              model: "gpt-4o-mini", // Замени на нужную (например: gpt-4o, claude-3-5-sonnet и т.д.)
+              messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: text }
+              ],
+              temperature: 0.7 // Немного креативности для SMM-текстов
+          }, {
+              headers: { 
+                  'Authorization': `Bearer ${apiKey}`,
+                  'Content-Type': 'application/json'
+              }
+          });
+
+          // 3. Kie.ai возвращает ответ в строгом OpenAI формате
+          if (response.data && response.data.choices && response.data.choices.length > 0) {
+              res.json({ success: true, text: response.data.choices[0].message.content });
+          } else {
+              throw new Error("Неверный формат ответа от KIE API");
+          }
+
+      } catch (error) {
+          // Логируем детальную ошибку, если вдруг не хватило кредитов или неверное имя модели
+          console.error('[KIE API ERROR]:', error.response?.data || error.message);
+          res.status(500).json({ success: false, error: "Ошибка при обращении к нейросети" });
+      }
   };
 
   const resetForm = () => {
@@ -810,10 +850,11 @@ export default function Publish() {
               <div className="bg-gray-800/50 p-3 border-t border-gray-800 flex flex-wrap gap-2 justify-between items-center">
                 <span className="text-xs text-gray-500 hidden sm:block">Поддерживаются эмодзи 🚀</span>
                 <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  <button onClick={() => setShowAiModal(true)} disabled={isImprovingAI} className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 sm:py-2.5 rounded-xl text-sm font-bold active:scale-95 min-h-[44px]">
-                    ✨ Написать с нуля
-                  </button>
-                  <button onClick={() => handleAiAction('rewrite')} disabled={isImprovingAI || !(text || '').trim()} className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-3 sm:py-2.5 rounded-xl text-sm font-bold active:scale-95 min-h-[44px]">
+                  <button 
+                    onClick={handleAiAction} 
+                    disabled={isImprovingAI || !(text || '').trim()} 
+                    className="w-full sm:w-auto flex justify-center items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-6 py-3 sm:py-2.5 rounded-xl text-sm font-bold active:scale-95 transition-all shadow-lg shadow-purple-500/20 min-h-[44px]"
+                  >
                     <Sparkles size={16} /> Улучшить текст
                   </button>
                 </div>
@@ -989,55 +1030,7 @@ export default function Publish() {
 
       </div>
 
-      {/* === МОДАЛЬНОЕ ОКНО ИИ === */}
-      {showAiModal && (
-        <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-6 animate-in fade-in duration-200">
-          
-          {/* Кликабельный фон для закрытия окна */}
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowAiModal(false)}></div>
-          
-          {/* Само окно с правильным позиционированием */}
-          <div className="relative w-full max-w-md bg-[#111318] border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col z-10 overflow-hidden pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-0">
-            
-            {/* Шапка */}
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/50">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Sparkles size={18} className="text-purple-500" /> О чем написать пост?
-              </h3>
-              <button onClick={() => setShowAiModal(false)} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-xl transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Тело модалки */}
-            <div className="p-4 sm:p-5 flex flex-col gap-4">
-              <textarea 
-                value={aiPrompt} 
-                onChange={(e) => setAiPrompt(e.target.value)} 
-                placeholder="Например: Скидка 50% на весеннюю коллекцию кроссовок..." 
-                className="w-full bg-gray-900 border border-gray-800 rounded-2xl p-4 text-base text-white min-h-[140px] resize-none focus:border-purple-500 outline-none transition-colors custom-scrollbar" 
-                autoFocus 
-              />
-            </div>
-            
-            {/* Подвал с кнопками */}
-            <div className="p-4 border-t border-gray-800 bg-gray-900/50 flex gap-3">
-              <button onClick={() => setShowAiModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-all text-sm">
-                Отмена
-              </button>
-              <button 
-                onClick={() => handleAiAction('generate', aiPrompt)} 
-                disabled={!aiPrompt.trim() || isImprovingAI} 
-                className="flex-[2] bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 text-sm active:scale-95 shadow-lg shadow-purple-500/20"
-              >
-                {isImprovingAI ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-                {isImprovingAI ? 'Генерация...' : 'Сгенерировать'}
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )} 
+      
 
       {step < 4 && (
         <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">

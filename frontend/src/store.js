@@ -583,20 +583,60 @@ export const useStore = create(
         return await res.json();
       },
 
-     createPostAction: async (text, mediaUrls, accountIds, accountsData, publishAt) => {
+     // ... предыдущий код стора
+
+      createPostAction: async (text, mediaUrls, accountIds, publishAt) => {
         try {
+          const state = get();
+          
+          // УМНАЯ СБОРКА (Blueprint): 
+          // Стор сам находит выбранные аккаунты и прикрепляет к ним их уникальные настройки.
+          // Компоненту публикации больше не нужно об этом думать.
+          const accountsData = accountIds.map(id => {
+            const acc = state.accounts.find(a => a.id === id);
+            
+            // Если аккаунт не найден (например, был удален), пропускаем
+            if (!acc) return null;
+
+            return {
+              accountId: acc.id,
+              provider: acc.provider,     // 'VK' или 'TELEGRAM'
+              providerId: acc.providerId, // ID группы или канала
+              
+              // Передаем точечные настройки для бэкенда
+              signature: acc.signature !== undefined ? acc.signature : null,
+              watermark: acc.watermark || null
+            };
+          }).filter(Boolean); // Очищаем от null
+
+          // Отправляем пакет на бэкенд
           const res = await fetch('/api/posts/create', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
-            body: JSON.stringify({ text, mediaUrls: mediaUrls, accountIds: accountIds, accounts: accountsData, publishAt })
+            method: 'POST', 
+            headers: { 
+              'Content-Type': 'application/json', 
+              'Authorization': `Bearer ${state.token}` 
+            }, 
+            body: JSON.stringify({ 
+              text, 
+              mediaUrls, 
+              accountIds, 
+              accounts: accountsData, // <-- Бэкенд получит массив с детальными инструкциями для каждого паблика
+              publishAt 
+            })
           });
+          
           const data = await res.json();
           if (res.ok && data.success) {
             if (publishAt) get().fetchScheduledPosts();
             return { success: true };
           }
           return { success: false, error: data.error || 'Ошибка при обработке сервером' };
-        } catch (error) { return { success: false, error: 'Ошибка соединения.' }; }
+        } catch (error) { 
+          return { success: false, error: 'Ошибка соединения.' }; 
+        }
       },
+
+      // ... следующий код стора
 
       fetchSharedPosts: async () => {
         try {
