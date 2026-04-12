@@ -97,18 +97,20 @@ exports.getKomodGroupsForSelection = async (req, res) => {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
-    // Извлекаем группы
+    // 🔥 ВЫВОДИМ ТОЧНУЮ СТРУКТУРУ НОВОГО ОТВЕТА В ТЕРМИНАЛ
+    console.log('\n=== РЕНТГЕН НОВОГО API KOM-OD ===');
+    console.dir(response.data, { depth: 5, colors: false });
+    console.log('=================================\n');
+
     const groups = response.data?.data || [];
     
-    // ФИКС: Разработчик сказал, что теперь используется auth.apiUserData
     let authData = response.data?.auth || null;
     if (authData && authData.apiUserData) {
-      authData = authData.apiUserData; // Достаем полезные данные
+      authData = authData.apiUserData;
     } else if (response.data?.data?.auth?.apiUserData) {
       authData = response.data.data.auth.apiUserData;
     }
 
-    // Если данные пришли в виде строки - парсим
     if (typeof authData === 'string') {
       try { authData = JSON.parse(authData); } catch(e) {}
     }
