@@ -9,9 +9,9 @@ const defaultWatermark = {
   type: 'text', 
   text: 'SMMBOX', 
   position: 'br', // tl, tc, tr, cl, cc, cr, bl, bc, br
-  margin: 5,      // Отступ от краев (в %)
-  opacity: 80,    // Прозрачность 10-100
-  size: 20,       // Относительный размер (в %)
+  margin: 5,      
+  opacity: 80,    
+  size: 20,       
   fontFamily: 'system-ui',
   textColor: '#FFFFFF',
   hasBackground: true,
@@ -111,7 +111,6 @@ export default function WatermarkConstructor() {
 
   // --- ЛОГИКА РАСПОЛОЖЕНИЯ (АДАПТИВНАЯ ПОД ЛЮБЫЕ ФОТО) ---
   const getWatermarkStyle = () => {
-    // Отступ в процентах делает знак адаптивным к любому размеру фото
     const margin = `${settings.margin || 0}%`;
     const style = {
       position: 'absolute',
@@ -124,7 +123,6 @@ export default function WatermarkConstructor() {
       maxHeight: '100%'
     };
 
-    // Привязка по секциям
     let transformBase = '';
     if (settings.position.includes('t')) style.top = margin;
     if (settings.position.includes('b')) style.bottom = margin;
@@ -140,10 +138,7 @@ export default function WatermarkConstructor() {
 
     style.transform = transformBase.trim();
 
-    // Адаптивные стили для текста или картинки
     if (settings.type === 'text') {
-      // Имитация относительного размера текста (для превью). 
-      // На бекенде это будет % от ширины холста.
       style.fontSize = `${(settings.size || 20) / 10}rem`; 
       style.color = settings.textColor || '#FFFFFF';
       style.fontFamily = settings.fontFamily || 'system-ui';
@@ -156,14 +151,13 @@ export default function WatermarkConstructor() {
         const padV = (settings.bgPadding || 10) / 25; 
         const padH = (settings.bgPadding || 10) / 12;
         style.padding = `${padV}em ${padH}em`;
-        style.borderRadius = '0.3em'; // Относительное скругление
+        style.borderRadius = '0.3em'; 
       }
 
       if (settings.hasStroke) {
         style.WebkitTextStroke = `${settings.strokeWidth || 2}px ${settings.strokeColor || '#000000'}`;
       }
     } else {
-      // Для картинки задаем высоту в процентах (адаптивность)
       style.height = `${settings.size || 20}%`;
       style.width = 'auto';
       style.objectFit = 'contain';
@@ -286,18 +280,18 @@ export default function WatermarkConstructor() {
   return (
     <div className="max-w-5xl mx-auto px-2 sm:px-4 py-4 animate-in slide-in-from-bottom-4 duration-500 font-sans">
       
-      {/* HEADER РЕДАКТОРА */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-admin-card border border-gray-800 p-3 sm:p-4 rounded-xl mb-4 shadow-sm gap-3">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setView('landing')} className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 transition-colors">
-            <ChevronLeft size={20}/>
+      {/* МИНИМАЛИСТИЧНЫЙ HEADER РЕДАКТОРА */}
+      <div className="flex items-center justify-between bg-admin-card border border-gray-800 p-2 sm:p-3 rounded-lg mb-4 shadow-sm gap-2">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button onClick={() => setView('landing')} className="p-1 hover:bg-gray-800 rounded-md text-gray-400 transition-colors">
+            <ChevronLeft size={18}/>
           </button>
-          <div className="h-6 w-px bg-gray-800 hidden sm:block" />
+          <div className="h-5 w-px bg-gray-800 hidden sm:block" />
           <div className="flex items-center gap-2">
-             <img src={selectedAccount?.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700" alt="" />
-             <div>
-               <h2 className="text-white font-bold text-xs sm:text-sm leading-tight">{selectedAccount?.name}</h2>
-               <span className="text-[9px] text-blue-500 uppercase font-black tracking-widest">Настройка</span>
+             <img src={selectedAccount?.avatarUrl} className="w-6 h-6 rounded-full border border-gray-700" alt="" />
+             <div className="flex flex-col">
+               <h2 className="text-white font-bold text-[11px] leading-none">{selectedAccount?.name}</h2>
+               <span className="text-[8px] text-blue-500 uppercase font-black tracking-widest mt-0.5">Настройка</span>
              </div>
           </div>
         </div>
@@ -305,17 +299,17 @@ export default function WatermarkConstructor() {
         <button 
           onClick={handleSave} 
           disabled={isSaving}
-          className={`w-full sm:w-auto px-6 py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-95 ${saveSuccess ? 'bg-emerald-600 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-md'}`}
+          className={`px-3 py-1.5 rounded-md text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 ${saveSuccess ? 'bg-emerald-600 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'}`}
         >
-          {isSaving ? <Loader2 className="animate-spin" size={16}/> : saveSuccess ? <Check size={16}/> : <Save size={16}/>}
-          <span>{saveSuccess ? 'Сохранено' : 'Сохранить'}</span>
+          {isSaving ? <Loader2 className="animate-spin" size={14}/> : saveSuccess ? <Check size={14}/> : <Save size={14}/>}
+          <span className="hidden sm:inline">{saveSuccess ? 'Сохранено' : 'Сохранить'}</span>
         </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
         
         {/* === ЛЕВАЯ ПАНЕЛЬ: ПРЕДПРОСМОТР === */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className="lg:col-span-7">
           <div className={`relative w-full aspect-video rounded-xl overflow-hidden border-2 transition-all duration-500 shadow-md ${previewFilter === 'dark' ? 'border-gray-800 bg-gray-950' : 'border-gray-300 bg-white'}`}>
              
              {/* Фоновое изображение (Автоматически листается) */}
@@ -345,22 +339,6 @@ export default function WatermarkConstructor() {
                <div style={getWatermarkStyle()}>{settings.text || 'SMMBOX'}</div>
              )}
           </div>
-
-          {/* ПЕРЕКЛЮЧАТЕЛЬ ФОНА ПРЕДПРОСМОТРА */}
-          <div className="flex justify-center gap-2 bg-admin-card border border-gray-800 p-1.5 rounded-lg w-fit mx-auto">
-             <button 
-               onClick={() => setPreviewFilter('dark')}
-               className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${previewFilter === 'dark' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-             >
-               <div className={`w-2 h-2 rounded-full border border-gray-500 ${previewFilter === 'dark' ? 'bg-blue-500 border-none' : ''}`} /> Темный
-             </button>
-             <button 
-               onClick={() => setPreviewFilter('light')}
-               className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 ${previewFilter === 'light' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-             >
-               <div className={`w-2 h-2 rounded-full border border-gray-500 ${previewFilter === 'light' ? 'bg-blue-500 border-none' : ''}`} /> Светлый
-             </button>
-          </div>
         </div>
 
         {/* === ПРАВАЯ ПАНЕЛЬ: ИНСТРУМЕНТЫ РЕДАКТОРА === */}
@@ -371,48 +349,59 @@ export default function WatermarkConstructor() {
              <div className="flex p-1.5 bg-gray-900/50 border-b border-gray-800 shrink-0">
                 <button 
                   onClick={() => updateSettings({ type: 'text' })}
-                  className={`flex-1 py-2 text-[10px] font-black uppercase tracking-[0.1em] rounded-lg transition-all flex items-center justify-center gap-1.5 ${settings.type === 'text' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                  className={`flex-1 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] rounded-md transition-all flex items-center justify-center gap-1.5 ${settings.type === 'text' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                  <Type size={14}/> Текст
+                  <Type size={12}/> Текст
                 </button>
                 <button 
                   onClick={() => updateSettings({ type: 'image' })}
-                  className={`flex-1 py-2 text-[10px] font-black uppercase tracking-[0.1em] rounded-lg transition-all flex items-center justify-center gap-1.5 ${settings.type === 'image' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                  className={`flex-1 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] rounded-md transition-all flex items-center justify-center gap-1.5 ${settings.type === 'image' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                  <ImageIcon size={14}/> Логотип
+                  <ImageIcon size={12}/> Логотип
                 </button>
              </div>
 
-             <div className="p-4 sm:p-5 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+             <div className="p-3 sm:p-4 space-y-4 overflow-y-auto custom-scrollbar flex-1">
                 
+                {/* --- НАСТРОЙКИ ФОНА ПРЕДПРОСМОТРА --- */}
+                <div className="flex items-center justify-between bg-gray-950 p-1.5 rounded-lg border border-gray-800">
+                   <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest pl-2">Предпросмотр</span>
+                   <div className="flex gap-1">
+                     <button onClick={() => setPreviewFilter('dark')} className={`px-3 py-1 rounded text-[9px] font-bold transition-all ${previewFilter === 'dark' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Темный</button>
+                     <button onClick={() => setPreviewFilter('light')} className={`px-3 py-1 rounded text-[9px] font-bold transition-all ${previewFilter === 'light' ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}>Светлый</button>
+                   </div>
+                </div>
+
+                <div className="h-px bg-gray-800 w-full" />
+
                 {/* --- НАСТРОЙКИ ТЕКСТА --- */}
                 {settings.type === 'text' ? (
-                  <div className="space-y-5">
+                  <div className="space-y-4">
                     
                     {/* Текст и Шрифт */}
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       <div className="relative">
                         <input 
                           type="text" 
                           value={settings.text}
                           onChange={e => updateSettings({ text: e.target.value })}
-                          className="w-full bg-gray-950 border border-gray-800 focus:border-blue-500 rounded-lg py-2.5 pl-10 pr-3 text-sm text-white font-bold outline-none transition-all placeholder:text-gray-600"
-                          placeholder="Введите текст знака..."
+                          className="w-full bg-gray-950 border border-gray-800 focus:border-blue-500 rounded-lg py-2 pl-8 pr-3 text-sm text-white font-bold outline-none transition-all placeholder:text-gray-600"
+                          placeholder="Текст знака..."
                         />
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500"><Type size={16}/></div>
+                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-blue-500"><Type size={14}/></div>
                       </div>
 
-                      <div className="flex items-center gap-2 bg-gray-950 p-1.5 rounded-lg border border-gray-800">
+                      <div className="flex items-center gap-2 bg-gray-950 p-1 rounded-lg border border-gray-800">
                          <select 
                            value={settings.fontFamily} 
                            onChange={e => updateSettings({ fontFamily: e.target.value })}
-                           className="flex-1 bg-transparent text-xs text-white font-medium outline-none cursor-pointer pl-2 appearance-none h-8"
+                           className="flex-1 bg-transparent text-xs text-white font-medium outline-none cursor-pointer pl-2 appearance-none h-7"
                          >
                            {FONTS.map(f => <option key={f.value} value={f.value} className="bg-gray-900">{f.name}</option>)}
                          </select>
-                         <div className="w-8 h-8 flex items-center justify-center border-l border-gray-800 relative shrink-0">
+                         <div className="w-7 h-7 flex items-center justify-center border-l border-gray-800 relative shrink-0">
                             <input type="color" value={settings.textColor} onChange={e => updateSettings({ textColor: e.target.value })} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                            <div className="w-4 h-4 rounded-full border border-gray-700 shadow-sm" style={{ backgroundColor: settings.textColor }} />
+                            <div className="w-3.5 h-3.5 rounded-sm border border-gray-700 shadow-sm" style={{ backgroundColor: settings.textColor }} />
                          </div>
                       </div>
                     </div>
@@ -420,73 +409,77 @@ export default function WatermarkConstructor() {
                     <div className="h-px bg-gray-800 w-full" />
 
                     {/* Настройка Фона */}
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                        <div className="flex items-center justify-between">
-                         <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">Фон плашки</label>
-                         <label className="relative inline-flex items-center cursor-pointer">
+                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest cursor-pointer flex-1" onClick={() => updateSettings({ hasBackground: !settings.hasBackground })}>
+                           Фон плашки
+                         </label>
+                         <label className="relative inline-flex items-center cursor-pointer shrink-0">
                            <input type="checkbox" checked={settings.hasBackground} onChange={e => updateSettings({ hasBackground: e.target.checked })} className="sr-only peer" />
-                           <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                           <div className="w-7 h-3.5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-blue-600"></div>
                          </label>
                        </div>
                        
-                       <div className={`transition-all duration-300 space-y-3 ${!settings.hasBackground ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
-                          <div className="flex items-center gap-2">
-                             <div className="relative w-10 h-10 bg-gray-950 border border-gray-800 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
-                                <input type="color" value={settings.bgColor} onChange={e => updateSettings({ bgColor: e.target.value })} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                <div className="w-5 h-5 rounded-md" style={{ backgroundColor: settings.bgColor }} />
-                             </div>
-                             <div className="flex-1 bg-gray-950 border border-gray-800 p-2 rounded-lg flex items-center gap-3">
-                                <span className="text-[10px] text-gray-400 whitespace-nowrap w-8 text-right">{settings.bgPadding}</span>
-                                <input type="range" min="0" max="30" value={settings.bgPadding} onChange={e => updateSettings({ bgPadding: Number(e.target.value) })} className="flex-1 h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
-                             </div>
-                          </div>
-                       </div>
+                       {settings.hasBackground && (
+                         <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="relative w-8 h-8 bg-gray-950 border border-gray-800 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
+                               <input type="color" value={settings.bgColor} onChange={e => updateSettings({ bgColor: e.target.value })} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                               <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: settings.bgColor }} />
+                            </div>
+                            <div className="flex-1 bg-gray-950 border border-gray-800 p-1.5 rounded-lg flex items-center gap-2">
+                               <span className="text-[9px] text-gray-500 whitespace-nowrap w-6 text-right">{settings.bgPadding}</span>
+                               <input type="range" min="0" max="30" value={settings.bgPadding} onChange={e => updateSettings({ bgPadding: Number(e.target.value) })} className="flex-1 h-1 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                            </div>
+                         </div>
+                       )}
                     </div>
 
                     <div className="h-px bg-gray-800 w-full" />
 
                     {/* Настройка Обводки */}
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                        <div className="flex items-center justify-between">
-                         <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Обводка текста</label>
-                         <label className="relative inline-flex items-center cursor-pointer">
+                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest cursor-pointer flex-1" onClick={() => updateSettings({ hasStroke: !settings.hasStroke })}>
+                           Обводка текста
+                         </label>
+                         <label className="relative inline-flex items-center cursor-pointer shrink-0">
                            <input type="checkbox" checked={settings.hasStroke} onChange={e => updateSettings({ hasStroke: e.target.checked })} className="sr-only peer" />
-                           <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                           <div className="w-7 h-3.5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-blue-600"></div>
                          </label>
                        </div>
 
-                       <div className={`transition-all duration-300 space-y-3 ${!settings.hasStroke ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
-                          <div className="flex items-center gap-2">
-                             <div className="relative w-10 h-10 bg-gray-950 border border-gray-800 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
-                                <input type="color" value={settings.strokeColor} onChange={e => updateSettings({ strokeColor: e.target.value })} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                <div className="w-5 h-5 rounded-md border border-gray-600" style={{ backgroundColor: settings.strokeColor }} />
-                             </div>
-                             <div className="flex-1 bg-gray-950 border border-gray-800 p-2 rounded-lg flex items-center gap-3">
-                                <span className="text-[10px] text-gray-400 whitespace-nowrap w-8 text-right">{settings.strokeWidth}px</span>
-                                <input type="range" min="1" max="8" value={settings.strokeWidth} onChange={e => updateSettings({ strokeWidth: Number(e.target.value) })} className="flex-1 h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
-                             </div>
-                          </div>
-                       </div>
+                       {settings.hasStroke && (
+                         <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="relative w-8 h-8 bg-gray-950 border border-gray-800 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
+                               <input type="color" value={settings.strokeColor} onChange={e => updateSettings({ strokeColor: e.target.value })} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                               <div className="w-4 h-4 rounded-sm border border-gray-600" style={{ backgroundColor: settings.strokeColor }} />
+                            </div>
+                            <div className="flex-1 bg-gray-950 border border-gray-800 p-1.5 rounded-lg flex items-center gap-2">
+                               <span className="text-[9px] text-gray-500 whitespace-nowrap w-6 text-right">{settings.strokeWidth}px</span>
+                               <input type="range" min="1" max="8" value={settings.strokeWidth} onChange={e => updateSettings({ strokeWidth: Number(e.target.value) })} className="flex-1 h-1 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                            </div>
+                         </div>
+                       )}
                     </div>
                   </div>
                 ) : (
                   /* --- НАСТРОЙКИ ЛОГОТИПА --- */
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Изображение</label>
                     <div 
                       onClick={() => fileInputRef.current.click()}
-                      className="border-2 border-dashed border-gray-700 bg-gray-950 rounded-xl p-6 text-center hover:bg-gray-900 transition-all cursor-pointer group"
+                      className="border-2 border-dashed border-gray-700 bg-gray-950 rounded-lg p-4 text-center hover:bg-gray-900 transition-all cursor-pointer group"
                     >
                       <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleImageUpload} />
                       {settings.image ? (
                         <div className="relative inline-block">
-                          <img src={settings.image} className="h-12 object-contain rounded-md" alt="" />
-                          <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-1 rounded-full shadow-md"><Edit3 size={10}/></div>
+                          <img src={settings.image} className="h-10 object-contain rounded-md" alt="" />
+                          <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-0.5 rounded-full shadow-md"><Edit3 size={10}/></div>
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center gap-3">
-                           <div className="w-10 h-10 bg-gray-800 text-gray-400 rounded-lg flex items-center justify-center group-hover:text-blue-500 group-hover:bg-blue-500/10 transition-all"><Upload size={18}/></div>
-                           <span className="text-xs font-bold text-gray-400">Загрузить логотип</span>
+                        <div className="flex flex-col items-center gap-2">
+                           <div className="w-8 h-8 bg-gray-800 text-gray-400 rounded-md flex items-center justify-center group-hover:text-blue-500 group-hover:bg-blue-500/10 transition-all"><Upload size={14}/></div>
+                           <span className="text-[10px] font-bold text-gray-400">Загрузить логотип</span>
                         </div>
                       )}
                     </div>
@@ -496,32 +489,29 @@ export default function WatermarkConstructor() {
                 <div className="h-px bg-gray-800 w-full" />
 
                 {/* --- МИКШЕРЫ (РЕАЛЬНЫЕ ПРОЦЕНТЫ) --- */}
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center text-xs font-bold">
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-bold">
                       <span className="text-gray-400">Размер (Адаптивно)</span>
                       <span className="text-blue-500">{settings.size}%</span>
                     </div>
-                    {/* Диапазон размера: от 5% до 100% от холста */}
-                    <input type="range" min="5" max="100" value={settings.size} onChange={e => updateSettings({ size: Number(e.target.value) })} className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                    <input type="range" min="5" max="100" value={settings.size} onChange={e => updateSettings({ size: Number(e.target.value) })} className="w-full h-1 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
                   </div>
                   
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center text-xs font-bold">
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-bold">
                       <span className="text-gray-400">Прозрачность</span>
                       <span className="text-blue-500">{settings.opacity}%</span>
                     </div>
-                    {/* Прозрачность 10-100 */}
-                    <input type="range" min="10" max="100" value={settings.opacity} onChange={e => updateSettings({ opacity: Number(e.target.value) })} className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                    <input type="range" min="10" max="100" value={settings.opacity} onChange={e => updateSettings({ opacity: Number(e.target.value) })} className="w-full h-1 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center text-xs font-bold">
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-bold">
                       <span className="text-gray-400">Отступ</span>
                       <span className="text-blue-500">{settings.margin}%</span>
                     </div>
-                    {/* Отступ от 0 до 20% от края холста */}
-                    <input type="range" min="0" max="20" value={settings.margin} onChange={e => updateSettings({ margin: Number(e.target.value) })} className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                    <input type="range" min="0" max="20" value={settings.margin} onChange={e => updateSettings({ margin: Number(e.target.value) })} className="w-full h-1 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
                   </div>
                 </div>
 
