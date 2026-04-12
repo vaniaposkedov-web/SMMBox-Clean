@@ -822,77 +822,73 @@ export default function AccountsManager() {
         </div>
       )}
 
-     {/* === БЛОК ВЫБОРА СОЦСЕТИ (SMMBOX STYLE) === */}
-      <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 sm:p-8 flex flex-col gap-6 mt-6 shadow-xl max-w-2xl mx-auto w-full relative overflow-hidden">
+     {/* === БЛОК ВЫБОРА СОЦСЕТИ === */}
+      <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-5 sm:p-6 flex flex-col gap-5 mt-6 shadow-xl max-w-md mx-auto w-full relative overflow-hidden">
         
-        {/* Динамическое свечение на фоне блока */}
+        {/* Динамическое свечение */}
         <div className={`absolute top-0 left-0 w-full h-full opacity-10 transition-colors duration-700 pointer-events-none ${
           selectedNetwork === 'VK' 
             ? 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#0077FF] via-transparent to-transparent' 
-            : 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#0088CC] via-transparent to-transparent'
+            : 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#2AABEE] via-transparent to-transparent'
         }`} />
 
-        <h2 className="text-xl sm:text-2xl font-bold text-white text-center relative z-10">
-          Выберите платформу для подключения
+        <h2 className="text-base sm:text-lg font-bold text-white text-center relative z-10">
+          Выберите платформу
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 relative z-10">
-          {/* Плашка ВКонтакте */}
+        {/* Компактные горизонтальные плашки */}
+        <div className="grid grid-cols-2 gap-3 relative z-10">
+          
+          {/* Плашка ВК */}
           <div
             onClick={() => setSelectedNetwork('VK')}
-            className={`relative border-2 rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all duration-300 cursor-pointer overflow-hidden group ${
+            className={`relative border rounded-2xl py-3 px-3 flex flex-row items-center justify-center gap-3 transition-all duration-300 cursor-pointer overflow-hidden group ${
               selectedNetwork === 'VK' 
-                ? 'border-[#0077FF] bg-[#0077FF]/10 shadow-[0_0_25px_rgba(0,119,255,0.15)] scale-[1.02]' 
-                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800 hover:border-gray-600 opacity-60 hover:opacity-100 scale-100'
+                ? 'border-[#0077FF] bg-[#0077FF]/10 shadow-[0_0_15px_rgba(0,119,255,0.15)] scale-[1.02]' 
+                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800 opacity-60 hover:opacity-100 scale-100'
             }`}
           >
-            {/* Иконка-галочка при выборе */}
             {selectedNetwork === 'VK' && (
-              <div className="absolute top-4 right-4 bg-[#0077FF] text-white rounded-full p-1 animate-in zoom-in duration-200">
-                <Check size={14} strokeWidth={3} />
+              <div className="absolute top-1.5 right-1.5 text-[#0077FF] animate-in zoom-in duration-200">
+                <Check size={14} strokeWidth={4} />
               </div>
             )}
             
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all duration-300 ${
-              selectedNetwork === 'VK' ? 'bg-[#0077FF] text-white scale-110' : 'bg-gray-800 text-gray-400 group-hover:text-white group-hover:scale-105'
-            }`}>
-              <Users size={32} />
+            {/* Оригинальная иконка ВКонтакте */}
+            <div className="w-8 h-8 shrink-0 flex items-center justify-center bg-[#0077FF] text-white rounded-[9px]">
+               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                 <path d="M15.076 2.404c2.203 0 3.305 0 3.99.685.684.685.684 1.787.684 3.99v9.842c0 2.203 0 3.305-.685 3.99-.684.684-1.786.684-3.989.684H8.924c-2.203 0-3.305 0-3.99-.684-.684-.685-.684-1.787-.684-3.99V7.08c0-2.203 0-3.305.685-3.99.684-.684 1.786-.684 3.989-.684h6.152zm-3.69 11.23c2.28 0 2.652-1.528 2.652-1.528.272-1.543-1.077-2.316-1.077-2.316.48-.485 1.054-1.396.962-2.355-.13-1.353-1.127-1.455-1.127-1.455H11.2c-.397 0-.54.266-.54.266-.098.27-.087 1.48.513 1.93.305.23.167.927.167.927-.06 1.134-.783 1.258-.783 1.258-1.543 0-2.43-1.638-2.585-2.617-.066-.425-.33-.8-.71-.838l-1.334-.025s-.356.027-.478.163c-.106.118-.08.358-.08.358s.664 1.558 1.417 2.836c.925 1.573 2.067 2.76 3.655 2.76h.945s.31-.035.438-.163c.12-.12.115-.36.115-.36v-.845zM15.42 13.634s.885.86 1.265 1.196c.294.26.544.33.544.33h1.364s.715-.045.378-.607c-.027-.045-.19-.4-.897-1.073-1.156-1.1-1.01-1.35 0 0 0 0 1.62 2.25 1.77 2.615.115.28-.27.275-.27.275l-1.688.02s-.25-.015-.434-.136c-.23-.153-.49-.558-.49-.558-.335-.453-.695-.694-.96-.73-.424-.055-.654.43-.654.43v.68s-.02.21-.136.3c-.108.083-.263.085-.263.085-1.22 0-2.548-.56-3.64-1.748-1.5-1.627-2.64-4.52-2.64-4.52s-.066-.164-.004-.253c.058-.083.21-.107.21-.107l1.78-.02s.16 0 .235.07c.068.066.11.205.11.205s.28 1.056.884 1.89c1.07 1.48 1.543 1.69 1.744 1.58.267-.145.215-1.695.215-1.69500-.31-.1-.484-.28-.59-.136-.082-.35-.11-.27-.156.126-.07.395-.1.85-.1.554 0 .99.043 1.265.176.24.116.14.39.14 1.135 0 .61-.1 1.28.274 1.45.182.083.61-.065 1.5-1.573.43-.728.775-1.92.775-1.92s.04-.134.14-.195c.09-.056.223-.04.223-.04l1.79-.02s.54-.066.626.23c.095.33-.51 1.28-1.15 2.15-1.42 1.94-1.53 1.785 0 0 0 0z" />
+               </svg>
             </div>
-            <h3 className={`font-bold text-lg mb-1 transition-colors ${selectedNetwork === 'VK' ? 'text-white' : 'text-gray-300'}`}>
-              ВКонтакте
+            <h3 className={`font-bold text-base sm:text-lg transition-colors ${selectedNetwork === 'VK' ? 'text-white' : 'text-gray-300'}`}>
+              ВК
             </h3>
-            <span className="text-sm font-medium text-gray-500">
-              {selectedNetwork === 'VK' ? 'Выбрана эта платформа' : 'Нажмите для выбора'}
-            </span>
           </div>
 
           {/* Плашка Telegram */}
           <div
             onClick={() => setSelectedNetwork('TG')}
-            className={`relative border-2 rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all duration-300 cursor-pointer overflow-hidden group ${
+            className={`relative border rounded-2xl py-3 px-3 flex flex-row items-center justify-center gap-3 transition-all duration-300 cursor-pointer overflow-hidden group ${
               selectedNetwork === 'TG' 
-                ? 'border-[#0088CC] bg-[#0088CC]/10 shadow-[0_0_25px_rgba(0,136,204,0.15)] scale-[1.02]' 
-                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800 hover:border-gray-600 opacity-60 hover:opacity-100 scale-100'
+                ? 'border-[#2AABEE] bg-[#2AABEE]/10 shadow-[0_0_15px_rgba(42,171,238,0.15)] scale-[1.02]' 
+                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800 opacity-60 hover:opacity-100 scale-100'
             }`}
           >
-            {/* Иконка-галочка при выборе */}
             {selectedNetwork === 'TG' && (
-              <div className="absolute top-4 right-4 bg-[#0088CC] text-white rounded-full p-1 animate-in zoom-in duration-200">
-                <Check size={14} strokeWidth={3} />
+              <div className="absolute top-1.5 right-1.5 text-[#2AABEE] animate-in zoom-in duration-200">
+                <Check size={14} strokeWidth={4} />
               </div>
             )}
 
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all duration-300 ${
-              selectedNetwork === 'TG' ? 'bg-[#0088CC] text-white scale-110' : 'bg-gray-800 text-gray-400 group-hover:text-white group-hover:scale-105'
-            }`}>
-              <Send size={32} />
+            {/* Оригинальная иконка Telegram */}
+            <div className="w-8 h-8 shrink-0 flex items-center justify-center bg-[#2AABEE] text-white rounded-full">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 ml-[-2px] mt-[1px]">
+                <path d="M21.016 3.69c-1.3-.8-2.8-.2-4.1.3L4.716 9.69c-1.8.8-2.1 2.2-.4 3.1l4.4 1.5 1.5 5.5c.3 1.1 1.3 1.3 2 1l2-1.9 4.3 3.3c1.3 1 2.5.5 3-1.2L24.216 4.79c.4-1.7-.5-2.7-2.1-1.1h-.1c-.4 0-.8.1-1 .1v-.1zm-10.4 8.7l5.4-4.8c.3-.3.6-.4.9-.1.3.2.1.6-.2.8l-6.2 5.5-.6 3.5-1.5-4.4 2.2-.5z"/>
+              </svg>
             </div>
-            <h3 className={`font-bold text-lg mb-1 transition-colors ${selectedNetwork === 'TG' ? 'text-white' : 'text-gray-300'}`}>
-              Telegram
+            <h3 className={`font-bold text-base sm:text-lg transition-colors ${selectedNetwork === 'TG' ? 'text-white' : 'text-gray-300'}`}>
+              ТГ
             </h3>
-            <span className="text-sm font-medium text-gray-500">
-              {selectedNetwork === 'TG' ? 'Выбрана эта платформа' : 'Нажмите для выбора'}
-            </span>
           </div>
         </div>
 
@@ -905,14 +901,13 @@ export default function AccountsManager() {
               setShowTgHelperModal(true);
             }
           }}
-          className={`relative z-10 w-full py-4 rounded-xl font-bold text-white transition-all duration-300 text-base active:scale-95 flex justify-center items-center gap-3 ${
+          className={`relative z-10 w-full py-3.5 rounded-xl font-bold text-white transition-all duration-300 text-sm sm:text-base active:scale-95 flex justify-center items-center gap-2 ${
             selectedNetwork === 'VK' 
-              ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-[0_0_20px_rgba(0,119,255,0.4)]' 
-              : 'bg-[#0088CC] hover:bg-[#0077B3] shadow-[0_0_20px_rgba(0,136,204,0.4)]'
+              ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-lg shadow-[#0077FF]/30' 
+              : 'bg-[#2AABEE] hover:bg-[#229EDF] shadow-lg shadow-[#2AABEE]/30'
           }`}
         >
-          {selectedNetwork === 'VK' ? <Users size={22} className="animate-in zoom-in" /> : <Send size={22} className="animate-in zoom-in" />}
-          <span>Авторизовать {selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}</span>
+          Авторизовать {selectedNetwork === 'VK' ? 'ВК' : 'ТГ'}
         </button>
       </div>
       {/* ========================================= */}
