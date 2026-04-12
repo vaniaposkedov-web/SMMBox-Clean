@@ -6,15 +6,15 @@ const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 
 
-// --- УЛЬТРА-ПАРСЕР АВАТАРОК ---
+// --- УНИВЕРСАЛЬНЫЙ ПАРСЕР ПО СТРУКТУРЕ АЛЕКСЕЯ ---
 const extractKomodAvatar = (obj) => {
   if (!obj || typeof obj !== 'object') return null;
-
-  // 1. Ищем во всех возможных полях верхнего уровня (прокси ВК)
-  const direct = obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo || obj.image;
+  
+  // Прямая проверка
+  const direct = obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo;
   if (direct && typeof direct === 'string' && direct.startsWith('http')) return direct;
 
-  // 2. Лезем вглубь info -> rawData (фикс Алексея)
+  // Парсинг для ГРУПП (фикс Алексея)
   let info = obj.info;
   if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
   
@@ -22,15 +22,20 @@ const extractKomodAvatar = (obj) => {
     let raw = info.rawData || info.apiGroupData || info.apiUserData;
     if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
     if (raw && typeof raw === 'object') {
-      const rawPhoto = raw.photo_200 || raw.photo_100 || raw.photo_50 || raw.photo_max || raw.photo_max_orig;
+      const rawPhoto = raw.photo_200 || raw.photo_100 || raw.photo_50 || raw.photo_max;
       if (rawPhoto) return rawPhoto;
     }
   }
 
-  // 3. Последний шанс: ищем любую строку похожую на URL картинки в объекте
-  const str = JSON.stringify(obj);
-  const match = str.match(/https?:\/\/[^\s"']+\.(?:jpg|jpeg|png|webp|gif)(?:[^\s"']*)/i);
-  return match ? match[0].replace(/\\/g, '') : null;
+  // Парсинг для ЛИЧНЫХ ПРОФИЛЕЙ (как указал Алексей)
+  let apiUser = obj.apiUserData || obj.auth?.apiUserData;
+  if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e){} }
+  if (apiUser && typeof apiUser === 'object') {
+     const userPhoto = apiUser.photo_200 || apiUser.photo_100 || apiUser.photo_50 || apiUser.photo_max;
+     if (userPhoto) return userPhoto;
+  }
+
+  return null;
 };
 
 
@@ -57,66 +62,129 @@ const extractKomodName = (obj) => {
   return obj.name || obj.title || null;
 };
 
+// --- МЕТОД ЗАГРУЗКИ (СТРОГО ЧЕРЕЗ KOM-OD API) ---
 exports.getKomodGroupsForSelection = async (req, res) => {
   try {
-    const profileId = req.query.profileId || req.query.id;
+    const profileId = req.query.profileId || req.query.id || req.body?.profileId || req.params?.id;
     const userId = String(req.user?.userId || req.user?.id);
 
-    const profile = await prisma.socialProfile.findFirst({ where: { id: profileId, userId } });
-    if (!profile) return res.status(403).json({ error: 'Профиль не найден' });
-
-    // 1. Получаем список групп
-    const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
-      headers: { 'Access-Token': KOMOD_TOKEN }
+    const profile = await prisma.socialProfile.findFirst({
+      where: { id: profileId, userId: userId }
     });
 
-    let items = [];
-    const resData = response.data?.data;
-    if (Array.isArray(resData)) {
-      items = (resData[0]?.items && Array.isArray(resData[0].items)) ? resData[0].items : resData;
-    } else if (resData?.items) {
-      items = resData.items;
-    }
+    if (!profile) return res.status(403).json({ error: 'Профиль не найден' });
 
-    // 2. Обогащаем данными (последовательно, чтобы не словить бан от API)
-    const enrichedItems = [];
-    for (let group of items) {
-      let photo = extractKomodAvatar(group);
+    try {
+      // 1. Получаем список групп аккаунта
+      const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
+        headers: { 'Access-Token': KOMOD_TOKEN }
+      });
 
-      // Если фото нет, пробуем найти внутренний ID группы в системе Kom-od
-      // В списке /api-groups ID часто является внутренним ID, если группа уже известна системе
-      const potentialKomodId = group.id; 
-      const vkId = String(group.uid || group.group_id || group.id).replace(/\D/g, '');
+      let items = [];
+      const resData = response.data?.data;
+      const resGroups = response.data?.groups;
 
-      if (!photo && potentialKomodId && String(potentialKomodId).length < 10) {
-        try {
-          const detail = await axios.get(`${KOMOD_BASE_URL}/group/${potentialKomodId}`, {
-            headers: { 'Access-Token': KOMOD_TOKEN },
-            timeout: 2000
-          });
-          if (detail.data?.success) {
-            photo = extractKomodAvatar(detail.data.data);
+      if (Array.isArray(resData)) {
+          if (resData[0]?.items && Array.isArray(resData[0].items)) items = resData[0].items;
+          else items = resData;
+      } else if (resData?.items) {
+          items = resData.items;
+      } else if (resGroups?.items) {
+          items = resGroups.items;
+      } else if (Array.isArray(resGroups)) {
+          items = resGroups;
+      }
+
+      // 2. Получаем полный список всех групп шлюза (чтобы гарантированно узнать Kom-od ID)
+      let allKomodGroups = [];
+      try {
+        const allGrpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+        const d = allGrpRes.data?.data;
+        if (Array.isArray(d)) {
+           allKomodGroups = d[0]?.items || d;
+        } else if (d?.items) {
+           allKomodGroups = d.items;
+        }
+      } catch (e) {
+        console.log('[KOM-OD] Не удалось загрузить словарь всех групп');
+      }
+
+      // 3. Обогащаем список фотографиями
+      const enrichedItems = await Promise.all(items.map(async (group) => {
+        let photo = extractKomodAvatar(group);
+
+        let komodId = null;
+        
+        // ✅ ЖЕЛЕЗОБЕТОННАЯ ЛОГИКА ОПРЕДЕЛЕНИЯ ВНУТРЕННЕГО ID KOM-OD
+        // Ситуация А: Шлюз сразу вернул и системный id, и вк-шный uid
+        if (group.id && group.uid && String(group.id).length < 10) {
+          komodId = group.id;
+        } 
+        // Ситуация Б: Шлюз вернул только один ID. Ищем совпадение в общем списке по VK ID
+        else {
+          const vkIdRaw = String(group.uid || group.group_id || group.id).replace(/\D/g, '');
+          if (vkIdRaw) {
+             const matched = allKomodGroups.find(g => String(g.uid) === vkIdRaw || String(g.group_id) === vkIdRaw);
+             if (matched) {
+                komodId = matched.id; // Нашли настоящий системный ID
+             }
           }
-        } catch (e) { /* Игнорируем ошибки одиночных запросов */ }
-      }
+        }
 
-      // Если всё еще нет фото — используем API-заглушку самого ВК (работает всегда)
-      if (!photo && vkId) {
-        photo = `https://vk.com/images/community_200.png`; // Дефолтная иконка сообщества
-      }
+        // ДЕЛАЕМ ЗАПРОС К ПОЧИНЕННОМУ МЕТОДУ АЛЕКСЕЯ СТРОГО ПО СИСТЕМНОМУ ID (например, 20017)
+        if (!photo && komodId) {
+          try {
+            const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${komodId}`, {
+              headers: { 'Access-Token': KOMOD_TOKEN }
+            });
+            if (detailRes.data?.success && detailRes.data?.data) {
+              photo = extractKomodAvatar(detailRes.data.data);
+            }
+          } catch (e) {
+            console.log(`[KOM-OD] Ошибка получения деталей группы ${komodId}`);
+          }
+        }
 
-      if (photo) {
-        group.photo_200 = photo;
-        group.photo_50 = photo;
-        group.avatar = photo;
+        // Резервный поиск в нашей БД на случай задержек шлюза
+        if (!photo) {
+           const vkIdRaw = String(group.uid || group.group_id || group.id).replace(/\D/g, '');
+           try {
+             const existing = await prisma.account.findFirst({
+               where: { provider: 'VK', providerId: { endsWith: vkIdRaw } }
+             });
+             if (existing && existing.avatarUrl && !existing.avatarUrl.includes('ui-avatars')) {
+               photo = existing.avatarUrl;
+             }
+           } catch(e) {}
+        }
+
+        // Подшиваем найденное фото на верхний уровень объекта для фронтенда
+        if (photo) {
+          group.photo_200 = photo;
+          group.photo_100 = photo;
+          group.photo_50 = photo;
+          group.avatar = photo; 
+        }
+
+        return group;
+      }));
+
+      const authData = response.data?.auth || null;
+      return res.json({ success: true, groups: enrichedItems, auth: authData });
+      
+    } catch (apiError) {
+      if (apiError.response && apiError.response.status === 404) {
+        return res.json({ 
+          success: false, 
+          error: 'Этот профиль устарел. Авторизуйте заново.' 
+        });
       }
-      enrichedItems.push(group);
+      throw apiError; 
     }
 
-    res.json({ success: true, groups: enrichedItems, auth: response.data?.auth || null });
   } catch (error) {
-    console.error('Ошибка:', error.message);
-    res.status(500).json({ error: error.message });
+    console.error('Ошибка загрузки сообществ:', error.message);
+    res.status(500).json({ error: 'Ошибка API шлюза: ' + error.message });
   }
 };
 
