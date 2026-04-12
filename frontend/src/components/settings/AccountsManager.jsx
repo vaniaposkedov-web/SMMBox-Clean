@@ -96,21 +96,55 @@ export default function AccountsManager() {
   const [addedGroupsCount, setAddedGroupsCount] = useState(0);
   const processingHash = useRef(null);
 
-  const getValidAvatar = (url, fallbackName) => {
-    if (!url || url.includes('camera_50.png') || url.includes('camera_100.png')) {
-      // Если фото нет или стоит стандартная камера ВК — генерируем красивую заглушку
-      return `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackName || 'VK')}&background=0d0f13&color=0077FF&rounded=true&bold=true`;
-    }
-    if (url.startsWith('//')) return `https:${url}`;
-    if (url.startsWith('http://')) return url.replace('http://', 'https://');
-    return url;
-  };
+  
 
   const handleRefreshProfiles = async () => {
     setIsRefreshingProfiles(true);
     await fetchProfiles(user.id);
     await fetchAccounts(user.id);
     setIsRefreshingProfiles(false);
+  };
+
+
+  // --- АГРЕССИВНЫЙ ПОИСК ДАННЫХ И ИСПРАВЛЕНИЕ ССЫЛОК ---
+  const extractAvatar = (obj) => {
+    if (!obj || typeof obj !== 'object') return null;
+    if (obj.photo_100) return obj.photo_100;
+    if (obj.photo_50) return obj.photo_50;
+    if (obj.avatar) return obj.avatar;
+    // Ищем вглубь
+    for (let key in obj) {
+       if (obj[key] && typeof obj[key] === 'object') {
+         if (obj[key].photo_100) return obj[key].photo_100;
+         if (obj[key].photo_50) return obj[key].photo_50;
+       }
+    }
+    return null;
+  };
+
+  const extractName = (obj) => {
+    if (!obj || typeof obj !== 'object') return null;
+    if (obj.first_name) return `${obj.first_name} ${obj.last_name || ''}`.trim();
+    if (obj.name) return obj.name;
+    if (obj.title) return obj.title;
+    // Ищем вглубь
+    for (let key in obj) {
+       if (obj[key] && typeof obj[key] === 'object') {
+         if (obj[key].first_name) return `${obj[key].first_name} ${obj[key].last_name || ''}`.trim();
+         if (obj[key].name) return obj[key].name;
+         if (obj[key].title) return obj[key].title;
+       }
+    }
+    return null;
+  };
+
+  const getValidAvatar = (url, fallbackName) => {
+    if (!url || url.includes('camera_50.png') || url.includes('camera_100.png') || url.includes('camera_200.png')) {
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackName || 'VK')}&background=0d0f13&color=0077FF&rounded=true&bold=true`;
+    }
+    if (url.startsWith('//')) return `https:${url}`;
+    if (url.startsWith('http://')) return url.replace('http://', 'https://');
+    return url;
   };
   
 
@@ -260,12 +294,19 @@ export default function AccountsManager() {
           
           if (data.success) {
             const groupsArray = Array.isArray(data.groups) ? data.groups : (data.groups?.items || []);
+            
+            // Теперь data.auth доходит с бэкенда! Вытаскиваем реальные данные
+            const apiUser = data.auth?.apiUserData || profile?.auth?.apiUserData;
+            const fullName = extractName(apiUser) || profile?.name || 'Личная страница';
+            const photoUrl = extractAvatar(apiUser) || profile?.avatarUrl;
+
             const personalWall = {
               id: 'wall_profile', 
-              name: profile?.name || 'Профиль ВКонтакте', // Вытаскиваем реальное ФИО
-              photo_50: profile?.avatarUrl || 'https://via.placeholder.com/50', // Реальная аватарка
+              name: fullName,
+              photo_50: photoUrl, 
               is_profile_dummy: true 
             };
+
             setSelectableGroups([personalWall, ...groupsArray]);
             setKomodSelected([]); 
             setKomodModal({ isOpen: true, profileId: vkProf.id });
@@ -923,7 +964,7 @@ export default function AccountsManager() {
               const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
               const accountName = acc.name || acc.title || (acc.provider === 'VK' ? 'ВК' : 'ТГ');
               
-              // Пропускаем сохраненную аватарку через чистильщик
+              // Если в базе аватарка пустая, она сгенерируется красиво
               const avatar = getValidAvatar(acc.avatarUrl || acc.photo_100 || acc.photo_50, accountName);
 
               return (
@@ -1148,11 +1189,9 @@ export default function AccountsManager() {
                 const isSelected = komodSelected.includes(uniqueId);
                 const isPersonal = group.is_profile_dummy;
                 
-                const groupName = group.name || group.title || group.apiGroupData?.name || 'Без названия';
-                const rawAvatar = group.photo_100 || group.photo_50 || group.avatar || group.apiGroupData?.photo_100 || group.apiGroupData?.photo_50;
-                
-                // Пропускаем через чистильщик
-                const avatar = getValidAvatar(rawAvatar, groupName);
+                // Используем наши мощные искатели
+                const groupName = extractName(group) || 'Без названия';
+                const avatar = getValidAvatar(extractAvatar(group), groupName);
 
                 return (
                   <div 
@@ -1164,7 +1203,7 @@ export default function AccountsManager() {
                     
                     <div className="flex-1 min-w-0">
                       <span className="text-white font-bold text-sm block truncate">{groupName}</span>
-                      {isPersonal && <span className="text-[10px] text-[#0077FF] font-bold uppercase mt-0.5 block tracking-wide">Личная страница</span>}
+                      {isPersonal && <span className="text-[10px] text-gray-400 font-bold uppercase mt-0.5 block tracking-wide">Личная страница</span>}
                     </div>
 
                     <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'}`}>
