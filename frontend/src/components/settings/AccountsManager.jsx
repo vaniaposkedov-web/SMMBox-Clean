@@ -106,18 +106,70 @@ export default function AccountsManager() {
   };
 
 
+  // --- АГРЕССИВНЫЙ ПОИСК С УЧЕТОМ ФОРМАТА KOM-OD (info.rawData) ---
   const extractAvatar = (obj) => {
-    const keys = ['photo_200', 'photo_100', 'photo_50', 'avatar', 'photo_max_orig'];
-    return deepSearch(obj, keys);
+    if (!obj || typeof obj !== 'object') return null;
+    
+    // 1. Проверяем НОВЫЙ ФОРМАТ ШЛЮЗА (то, что скинул разраб)
+    if (obj.info?.rawData) {
+       const raw = obj.info.rawData;
+       if (raw.photo_200) return raw.photo_200;
+       if (raw.photo_100) return raw.photo_100;
+       if (raw.photo_50) return raw.photo_50;
+    }
+    
+    // 2. Личная страница (apiUserData)
+    if (obj.apiUserData) {
+       if (obj.apiUserData.photo_200) return obj.apiUserData.photo_200;
+       if (obj.apiUserData.photo_100) return obj.apiUserData.photo_100;
+       if (obj.apiUserData.photo_50) return obj.apiUserData.photo_50;
+    }
+    
+    // 3. Стандартные ключи
+    if (obj.photo_200) return obj.photo_200;
+    if (obj.photo_100) return obj.photo_100;
+    if (obj.photo_50) return obj.photo_50;
+    if (obj.avatar) return obj.avatar;
+    
+    return null;
   };
 
  const extractName = (obj) => {
-    if (obj?.first_name || obj?.apiUserData?.first_name) {
-      const f = obj.first_name || obj.apiUserData?.first_name;
-      const l = obj.last_name || obj.apiUserData?.last_name || '';
-      return `${f} ${l}`.trim();
+    if (!obj || typeof obj !== 'object') return null;
+    
+    // 1. НОВЫЙ ФОРМАТ ШЛЮЗА
+    if (obj.info) {
+       if (obj.info.title) return obj.info.title;
+       if (obj.info.rawData?.name) return obj.info.rawData.name;
     }
-    return deepSearch(obj, ['name', 'title', 'screen_name']);
+    
+    // 2. Личная страница
+    if (obj.apiUserData || obj.first_name) {
+      const target = obj.apiUserData || obj;
+      if (target.first_name) return `${target.first_name} ${target.last_name || ''}`.trim();
+    }
+    
+    if (obj.name) return obj.name;
+    if (obj.title) return obj.title;
+    
+    return null;
+  };
+
+  const extractId = (obj) => {
+    if (!obj) return null;
+    if (obj.info?.rawData?.id) return obj.info.rawData.id;
+    if (obj.apiGroupData?.id) return obj.apiGroupData.id;
+    if (obj.id) return obj.id;
+    if (obj.group_id) return obj.group_id;
+    return null;
+  };
+
+  const extractScreenName = (obj) => {
+    if (!obj) return null;
+    if (obj.info?.rawData?.screen_name) return obj.info.rawData.screen_name;
+    if (obj.apiGroupData?.screen_name) return obj.apiGroupData.screen_name;
+    if (obj.screen_name) return obj.screen_name;
+    return null;
   };
 
   // --- УЛЬТРА-РЕКУРСИВНЫЙ ПОИСК ДАННЫХ ---
@@ -217,24 +269,25 @@ export default function AccountsManager() {
     
     let addedCount = 0;
     for (const uniqueId of komodSelected) {
-      const group = selectableGroups.find(g => {
-        const gId = g.apiGroupData?.id || g.id || g.group_id;
+      const group = selectableGroups.find((g, idx) => {
+        const gId = extractId(g) || `idx-${idx}`;
         return String(gId) === String(uniqueId);
       });
 
       if (group) {
+        // Достаем данные с помощью новых функций-спасателей
         const groupName = extractName(group) || 'Личная страница';
         const groupAvatar = extractAvatar(group);
-        const groupId = group.apiGroupData?.id || group.id || group.group_id;
-        const screenName = group.apiGroupData?.screen_name || group.screen_name || `club${groupId}`;
+        const groupId = extractId(group);
+        const screenName = extractScreenName(group) || `club${groupId}`;
         const groupUrl = `https://vk.com/${screenName}`;
 
-        // ОТПРАВЛЯЕМ ВСЁ НА БЭКЕНД
+        // Отправляем на бэкенд вместе с найденной аватаркой!
         const res = await useStore.getState().addVkKomodGroup(
           groupUrl, 
           groupName, 
           komodModal.profileId, 
-          groupAvatar // <--- Важно!
+          groupAvatar 
         );
         if (res.success) addedCount++;
       }
@@ -1188,7 +1241,8 @@ export default function AccountsManager() {
 
             <div className="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-2">
               {selectableGroups.map((group, index) => {
-                const uniqueId = group.apiGroupData?.id || group.id || group.group_id || `idx-${index}`;
+                // ИСПОЛЬЗУЕМ НОВЫЕ ФУНКЦИИ ДЛЯ ИЗВЛЕЧЕНИЯ ИЗ RAW DATA
+                const uniqueId = extractId(group) || `idx-${index}`;
                 const isSelected = komodSelected.includes(uniqueId);
                 const isPersonal = group.is_profile_dummy;
                 
@@ -1201,7 +1255,6 @@ export default function AccountsManager() {
                     onClick={() => setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
                     className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF]' : 'bg-gray-900 border-gray-800 hover:bg-gray-800'}`}
                   >
-                    {/* ДОБАВЛЕН onError ДЛЯ ЗАЩИТЫ ОТ БИТЫХ ССЫЛОК ВК */}
                     <img 
                       src={avatar} 
                       onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, groupName); }} 
