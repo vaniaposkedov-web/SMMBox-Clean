@@ -5,7 +5,7 @@ const axios = require('axios');
 exports.generateText = async (req, res) => {
     try {
         const { text, systemPrompt } = req.body;
-        const apiKey = process.env.KIE_API_KEY;
+        const apiKey = '7374972655d53927687b3f7d8418580c';
         const apiUrl = 'https://api.kie.ai/v1/chat/completions'; 
 
         const response = await axios.post(apiUrl, {
