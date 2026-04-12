@@ -106,57 +106,53 @@ export default function AccountsManager() {
   };
 
 
- // --- АГРЕССИВНЫЙ ПОИСК С УЧЕТОМ ФОРМАТА KOM-OD (info.rawData) ---
-  // --- АГРЕССИВНЫЙ ПОИСК С УЧЕТОМ ФОРМАТА KOM-OD (С РЕНТГЕНОМ) ---
+ // --- УЛЬТИМАТИВНЫЙ ПОИСК АВАТАРОК (БРУТФОРС + РЕНТГЕН) ---
   const extractAvatar = (obj) => {
     if (!obj || typeof obj !== 'object') return null;
-    
-    let info = obj.info;
-    if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
-    
-    let raw = info?.rawData;
-    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
-    
-    // 🔥 РЕНТГЕН: ВЫВОДИМ ДАННЫЕ В КОНСОЛЬ БРАУЗЕРА
-    console.log(`[ФРОНТЕНД] Данные для "${obj.name || obj.title || 'Без названия'}":`, { info, raw, original: obj });
-    
-    if (raw) {
-       if (raw.photo_200) return raw.photo_200;
-       if (raw.photo_100) return raw.photo_100;
-       if (raw.photo_50) return raw.photo_50;
+
+    try {
+      // Превращаем весь объект в текст, чтобы увидеть скрытые поля
+      const fullStr = JSON.stringify(obj, null, 2);
+      
+      // Выводим "рентген" в консоль браузера
+      console.log(`[ФРОНТЕНД-РЕНТГЕН] Структура аккаунта:`, fullStr);
+
+      // 1. Ищем ЛЮБЫЕ ссылки на картинки ВК (sun*.userapi.com и т.д.) во всем объекте
+      const vkUrlMatch = fullStr.match(/https?:\/\/[a-zA-Z0-9-]+\.userapi\.com[^\s"'\\]+/i);
+      if (vkUrlMatch) return vkUrlMatch[0].replace(/\\/g, '');
+
+      // 2. Ищем классические ключи, если ссылка другая
+      const photoMatch = fullStr.match(/"(?:photo_200|photo_100|photo_50|photo|avatar|avatar_url|pic)"\s*:\s*"([^"]+)"/i);
+      if (photoMatch) return photoMatch[1].replace(/\\/g, '');
+      
+    } catch(e) {
+       console.log('[ФРОНТЕНД-ОШИБКА] Не удалось распарсить объект');
     }
     
-    let apiUser = obj.apiUserData;
-    if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e){} }
-    
-    if (apiUser) {
-       if (apiUser.photo_200) return apiUser.photo_200;
-       if (apiUser.photo_100) return apiUser.photo_100;
-       if (apiUser.photo_50) return apiUser.photo_50;
-    }
-    
-    return obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo || null;
+    return null;
   };
 
   const extractName = (obj) => {
     if (!obj || typeof obj !== 'object') return null;
+
+    try {
+       if (obj.name) return obj.name;
+       if (obj.title) return obj.title;
+       
+       // Ищем имена текстом
+       const fullStr = JSON.stringify(obj);
+       const nameMatch = fullStr.match(/"(?:name|title|first_name)"\s*:\s*"([^"]+)"/i);
+       if (nameMatch) {
+          let foundName = nameMatch[1];
+          if (fullStr.includes('"first_name"')) {
+             const lastMatch = fullStr.match(/"last_name"\s*:\s*"([^"]+)"/i);
+             if (lastMatch) foundName += ' ' + lastMatch[1];
+          }
+          return foundName;
+       }
+    } catch(e) {}
     
-    let info = obj.info;
-    if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
-    
-    let raw = info?.rawData;
-    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
-    
-    if (info && info.title) return info.title;
-    if (raw && raw.name) return raw.name;
-    
-    let apiUser = obj.apiUserData;
-    if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e){} }
-    
-    const target = apiUser || obj;
-    if (target.first_name) return `${target.first_name} ${target.last_name || ''}`.trim();
-    
-    return obj.name || obj.title || null;
+    return 'Без названия';
   };
 
   const extractId = (obj) => {
