@@ -130,16 +130,15 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 exports.addVkKomodGroup = async (req, res) => {
   try {
     const { url, title, profileId, avatarUrl } = req.body;
-    const userId = String(req.user.userId || req.user.id);
+    const userId = String(req.user?.userId || req.user?.id);
 
     const profile = await prisma.socialProfile.findFirst({
       where: { id: profileId, userId }
     });
     if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
 
-    // === ИСПРАВЛЕНИЕ 1: БЛОКИРУЕМ МУСОР ===
     if (!url || url.includes('null') || url.includes('undefined')) {
-        return res.status(400).json({ error: 'Некорректная ссылка на группу: ' + url });
+      return res.status(400).json({ error: 'Некорректная ссылка на группу' });
     }
 
     // 1. ОТПРАВЛЯЕМ ЗАПРОС В KOM-OD
@@ -147,27 +146,41 @@ exports.addVkKomodGroup = async (req, res) => {
     params.append('url', url);
     params.append('title', title || 'Без названия');
     params.append('account_id', profile.providerAccountId);
+    params.append('random_account', '0'); // ИСПРАВЛЕНИЕ: Явно выключаем рандомный аккаунт!
 
     try {
-      await axios.post(`${KOMOD_BASE_URL}/group`, params, {
-        headers: { 
-          'Access-Token': KOMOD_TOKEN,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+      const kRes = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
+        headers: { 'Access-Token': KOMOD_TOKEN, 'Content-Type': 'application/x-www-form-urlencoded' },
+        validateStatus: () => true // Не падаем в catch при ошибках, чтобы прочитать ответ шлюза
       });
+      console.log(`[KOM-OD] Ответ на добавление ${url}:`, kRes.status, kRes.data);
     } catch (apiError) {
-      console.error('Ошибка API Kom-od при добавлении группы:', apiError.response?.data || apiError.message);
-      return res.status(400).json({ error: 'Не удалось зарегистрировать группу в шлюзе' });
+      console.error('[KOM-OD] Сетевая ошибка при добавлении группы:', apiError.message);
     }
 
-    // === ИСПРАВЛЕНИЕ 2: УБРАНА ОПАСНАЯ ЛОГИКА СОХРАНЕНИЯ ===
-    // Мы больше НЕ сохраняем группу в БД по фейковому ID из ссылки. 
-    // Вместо этого мы делегируем это функции syncVkKomod (которая вызывается на фронтенде сразу после этой).
-    // Она сама заберет официальный uid от шлюза (через секунду) и сохранит его без дубликатов.
-    
-    res.json({ success: true });
+    // 2. ВОЗВРАЩАЕМ ЛОКАЛЬНОЕ СОХРАНЕНИЕ В БАЗУ
+    // Если шлюз тормозит, группа всё равно мгновенно появится у пользователя в интерфейсе!
+    const parsedId = url.split('/').pop().replace('club', '').replace('public', '').replace('event', '');
+    const providerId = `group_${parsedId}`;
+
+    const account = await prisma.account.upsert({
+      where: { provider_providerId: { provider: 'VK', providerId: providerId } },
+      update: { name: title, avatarUrl: avatarUrl, isValid: true, profileId: profile.id, userId },
+      create: {
+        userId,
+        provider: 'VK',
+        providerId,
+        name: title,
+        avatarUrl: avatarUrl,
+        accessToken: KOMOD_TOKEN,
+        profileId: profile.id
+      }
+    });
+
+    res.json({ success: true, account });
   } catch (error) {
-    res.status(500).json({ error: 'Ошибка сервера при добавлении' });
+    console.error(error);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 
@@ -241,7 +254,7 @@ exports.syncVkKomod = async (req, res) => {
       const parentProfile = myProfiles.find(p => String(p.providerAccountId) === String(grp.account_id));
       
       // === ИСПРАВЛЕНИЕ 1: ОПРЕДЕЛЕНИЕ СТЕНЫ БЕЗ БАГОВ ===
-      const isWall = String(grp.is_profile) === '1' || grp.is_profile === true;
+      const isWall = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
       const providerId = isWall ? `wall_${grp.account_id}` : `group_${grp.uid || grp.id}`;
       validGroupProviderIds.push(providerId);
 
