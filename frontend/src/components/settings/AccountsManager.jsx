@@ -275,21 +275,37 @@ export default function AccountsManager() {
       });
 
       if (group) {
-        // Достаем данные с помощью новых функций-спасателей
         const groupName = extractName(group) || 'Личная страница';
-        const groupAvatar = extractAvatar(group);
+        const groupAvatar = extractAvatar(group); // Искатель находит фото
         const groupId = extractId(group);
-        const screenName = extractScreenName(group) || `club${groupId}`;
-        const groupUrl = `https://vk.com/${screenName}`;
+        
+        if (group.is_profile_dummy) {
+          // ИСПРАВЛЕНИЕ ДЛЯ ЛИЧНОЙ СТРАНИЦЫ: передаем avatarUrl в body!
+          try {
+            const res = await fetch('/api/accounts/vk/komod-add-profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ 
+                profileId: komodModal.profileId, 
+                avatarUrl: groupAvatar, // <--- ВОТ ЭТО МЫ УПУСТИЛИ
+                name: groupName
+              })
+            });
+            if (res.ok) addedCount++;
+          } catch (e) { console.error("Ошибка добавления стены", e); }
+        } else {
+          // Для обычных групп вызываем стор (который мы исправили в Шаге 1)
+          const screenName = extractScreenName(group) || `club${groupId}`;
+          const groupUrl = `https://vk.com/${screenName}`;
 
-        // Отправляем на бэкенд вместе с найденной аватаркой!
-        const res = await useStore.getState().addVkKomodGroup(
-          groupUrl, 
-          groupName, 
-          komodModal.profileId, 
-          groupAvatar 
-        );
-        if (res.success) addedCount++;
+          const res = await useStore.getState().addVkKomodGroup(
+            groupUrl, 
+            groupName, 
+            komodModal.profileId, 
+            groupAvatar // Передаем 4-й аргумент
+          );
+          if (res.success) addedCount++;
+        }
       }
     }
     
