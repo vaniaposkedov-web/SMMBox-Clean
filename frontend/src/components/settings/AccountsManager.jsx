@@ -1042,41 +1042,55 @@ export default function AccountsManager() {
         <h2 className="text-[10px] font-bold text-gray-500 mb-3 uppercase tracking-[0.2em] text-center">Подключено</h2>
         
         {/* Если пусто — показываем заглушку, иначе — выводим сетку */}
+        {/* Если пусто — показываем заглушку, иначе — выводим сетку */}
         {(connectedVk.length === 0 && connectedTg.length === 0) ? (
           <div className="text-center p-4 bg-[#0d0f13] border border-gray-800 border-dashed rounded-xl text-gray-500 text-sm">
             Пока нет добавленных платформ
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* ИСПРАВЛЕНИЕ 1: Адаптивная сетка, элементы больше не пропадают */}
             {[...connectedVk, ...connectedTg].map(acc => {
               const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
               const accountName = acc.name || acc.title || (acc.provider === 'VK' ? 'ВК' : 'ТГ');
-              
               const avatar = getValidAvatar(acc.avatarUrl || extractAvatar(acc), accountName);
+              const isVk = acc.provider === 'VK'; // Флаг для проверки соцсети
 
               return (
-                <div key={acc.id} className="flex items-center justify-between p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <img 
-                      src={avatar} 
-                      onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, accountName); }} 
-                      className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" 
-                      alt="" 
-                    />
+                <div key={acc.id} className="flex items-center justify-between p-3 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    
+                    {/* ИСПРАВЛЕНИЕ 2: Обертка для аватарки и маленькой иконки соцсети */}
+                    <div className="relative shrink-0">
+                      <img 
+                        src={avatar} 
+                        onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, accountName); }} 
+                        className="w-10 h-10 rounded-full object-cover border border-gray-800" 
+                        alt="" 
+                      />
+                      {/* Маленькая иконка соцсети в правом нижнем углу */}
+                      <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#0d0f13] ${isVk ? 'bg-[#0077FF]' : 'bg-[#2AABEE]'}`}>
+                        {isVk ? (
+                          <span className="text-[8px] font-bold text-white">VK</span>
+                        ) : (
+                          <Send size={8} className="text-white -ml-0.5" />
+                        )}
+                      </div>
+                    </div>
                     
                     <div className="flex flex-col min-w-0">
-                      <span className="text-white font-bold text-xs truncate">
+                      <span className="text-white font-bold text-sm truncate">
                         {accountName}
                       </span>
                       {isPersonal && (
-                        <span className="text-[8px] text-gray-500 uppercase font-bold leading-none mt-0.5">
+                        <span className="text-[9px] text-gray-500 uppercase font-bold leading-none mt-0.5 tracking-wide">
                           Личная страница
                         </span>
                       )}
                     </div>
                   </div>
-                  <button onClick={() => removeAccount(acc.id)} className="text-gray-500 hover:text-rose-500 p-1.5 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all">
-                    <X size={14} />
+                  <button onClick={() => removeAccount(acc.id)} className="text-gray-500 hover:text-rose-500 p-2 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all">
+                    <X size={16} />
                   </button>
                 </div>
               );
@@ -1084,6 +1098,7 @@ export default function AccountsManager() {
           </div>
         )}
       </div>
+      
       
     
 
@@ -1225,33 +1240,47 @@ export default function AccountsManager() {
 
             <div className="p-6 space-y-5">
               <p className="text-sm text-gray-300 leading-relaxed">
-                Для безопасности и моментальной синхронизации, выбор сообществ и каналов происходит <b className="text-white">прямо в нашем официальном Telegram-боте</b>.
+                Чтобы добавить канал, необходимо выполнить <b>два шага</b>. Сначала привяжите свой аккаунт, а затем выберите канал из списка.
               </p>
               
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-3">
-                <div className="flex gap-3 items-start">
-                  <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5">1</div>
-                  <p className="text-sm text-gray-400">Перейдите в бота по кнопке ниже.</p>
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-5">
+                
+                {/* ШАГ 1: Связка аккаунта (нужно для webhook бэкенда) */}
+                <div>
+                  <div className="flex gap-3 items-start mb-2">
+                    <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5">1</div>
+                    <p className="text-sm text-gray-400">Привяжите личный ТГ-аккаунт (нажмите <b className="text-white">Запустить</b> в боте)</p>
+                  </div>
+                  <a
+                    href={`https://t.me/smmbox_auth_bot?start=bind_${user?.id || ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 rounded-lg font-bold text-white transition-all flex justify-center items-center gap-2 bg-gray-800 hover:bg-gray-700 text-sm border border-gray-700 mt-2"
+                  >
+                    Привязать профиль
+                  </a>
                 </div>
-                <div className="flex gap-3 items-start">
-                  <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5">2</div>
-                  <p className="text-sm text-gray-400">Нажмите <b className="text-white">Запустить</b> и следуйте инструкциям в чате.</p>
-                </div>
-                <div className="flex gap-3 items-start">
-                  <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5">3</div>
-                  <p className="text-sm text-gray-400">Вернитесь на эту страницу — ваши каналы появятся автоматически!</p>
-                </div>
-              </div>
 
-              <a
-                href={`https://t.me/smmbox_auth_bot?start=bind_${user?.id || ''}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setShowTgHelperModal(false)}
-                className="w-full py-4 rounded-xl font-bold text-white transition-all flex justify-center items-center gap-3 bg-[#0088CC] hover:bg-[#0077B3] shadow-lg shadow-[#0088CC]/20 active:scale-95 text-base mt-2"
-              >
-                <Send size={20} /> Открыть Telegram-бота
-              </a>
+                <div className="w-full h-px bg-gray-800"></div>
+
+                {/* ШАГ 2: Выбор канала (ИСПРАВЛЕНИЕ 3) */}
+                <div>
+                  <div className="flex gap-3 items-start mb-2">
+                    <div className="w-6 h-6 rounded-full bg-[#0088CC]/20 border border-[#0088CC]/50 flex items-center justify-center text-xs font-bold text-[#0088CC] shrink-0 mt-0.5">2</div>
+                    <p className="text-sm text-gray-400">Выберите сообщество, куда нужно добавить бота</p>
+                  </div>
+                  <a
+                    href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowTgHelperModal(false)}
+                    className="w-full py-3.5 rounded-xl font-bold text-white transition-all flex justify-center items-center gap-3 bg-[#0088CC] hover:bg-[#0077B3] shadow-lg shadow-[#0088CC]/20 active:scale-95 text-base mt-3"
+                  >
+                    <Plus size={18} /> Выбрать канал в Telegram
+                  </a>
+                </div>
+
+              </div>
             </div>
           </div>
         </div>
