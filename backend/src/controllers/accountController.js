@@ -137,7 +137,12 @@ exports.addVkKomodGroup = async (req, res) => {
     });
     if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
 
-    // 1. ОТПРАВЛЯЕМ ЗАПРОС В KOM-OD (согласно документации API)
+    // === ИСПРАВЛЕНИЕ 1: БЛОКИРУЕМ МУСОР ===
+    if (!url || url.includes('null') || url.includes('undefined')) {
+        return res.status(400).json({ error: 'Некорректная ссылка на группу: ' + url });
+    }
+
+    // 1. ОТПРАВЛЯЕМ ЗАПРОС В KOM-OD
     const params = new URLSearchParams();
     params.append('url', url);
     params.append('title', title || 'Без названия');
@@ -155,25 +160,12 @@ exports.addVkKomodGroup = async (req, res) => {
       return res.status(400).json({ error: 'Не удалось зарегистрировать группу в шлюзе' });
     }
 
-    // 2. СОХРАНЯЕМ В ЛОКАЛЬНУЮ БАЗУ
-    const parsedId = url.split('/').pop().replace('club', '').replace('public', '').replace('event', '');
-    const providerId = `group_${parsedId}`; 
-
-    const account = await prisma.account.upsert({
-      where: { provider_providerId: { provider: 'VK', providerId: providerId } },
-      update: { name: title, avatarUrl: avatarUrl, isValid: true, profileId: profile.id, userId: userId },
-      create: { 
-        userId: userId, 
-        provider: 'VK', 
-        providerId: providerId, 
-        name: title, 
-        avatarUrl: avatarUrl, 
-        accessToken: KOMOD_TOKEN, // ИСПРАВЛЕНИЕ: Ставим токен шлюза вместо ''
-        profileId: profile.id 
-      }
-    });
-
-    res.json({ success: true, account });
+    // === ИСПРАВЛЕНИЕ 2: УБРАНА ОПАСНАЯ ЛОГИКА СОХРАНЕНИЯ ===
+    // Мы больше НЕ сохраняем группу в БД по фейковому ID из ссылки. 
+    // Вместо этого мы делегируем это функции syncVkKomod (которая вызывается на фронтенде сразу после этой).
+    // Она сама заберет официальный uid от шлюза (через секунду) и сохранит его без дубликатов.
+    
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка сервера при добавлении' });
   }

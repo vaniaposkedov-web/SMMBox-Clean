@@ -296,33 +296,41 @@ export default function AccountsManager() {
 
       if (group) {
         const groupName = extractName(group) || 'Личная страница';
-        const groupAvatar = extractAvatar(group); // Искатель находит фото
-        const groupId = extractId(group);
+        const groupAvatar = extractAvatar(group); 
         
         if (group.is_profile_dummy) {
-          // ИСПРАВЛЕНИЕ ДЛЯ ЛИЧНОЙ СТРАНИЦЫ: передаем avatarUrl в body!
           try {
             const res = await fetch('/api/accounts/vk/komod-add-profile', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ 
                 profileId: komodModal.profileId, 
-                avatarUrl: groupAvatar, // <--- ВОТ ЭТО МЫ УПУСТИЛИ
+                avatarUrl: groupAvatar, 
                 name: groupName
               })
             });
             if (res.ok) addedCount++;
           } catch (e) { console.error("Ошибка добавления стены", e); }
         } else {
-          // Для обычных групп вызываем стор (который мы исправили в Шаге 1)
-          const screenName = extractScreenName(group) || `club${groupId}`;
+          // ИСПРАВЛЕНИЕ: Жестко вытаскиваем ID или короткое имя, используя глубокий поиск
+          const groupId = extractId(group) || deepSearch(group, ['id', 'group_id', 'uid']);
+          let screenName = extractScreenName(group) || deepSearch(group, ['screen_name', 'domain']);
+          
+          if (!screenName && groupId) screenName = `club${groupId}`;
+          
+          // ЗАЩИТА: Блокируем отправку мусора
+          if (!screenName || screenName === 'clubnull' || screenName === 'clubundefined') {
+             console.error("Пропуск: не удалось определить ссылку для группы", group);
+             continue; 
+          }
+
           const groupUrl = `https://vk.com/${screenName}`;
 
           const res = await useStore.getState().addVkKomodGroup(
             groupUrl, 
             groupName, 
             komodModal.profileId, 
-            groupAvatar // Передаем 4-й аргумент
+            groupAvatar 
           );
           if (res.success) addedCount++;
         }
