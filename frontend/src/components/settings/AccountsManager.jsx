@@ -1051,7 +1051,6 @@ export default function AccountsManager() {
           </div>
         </div>
 
-        {/* ИСПРАВЛЕНИЕ: Кнопка теперь показывает правильный текст */}
         <button
           onClick={() => selectedNetwork === 'VK' ? handleConnectVkOAuth() : setShowTgHelperModal(true)}
           className={`relative z-10 w-full py-4 rounded-xl font-bold text-white transition-all text-sm active:scale-95 ${
@@ -1062,7 +1061,7 @@ export default function AccountsManager() {
         </button>
       </div>
      
-      {/* === СПИСОК (СТРОГО 2 КОЛОНКИ + ИКОНКИ) === */}
+      {/* === СПИСОК ПОДКЛЮЧЕННЫХ СЕТЕЙ (ЕДИНЫЙ БЛОК) === */}
       <div className="max-w-md mx-auto w-full mt-8 mb-4 px-1">
         <h2 className="text-[10px] font-bold text-gray-500 mb-3 uppercase tracking-[0.2em] text-center">Подключено</h2>
         
@@ -1075,16 +1074,18 @@ export default function AccountsManager() {
             {[...connectedVk, ...connectedTg].map(acc => {
               const isVk = acc.provider === 'VK';
               const isPersonal = isVk && acc.providerId.startsWith('wall_');
-              const avatar = getValidAvatar(acc.avatarUrl, acc.name);
+              // Для ВК подстраховка на случай отсутствия имени
+              const accountName = acc.name || acc.title || (isVk ? 'ВК' : 'ТГ');
+              const avatar = getValidAvatar(acc.avatarUrl || extractAvatar(acc), accountName);
 
               return (
                 <div key={acc.id} className="flex flex-col p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors relative group">
                   <div className="flex items-center gap-2.5 min-w-0">
                     
-                    {/* Аватарка с бейджем соцсети */}
                     <div className="relative shrink-0">
                       <img 
                         src={avatar} 
+                        onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, accountName); }}
                         className="w-9 h-9 rounded-full object-cover border border-gray-800" 
                         alt="" 
                       />
@@ -1099,7 +1100,7 @@ export default function AccountsManager() {
                     
                     <div className="flex flex-col min-w-0 flex-1">
                       <span className="text-white font-bold text-[11px] sm:text-xs truncate">
-                        {acc.name}
+                        {accountName}
                       </span>
                       {isPersonal && (
                         <span className="text-[8px] text-gray-500 uppercase font-black mt-0.5">
@@ -1128,62 +1129,7 @@ export default function AccountsManager() {
 
 
      
-      {/* === КОМПАКТНЫЙ СПИСОК ПОДКЛЮЧЕННЫХ СЕТЕЙ (СТРОГО 2 КОЛОНКИ) === */}
-      <div className="max-w-md mx-auto w-full mt-8 mb-4 px-1">
-        <h2 className="text-[10px] font-bold text-gray-500 mb-3 uppercase tracking-[0.2em] text-center">Подключено</h2>
-        
-        {(connectedVk.length === 0 && connectedTg.length === 0) ? (
-          <div className="text-center p-4 bg-[#0d0f13] border border-gray-800 border-dashed rounded-xl text-gray-500 text-sm">
-            Пока нет добавленных платформ
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            {[...connectedVk, ...connectedTg].map(acc => {
-              const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
-              const accountName = acc.name || acc.title || 'Аккаунт';
-              // ИСПРАВЛЕНИЕ: Для ТГ выводится иконка из avatarUrl, который мы сохраняем в БД
-              const avatar = getValidAvatar(acc.avatarUrl || extractAvatar(acc), accountName);
-              const isVk = acc.provider === 'VK';
-
-              return (
-                <div key={acc.id} className="flex flex-col p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors relative">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="relative shrink-0">
-                      <img 
-                        src={avatar} 
-                        onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, accountName); }} 
-                        className="w-8 h-8 rounded-full object-cover border border-gray-800" 
-                        alt="" 
-                      />
-                      <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center border-2 border-[#0d0f13] ${isVk ? 'bg-[#0077FF]' : 'bg-[#2AABEE]'}`}>
-                        {isVk ? (
-                          <span className="text-[7px] font-bold text-white">VK</span>
-                        ) : (
-                          <Send size={7} className="text-white" />
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-white font-bold text-[10px] sm:text-xs truncate">
-                        {accountName}
-                      </span>
-                      {isPersonal && (
-                        <span className="text-[7px] text-gray-500 uppercase font-black leading-none mt-0.5">
-                          Личная
-                        </span>
-                      )}
-                    </div>
-                    <button onClick={() => removeAccount(acc.id)} className="text-gray-600 hover:text-rose-500 p-1 rounded-md transition-all">
-                      <X size={14} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      
       
       
     
