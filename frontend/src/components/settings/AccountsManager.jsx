@@ -32,6 +32,9 @@ export default function AccountsManager() {
   const saveAccountDesign = useStore((state) => state.saveAccountDesign);
   const token = useStore((state) => state.token);
 
+  const connectedVk = accounts.filter(acc => acc.provider === 'VK');
+  const connectedTg = accounts.filter(acc => acc.provider === 'TELEGRAM');
+
   const [isSyncingVk, setIsSyncingVk] = useState(false);
   // Состояния для нового блока подключения
   const [selectedNetwork, setSelectedNetwork] = useState('VK'); 
@@ -916,42 +919,80 @@ export default function AccountsManager() {
 
      
 
-      {/* === ЕДИНЫЙ СПИСОК ПОДКЛЮЧЕННЫХ АККАУНТОВ === */}
-      {accounts.length > 0 && (
-        <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 sm:p-8 flex flex-col mt-6 mb-8 shadow-xl max-w-2xl">
-          <h2 className="text-xl font-bold text-white mb-6">Подключенные страницы и каналы</h2>
+      {/* === РАЗДЕЛЕННЫЙ И КОМПАКТНЫЙ СПИСОК АККАУНТОВ === */}
+      {(connectedVk.length > 0 || connectedTg.length > 0) && (
+        <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-5 sm:p-8 flex flex-col mt-6 mb-8 shadow-xl max-w-2xl mx-auto w-full">
+          <h2 className="text-xl font-bold text-white mb-6 text-center">Подключенные соцсети</h2>
           
-          <div className="space-y-3">
-            {accounts.map(acc => (
-              <div key={acc.id} className="flex items-center justify-between p-4 bg-gray-900/50 hover:bg-gray-800/80 border border-gray-800 rounded-2xl transition-colors group">
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="relative shrink-0">
-                    <img src={acc.avatarUrl || 'https://via.placeholder.com/50'} className="w-12 h-12 rounded-full object-cover border border-gray-700" alt="avatar" />
-                    <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-white border-2 border-[#0d0f13] ${acc.provider === 'VK' ? 'bg-[#0077FF]' : 'bg-[#0088CC]'}`}>
-                      {acc.provider === 'VK' ? <Users size={10}/> : <Send size={10}/>}
+          <div className="flex flex-col gap-6">
+            
+            {/* --- СЕКЦИЯ ВКОНТАКТЕ --- */}
+            {connectedVk.length > 0 && (
+              <div>
+                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-[#0077FF]"></div> ВКонтакте
+                </h3>
+                {/* Сетка в 2 колонки (grid-cols-2) для ПК и мобилок */}
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  {connectedVk.map(acc => (
+                    <div key={acc.id} className="flex items-center p-2 bg-gray-900/50 hover:bg-gray-800/80 border border-gray-800 rounded-xl transition-colors group">
+                      <img 
+                        src={acc.avatarUrl || 'https://via.placeholder.com/40'} 
+                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-700 shrink-0" 
+                        alt="avatar" 
+                      />
+                      <div className="ml-2 sm:ml-3 min-w-0 flex-1">
+                        <h4 className="text-white font-semibold text-xs sm:text-sm truncate">{acc.name}</h4>
+                      </div>
+                      <button 
+                        onClick={() => removeAccount(acc.id)} 
+                        className="text-gray-500 hover:text-rose-500 p-1.5 sm:p-2 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all shrink-0 ml-1"
+                        title="Отключить"
+                      >
+                        <X size={14} className="sm:w-[16px] sm:h-[16px]" />
+                      </button>
                     </div>
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-white font-bold text-sm sm:text-base truncate block">{acc.name}</h4>
-                    <span className="text-xs text-gray-500 font-medium block mt-0.5">
-                      {acc.provider === 'VK' ? 'ВКонтакте' : 'Telegram'}
-                    </span>
-                  </div>
+                  ))}
                 </div>
-                
-                <button 
-                  onClick={() => removeAccount(acc.id)} 
-                  className="text-gray-500 hover:text-rose-500 p-2.5 bg-gray-800 hover:bg-rose-500/10 rounded-xl transition-all opacity-100 sm:opacity-0 group-hover:opacity-100 shrink-0"
-                  title="Отключить"
-                >
-                  <Trash2 size={18} />
-                </button>
               </div>
-            ))}
+            )}
+
+            {/* --- СЕКЦИЯ TELEGRAM --- */}
+            {connectedTg.length > 0 && (
+              <div>
+                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-[#0088CC]"></div> Telegram
+                </h3>
+                {/* Сетка в 2 колонки (grid-cols-2) для ПК и мобилок */}
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  {connectedTg.map(acc => (
+                    <div key={acc.id} className="flex items-center p-2 bg-gray-900/50 hover:bg-gray-800/80 border border-gray-800 rounded-xl transition-colors group">
+                      <img 
+                        src={acc.avatarUrl || 'https://via.placeholder.com/40'} 
+                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-700 shrink-0" 
+                        alt="avatar" 
+                      />
+                      <div className="ml-2 sm:ml-3 min-w-0 flex-1">
+                        <h4 className="text-white font-semibold text-xs sm:text-sm truncate">{acc.name}</h4>
+                      </div>
+                      <button 
+                        onClick={() => removeAccount(acc.id)} 
+                        className="text-gray-500 hover:text-rose-500 p-1.5 sm:p-2 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all shrink-0 ml-1"
+                        title="Отключить"
+                      >
+                        <X size={14} className="sm:w-[16px] sm:h-[16px]" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}
       {/* ============================================== */}
+      
       
     
 
