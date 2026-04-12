@@ -9,9 +9,9 @@ const defaultWatermark = {
   type: 'text', 
   text: 'SMMBOX', 
   position: 'br', // tl, tc, tr, cl, cc, cr, bl, bc, br
-  margin: 4,      
-  opacity: 100,   
-  size: 100,      
+  margin: 5,      // Отступ от краев (в %)
+  opacity: 80,    // Прозрачность 10-100
+  size: 20,       // Относительный размер (в %)
   fontFamily: 'system-ui',
   textColor: '#FFFFFF',
   hasBackground: true,
@@ -66,7 +66,7 @@ export default function WatermarkConstructor() {
     if (view === 'editor') {
       interval = setInterval(() => {
         setImgIdx((prev) => (prev + 1) % SAMPLE_IMAGES.length);
-      }, 3500); // Меняем каждые 3.5 секунды
+      }, 3500); 
     }
     return () => clearInterval(interval);
   }, [view]);
@@ -74,7 +74,6 @@ export default function WatermarkConstructor() {
   const configuredAccounts = accounts.filter(acc => acc.watermark);
 
   // --- УПРАВЛЕНИЕ ---
-
   const handleSelectAccount = (acc) => {
     setSelectedAccount(acc);
     setSettings(acc.watermark ? { ...defaultWatermark, ...acc.watermark } : { ...defaultWatermark });
@@ -110,18 +109,22 @@ export default function WatermarkConstructor() {
     }
   };
 
-  // --- ЛОГИКА РАСПОЛОЖЕНИЯ (СЕКЦИИ) ---
+  // --- ЛОГИКА РАСПОЛОЖЕНИЯ (АДАПТИВНАЯ ПОД ЛЮБЫЕ ФОТО) ---
   const getWatermarkStyle = () => {
+    // Отступ в процентах делает знак адаптивным к любому размеру фото
     const margin = `${settings.margin || 0}%`;
     const style = {
       position: 'absolute',
-      opacity: (settings.opacity ?? 100) / 100,
+      opacity: (settings.opacity ?? 80) / 100,
       transformOrigin: 'center',
       zIndex: 30,
       pointerEvents: 'none',
       transition: 'all 0.2s ease-out',
+      maxWidth: '100%',
+      maxHeight: '100%'
     };
 
+    // Привязка по секциям
     let transformBase = '';
     if (settings.position.includes('t')) style.top = margin;
     if (settings.position.includes('b')) style.bottom = margin;
@@ -137,27 +140,33 @@ export default function WatermarkConstructor() {
 
     style.transform = transformBase.trim();
 
+    // Адаптивные стили для текста или картинки
     if (settings.type === 'text') {
-      style.fontSize = `${(settings.size || 100) / 50}rem`;
+      // Имитация относительного размера текста (для превью). 
+      // На бекенде это будет % от ширины холста.
+      style.fontSize = `${(settings.size || 20) / 10}rem`; 
       style.color = settings.textColor || '#FFFFFF';
       style.fontFamily = settings.fontFamily || 'system-ui';
       style.fontWeight = 'bold';
       style.lineHeight = '1.2';
+      style.whiteSpace = 'nowrap';
       
       if (settings.hasBackground) {
         style.backgroundColor = settings.bgColor;
-        const padV = (settings.bgPadding || 10) / 20; 
-        const padH = (settings.bgPadding || 10) / 10;
+        const padV = (settings.bgPadding || 10) / 25; 
+        const padH = (settings.bgPadding || 10) / 12;
         style.padding = `${padV}em ${padH}em`;
-        style.borderRadius = '6px';
+        style.borderRadius = '0.3em'; // Относительное скругление
       }
 
       if (settings.hasStroke) {
         style.WebkitTextStroke = `${settings.strokeWidth || 2}px ${settings.strokeColor || '#000000'}`;
       }
     } else {
-      const scaleStr = `scale(${(settings.size || 100) / 100})`;
-      style.transform = style.transform ? `${style.transform} ${scaleStr}` : scaleStr;
+      // Для картинки задаем высоту в процентах (адаптивность)
+      style.height = `${settings.size || 20}%`;
+      style.width = 'auto';
+      style.objectFit = 'contain';
     }
 
     return style;
@@ -170,7 +179,6 @@ export default function WatermarkConstructor() {
       <div className="max-w-4xl mx-auto px-4 py-6 animate-in fade-in duration-500 font-sans">
         
         {configuredAccounts.length === 0 ? (
-          // ЗАГЛУШКА
           <div className="bg-admin-card border border-gray-800 rounded-xl p-8 sm:p-12 text-center shadow-lg relative overflow-hidden flex flex-col items-center">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50" />
             
@@ -199,7 +207,6 @@ export default function WatermarkConstructor() {
             </button>
           </div>
         ) : (
-          // СПИСОК АККАУНТОВ
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-admin-card border border-gray-800 p-4 sm:p-5 rounded-xl shadow-sm">
               <div>
@@ -277,7 +284,7 @@ export default function WatermarkConstructor() {
 
   // --- ЭКРАН 2: РЕДАКТОР ---
   return (
-    <div className="max-w-5xl mx-auto px-2 sm:px-4 py-4 animate-in slide-in-from-bottom-4 duration-500">
+    <div className="max-w-5xl mx-auto px-2 sm:px-4 py-4 animate-in slide-in-from-bottom-4 duration-500 font-sans">
       
       {/* HEADER РЕДАКТОРА */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-admin-card border border-gray-800 p-3 sm:p-4 rounded-xl mb-4 shadow-sm gap-3">
@@ -331,14 +338,12 @@ export default function WatermarkConstructor() {
                ))}
              </div>
 
-             {/* Водяной знак */}
-             <div style={getWatermarkStyle()}>
-               {settings.type === 'image' && settings.image ? (
-                 <img src={settings.image} className="max-h-16 object-contain" alt="Watermark" />
-               ) : (
-                 settings.text || 'SMMBOX'
-               )}
-             </div>
+             {/* Адаптивный Водяной знак */}
+             {settings.type === 'image' && settings.image ? (
+               <img src={settings.image} style={getWatermarkStyle()} alt="Watermark" />
+             ) : (
+               <div style={getWatermarkStyle()}>{settings.text || 'SMMBOX'}</div>
+             )}
           </div>
 
           {/* ПЕРЕКЛЮЧАТЕЛЬ ФОНА ПРЕДПРОСМОТРА */}
@@ -360,10 +365,10 @@ export default function WatermarkConstructor() {
 
         {/* === ПРАВАЯ ПАНЕЛЬ: ИНСТРУМЕНТЫ РЕДАКТОРА === */}
         <div className="lg:col-span-5">
-          <div className="bg-admin-card border border-gray-800 rounded-xl overflow-hidden shadow-md flex flex-col h-full">
+          <div className="bg-admin-card border border-gray-800 rounded-xl overflow-hidden shadow-md flex flex-col h-full max-h-[75vh]">
              
              {/* ТАБЫ */}
-             <div className="flex p-1.5 bg-gray-900/50 border-b border-gray-800">
+             <div className="flex p-1.5 bg-gray-900/50 border-b border-gray-800 shrink-0">
                 <button 
                   onClick={() => updateSettings({ type: 'text' })}
                   className={`flex-1 py-2 text-[10px] font-black uppercase tracking-[0.1em] rounded-lg transition-all flex items-center justify-center gap-1.5 ${settings.type === 'text' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
@@ -378,7 +383,7 @@ export default function WatermarkConstructor() {
                 </button>
              </div>
 
-             <div className="p-4 sm:p-5 space-y-5 overflow-y-auto custom-scrollbar">
+             <div className="p-4 sm:p-5 space-y-5 overflow-y-auto custom-scrollbar flex-1">
                 
                 {/* --- НАСТРОЙКИ ТЕКСТА --- */}
                 {settings.type === 'text' ? (
@@ -431,8 +436,8 @@ export default function WatermarkConstructor() {
                                 <div className="w-5 h-5 rounded-md" style={{ backgroundColor: settings.bgColor }} />
                              </div>
                              <div className="flex-1 bg-gray-950 border border-gray-800 p-2 rounded-lg flex items-center gap-3">
-                                <span className="text-[10px] text-gray-400 whitespace-nowrap">Размер: {settings.bgPadding}%</span>
-                                <input type="range" min="0" max="40" value={settings.bgPadding} onChange={e => updateSettings({ bgPadding: Number(e.target.value) })} className="flex-1 h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                                <span className="text-[10px] text-gray-400 whitespace-nowrap w-8 text-right">{settings.bgPadding}</span>
+                                <input type="range" min="0" max="30" value={settings.bgPadding} onChange={e => updateSettings({ bgPadding: Number(e.target.value) })} className="flex-1 h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
                              </div>
                           </div>
                        </div>
@@ -457,8 +462,8 @@ export default function WatermarkConstructor() {
                                 <div className="w-5 h-5 rounded-md border border-gray-600" style={{ backgroundColor: settings.strokeColor }} />
                              </div>
                              <div className="flex-1 bg-gray-950 border border-gray-800 p-2 rounded-lg flex items-center gap-3">
-                                <span className="text-[10px] text-gray-400 whitespace-nowrap">Толщина: {settings.strokeWidth}px</span>
-                                <input type="range" min="1" max="10" value={settings.strokeWidth} onChange={e => updateSettings({ strokeWidth: Number(e.target.value) })} className="flex-1 h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                                <span className="text-[10px] text-gray-400 whitespace-nowrap w-8 text-right">{settings.strokeWidth}px</span>
+                                <input type="range" min="1" max="8" value={settings.strokeWidth} onChange={e => updateSettings({ strokeWidth: Number(e.target.value) })} className="flex-1 h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
                              </div>
                           </div>
                        </div>
@@ -490,14 +495,15 @@ export default function WatermarkConstructor() {
 
                 <div className="h-px bg-gray-800 w-full" />
 
-                {/* --- МИКШЕРЫ --- */}
+                {/* --- МИКШЕРЫ (РЕАЛЬНЫЕ ПРОЦЕНТЫ) --- */}
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-xs font-bold">
-                      <span className="text-gray-400">Увеличение</span>
+                      <span className="text-gray-400">Размер (Адаптивно)</span>
                       <span className="text-blue-500">{settings.size}%</span>
                     </div>
-                    <input type="range" min="50" max="300" value={settings.size} onChange={e => updateSettings({ size: Number(e.target.value) })} className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                    {/* Диапазон размера: от 5% до 100% от холста */}
+                    <input type="range" min="5" max="100" value={settings.size} onChange={e => updateSettings({ size: Number(e.target.value) })} className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
                   </div>
                   
                   <div className="space-y-2">
@@ -505,6 +511,7 @@ export default function WatermarkConstructor() {
                       <span className="text-gray-400">Прозрачность</span>
                       <span className="text-blue-500">{settings.opacity}%</span>
                     </div>
+                    {/* Прозрачность 10-100 */}
                     <input type="range" min="10" max="100" value={settings.opacity} onChange={e => updateSettings({ opacity: Number(e.target.value) })} className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
                   </div>
 
@@ -513,7 +520,8 @@ export default function WatermarkConstructor() {
                       <span className="text-gray-400">Отступ</span>
                       <span className="text-blue-500">{settings.margin}%</span>
                     </div>
-                    <input type="range" min="0" max="25" value={settings.margin} onChange={e => updateSettings({ margin: Number(e.target.value) })} className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                    {/* Отступ от 0 до 20% от края холста */}
+                    <input type="range" min="0" max="20" value={settings.margin} onChange={e => updateSettings({ margin: Number(e.target.value) })} className="w-full h-1.5 bg-gray-800 rounded-full appearance-none cursor-pointer accent-blue-500" />
                   </div>
                 </div>
 
