@@ -200,6 +200,15 @@ export default function AccountsManager() {
 
 
   useEffect(() => {
+
+    const processingHash = useRef(null);
+
+  const handleRefreshProfiles = async () => {
+    setIsRefreshingProfiles(true);
+    await fetchProfiles(user.id);
+    await fetchAccounts(user.id);
+    setIsRefreshingProfiles(false);
+  };
     const params = new URLSearchParams(window.location.search);
     const urlHash = params.get('vk_komod_hash');
     const pendingHash = localStorage.getItem('vk_pending_hash');
@@ -872,10 +881,16 @@ export default function AccountsManager() {
         </button>
       </div>
      
-{/* === КОМПАКТНЫЙ СПИСОК ПОДКЛЮЧЕННЫХ СЕТЕЙ === */}
-      {(connectedVk.length > 0 || connectedTg.length > 0) && (
-        <div className="max-w-md mx-auto w-full mt-8 mb-4 px-1">
-          <h2 className="text-[10px] font-bold text-gray-500 mb-3 uppercase tracking-[0.2em] text-center">Подключено</h2>
+      {/* === КОМПАКТНЫЙ СПИСОК ПОДКЛЮЧЕННЫХ СЕТЕЙ === */}
+      <div className="max-w-md mx-auto w-full mt-8 mb-4 px-1">
+        <h2 className="text-[10px] font-bold text-gray-500 mb-3 uppercase tracking-[0.2em] text-center">Подключено</h2>
+        
+        {/* Если пусто — показываем заглушку, иначе — выводим сетку */}
+        {(connectedVk.length === 0 && connectedTg.length === 0) ? (
+          <div className="text-center p-4 bg-[#0d0f13] border border-gray-800 border-dashed rounded-xl text-gray-500 text-sm">
+            Пока нет добавленных платформ
+          </div>
+        ) : (
           <div className="grid grid-cols-2 gap-2">
             {[...connectedVk, ...connectedTg].map(acc => (
               <div key={acc.id} className="flex items-center justify-between p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
@@ -889,8 +904,8 @@ export default function AccountsManager() {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
       
     
 
