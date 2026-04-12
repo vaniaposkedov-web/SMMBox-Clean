@@ -180,7 +180,6 @@ exports.addVkKomodGroup = async (req, res) => {
 };
 
 
-/// --- 2. ПОЛНОСТЬЮ ЗАМЕНИ syncVkKomod (УДАЛИ СТАРЫЕ ДУБЛИ!) ---
 exports.syncVkKomod = async (req, res) => {
   try {
     const userId = String(req.user?.userId || req.user?.id);
@@ -190,7 +189,7 @@ exports.syncVkKomod = async (req, res) => {
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const allAccounts = accRes.data?.data?.items || [];
     
-    // 2. Создаем карту аватарок и имен через api-groups для каждого аккаунта
+    // 2. Метаданные аккаунтов (для аватарок личных страниц)
     const metaMap = {};
     for (const acc of allAccounts) {
       try {
@@ -207,7 +206,8 @@ exports.syncVkKomod = async (req, res) => {
 
     // 3. Синхронизируем профили (SocialProfile)
     const validAccIds = allAccounts.map(a => String(a.id));
-
+    
+    // Удаляем из БД старые профили, которых больше нет в шлюзе
     const existingVkProfiles = await prisma.socialProfile.findMany({ 
       where: { userId, provider: 'VK' } 
     });
@@ -216,11 +216,10 @@ exports.syncVkKomod = async (req, res) => {
         await prisma.socialProfile.delete({ where: { id: p.id } });
       }
     }
-    
+
     for (const acc of allAccounts) {
       const pId = String(acc.id);
       
-      // ПРОВЕРКА БЕЗОПАСНОСТИ: Если профиль уже есть в базе у ДРУГОГО юзера — НЕ ТРОГАЕМ
       const collision = await prisma.socialProfile.findFirst({ 
         where: { provider: 'VK', providerAccountId: pId } 
       });
@@ -231,7 +230,7 @@ exports.syncVkKomod = async (req, res) => {
 
       await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId: pId } },
-        update: { name, avatarUrl: avatar, userId }, // Принудительно привязываем к текущему юзеру при синхронизации
+        update: { name, avatarUrl: avatar, userId }, 
         create: { userId, provider: 'VK', providerAccountId: pId, name, avatarUrl: avatar, accessToken: KOMOD_TOKEN }
       });
     }
@@ -241,7 +240,6 @@ exports.syncVkKomod = async (req, res) => {
     const allGroups = grpRes.data?.data?.items || [];
     const validGroupProviderIds = [];
 
-    // Привязываем только те группы, чьи профили принадлежат нашему юзеру
     const myProfiles = await prisma.socialProfile.findMany({ where: { userId } });
     const myProfileAccountIds = myProfiles.map(p => String(p.providerAccountId));
 
@@ -249,21 +247,57 @@ exports.syncVkKomod = async (req, res) => {
       if (!myProfileAccountIds.includes(String(grp.account_id))) continue;
 
       const parentProfile = myProfiles.find(p => String(p.providerAccountId) === String(grp.account_id));
-      const isWall = String(grp.is_profile) === '1' || String(grp.url).includes('id');
       
-      // УНИКАЛЬНЫЙ ID: Добавляем префикс, чтобы избежать перезаписи 3-го сообщества 2-м
+      // === ИСПРАВЛЕНИЕ 1: ОПРЕДЕЛЕНИЕ СТЕНЫ БЕЗ БАГОВ ===
+      const isWall = String(grp.is_profile) === '1' || grp.is_profile === true;
       const providerId = isWall ? `wall_${grp.account_id}` : `group_${grp.uid || grp.id}`;
       validGroupProviderIds.push(providerId);
 
+      // === ИСПРАВЛЕНИЕ 2: ЗАПРОС АВАТАРОК ПО ЭНДПОИНТУ АЛЕКСЕЯ ===
+      let finalAvatar = parentProfile.avatarUrl; 
+      let finalName = grp.title || grp.name || 'Сообщество';
+
+      try {
+        // Делаем точечный запрос к API шлюза для получения расширенного JSON
+        const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${grp.id}`, { 
+          headers: { 'Access-Token': KOMOD_TOKEN } 
+        });
+        const detailData = detailRes.data?.data;
+        
+        if (detailData) {
+          if (detailData.title) finalName = detailData.title;
+
+          let info = detailData.info;
+          if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
+          
+          let raw = info?.rawData;
+          if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
+          
+          // Вытягиваем лучшую доступную фотографию напрямую из ответа
+          if (raw) {
+            finalAvatar = raw.photo_200 || raw.photo_100 || raw.photo_50 || raw.photo || finalAvatar;
+            if (raw.name) finalName = raw.name;
+          }
+        }
+      } catch (e) {
+         console.log(`[KOM-OD] Не удалось загрузить расширенные данные для группы ${grp.id}`);
+      }
+
       await prisma.account.upsert({
         where: { provider_providerId: { provider: 'VK', providerId } },
-        update: { isValid: true, profileId: parentProfile.id, userId },
+        update: { 
+          isValid: true, 
+          profileId: parentProfile.id, 
+          userId,
+          name: finalName,
+          avatarUrl: finalAvatar // Обновляем фотку
+        },
         create: { 
           userId, 
           provider: 'VK', 
           providerId, 
-          name: grp.title || grp.name || 'Сообщество', 
-          avatarUrl: grp.photo || parentProfile.avatarUrl,
+          name: finalName, 
+          avatarUrl: finalAvatar,
           accessToken: KOMOD_TOKEN, 
           profileId: parentProfile.id 
         }
