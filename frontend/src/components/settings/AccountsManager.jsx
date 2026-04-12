@@ -94,6 +94,15 @@ export default function AccountsManager() {
   const [vkConnectStatus, setVkConnectStatus] = useState('idle');
   const [newlyAddedProfileId, setNewlyAddedProfileId] = useState(null);
   const [addedGroupsCount, setAddedGroupsCount] = useState(0);
+  const processingHash = useRef(null);
+
+  const handleRefreshProfiles = async () => {
+    setIsRefreshingProfiles(true);
+    await fetchProfiles(user.id);
+    await fetchAccounts(user.id);
+    setIsRefreshingProfiles(false);
+  };
+  
 
   const handleOpenGroupsSelector = async (profileId) => {
     setIsGroupsLoading(true);
@@ -200,15 +209,6 @@ export default function AccountsManager() {
 
 
   useEffect(() => {
-
-    const processingHash = useRef(null);
-
-  const handleRefreshProfiles = async () => {
-    setIsRefreshingProfiles(true);
-    await fetchProfiles(user.id);
-    await fetchAccounts(user.id);
-    setIsRefreshingProfiles(false);
-  };
     const params = new URLSearchParams(window.location.search);
     const urlHash = params.get('vk_komod_hash');
     const pendingHash = localStorage.getItem('vk_pending_hash');
@@ -229,7 +229,6 @@ export default function AccountsManager() {
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
 
-        // Синхронизируем профили без авто-создания аккаунтов
         await useStore.getState().syncVkKomod();
         await handleRefreshProfiles();
         setIsSyncingVk(false);
@@ -239,7 +238,6 @@ export default function AccountsManager() {
         
         setVkConnectStatus('idle');
         
-        // СРАЗУ открываем окно выбора, где будет и стена, и группы
         if (vkProf?.id) {
           handleOpenGroupsSelector(vkProf.id);
         }
@@ -249,13 +247,7 @@ export default function AccountsManager() {
     }
   }, [handleRefreshProfiles, navigate]);
 
-
-  const handleRefreshProfiles = async () => {
-    setIsRefreshingProfiles(true);
-    await fetchProfiles(user.id);
-    await fetchAccounts(user.id);
-    setIsRefreshingProfiles(false);
-  };
+  
 
   // Слушаем ответ от официального окна ВКонтакте
   useEffect(() => {
@@ -287,7 +279,7 @@ export default function AccountsManager() {
     }
   }, [user]);
 
-  const processingHash = useRef(null);
+ 
 
   
  
