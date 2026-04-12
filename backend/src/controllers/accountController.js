@@ -212,7 +212,6 @@ exports.syncVkKomod = async (req, res) => {
     // 3. Синхронизируем профили (SocialProfile)
     const validAccIds = allAccounts.map(a => String(a.id));
     
-    // Удаляем из БД старые профили, которых больше нет в шлюзе
     const existingVkProfiles = await prisma.socialProfile.findMany({ 
       where: { userId, provider: 'VK' } 
     });
@@ -253,17 +252,21 @@ exports.syncVkKomod = async (req, res) => {
 
       const parentProfile = myProfiles.find(p => String(p.providerAccountId) === String(grp.account_id));
       
-      // === ИСПРАВЛЕНИЕ 1: ОПРЕДЕЛЕНИЕ СТЕНЫ БЕЗ БАГОВ ===
-      const isWall = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
+      // === ИСПРАВЛЕНИЕ 1: УЛЬТИМАТИВНОЕ ОПРЕДЕЛЕНИЕ СТЕНЫ БЕЗ ДУБЛЕЙ ===
+      const urlStr = String(grp.url || '');
+      const isProfileByUrl = /^https?:\/\/(www\.)?vk\.com\/id\d+\/?$/i.test(urlStr); // Жесткая проверка ссылки профиля
+      const isProfileById = String(grp.uid || grp.id) === String(grp.account_id); // Совпадение ID группы с ID владельца
+      const isProfileByFlag = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
+
+      // Если сработало хоть одно условие — это 100% стена
+      const isWall = isProfileByFlag || isProfileByUrl || isProfileById;
       const providerId = isWall ? `wall_${grp.account_id}` : `group_${grp.uid || grp.id}`;
       validGroupProviderIds.push(providerId);
 
-      // === ИСПРАВЛЕНИЕ 2: ЗАПРОС АВАТАРОК ПО ЭНДПОИНТУ АЛЕКСЕЯ ===
       let finalAvatar = parentProfile.avatarUrl; 
       let finalName = grp.title || grp.name || 'Сообщество';
 
       try {
-        // Делаем точечный запрос к API шлюза для получения расширенного JSON
         const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${grp.id}`, { 
           headers: { 'Access-Token': KOMOD_TOKEN } 
         });
@@ -278,7 +281,6 @@ exports.syncVkKomod = async (req, res) => {
           let raw = info?.rawData;
           if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
           
-          // Вытягиваем лучшую доступную фотографию напрямую из ответа
           if (raw) {
             finalAvatar = raw.photo_200 || raw.photo_100 || raw.photo_50 || raw.photo || finalAvatar;
             if (raw.name) finalName = raw.name;
@@ -295,7 +297,7 @@ exports.syncVkKomod = async (req, res) => {
           profileId: parentProfile.id, 
           userId,
           name: finalName,
-          avatarUrl: finalAvatar // Обновляем фотку
+          avatarUrl: finalAvatar
         },
         create: { 
           userId, 
@@ -307,6 +309,21 @@ exports.syncVkKomod = async (req, res) => {
           profileId: parentProfile.id 
         }
       });
+    }
+
+    // === ИСПРАВЛЕНИЕ 2: АВТОМАТИЧЕСКАЯ ОЧИСТКА ДУБЛИКАТОВ И ФАНТОМОВ ===
+    const existingVkAccounts = await prisma.account.findMany({ 
+      where: { userId, provider: 'VK' } 
+    });
+
+    for (const acc of existingVkAccounts) {
+      // Чистим только аккаунты шлюза (у которых есть префиксы group_ или wall_)
+      if (acc.providerId.startsWith('group_') || acc.providerId.startsWith('wall_')) {
+        // Если шлюз больше не возвращает этот ID (или он стал wall_ вместо group_) - удаляем!
+        if (!validGroupProviderIds.includes(acc.providerId)) {
+          await prisma.account.delete({ where: { id: acc.id } });
+        }
+      }
     }
 
     res.json({ success: true, count: validGroupProviderIds.length });
