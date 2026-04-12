@@ -818,32 +818,52 @@ exports.saveVkGroupTokens = async (req, res) => {
 };
 
 
-// 4. ДОБАВЛЕНИЕ ЛИЧНОЙ СТЕНЫ В KOM-OD (С проверкой владельца)
 exports.addVkKomodProfile = async (req, res) => {
-    try {
-        const { profileId } = req.body;
-        const userId = String(req.user?.userId || req.user?.id);
+  try {
+    // 1. ПРИНИМАЕМ ИМЯ И АВАТАРКУ С ФРОНТА
+    const { profileId, avatarUrl, name } = req.body; 
+    const userId = String(req.user.userId || req.user.id);
 
-        // БЕЗОПАСНОСТЬ: Ищем профиль с привязкой к userId
-        const profile = await prisma.socialProfile.findFirst({ 
-          where: { id: profileId, userId: userId } 
-        });
-        
-        if (!profile) return res.status(403).json({ error: 'Доступ запрещен. Профиль не найден.' });
+    const profile = await prisma.socialProfile.findFirst({
+      where: { id: profileId, userId }
+    });
+    
+    if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
 
-        const params = new URLSearchParams();
-        params.append('account_id', profile.providerAccountId);
-        params.append('is_profile', '1'); 
+    // 2. ОТПРАВЛЯЕМ ЗАПРОС В ШЛЮЗ KOM-OD (is_profile: true)
+    await axios.post(`${KOMOD_BASE_URL}/group`, {
+      account_id: profile.providerAccountId,
+      is_profile: true
+    }, {
+      headers: { 'Access-Token': KOMOD_TOKEN }
+    });
 
-        const response = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
-            headers: { 'Access-Token': KOMOD_TOKEN }
-        });
+    // 3. СОХРАНЯЕМ В НАШУ БАЗУ ДАННЫХ С КАРТИНКОЙ
+    const account = await prisma.account.upsert({
+      where: { 
+        provider_providerId: { provider: 'VK', providerId: `wall_${profile.providerAccountId}` } 
+      },
+      update: {
+        name: name || profile.name || 'Личная страница',
+        avatarUrl: avatarUrl || profile.avatarUrl, // <--- ПИШЕМ КАРТИНКУ В БАЗУ
+        isValid: true
+      },
+      create: {
+        userId: userId,
+        provider: 'VK',
+        providerId: `wall_${profile.providerAccountId}`,
+        name: name || profile.name || 'Личная страница',
+        avatarUrl: avatarUrl || profile.avatarUrl, // <--- ПИШЕМ КАРТИНКУ В БАЗУ
+        accessToken: '',
+        profileId: profile.id
+      }
+    });
 
-        res.json({ success: true, data: response.data });
-    } catch (error) {
-        console.error('[KOMOD] Ошибка добавления личной стены:', error?.response?.data || error.message);
-        res.status(500).json({ error: 'Не удалось добавить личную стену' });
-    }
+    res.json({ success: true, account });
+  } catch (error) {
+    console.error('Error adding komod profile:', error);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 };
 
 exports.telegramWebhook = async (req, res) => {
