@@ -989,9 +989,8 @@ exports.telegramWebhook = async (req, res) => {
     // 1. МГНОВЕННО отвечаем Telegram, что всё ок, чтобы он не спамил запросами
     res.sendStatus(200);
 
-    // === НОВАЯ НЕПРОБИВАЕМАЯ АВТОРИЗАЦИЯ TELEGRAM (DEEP LINKING) ===
     if (update.message && update.message.text && update.message.text.startsWith('/start bind_')) {
-      const userId = update.message.text.split('bind_')[1]; // Достаем ID юзера из ссылки
+      const userId = update.message.text.split('bind_')[1]; 
       const tgUser = update.message.from;
       const botToken = process.env.TELEGRAM_BOT_TOKEN;
       
@@ -999,21 +998,24 @@ exports.telegramWebhook = async (req, res) => {
       const name = `${tgUser.first_name} ${tgUser.last_name || ''}`.trim();
       let avatarUrl = '';
       
-      // 1. Пытаемся скачать аватарку пользователя через API Telegram
+      // === ИСПРАВЛЕНИЕ: БЕЗОПАСНАЯ ЗАГРУЗКА АВАТАРКИ ПОЛЬЗОВАТЕЛЯ ТГ ===
       if (botToken) {
         try {
           const photosRes = await axios.get(`https://api.telegram.org/bot${botToken}/getUserProfilePhotos?user_id=${tgUser.id}&limit=1`);
           if (photosRes.data.result.total_count > 0) {
             const fileId = photosRes.data.result.photos[0][0].file_id;
             const fileRes = await axios.get(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
-            avatarUrl = `https://api.telegram.org/file/bot${botToken}/${fileRes.data.result.file_path}`;
+            const tgFileUrl = `https://api.telegram.org/file/bot${botToken}/${fileRes.data.result.file_path}`;
+            
+            // Скачиваем картинку и переводим в формат base64
+            const imageReq = await axios.get(tgFileUrl, { responseType: 'arraybuffer' });
+            avatarUrl = `data:image/jpeg;base64,${Buffer.from(imageReq.data).toString('base64')}`;
           }
         } catch (e) {
-          console.log('Не удалось загрузить аватарку пользователя из-за настроек приватности');
+          console.log('Не удалось загрузить аватарку пользователя ТГ');
         }
       }
 
-      // ЗАЩИТА В БОТЕ: ПРОВЕРЯЕМ, НЕ ПРИВЯЗАН ЛИ УЖЕ ЭТОТ ТГ
       const existingProfile = await prisma.socialProfile.findUnique({
         where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: providerAccountId } }
       });
@@ -1022,18 +1024,15 @@ exports.telegramWebhook = async (req, res) => {
         if (botToken) {
           await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
             chat_id: tgUser.id,
-            text: '❌ Ошибка: Этот Telegram-аккаунт уже привязан к другому профилю на сайте. Пожалуйста, используйте другой Telegram-аккаунт.'
-          }).catch(e => console.log('Не удалось отправить сообщение об ошибке в ТГ'));
+            text: '❌ Ошибка: Этот Telegram-аккаунт уже привязан к другому профилю на сайте.'
+          }).catch(e => console.log('Не удалось отправить сообщение об ошибке'));
         }
-        return; // Прерываем выполнение!
+        return; 
       }
 
-    
-      
-      // 2. Создаем или обновляем профиль в базе
       await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: providerAccountId } },
-        update: { name, avatarUrl: avatarUrl || undefined, userId: String(userId) }, // avatarUrl обновляем только если нашли
+        update: { name, avatarUrl: avatarUrl || undefined, userId: String(userId) }, 
         create: { 
           userId: String(userId), 
           provider: 'TELEGRAM', 
@@ -1044,56 +1043,51 @@ exports.telegramWebhook = async (req, res) => {
         }
       });
 
-      // 3. Отвечаем пользователю прямо в Телеграм
       if (botToken) {
         await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           chat_id: tgUser.id,
           text: '✅ Ваш аккаунт Telegram успешно привязан! Вернитесь на сайт и нажмите кнопку "Обновить".'
-        }).catch(e => console.log('Не удалось отправить сообщение об успехе в ТГ'));
+        }).catch(e => console.log('Не удалось отправить сообщение об успехе'));
       }
-
       return; 
     }
-    // === КОНЕЦ БЛОКА АВТОРИЗАЦИИ ===
-    // === КОНЕЦ БЛОКА АВТОРИЗАЦИИ ===
 
-    // 2. Проверяем, что это событие изменения статуса бота в чате/канале
     if (update.my_chat_member) {
-      const chat = update.my_chat_member.chat; // Инфа о канале
-      const from = update.my_chat_member.from; // Инфа о человеке, который добавил бота
+      const chat = update.my_chat_member.chat; 
+      const from = update.my_chat_member.from; 
       const newStatus = update.my_chat_member.new_chat_member.status;
 
-      // Если бота сделали администратором
       if (newStatus === 'administrator') {
         const telegramUserId = String(from.id);
         const chatId = String(chat.id);
         const chatTitle = chat.title || 'Без названия';
 
-        // Ищем в базе профиль человека, который привязал этот Telegram
         const tgProfile = await prisma.socialProfile.findFirst({
           where: { provider: 'TELEGRAM', providerAccountId: telegramUserId }
         });
 
-        // Если нашли — сохраняем канал в его аккаунт!
         if (tgProfile) {
           const userWithPlan = await prisma.user.findUnique({ where: { id: tgProfile.userId } });
           const currentAccountsCount = await prisma.account.count({ where: { userId: tgProfile.userId } });
           const existingAccount = await prisma.account.findFirst({ where: { provider: 'TELEGRAM', providerId: chatId } });
 
-          // Если канала еще нет в базе, тариф бесплатный и лимит исчерпан — блокируем добавление
           if (!existingAccount && !userWithPlan.isPro && currentAccountsCount >= 10) {
             console.log(`Лимит превышен для ${tgProfile.userId}. Канал ${chatTitle} не добавлен.`);
             return; 
           }
 
-          // Получаем аватарку канала (если есть)
           let avatarUrl = null;
+          // === ИСПРАВЛЕНИЕ: БЕЗОПАСНАЯ ЗАГРУЗКА АВАТАРКИ КАНАЛА ТГ ===
           try {
             const token = process.env.TELEGRAM_BOT_TOKEN;
             const chatRes = await axios.get(`https://api.telegram.org/bot${token}/getChat?chat_id=${chatId}`);
             if (chatRes.data.result.photo?.small_file_id) {
               const fileRes = await axios.get(`https://api.telegram.org/bot${token}/getFile?file_id=${chatRes.data.result.photo.small_file_id}`);
-              avatarUrl = `https://api.telegram.org/file/bot${token}/${fileRes.data.result.file_path}`;
+              const tgFileUrl = `https://api.telegram.org/file/bot${token}/${fileRes.data.result.file_path}`;
+              
+              // Скачиваем картинку и переводим в формат base64
+              const imageReq = await axios.get(tgFileUrl, { responseType: 'arraybuffer' });
+              avatarUrl = `data:image/jpeg;base64,${Buffer.from(imageReq.data).toString('base64')}`;
             }
           } catch (e) { /* Игнорируем ошибку загрузки фото */ }
 
@@ -1119,7 +1113,6 @@ exports.telegramWebhook = async (req, res) => {
           });
         }
       } 
-      // Если бота удалили из канала — помечаем канал как неактивный
       else if (newStatus === 'left' || newStatus === 'kicked') {
         await prisma.account.updateMany({
           where: { provider: 'TELEGRAM', providerId: String(chat.id) },
