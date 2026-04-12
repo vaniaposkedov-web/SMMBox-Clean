@@ -81,31 +81,55 @@ const extractKomodName = (obj) => {
   return obj.name || obj.title || null;
 };
 
-// --- 1. ПОЛНОСТЬЮ ЗАМЕНИ getKomodGroupsForSelection ---
+// ПОЛНАЯ И БЕЗОПАСНАЯ ЗАМЕНА МЕТОДА getKomodGroupsForSelection
 exports.getKomodGroupsForSelection = async (req, res) => {
   try {
-    const { profileId } = req.query;
+    // 1. Подхватываем ID профиля откуда угодно (чтобы не было undefined)
+    const profileId = req.query.profileId || req.query.id || req.body?.profileId || req.params?.id;
     const userId = String(req.user?.userId || req.user?.id);
 
-    // Ищем профиль СТРОГО принадлежащий текущему пользователю
-    const profile = await prisma.socialProfile.findFirst({ 
-      where: { id: profileId, userId: userId } 
+    if (!profileId) {
+      return res.status(400).json({ error: 'ID профиля не передан' });
+    }
+
+    // 2. Строго проверяем, что профиль принадлежит текущему юзеру
+    const profile = await prisma.socialProfile.findFirst({
+      where: { id: profileId, userId: userId }
     });
 
-    if (!profile) return res.status(403).json({ error: 'Доступ запрещен или профиль не найден' });
+    if (!profile) {
+      return res.status(403).json({ error: 'Профиль не найден или доступ запрещен' });
+    }
 
-    // Запрос в шлюз СТРОГО по providerAccountId этого профиля
-    const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
+    // 3. ПОЛУЧАЕМ ВСЕ ГРУППЫ ИЗ ШЛЮЗА ПО ОФИЦИАЛЬНОЙ ДОКЕ
+    const groupRes = await axios.get(`${KOMOD_BASE_URL}/group`, {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
-    const groups = response.data?.data || [];
-    let authData = response.data?.auth || null;
+    const allGroups = groupRes.data?.data?.items || groupRes.data?.data || [];
 
-    res.json({ success: true, groups, auth: authData });
+    // 4. ФИЛЬТРУЕМ ТОЛЬКО ТЕ, КОТОРЫЕ ОТНОСЯТСЯ К НУЖНОМУ АККАУНТУ ВК
+    const myGroups = allGroups.filter(g => String(g.account_id) === String(profile.providerAccountId));
+
+    // 5. БЕЗОПАСНО ДОСТАЕМ АВАТАРКУ И ДАННЫЕ ЛИЧНОЙ СТРАНИЦЫ
+    // Обернули в отдельный try-catch. Если шлюз упадет тут, группы все равно загрузятся!
+    let authData = null;
+    try {
+      const apiGroupsRes = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
+        headers: { 'Access-Token': KOMOD_TOKEN }
+      });
+      authData = apiGroupsRes.data?.auth || null;
+    } catch (e) {
+      console.warn('Не удалось получить данные личного профиля, пропускаем:', e.message);
+    }
+
+    // Отдаем на фронт
+    res.json({ success: true, groups: myGroups, auth: authData });
+
   } catch (error) {
-    console.error('Ошибка загрузки групп:', error);
-    res.status(500).json({ error: 'Ошибка API шлюза' });
+    // Выводим точную причину в консоль сервера, если шлюз лежит
+    console.error('КРИТИЧЕСКАЯ ОШИБКА getKomodGroupsForSelection:', error?.response?.data || error.message);
+    res.status(500).json({ error: 'Ошибка API шлюза: ' + (error?.response?.data?.message || error.message) });
   }
 };
 
