@@ -96,6 +96,16 @@ export default function AccountsManager() {
   const [addedGroupsCount, setAddedGroupsCount] = useState(0);
   const processingHash = useRef(null);
 
+  const getValidAvatar = (url, fallbackName) => {
+    if (!url || url.includes('camera_50.png') || url.includes('camera_100.png')) {
+      // Если фото нет или стоит стандартная камера ВК — генерируем красивую заглушку
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(fallbackName || 'VK')}&background=0d0f13&color=0077FF&rounded=true&bold=true`;
+    }
+    if (url.startsWith('//')) return `https:${url}`;
+    if (url.startsWith('http://')) return url.replace('http://', 'https://');
+    return url;
+  };
+
   const handleRefreshProfiles = async () => {
     setIsRefreshingProfiles(true);
     await fetchProfiles(user.id);
@@ -911,9 +921,10 @@ export default function AccountsManager() {
           <div className="grid grid-cols-2 gap-2">
             {[...connectedVk, ...connectedTg].map(acc => {
               const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
-              // Железобетонный поиск названия и фото сохраненного аккаунта
               const accountName = acc.name || acc.title || (acc.provider === 'VK' ? 'ВК' : 'ТГ');
-              const avatar = acc.avatarUrl || acc.photo_50 || 'https://via.placeholder.com/40';
+              
+              // Пропускаем сохраненную аватарку через чистильщик
+              const avatar = getValidAvatar(acc.avatarUrl || acc.photo_100 || acc.photo_50, accountName);
 
               return (
                 <div key={acc.id} className="flex items-center justify-between p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
@@ -921,11 +932,9 @@ export default function AccountsManager() {
                     <img src={avatar} className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" alt="" />
                     
                     <div className="flex flex-col min-w-0">
-                      {/* Реальное ФИО или Название */}
                       <span className="text-white font-bold text-xs truncate">
                         {accountName}
                       </span>
-                      {/* Приписка для стены */}
                       {isPersonal && (
                         <span className="text-[8px] text-gray-500 uppercase font-bold leading-none mt-0.5">
                           Личная страница
@@ -1139,9 +1148,11 @@ export default function AccountsManager() {
                 const isSelected = komodSelected.includes(uniqueId);
                 const isPersonal = group.is_profile_dummy;
                 
-                // Железобетонный поиск названия и фото
                 const groupName = group.name || group.title || group.apiGroupData?.name || 'Без названия';
-                const avatar = group.photo_50 || group.photo_100 || group.avatar || group.apiGroupData?.photo_50 || 'https://via.placeholder.com/50';
+                const rawAvatar = group.photo_100 || group.photo_50 || group.avatar || group.apiGroupData?.photo_100 || group.apiGroupData?.photo_50;
+                
+                // Пропускаем через чистильщик
+                const avatar = getValidAvatar(rawAvatar, groupName);
 
                 return (
                   <div 
@@ -1152,10 +1163,8 @@ export default function AccountsManager() {
                     <img src={avatar} className="w-12 h-12 rounded-full object-cover border border-gray-700 shrink-0" alt="" />
                     
                     <div className="flex-1 min-w-0">
-                      {/* ФИО или Название сообщества */}
                       <span className="text-white font-bold text-sm block truncate">{groupName}</span>
-                      {/* Серая подпись "Личная страница" только для стены */}
-                      {isPersonal && <span className="text-[10px] text-gray-500 font-bold uppercase mt-0.5 block tracking-wide">Личная страница</span>}
+                      {isPersonal && <span className="text-[10px] text-[#0077FF] font-bold uppercase mt-0.5 block tracking-wide">Личная страница</span>}
                     </div>
 
                     <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'}`}>
