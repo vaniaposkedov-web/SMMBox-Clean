@@ -127,7 +127,6 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 
 
 
-// --- ДОБАВЛЕНИЕ ВЫБРАННОЙ ГРУППЫ/ПРОФИЛЯ В БАЗУ ---
 exports.addVkKomodGroup = async (req, res) => {
   try {
     const { url, title, profileId, avatarUrl } = req.body;
@@ -138,14 +137,40 @@ exports.addVkKomodGroup = async (req, res) => {
     });
     if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
 
-    // Обязательно добавляем префикс group_ чтобы избежать конфликтов
+    // 1. ОТПРАВЛЯЕМ ЗАПРОС В KOM-OD (согласно документации API)
+    const params = new URLSearchParams();
+    params.append('url', url);
+    params.append('title', title || 'Без названия');
+    params.append('account_id', profile.providerAccountId);
+
+    try {
+      await axios.post(`${KOMOD_BASE_URL}/group`, params, {
+        headers: { 
+          'Access-Token': KOMOD_TOKEN,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+    } catch (apiError) {
+      console.error('Ошибка API Kom-od при добавлении группы:', apiError.response?.data || apiError.message);
+      return res.status(400).json({ error: 'Не удалось зарегистрировать группу в шлюзе' });
+    }
+
+    // 2. СОХРАНЯЕМ В ЛОКАЛЬНУЮ БАЗУ
     const parsedId = url.split('/').pop().replace('club', '').replace('public', '').replace('event', '');
     const providerId = `group_${parsedId}`; 
 
     const account = await prisma.account.upsert({
       where: { provider_providerId: { provider: 'VK', providerId: providerId } },
       update: { name: title, avatarUrl: avatarUrl, isValid: true, profileId: profile.id, userId: userId },
-      create: { userId: userId, provider: 'VK', providerId: providerId, name: title, avatarUrl: avatarUrl, accessToken: '', profileId: profile.id }
+      create: { 
+        userId: userId, 
+        provider: 'VK', 
+        providerId: providerId, 
+        name: title, 
+        avatarUrl: avatarUrl, 
+        accessToken: KOMOD_TOKEN, // ИСПРАВЛЕНИЕ: Ставим токен шлюза вместо ''
+        profileId: profile.id 
+      }
     });
 
     res.json({ success: true, account });
@@ -421,7 +446,40 @@ exports.getAccounts = async (req, res) => {
 
 exports.deleteAccount = async (req, res) => {
   const { id } = req.params;
-  try { await prisma.account.delete({ where: { id: id } }); res.json({ success: true }); } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+  try {
+    const account = await prisma.account.findUnique({ where: { id: id } });
+
+    // Если это аккаунт Kom-od (определяем по токену), нужно удалить его и со шлюза
+    if (account && account.provider === 'VK' && account.accessToken === KOMOD_TOKEN) {
+      try {
+        // Запрашиваем список групп шлюза, чтобы найти внутренний ID (komod-id) для удаления
+        const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+        const allGroups = grpRes.data?.data?.items || [];
+        
+        // Извлекаем чистый UID/ID из нашего providerId (wall_123 -> 123, group_456 -> 456)
+        const rawId = account.providerId.replace('wall_', '').replace('group_', '');
+        
+        // Ищем группу в ответе шлюза
+        const komodGroup = allGroups.find(g => String(g.uid || g.id || g.account_id) === rawId);
+
+        if (komodGroup && komodGroup.id) {
+          // [DELETE] https://kom-od.ru/api/v1/group/<id>
+          await axios.delete(`${KOMOD_BASE_URL}/group/${komodGroup.id}`, {
+            headers: { 'Access-Token': KOMOD_TOKEN }
+          });
+        }
+      } catch (apiError) {
+        console.error('Не удалось удалить группу со шлюза Kom-od:', apiError.message);
+        // Не блокируем локальное удаление, если шлюз недоступен
+      }
+    }
+
+    // Удаляем из локальной базы
+    await prisma.account.delete({ where: { id: id } }); 
+    res.json({ success: true }); 
+  } catch (error) { 
+    res.status(500).json({ error: 'Ошибка сервера' }); 
+  }
 };
 
 exports.verifyTgAccountsStatus = async (req, res) => {
