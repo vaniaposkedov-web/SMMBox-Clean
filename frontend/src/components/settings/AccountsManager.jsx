@@ -106,56 +106,47 @@ export default function AccountsManager() {
   };
 
 
-  // --- АГРЕССИВНЫЙ ПОИСК ДАННЫХ И ИСПРАВЛЕНИЕ ССЫЛОК ---
   const extractAvatar = (obj) => {
-    if (!obj || typeof obj !== 'object') return null;
-    const direct = obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo_200;
-    if (direct && typeof direct === 'string') return direct;
-    
-    if (obj.apiGroupData && typeof obj.apiGroupData === 'object') {
-      const nested = obj.apiGroupData.photo_100 || obj.apiGroupData.photo_50 || obj.apiGroupData.avatar;
-      if (nested && typeof nested === 'string') return nested;
-    }
-    if (obj.apiUserData && typeof obj.apiUserData === 'object') {
-      const nestedU = obj.apiUserData.photo_100 || obj.apiUserData.photo_50 || obj.apiUserData.avatar;
-      if (nestedU && typeof nestedU === 'string') return nestedU;
-    }
-    return null;
+    const keys = ['photo_200', 'photo_100', 'photo_50', 'avatar', 'photo_max_orig'];
+    return deepSearch(obj, keys);
   };
 
-  const extractName = (obj) => {
-    if (!obj || typeof obj !== 'object') return null;
-    if (obj.first_name) return `${obj.first_name} ${obj.last_name || ''}`.trim();
-    
-    const direct = obj.name || obj.title;
-    if (direct && typeof direct === 'string') return direct;
-    
-    if (obj.apiGroupData && typeof obj.apiGroupData === 'object') {
-      const nested = obj.apiGroupData.name || obj.apiGroupData.title;
-      if (nested && typeof nested === 'string') return nested;
+ const extractName = (obj) => {
+    if (obj?.first_name || obj?.apiUserData?.first_name) {
+      const f = obj.first_name || obj.apiUserData?.first_name;
+      const l = obj.last_name || obj.apiUserData?.last_name || '';
+      return `${f} ${l}`.trim();
     }
-    if (obj.apiUserData && typeof obj.apiUserData === 'object') {
-      if (obj.apiUserData.first_name) return `${obj.apiUserData.first_name} ${obj.apiUserData.last_name || ''}`.trim();
+    return deepSearch(obj, ['name', 'title', 'screen_name']);
+  };
+
+  // --- УЛЬТРА-РЕКУРСИВНЫЙ ПОИСК ДАННЫХ ---
+  const deepSearch = (obj, targetKeys) => {
+    if (!obj || typeof obj !== 'object') return null;
+    
+    // Проверяем прямые ключи
+    for (let key of targetKeys) {
+      if (obj[key] && typeof obj[key] === 'string' && obj[key].length > 1) return obj[key];
+    }
+
+    // Лезем вглубь (apiUserData, apiGroupData, и т.д.)
+    for (let key in obj) {
+      if (obj[key] && typeof obj[key] === 'object') {
+        const found = deepSearch(obj[key], targetKeys);
+        if (found) return found;
+      }
     }
     return null;
   };
 
   const getValidAvatar = (url, fallbackName) => {
     const generateFallback = () => {
-       const safeName = fallbackName ? String(fallbackName).replace(/[^a-zA-Zа-яА-Я0-9\s]/g, '').trim().substring(0, 2) : 'VK';
-       return `https://ui-avatars.com/api/?name=${encodeURIComponent(safeName || 'VK')}&background=0d0f13&color=0077FF&rounded=true&bold=true`;
+       const text = fallbackName ? String(fallbackName).substring(0,2).toUpperCase() : 'VK';
+       return `https://ui-avatars.com/api/?name=${encodeURIComponent(text)}&background=0d0f13&color=0077FF&rounded=true&bold=true`;
     };
-
-    if (!url || typeof url !== 'string' || url.trim() === '') return generateFallback();
-    
-    let finalUrl = url.trim();
-    if (finalUrl.includes('camera_') || finalUrl.includes('deactivated')) return generateFallback();
-    
-    if (finalUrl.startsWith('//')) finalUrl = `https:${finalUrl}`;
-    else if (finalUrl.startsWith('http://')) finalUrl = finalUrl.replace('http://', 'https://');
-    
-    if (!finalUrl.startsWith('http')) return generateFallback();
-    return finalUrl;
+    if (!url || typeof url !== 'string' || url.includes('camera_')) return generateFallback();
+    let finalUrl = url.trim().startsWith('//') ? `https:${url.trim()}` : url.trim();
+    return finalUrl.replace('http://', 'https://');
   };
   
 
@@ -225,29 +216,26 @@ export default function AccountsManager() {
     setKomodModal({ isOpen: false, profileId: null }); 
     
     let addedCount = 0;
-    
     for (const uniqueId of komodSelected) {
-      const group = selectableGroups.find(g => g.id === uniqueId);
-      if (!group) continue;
+      const group = selectableGroups.find(g => {
+        const gId = g.apiGroupData?.id || g.id || g.group_id;
+        return String(gId) === String(uniqueId);
+      });
 
-      if (group.is_profile_dummy) {
-        // Логика добавления личной страницы
-        try {
-          const res = await fetch('/api/accounts/vk/komod-add-profile', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ profileId: komodModal.profileId })
-          });
-          if (res.ok) addedCount++;
-        } catch (e) { console.error("Ошибка добавления стены"); }
-      } else {
-        // Логика добавления группы через API Kom-od
-        const groupId = group.id;
-        const screenName = group.screen_name || `club${groupId}`;
+      if (group) {
+        const groupName = extractName(group) || 'Личная страница';
+        const groupAvatar = extractAvatar(group);
+        const groupId = group.apiGroupData?.id || group.id || group.group_id;
+        const screenName = group.apiGroupData?.screen_name || group.screen_name || `club${groupId}`;
         const groupUrl = `https://vk.com/${screenName}`;
-        const title = group.name;
-        
-        const res = await useStore.getState().addVkKomodGroup(groupUrl, title, komodModal.profileId);
+
+        // ОТПРАВЛЯЕМ ВСЁ НА БЭКЕНД
+        const res = await useStore.getState().addVkKomodGroup(
+          groupUrl, 
+          groupName, 
+          komodModal.profileId, 
+          groupAvatar // <--- Важно!
+        );
         if (res.success) addedCount++;
       }
     }
@@ -255,13 +243,7 @@ export default function AccountsManager() {
     await useStore.getState().syncVkKomod();
     await handleRefreshProfiles();
     setIsSyncingVk(false);
-    
-    if (addedCount > 0) {
-      setAddedGroupsCount(addedCount);
-      setVkConnectStatus('groups_success'); 
-    } else {
-      setVkConnectStatus('idle');
-    }
+    setVkConnectStatus(addedCount > 0 ? 'groups_success' : 'idle');
   };
 
   useEffect(() => {

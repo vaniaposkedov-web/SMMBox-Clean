@@ -223,46 +223,48 @@ exports.syncVkKomod = async (req, res) => {
 
 
 
-// 3. ДОБАВЛЕНИЕ ГРУППЫ (С проверкой владельца)
+// --- ДОБАВЛЕНИЕ ВЫБРАННОЙ ГРУППЫ/ПРОФИЛЯ В БАЗУ ---
 exports.addVkKomodGroup = async (req, res) => {
   try {
-    const { url, title, profileId } = req.body;
-    const userId = String(req.user?.userId || req.user?.id);
+    const { url, title, profileId, avatarUrl } = req.body; // Получаем всё с фронта
+    const userId = String(req.user.userId || req.user.id);
 
-    // БЕЗОПАСНОСТЬ: Проверяем, что профиль принадлежит юзеру
-    let profile = await prisma.socialProfile.findFirst({ 
-      where: { id: profileId, userId: userId } 
+    // 1. Ищем профиль (шлюз)
+    const profile = await prisma.socialProfile.findFirst({
+      where: { id: profileId, userId }
+    });
+    if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
+
+    // 2. Парсим ID из URL (например https://vk.com/club123 -> 123)
+    const providerId = url.split('/').pop().replace('club', '').replace('public', '').replace('event', '');
+
+    // 3. Сохраняем в таблицу Account
+    const account = await prisma.account.upsert({
+      where: { 
+        provider_providerId: { provider: 'VK', providerId: String(providerId) } 
+      },
+      update: {
+        name: title,
+        avatarUrl: avatarUrl,
+        isValid: true,
+        profileId: profile.id,
+        userId: userId
+      },
+      create: {
+        userId: userId,
+        provider: 'VK',
+        providerId: String(providerId),
+        name: title,
+        avatarUrl: avatarUrl,
+        accessToken: '', // Токен живет в SocialProfile (в шлюзе)
+        profileId: profile.id
+      }
     });
 
-    if (!profile) {
-      // Фолбэк на последний активный профиль этого юзера
-      profile = await prisma.socialProfile.findFirst({
-        where: { userId: userId, provider: 'VK' },
-        orderBy: { createdAt: 'desc' }
-      });
-    }
-
-    if (!profile) return res.status(403).json({ error: 'Доступ запрещен. Профиль ВК не найден.' });
-
-    const params = new URLSearchParams();
-    params.append('url', url);
-    params.append('title', title || 'Группа ВК');
-    params.append('join_to_group', '0');
-    params.append('random_account', '0');
-    params.append('account_id', String(profile.providerAccountId));
-
-    const response = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
-      headers: { 'Access-Token': KOMOD_TOKEN, 'Content-Type': 'application/x-www-form-urlencoded' },
-      validateStatus: status => status < 500 
-    });
-
-    if (response.data?.success === false || response.status >= 400) {
-      return res.status(400).json({ error: response.data?.errors || 'Ошибка шлюза' });
-    }
-
-    res.json({ success: true });
+    res.json({ success: true, account });
   } catch (error) {
-    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+    console.error('Error adding komod group:', error);
+    res.status(500).json({ error: 'Ошибка сервера при добавлении' });
   }
 };
 
