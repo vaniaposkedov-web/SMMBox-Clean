@@ -97,15 +97,26 @@ exports.getKomodGroupsForSelection = async (req, res) => {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
-    // Берем не только группы, но и объект auth с данными профиля
+    // Извлекаем группы
     const groups = response.data?.data || [];
-    const authData = response.data?.auth || null; 
+    
+    // ФИКС: Разработчик сказал, что теперь используется auth.apiUserData
+    let authData = response.data?.auth || null;
+    if (authData && authData.apiUserData) {
+      authData = authData.apiUserData; // Достаем полезные данные
+    } else if (response.data?.data?.auth?.apiUserData) {
+      authData = response.data.data.auth.apiUserData;
+    }
 
-    // Отправляем на фронт всё вместе
+    // Если данные пришли в виде строки - парсим
+    if (typeof authData === 'string') {
+      try { authData = JSON.parse(authData); } catch(e) {}
+    }
+
     res.json({ success: true, groups, auth: authData });
   } catch (error) {
-    console.error('Ошибка получения групп komod:', error);
-    res.status(500).json({ error: 'Не удалось загрузить список групп из шлюза' });
+    console.error('Ошибка загрузки групп:', error);
+    res.status(500).json({ error: 'Ошибка при получении списка групп' });
   }
 };
 
