@@ -325,7 +325,7 @@ exports.syncVkKomod = async (req, res) => {
 // --- ДОБАВЛЕНИЕ ВЫБРАННОЙ ГРУППЫ/ПРОФИЛЯ В БАЗУ ---
 exports.addVkKomodGroup = async (req, res) => {
   try {
-    const { url, title, profileId, avatarUrl } = req.body; // Получаем всё с фронта
+    const { url, title, profileId, avatarUrl } = req.body;
     const userId = String(req.user.userId || req.user.id);
 
     // 1. Ищем профиль (шлюз)
@@ -334,13 +334,14 @@ exports.addVkKomodGroup = async (req, res) => {
     });
     if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
 
-    // 2. Парсим ID из URL (например https://vk.com/club123 -> 123)
-    const providerId = url.split('/').pop().replace('club', '').replace('public', '').replace('event', '');
+    // 2. Парсим ID из URL и ОБЯЗАТЕЛЬНО добавляем префикс 'group_' !
+    const parsedId = url.split('/').pop().replace('club', '').replace('public', '').replace('event', '');
+    const providerId = `group_${parsedId}`; 
 
     // 3. Сохраняем в таблицу Account
     const account = await prisma.account.upsert({
       where: { 
-        provider_providerId: { provider: 'VK', providerId: String(providerId) } 
+        provider_providerId: { provider: 'VK', providerId: providerId } 
       },
       update: {
         name: title,
@@ -352,10 +353,10 @@ exports.addVkKomodGroup = async (req, res) => {
       create: {
         userId: userId,
         provider: 'VK',
-        providerId: String(providerId),
+        providerId: providerId,
         name: title,
         avatarUrl: avatarUrl,
-        accessToken: '', // Токен живет в SocialProfile (в шлюзе)
+        accessToken: '', 
         profileId: profile.id
       }
     });
@@ -366,6 +367,7 @@ exports.addVkKomodGroup = async (req, res) => {
     res.status(500).json({ error: 'Ошибка сервера при добавлении' });
   }
 };
+
 
 exports.vkCallback = async (req, res) => {
   const { code, error, error_description } = req.query;
@@ -919,7 +921,6 @@ exports.saveVkGroupTokens = async (req, res) => {
 
 exports.addVkKomodProfile = async (req, res) => {
   try {
-    // 1. ПРИНИМАЕМ ИМЯ И АВАТАРКУ С ФРОНТА
     const { profileId, avatarUrl, name } = req.body; 
     const userId = String(req.user.userId || req.user.id);
 
@@ -929,7 +930,6 @@ exports.addVkKomodProfile = async (req, res) => {
     
     if (!profile) return res.status(404).json({ error: 'Профиль не найден' });
 
-    // 2. ОТПРАВЛЯЕМ ЗАПРОС В ШЛЮЗ KOM-OD (is_profile: true)
     await axios.post(`${KOMOD_BASE_URL}/group`, {
       account_id: profile.providerAccountId,
       is_profile: true
@@ -937,14 +937,21 @@ exports.addVkKomodProfile = async (req, res) => {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
-    // 3. СОХРАНЯЕМ В НАШУ БАЗУ ДАННЫХ С КАРТИНКОЙ
+    // ФИКС: ОБНОВЛЯЕМ КАРТИНКУ В ТАБЛИЦЕ SOCIAL PROFILE, чтобы syncVkKomod её увидел!
+    if (avatarUrl && !avatarUrl.includes('ui-avatars')) {
+      await prisma.socialProfile.update({
+        where: { id: profile.id },
+        data: { avatarUrl: avatarUrl, name: name || profile.name }
+      });
+    }
+
     const account = await prisma.account.upsert({
       where: { 
         provider_providerId: { provider: 'VK', providerId: `wall_${profile.providerAccountId}` } 
       },
       update: {
         name: name || profile.name || 'Личная страница',
-        avatarUrl: avatarUrl || profile.avatarUrl, // <--- ПИШЕМ КАРТИНКУ В БАЗУ
+        avatarUrl: avatarUrl || profile.avatarUrl, 
         isValid: true
       },
       create: {
@@ -952,7 +959,7 @@ exports.addVkKomodProfile = async (req, res) => {
         provider: 'VK',
         providerId: `wall_${profile.providerAccountId}`,
         name: name || profile.name || 'Личная страница',
-        avatarUrl: avatarUrl || profile.avatarUrl, // <--- ПИШЕМ КАРТИНКУ В БАЗУ
+        avatarUrl: avatarUrl || profile.avatarUrl, 
         accessToken: '',
         profileId: profile.id
       }
