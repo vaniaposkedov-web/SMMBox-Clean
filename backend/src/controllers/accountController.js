@@ -10,17 +10,24 @@ const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 const extractKomodAvatar = (obj) => {
   if (!obj || typeof obj !== 'object') return null;
   
-  if (obj.info && obj.info.rawData) {
-    const raw = obj.info.rawData;
+  let info = obj.info;
+  if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e) {} }
+  
+  let apiUser = obj.apiUserData;
+  if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e) {} }
+  
+  if (info && info.rawData) {
+    let raw = info.rawData;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e) {} }
     if (raw.photo_200) return raw.photo_200;
     if (raw.photo_100) return raw.photo_100;
     if (raw.photo_50) return raw.photo_50;
   }
   
-  if (obj.apiUserData) {
-    if (obj.apiUserData.photo_200) return obj.apiUserData.photo_200;
-    if (obj.apiUserData.photo_100) return obj.apiUserData.photo_100;
-    if (obj.apiUserData.photo_50) return obj.apiUserData.photo_50;
+  if (apiUser) {
+    if (apiUser.photo_200) return apiUser.photo_200;
+    if (apiUser.photo_100) return apiUser.photo_100;
+    if (apiUser.photo_50) return apiUser.photo_50;
   }
   
   return obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo || null;
@@ -29,10 +36,20 @@ const extractKomodAvatar = (obj) => {
 const extractKomodName = (obj) => {
   if (!obj || typeof obj !== 'object') return null;
   
-  if (obj.info && obj.info.title) return obj.info.title;
-  if (obj.info && obj.info.rawData && obj.info.rawData.name) return obj.info.rawData.name;
+  let info = obj.info;
+  if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e) {} }
   
-  const target = obj.apiUserData || obj;
+  let apiUser = obj.apiUserData;
+  if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e) {} }
+
+  if (info && info.title) return info.title;
+  if (info && info.rawData) {
+    let raw = info.rawData;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e) {} }
+    if (raw.name) return raw.name;
+  }
+  
+  const target = apiUser || obj;
   if (target.first_name) return `${target.first_name} ${target.last_name || ''}`.trim();
   
   return obj.name || obj.title || null;
@@ -115,6 +132,7 @@ exports.syncVkKomod = async (req, res) => {
     const validGroupProviderIds = []; 
 
     // --- 2. ИЗОЛИРОВАННОЕ СОХРАНЕНИЕ АКТУАЛЬНЫХ ПРОФИЛЕЙ ---
+    // --- 2. ИЗОЛИРОВАННОЕ СОХРАНЕНИЕ АКТУАЛЬНЫХ ПРОФИЛЕЙ ---
     for (const acc of validAccounts) {
       const providerAccountId = String(acc.id);
 
@@ -122,40 +140,28 @@ exports.syncVkKomod = async (req, res) => {
         where: { provider: 'VK', providerAccountId }
       });
 
-      if (existingProfile && existingProfile.userId !== userId) {
-        continue; // Защита от кражи чужого профиля
-      }
+      if (existingProfile && existingProfile.userId !== userId) continue;
 
-      // Извлекаем правильное имя и аватарку из шлюза
       const extractedName = extractKomodName(acc);
-      const profileName = extractedName || 'Профиль ВК';
+      const profileName = extractedName || (existingProfile ? existingProfile.name : 'Профиль ВК');
       
       const extractedAvatar = extractKomodAvatar(acc);
-      const profileAvatar = extractedAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileName)}&background=0077FF&color=fff`;
+      let profileAvatar = extractedAvatar;
+      
+      // ФИКС: Если шлюз не отдал картинку, берем старую из базы, чтобы не затереть синей заглушкой
+      if (!profileAvatar && existingProfile && existingProfile.avatarUrl && !existingProfile.avatarUrl.includes('ui-avatars')) {
+         profileAvatar = existingProfile.avatarUrl;
+      }
+      profileAvatar = profileAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileName)}&background=0077FF&color=fff`;
 
-      // ВОТ ЗДЕСЬ БЫЛА ОШИБКА: upsert был пустым. Теперь он заполнен:
       const vkProfile = await prisma.socialProfile.upsert({
-        where: { 
-          provider_providerAccountId: { provider: 'VK', providerAccountId: providerAccountId } 
-        },
-        update: { 
-          name: profileName, 
-          avatarUrl: profileAvatar, 
-          accessToken: KOMOD_TOKEN 
-        },
-        create: { 
-          userId: userId, 
-          provider: 'VK', 
-          providerAccountId: providerAccountId, 
-          name: profileName, 
-          avatarUrl: profileAvatar, 
-          accessToken: KOMOD_TOKEN 
-        }
+        where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
+        update: { name: profileName, avatarUrl: profileAvatar, accessToken: KOMOD_TOKEN },
+        create: { userId: userId, provider: 'VK', providerAccountId, name: profileName, avatarUrl: profileAvatar, accessToken: KOMOD_TOKEN }
       });
 
       currentUserProfileIds.push(vkProfile.id);
     }
-
     // Запрашиваем обновленный список профилей из базы
     const userProfilesMap = {};
     const updatedUserProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
@@ -213,7 +219,7 @@ exports.syncVkKomod = async (req, res) => {
        try { rawGroups = await fetchAndFilterGroups(); } catch (e) {}
     }
 
-    // --- 4. ИЗОЛИРОВАННОЕ СОХРАНЕНИЕ ГРУПП И СТЕН ---
+    
     // --- 4. ИЗОЛИРОВАННОЕ СОХРАНЕНИЕ ГРУПП И СТЕН ---
     for (const grp of rawGroups) {
       const komodAccountId = String(grp.account_id);
@@ -223,18 +229,6 @@ exports.syncVkKomod = async (req, res) => {
       const parentProfileId = userProfilesMap[komodAccountId];
       let isProfile = String(grp.is_profile) === '1' || grp.is_profile === true || grp.type === 'profile' || String(grp.url).includes('vk.com/id') || String(grp.uid) === String(grp.user_id);
       
-      // Изменено: используем умный парсинг данных шлюза
-      const extractedName = extractKomodName(grp);
-      let name = extractedName || 'ВК';
-      
-      const extractedAvatar = extractKomodAvatar(grp);
-      let avatar = extractedAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
-
-      if (isProfile && avatar && !avatar.includes('ui-avatars.com')) {
-        await prisma.socialProfile.update({ where: { id: parentProfileId }, data: { avatarUrl: avatar } });
-        name = `Стена: ${name}`;
-      }
-
       let providerId;
       if (isProfile) {
         providerId = `wall_${komodAccountId}`;
@@ -243,8 +237,26 @@ exports.syncVkKomod = async (req, res) => {
         providerId = `group_${realVkId}`;
       }
 
+      // Переносим поиск существующей группы ВЫШЕ, чтобы использовать её данные
       const existingGroup = await prisma.account.findFirst({ where: { provider: 'VK', providerId } });
       if (existingGroup && existingGroup.userId !== userId) continue;
+
+      const extractedName = extractKomodName(grp);
+      let name = extractedName || (existingGroup ? existingGroup.name : 'ВК');
+      
+      const extractedAvatar = extractKomodAvatar(grp);
+      let avatar = extractedAvatar;
+      
+      // ФИКС АВАТАРОК: Если шлюз не отдал фото, сохраняем то, что уже было корректно передано с фронтенда!
+      if (!avatar && existingGroup && existingGroup.avatarUrl && !existingGroup.avatarUrl.includes('ui-avatars')) {
+         avatar = existingGroup.avatarUrl;
+      }
+      avatar = avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
+
+      if (isProfile && avatar && !avatar.includes('ui-avatars.com')) {
+        await prisma.socialProfile.update({ where: { id: parentProfileId }, data: { avatarUrl: avatar } });
+        name = `Стена: ${name}`;
+      }
 
       validGroupProviderIds.push(providerId);
 
