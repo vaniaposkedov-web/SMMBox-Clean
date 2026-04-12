@@ -106,20 +106,20 @@ export default function AccountsManager() {
 
   const handleOpenGroupsSelector = async (profileId) => {
     setIsGroupsLoading(true);
-    // Получаем профиль из стора, чтобы взять его имя и аватарку
+    // Находим профиль, чтобы взять актуальные ФИО и Аватарку для "Стены"
     const profile = profiles.find(p => p.id === profileId);
     const data = await useStore.getState().fetchKomodGroups(profileId);
     
     if (data.success) {
-      // Создаем "фиктивный" объект для личной страницы
       const personalWall = {
-        id: 'wall_profile', // уникальный префикс для фильтрации при сохранении
-        name: profile?.name || 'Моя страница (Стена)',
-        photo_50: profile?.avatarUrl || '', // используем аватар профиля
-        is_profile_dummy: true // флаг, чтобы отличить от группы
+        id: 'wall_profile', 
+        name: profile?.name || 'Личная страница',
+        // Исправляем битое фото: используем avatarUrl из профиля
+        photo_50: profile?.avatarUrl || '', 
+        is_profile_dummy: true 
       };
 
-      // Добавляем личную страницу в начало списка
+      // Соединяем: Личная страница всегда первая
       setSelectableGroups([personalWall, ...(data.groups || [])]);
       setKomodSelected([]); 
       setKomodModal({ isOpen: true, profileId });
@@ -220,25 +220,22 @@ export default function AccountsManager() {
         setIsSyncingVk(true);
         setVkConnectStatus('syncing_profile'); 
         
-        // 1. Подтверждаем хэш в Kom-od
         const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
         if (!confirmResult.success) {
            alert('Ошибка шлюза: ' + (confirmResult.error || 'Аккаунт не найден.'));
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
 
-        // 2. Обновляем список профилей, чтобы наш новый аккаунт появился в системе
-        await useStore.getState().syncVkKomod();
+        // Вместо полной синхронизации просто обновляем список профилей
         await handleRefreshProfiles();
         setIsSyncingVk(false);
         
-        // 3. Находим ID только что привязанного профиля
         const updatedProfiles = useStore.getState().profiles;
         const vkProf = updatedProfiles.find(p => p.provider === 'VK');
         
         setVkConnectStatus('idle');
         
-        // 4. ВМЕСТО авто-добавления стены, сразу открываем окно выбора
+        // Открываем выбор, теперь пользователь САМ выберет, добавлять ли стену
         if (vkProf?.id) {
           handleOpenGroupsSelector(vkProf.id);
         }
@@ -885,17 +882,35 @@ export default function AccountsManager() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2">
-            {[...connectedVk, ...connectedTg].map(acc => (
-              <div key={acc.id} className="flex items-center justify-between p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <img src={acc.avatarUrl || 'https://via.placeholder.com/40'} className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" alt="" />
-                  <span className="text-white font-bold text-xs">{acc.provider === 'VK' ? 'ВК' : 'ТГ'}</span>
+            {[...connectedVk, ...connectedTg].map(acc => {
+              // Проверяем, является ли это личной страницей ВК
+              const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
+
+              return (
+                <div key={acc.id} className="flex items-center justify-between p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <img src={acc.avatarUrl || 'https://via.placeholder.com/40'} className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" alt="" />
+                    
+                    <div className="flex flex-col min-w-0">
+                      {/* Выводим реальное название сообщества или Имя/Фамилию */}
+                      <span className="text-white font-bold text-xs truncate">
+                        {acc.name}
+                      </span>
+                      {/* Если это личная страница, добавляем приписку снизу */}
+                      {isPersonal && (
+                        <span className="text-[8px] text-gray-500 uppercase font-bold leading-none mt-0.5">
+                          Личная страница
+                        </span>
+                      )}
+                    </div>
+
+                  </div>
+                  <button onClick={() => removeAccount(acc.id)} className="text-gray-500 hover:text-rose-500 p-1.5 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all">
+                    <X size={14} />
+                  </button>
                 </div>
-                <button onClick={() => removeAccount(acc.id)} className="text-gray-500 hover:text-rose-500 p-1.5 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all">
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1094,35 +1109,26 @@ export default function AccountsManager() {
               {selectableGroups.map((group, index) => {
                 const uniqueId = group.apiGroupData?.id || group.id || group.group_id || `idx-${index}`;
                 const isSelected = komodSelected.includes(uniqueId);
-                const avatar = group.apiGroupData?.photo_50 || group.photo_50 || 'https://via.placeholder.com/50';
-                const name = group.apiGroupData?.name || group.name || group.title;
+                
+                // Исправляем логику фото: проверяем разные вложенности от Komod API
+                const avatar = group.photo_50 || group.apiGroupData?.photo_50 || group.apiGroupData?.photo_100 || 'https://via.placeholder.com/50';
                 const isPersonal = group.is_profile_dummy;
 
                 return (
                   <div 
                     key={uniqueId} 
                     onClick={() => setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
-                    className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF] shadow-inner' : 'bg-gray-900 border-gray-800 hover:bg-gray-800'}`}
+                    className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF]' : 'bg-gray-900 border-gray-800 hover:bg-gray-800'}`}
                   >
-                    <div className="relative shrink-0">
-                      <img 
-                          src={group.photo_50 || group.apiGroupData?.photo_50 || 'https://via.placeholder.com/50'} 
-                          className="w-12 h-12 rounded-full object-cover border border-gray-700" 
-                          alt="avatar" 
-                        />
-                      {isPersonal && (
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#0077FF] border-2 border-[#111318] rounded-full flex items-center justify-center text-white" title="Личный профиль">
-                          <UserCircle size={12} />
-                        </div>
-                      )}
-                    </div>
+                    <img src={avatar} className="w-12 h-12 rounded-full object-cover border border-gray-700 shrink-0" alt="" />
                     
                     <div className="flex-1 min-w-0">
-                      <span className="text-white font-bold text-sm block truncate">{name}</span>
-                      {isPersonal && <span className="text-[10px] text-[#0077FF] font-bold uppercase mt-0.5 block tracking-wide">Ваша стена</span>}
+                      <span className="text-white font-bold text-sm block truncate">{group.name}</span>
+                      {/* Добавляем преписку для страницы */}
+                      {isPersonal && <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Личная страница</span>}
                     </div>
 
-                    <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border transition-colors ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600 bg-transparent'}`}>
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'}`}>
                       {isSelected && <Check size={14} className="text-white" />}
                     </div>
                   </div>
