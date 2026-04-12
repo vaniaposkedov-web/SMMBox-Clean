@@ -81,7 +81,7 @@ const extractKomodName = (obj) => {
   return obj.name || obj.title || null;
 };
 
-// 2. Получение списка групп (С подмешиванием аватарок напрямую из ВК)
+// 2. Получение списка групп (С проверкой владельца)
 exports.getKomodGroupsForSelection = async (req, res) => {
   try {
     const { profileId } = req.query;
@@ -93,61 +93,27 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 
     if (!profile) return res.status(403).json({ error: 'Профиль не найден или доступ запрещен' });
 
-    // 1. Получаем список групп от шлюза Kom-od (он отдает их без аватарок)
     const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
+    // 🔥 ВЫВОДИМ ТОЧНУЮ СТРУКТУРУ НОВОГО ОТВЕТА В ТЕРМИНАЛ
+    console.log('\n=== РЕНТГЕН НОВОГО API KOM-OD ===');
+    console.dir(response.data, { depth: 5, colors: false });
+    console.log('=================================\n');
+
     const groups = response.data?.data || [];
     
-    // Получаем данные профиля (стену)
     let authData = response.data?.auth || null;
     if (authData && authData.apiUserData) {
       authData = authData.apiUserData;
     } else if (response.data?.data?.auth?.apiUserData) {
       authData = response.data.data.auth.apiUserData;
     }
+
     if (typeof authData === 'string') {
       try { authData = JSON.parse(authData); } catch(e) {}
     }
-
-    // =========================================================================
-    // ФИКС: ОБХОД ШЛЮЗА KOM-OD ДЛЯ АВАТАРОК
-    // Берем ID групп и запрашиваем картинки напрямую у серверов ВК
-    // =========================================================================
-    try {
-      const vkGroupIds = groups.map(g => g.uid || g.id).filter(Boolean);
-      const vkServiceToken = process.env.VK_SERVICE_TOKEN; // Берем ключ из .env
-      
-      if (vkGroupIds.length > 0 && vkServiceToken) {
-        const vkRes = await axios.get('https://api.vk.com/method/groups.getById', {
-          params: {
-            group_ids: vkGroupIds.join(','),
-            access_token: vkServiceToken,
-            v: '5.199' // Актуальная версия API ВК
-          }
-        });
-        
-        if (vkRes.data && vkRes.data.response) {
-          const vkData = vkRes.data.response;
-          
-          // Подмешиваем настоящие аватарки прямо в объекты групп
-          groups.forEach(g => {
-            const vkGroup = vkData.find(vk => String(vk.id) === String(g.uid || g.id));
-            if (vkGroup) {
-              // Фронтенд ожидает ключи photo_*, мы их заботливо подкидываем
-              g.photo_200 = vkGroup.photo_200 || vkGroup.photo_100 || vkGroup.photo_50;
-              g.photo_100 = vkGroup.photo_100 || vkGroup.photo_50;
-            }
-          });
-        }
-      } else if (vkGroupIds.length > 0) {
-        console.warn('⚠️ VK_SERVICE_TOKEN не задан в .env. Аватарки напрямую загрузить нельзя.');
-      }
-    } catch (vkError) {
-      console.error('Ошибка прямого запроса к ВК за аватарками:', vkError.message);
-    }
-    // =========================================================================
 
     res.json({ success: true, groups, auth: authData });
   } catch (error) {
