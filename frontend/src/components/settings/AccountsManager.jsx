@@ -340,16 +340,16 @@ export default function AccountsManager() {
   // Каждые 5 секунд запрашиваем список аккаунтов, чтобы новые каналы ТГ 
   // появлялись автоматически сразу после добавления бота пользователем.
   useEffect(() => {
-    let interval;
-    if (user?.id) {
-      interval = setInterval(() => {
-        fetchAccounts(user.id);
-        // Если открыто модальное окно ТГ или ВК, можно также обновлять профили
-        fetchProfiles(user.id);
-      }, 5000); // 5 секунд — оптимально, чтобы не грузить сервер и быть "в теме"
-    }
-    return () => clearInterval(interval);
-  }, [user?.id, fetchAccounts, fetchProfiles]);
+  let interval;
+  if (user?.id) {
+    // Авто-чекер: опрашиваем сервер каждые 5 секунд, чтобы новые ТГ каналы появлялись сами
+    interval = setInterval(() => {
+      fetchAccounts(user.id);
+      fetchProfiles(user.id);
+    }, 5000);
+  }
+  return () => clearInterval(interval);
+}, [user?.id, fetchAccounts, fetchProfiles]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1018,7 +1018,6 @@ export default function AccountsManager() {
         <h2 className="text-base font-bold text-white text-center relative z-10">Выберите платформу</h2>
 
         <div className="grid grid-cols-2 gap-3 relative z-10">
-          {/* Плашка ВК */}
           <div
             onClick={() => setSelectedNetwork('VK')}
             className={`relative border rounded-2xl py-3 flex flex-row items-center justify-center gap-3 transition-all cursor-pointer ${
@@ -1030,7 +1029,6 @@ export default function AccountsManager() {
             {selectedNetwork === 'VK' && <div className="absolute top-1.5 right-2 text-[#0077FF]"><Check size={14} strokeWidth={4} /></div>}
           </div>
 
-          {/* Плашка ТГ */}
           <div
             onClick={() => setSelectedNetwork('TG')}
             className={`relative border rounded-2xl py-3 flex flex-row items-center justify-center gap-3 transition-all cursor-pointer ${
@@ -1043,17 +1041,25 @@ export default function AccountsManager() {
           </div>
         </div>
 
+        {/* ИСПРАВЛЕНИЕ: Кнопка теперь всегда корректно отображает название выбранной сети */}
         <button
           onClick={() => selectedNetwork === 'VK' ? handleConnectVkOAuth() : setShowTgHelperModal(true)}
-          className={`relative z-10 w-full py-3.5 rounded-xl font-bold text-white transition-all text-sm active:scale-95 ${
+          className={`relative z-10 w-full py-4 rounded-xl font-bold text-white transition-all text-sm active:scale-95 ${
             selectedNetwork === 'VK' ? 'bg-[#0077FF] shadow-lg shadow-[#0077FF]/20' : 'bg-[#2AABEE] shadow-lg shadow-[#2AABEE]/20'
           }`}
         >
-          Авторизовать {selectedNetwork === 'VK' ? 'ВК' : 'ТГ'}
+          Авторизовать {selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}
         </button>
       </div>
+
+
+
+
+
+
+      
      
-      {/* === КОМПАКТНЫЙ СПИСОК ПОДКЛЮЧЕННЫХ СЕТЕЙ === */}
+      {/* === КОМПАКТНЫЙ СПИСОК ПОДКЛЮЧЕННЫХ СЕТЕЙ (СТРОГО 2 КОЛОНКИ) === */}
       <div className="max-w-md mx-auto w-full mt-8 mb-4 px-1">
         <h2 className="text-[10px] font-bold text-gray-500 mb-3 uppercase tracking-[0.2em] text-center">Подключено</h2>
         
@@ -1062,18 +1068,17 @@ export default function AccountsManager() {
             Пока нет добавленных платформ
           </div>
         ) : (
-          /* ИСПРАВЛЕНИЕ: grid-cols-2 зафиксирован, gap-2 для компактности на мобильных */
           <div className="grid grid-cols-2 gap-2 sm:gap-3">
             {[...connectedVk, ...connectedTg].map(acc => {
               const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
-              const accountName = acc.name || acc.title || (acc.provider === 'VK' ? 'ВК' : 'ТГ');
+              const accountName = acc.name || acc.title || 'Аккаунт';
+              // ИСПРАВЛЕНИЕ: Для ТГ выводится иконка из avatarUrl, который мы сохраняем в БД
               const avatar = getValidAvatar(acc.avatarUrl || extractAvatar(acc), accountName);
               const isVk = acc.provider === 'VK';
 
               return (
-                <div key={acc.id} className="flex flex-col p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors relative group">
+                <div key={acc.id} className="flex flex-col p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors relative">
                   <div className="flex items-center gap-2 min-w-0">
-                    {/* Аватарка с иконкой соцсети */}
                     <div className="relative shrink-0">
                       <img 
                         src={avatar} 
@@ -1081,7 +1086,7 @@ export default function AccountsManager() {
                         className="w-8 h-8 rounded-full object-cover border border-gray-800" 
                         alt="" 
                       />
-                      <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center border border-[#0d0f13] ${isVk ? 'bg-[#0077FF]' : 'bg-[#2AABEE]'}`}>
+                      <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full flex items-center justify-center border-2 border-[#0d0f13] ${isVk ? 'bg-[#0077FF]' : 'bg-[#2AABEE]'}`}>
                         {isVk ? (
                           <span className="text-[7px] font-bold text-white">VK</span>
                         ) : (
@@ -1091,21 +1096,16 @@ export default function AccountsManager() {
                     </div>
                     
                     <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-white font-bold text-[11px] sm:text-xs truncate">
+                      <span className="text-white font-bold text-[10px] sm:text-xs truncate">
                         {accountName}
                       </span>
                       {isPersonal && (
                         <span className="text-[7px] text-gray-500 uppercase font-black leading-none mt-0.5">
-                          Профиль
+                          Личная
                         </span>
                       )}
                     </div>
-
-                    {/* Кнопка удаления */}
-                    <button 
-                      onClick={() => removeAccount(acc.id)} 
-                      className="text-gray-600 hover:text-rose-500 transition-colors p-1"
-                    >
+                    <button onClick={() => removeAccount(acc.id)} className="text-gray-600 hover:text-rose-500 p-1 rounded-md transition-all">
                       <X size={14} />
                     </button>
                   </div>
