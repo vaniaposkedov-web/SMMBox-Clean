@@ -226,8 +226,22 @@ export default function AccountsManager() {
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
 
-        // Обновляем только профили, БЕЗ вызова syncVkKomod() (чтобы не создалась стена)
+        // 1. ВОЗВРАЩАЕМ СИНХРОНИЗАЦИЮ! Это критически важно для бэкенда.
+        // Без нее бэкенд не привяжет профиль и выдаст 500 ошибку при запросе групп.
+        await useStore.getState().syncVkKomod();
         await handleRefreshProfiles();
+        
+        // 2. ХИТРЫЙ ОБХОД: бэкенд при синхронизации автоматически добавляет личную стену.
+        // Мы ее тихо удаляем из аккаунтов прямо сейчас, чтобы пользователь сам выбрал её в модалке.
+        const currentAccounts = useStore.getState().accounts;
+        const autoAddedWall = currentAccounts.find(a => a.provider === 'VK' && a.providerId.startsWith('wall_'));
+        
+        if (autoAddedWall) {
+          // Вызываем удаление прямо из стора
+          await useStore.getState().removeAccount(autoAddedWall.id);
+          await handleRefreshProfiles(); // Обновляем стейт после удаления
+        }
+
         setIsSyncingVk(false);
         
         const updatedProfiles = useStore.getState().profiles;
@@ -235,7 +249,7 @@ export default function AccountsManager() {
         
         setVkConnectStatus('idle');
         
-        // Сразу открываем выбор, где пользователь сам решит добавить стену или нет
+        // Теперь безопасно открываем окно выбора
         if (vkProf?.id) {
           handleOpenGroupsSelector(vkProf.id);
         }
