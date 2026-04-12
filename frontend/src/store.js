@@ -494,26 +494,22 @@ export const useStore = create(
         } catch (error) {}
       },
 
-      addVkKomodGroup: async (url, title, profileId) => {
-        try {
-          const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/accounts/vk/komod-add`, {
-            method: 'POST',
-            headers: { 
-              'Authorization': `Bearer ${get().token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ url, title, profileId }) // Добавили profileId
-          });
-          const data = await res.json();
-          if (data.success) {
-            await get().fetchAccounts(get().user?.id);
-            return { success: true };
-          }
-          return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка сети' };
-        }
+      addVkKomodGroup: async (url, title, profileId, avatarUrl) => { // 1. ДОБАВИЛИ СЮДА
+  try {
+    const res = await fetch('/api/accounts/vk/komod-add', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${get().token}`
       },
+      // 2. И ОБЯЗАТЕЛЬНО ДОБАВИЛИ В ТЕЛО ЗАПРОСА
+      body: JSON.stringify({ url, title, profileId, avatarUrl }) 
+    });
+    return await res.json();
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+},
 
       // Добавь это рядом с функцией syncVkKomod:
       confirmVkKomod: async (hash) => {
