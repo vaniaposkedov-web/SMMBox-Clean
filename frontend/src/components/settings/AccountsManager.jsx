@@ -226,7 +226,7 @@ export default function AccountsManager() {
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
 
-        // Вместо полной синхронизации просто обновляем список профилей
+        // Обновляем только профили, БЕЗ вызова syncVkKomod() (чтобы не создалась стена)
         await handleRefreshProfiles();
         setIsSyncingVk(false);
         
@@ -235,7 +235,7 @@ export default function AccountsManager() {
         
         setVkConnectStatus('idle');
         
-        // Открываем выбор, теперь пользователь САМ выберет, добавлять ли стену
+        // Сразу открываем выбор, где пользователь сам решит добавить стену или нет
         if (vkProf?.id) {
           handleOpenGroupsSelector(vkProf.id);
         }
@@ -883,7 +883,6 @@ export default function AccountsManager() {
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {[...connectedVk, ...connectedTg].map(acc => {
-              // Проверяем, является ли это личной страницей ВК
               const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
 
               return (
@@ -892,18 +891,15 @@ export default function AccountsManager() {
                     <img src={acc.avatarUrl || 'https://via.placeholder.com/40'} className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" alt="" />
                     
                     <div className="flex flex-col min-w-0">
-                      {/* Выводим реальное название сообщества или Имя/Фамилию */}
                       <span className="text-white font-bold text-xs truncate">
-                        {acc.name}
+                        {isPersonal ? acc.name : (acc.provider === 'VK' ? 'ВК' : 'ТГ')}
                       </span>
-                      {/* Если это личная страница, добавляем приписку снизу */}
                       {isPersonal && (
                         <span className="text-[8px] text-gray-500 uppercase font-bold leading-none mt-0.5">
                           Личная страница
                         </span>
                       )}
                     </div>
-
                   </div>
                   <button onClick={() => removeAccount(acc.id)} className="text-gray-500 hover:text-rose-500 p-1.5 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all">
                     <X size={14} />
@@ -1109,10 +1105,10 @@ export default function AccountsManager() {
               {selectableGroups.map((group, index) => {
                 const uniqueId = group.apiGroupData?.id || group.id || group.group_id || `idx-${index}`;
                 const isSelected = komodSelected.includes(uniqueId);
-                
-                // Исправляем логику фото: проверяем разные вложенности от Komod API
-                const avatar = group.photo_50 || group.apiGroupData?.photo_50 || group.apiGroupData?.photo_100 || 'https://via.placeholder.com/50';
                 const isPersonal = group.is_profile_dummy;
+                
+                // Исправляем битые фото
+                const avatar = isPersonal ? group.photo_50 : (group.photo_50 || group.apiGroupData?.photo_50 || 'https://via.placeholder.com/50');
 
                 return (
                   <div 
@@ -1124,8 +1120,7 @@ export default function AccountsManager() {
                     
                     <div className="flex-1 min-w-0">
                       <span className="text-white font-bold text-sm block truncate">{group.name}</span>
-                      {/* Добавляем преписку для страницы */}
-                      {isPersonal && <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Личная страница</span>}
+                      {isPersonal && <span className="text-[10px] text-[#0077FF] font-bold uppercase mt-0.5 block tracking-wide">Личная страница</span>}
                     </div>
 
                     <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'}`}>
