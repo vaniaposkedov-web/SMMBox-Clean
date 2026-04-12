@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useStore } from '../../store';
+// БЫЛО: import { useStore } from '../../store';
+// СТАЛО:
+import { useStore } from '../store'; 
 import { 
   Save, Type, Loader2, Check,
   Edit3, X, Plus, Trash2, CheckCircle2, ChevronLeft,

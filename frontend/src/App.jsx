@@ -262,7 +262,7 @@ function App() {
           <Route path="/boss-login" element={<AdminLogin />} />
           <Route path="/system-core-dashboard" element={<AdminDashboard />} />
           <Route path="*" element={<Navigate to="/auth" replace />} />
-          <Route path="/signatures" element={<SignatureConstructor />} />
+          
         </Routes>
       </BrowserRouter>
     );
@@ -288,7 +288,7 @@ function App() {
           <Route path="/watermark" element={<WatermarkConstructor />} />
           <Route path="/posts" element={<PostsHistory />} />
           <Route path="/analytics" element={<DummyPage title="Аналитика" />} />
-          <Route path="/signatures" element={<DummyPage title="Подписи к постам" />} />
+          <Route path="/signatures" element={<SignatureConstructor />} />
         </Route>
 
         <Route path="/reset-password/:token" element={<ResetPassword />} />
