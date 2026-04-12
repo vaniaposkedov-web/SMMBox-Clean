@@ -69,12 +69,12 @@ exports.getKomodGroupsForSelection = async (req, res) => {
     if (!profile) return res.status(403).json({ error: 'Профиль не найден' });
 
     try {
-      // Запрашиваем сообщества
+      // Запрашиваем сообщества из шлюза
       const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
         headers: { 'Access-Token': KOMOD_TOKEN }
       });
 
-      // ✅ ИСПРАВЛЕНИЕ: Надежно распаковываем массив (как мы это делали в syncVkKomod)
+      // Надежно распаковываем массив
       let items = [];
       const resData = response.data?.data;
       const resGroups = response.data?.groups;
@@ -90,9 +90,39 @@ exports.getKomodGroupsForSelection = async (req, res) => {
           items = resGroups;
       }
 
+      // Обогащаем список сообществ фотографиями для модального окна
+      const enrichedItems = await Promise.all(items.map(async (group) => {
+        // Сначала проверяем, вдруг фото уже есть на верхнем уровне
+        let photo = extractKomodAvatar(group);
+
+        // Если фото нет, делаем точечный запрос к детальной информации о группе
+        const groupId = group.id || group.group_id || group.uid;
+        if (!photo && groupId) {
+          try {
+            const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${groupId}`, {
+              headers: { 'Access-Token': KOMOD_TOKEN }
+            });
+            if (detailRes.data?.success && detailRes.data?.data) {
+              photo = extractKomodAvatar(detailRes.data.data);
+              
+              // Подшиваем найденное фото прямо в объект на верхний уровень,
+              // чтобы фронтенд (функция deepSearch) моментально его нашел
+              if (photo) {
+                group.photo_200 = photo;
+              }
+            }
+          } catch (e) {
+            console.log(`[KOM-OD Modal] Ошибка получения деталей группы ${groupId}`);
+          }
+        }
+        return group;
+      }));
+
       const authData = response.data?.auth || null;
 
-      return res.json({ success: true, groups: items, auth: authData });
+      // Отдаем на фронтенд УЖЕ ОБОГАЩЕННЫЙ массив
+      return res.json({ success: true, groups: enrichedItems, auth: authData });
+      
     } catch (apiError) {
       if (apiError.response && apiError.response.status === 404) {
         return res.json({ 
