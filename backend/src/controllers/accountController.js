@@ -289,6 +289,7 @@ exports.syncVkKomod = async (req, res) => {
     const myProfileAccountIds = myProfiles.map(p => String(p.providerAccountId));
 
     // 5. СОХРАНЯЕМ ГРУППЫ И ПОДСТАВЛЯЕМ ФОТО
+      // 5. СОХРАНЯЕМ ГРУППЫ И ПОДСТАВЛЯЕМ ФОТО
       for (const grp of allGroups) {
         if (!myProfileAccountIds.includes(String(grp.account_id))) continue;
 
@@ -306,30 +307,45 @@ exports.syncVkKomod = async (req, res) => {
 
         let finalName = grp.title || grp.name || 'Сообщество';
         let finalAvatar = null;
-    if (isWall) {
-      finalAvatar = parentProfile?.avatarUrl;
-    } else {
-      // ✅ ИСПРАВЛЕНИЕ: Сначала пробуем извлечь из объекта (фикс Алексея), 
-      // если там пусто — берем из нашего словаря аватарок
-      finalAvatar = extractKomodAvatar(grp) || groupAvatarsMap[vkUid];
-    }
+        
+        if (isWall) {
+          finalAvatar = parentProfile?.avatarUrl;
+        } else {
+          // Сначала пробуем взять из общего списка или резервного словаря
+          finalAvatar = extractKomodAvatar(grp) || groupAvatarsMap[vkUid];
 
-    // Защита от перезаписи старой доброй аватарки на null
-    const existingAcc = await prisma.account.findUnique({ where: { provider_providerId: { provider: 'VK', providerId } } });
-    if (!finalAvatar && existingAcc?.avatarUrl && !existingAcc.avatarUrl.includes('ui-avatars')) {
-        finalAvatar = existingAcc.avatarUrl;
-    }
+          // ✅ ИСПРАВЛЕНИЕ: Если фото нет, делаем запрос к эндпоинту конкретной группы (/group/<id>)
+          // Именно этот метод починил разработчик API, добавив в него info.rawData
+          if (!finalAvatar && grp.id) {
+            try {
+              const detailGrpRes = await axios.get(`${KOMOD_BASE_URL}/group/${grp.id}`, { 
+                headers: { 'Access-Token': KOMOD_TOKEN } 
+              });
+              if (detailGrpRes.data?.success && detailGrpRes.data?.data) {
+                finalAvatar = extractKomodAvatar(detailGrpRes.data.data);
+              }
+            } catch (e) {
+              console.log(`[KOM-OD] Ошибка получения деталей группы ${grp.id}`);
+            }
+          }
+        }
 
-    if (!finalAvatar) {
-        finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(grp.title || 'VK')}&background=0d0f13&color=0077FF&rounded=true`;
-    }
+        // Защита от перезаписи старой доброй аватарки на null
+        const existingAcc = await prisma.account.findUnique({ where: { provider_providerId: { provider: 'VK', providerId } } });
+        if (!finalAvatar && existingAcc?.avatarUrl && !existingAcc.avatarUrl.includes('ui-avatars')) {
+            finalAvatar = existingAcc.avatarUrl;
+        }
 
-    await prisma.account.upsert({
-      where: { provider_providerId: { provider: 'VK', providerId } },
-      update: { name: grp.title || grp.name, avatarUrl: finalAvatar, isValid: true, profileId: parentProfile.id },
-      create: { userId, provider: 'VK', providerId, name: grp.title || grp.name, avatarUrl: finalAvatar, accessToken: KOMOD_TOKEN, profileId: parentProfile.id }
-    });
-}
+        if (!finalAvatar) {
+            finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=0d0f13&color=0077FF&rounded=true`;
+        }
+
+        await prisma.account.upsert({
+          where: { provider_providerId: { provider: 'VK', providerId } },
+          update: { name: finalName, avatarUrl: finalAvatar, isValid: true, profileId: parentProfile.id },
+          create: { userId, provider: 'VK', providerId, name: finalName, avatarUrl: finalAvatar, accessToken: KOMOD_TOKEN, profileId: parentProfile.id }
+        });
+      }
 
     // 6. ОЧИСТКА СТАРЫХ ДУБЛИКАТОВ ИЗ БАЗЫ
     const existingVkAccounts = await prisma.account.findMany({ where: { userId, provider: 'VK' } });
