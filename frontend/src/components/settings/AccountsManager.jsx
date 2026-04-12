@@ -366,16 +366,16 @@ export default function AccountsManager() {
         setIsSyncingVk(true);
         setVkConnectStatus('syncing_profile'); 
         
-        // 1. ЗАПОМИНАЕМ ID СТАРЫХ ПРОФИЛЕЙ ДО СИНХРОНИЗАЦИИ
-        const beforeProfiles = useStore.getState().profiles
-          .filter(p => p.provider === 'VK')
-          .map(p => p.id);
+        const beforeProfiles = useStore.getState().profiles.filter(p => p.provider === 'VK').map(p => p.id);
 
         const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
         if (!confirmResult.success) {
            alert('Ошибка шлюза: ' + (confirmResult.error || 'Аккаунт не найден.'));
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
+
+        // 1. Достаем ID аккаунта прямо из ответа Kom-od (самый надежный способ не перепутать аккаунты)
+        const confirmedKomodId = confirmResult.data?.data?.id || confirmResult.data?.data?.account_id;
 
         await useStore.getState().syncVkKomod();
         await handleRefreshProfiles();
@@ -387,17 +387,23 @@ export default function AccountsManager() {
           await handleRefreshProfiles();
         }
 
-        // 2. ИЩЕМ ИМЕННО НОВЫЙ ПОДКЛЮЧЕННЫЙ ПРОФИЛЬ
         const updatedProfiles = useStore.getState().profiles;
         const vkProfilesAfter = updatedProfiles.filter(p => p.provider === 'VK');
         
-        // Находим профиль, которого не было в списке beforeProfiles
-        let vkProf = vkProfilesAfter.find(p => !beforeProfiles.includes(p.id));
-        
-        // Если переподключили уже существующий, берем самый последний в списке
-        if (!vkProf) {
-          vkProf = vkProfilesAfter[vkProfilesAfter.length - 1]; 
+        let vkProf = null;
+
+        // 2. Ищем профиль строго по ID, который мы только что подтвердили
+        if (confirmedKomodId) {
+          vkProf = vkProfilesAfter.find(p => String(p.providerAccountId) === String(confirmedKomodId));
         }
+
+        // 3. Резервный поиск: ищем новый профиль
+        if (!vkProf) {
+          vkProf = vkProfilesAfter.find(p => !beforeProfiles.includes(p.id));
+        }
+        
+        // 4. Если ничего не сработало, берем последний из списка
+        if (!vkProf) vkProf = vkProfilesAfter[vkProfilesAfter.length - 1];
         
         if (vkProf?.id) {
           const profile = updatedProfiles.find(p => p.id === vkProf.id);
@@ -424,8 +430,8 @@ export default function AccountsManager() {
             setKomodSelected([]); 
             setKomodModal({ isOpen: true, profileId: vkProf.id });
           } else {
-            // Выводим точную причину, если шлюз всё же откажет
-            alert('Не удалось загрузить список сообществ: ' + (data.error || 'Пустой ответ сервера'));
+            // Теперь вместо краша покажет аккуратное предупреждение
+            alert('Внимание: ' + (data.error || 'Пустой ответ сервера'));
           }
         } else {
           setIsSyncingVk(false);
