@@ -5,6 +5,39 @@ const prisma = new PrismaClient();
 const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6d359a019';
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 
+
+// --- ХЕЛПЕРЫ ДЛЯ ПАРСИНГА ОТВЕТОВ KOM-OD ---
+const extractKomodAvatar = (obj) => {
+  if (!obj || typeof obj !== 'object') return null;
+  
+  if (obj.info && obj.info.rawData) {
+    const raw = obj.info.rawData;
+    if (raw.photo_200) return raw.photo_200;
+    if (raw.photo_100) return raw.photo_100;
+    if (raw.photo_50) return raw.photo_50;
+  }
+  
+  if (obj.apiUserData) {
+    if (obj.apiUserData.photo_200) return obj.apiUserData.photo_200;
+    if (obj.apiUserData.photo_100) return obj.apiUserData.photo_100;
+    if (obj.apiUserData.photo_50) return obj.apiUserData.photo_50;
+  }
+  
+  return obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo || null;
+};
+
+const extractKomodName = (obj) => {
+  if (!obj || typeof obj !== 'object') return null;
+  
+  if (obj.info && obj.info.title) return obj.info.title;
+  if (obj.info && obj.info.rawData && obj.info.rawData.name) return obj.info.rawData.name;
+  
+  const target = obj.apiUserData || obj;
+  if (target.first_name) return `${target.first_name} ${target.last_name || ''}`.trim();
+  
+  return obj.name || obj.title || null;
+};
+
 // 2. Получение списка групп (С проверкой владельца)
 exports.getKomodGroupsForSelection = async (req, res) => {
   try {
@@ -93,13 +126,13 @@ exports.syncVkKomod = async (req, res) => {
         continue; // Защита от кражи чужого профиля
       }
 
-      const profileName = acc.title || acc.name || 'Профиль ВК';
-      const profileAvatar = acc.photo_100 || acc.photo_50 || acc.avatar || acc.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileName)}&background=0077FF&color=fff`;
+      const extractedName = extractKomodName(acc);
+      const profileName = extractedName || 'Профиль ВК';
+      
+      const extractedAvatar = extractKomodAvatar(acc);
+      const profileAvatar = extractedAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileName)}&background=0077FF&color=fff`;
 
       const vkProfile = await prisma.socialProfile.upsert({
-        where: { provider_providerAccountId: { provider: 'VK', providerAccountId } },
-        update: { name: profileName, avatarUrl: profileAvatar },
-        create: { userId, provider: 'VK', providerAccountId, name: profileName, accessToken: KOMOD_TOKEN, avatarUrl: profileAvatar }
       });
 
       currentUserProfileIds.push(vkProfile.id);
@@ -163,6 +196,7 @@ exports.syncVkKomod = async (req, res) => {
     }
 
     // --- 4. ИЗОЛИРОВАННОЕ СОХРАНЕНИЕ ГРУПП И СТЕН ---
+    // --- 4. ИЗОЛИРОВАННОЕ СОХРАНЕНИЕ ГРУПП И СТЕН ---
     for (const grp of rawGroups) {
       const komodAccountId = String(grp.account_id);
 
@@ -171,8 +205,12 @@ exports.syncVkKomod = async (req, res) => {
       const parentProfileId = userProfilesMap[komodAccountId];
       let isProfile = String(grp.is_profile) === '1' || grp.is_profile === true || grp.type === 'profile' || String(grp.url).includes('vk.com/id') || String(grp.uid) === String(grp.user_id);
       
-      let name = grp.title || grp.name || 'ВК';
-      let avatar = grp.photo_100 || grp.photo_50 || grp.avatar || grp.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
+      // Изменено: используем умный парсинг данных шлюза
+      const extractedName = extractKomodName(grp);
+      let name = extractedName || 'ВК';
+      
+      const extractedAvatar = extractKomodAvatar(grp);
+      let avatar = extractedAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
 
       if (isProfile && avatar && !avatar.includes('ui-avatars.com')) {
         await prisma.socialProfile.update({ where: { id: parentProfileId }, data: { avatarUrl: avatar } });
