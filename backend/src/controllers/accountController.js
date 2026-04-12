@@ -69,12 +69,11 @@ exports.getKomodGroupsForSelection = async (req, res) => {
     if (!profile) return res.status(403).json({ error: 'Профиль не найден' });
 
     try {
-      // Запрашиваем сообщества из шлюза
+      // 1. Запрашиваем доступные сообщества (шлюз возвращает их с VK ID)
       const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
         headers: { 'Access-Token': KOMOD_TOKEN }
       });
 
-      // Надежно распаковываем массив
       let items = [];
       const resData = response.data?.data;
       const resGroups = response.data?.groups;
@@ -90,37 +89,57 @@ exports.getKomodGroupsForSelection = async (req, res) => {
           items = resGroups;
       }
 
-      // Обогащаем список сообществ фотографиями для модального окна
-      const enrichedItems = await Promise.all(items.map(async (group) => {
-        // Сначала проверяем, вдруг фото уже есть на верхнем уровне
-        let photo = extractKomodAvatar(group);
+      // ✅ ИСПРАВЛЕНИЕ: Получаем словарь ВСЕХ добавленных групп, чтобы связать VK ID -> Kom-od ID
+      const komodMap = {};
+      try {
+        const allGroupsRes = await axios.get(`${KOMOD_BASE_URL}/group`, { 
+          headers: { 'Access-Token': KOMOD_TOKEN } 
+        });
+        const allGrps = allGroupsRes.data?.data?.items || [];
+        for (const g of allGrps) {
+          const vUid = String(g.uid || g.group_id);
+          if (vUid) komodMap[vUid] = String(g.id); // Запоминаем: VK ID = Kom-od ID
+        }
+      } catch (err) {
+        console.log('[KOM-OD] Не удалось загрузить список для маппинга ID');
+      }
 
-        // Если фото нет, делаем точечный запрос к детальной информации о группе
-        const groupId = group.id || group.group_id || group.uid;
-        if (!photo && groupId) {
+      // 3. Обогащаем список сообществ фотографиями
+      const enrichedItems = await Promise.all(items.map(async (group) => {
+        let photo = extractKomodAvatar(group);
+        
+        // Извлекаем VK ID из объекта списка
+        const vkId = String(group.id || group.group_id || group.uid);
+        
+        // Ищем правильный системный ID шлюза Kom-od
+        const komodId = komodMap[vkId];
+
+        if (!photo && komodId) {
           try {
-            const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${groupId}`, {
+            // Делаем точечный запрос ИМЕННО по KOM-OD ID (как работает фикс Алексея)
+            const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${komodId}`, {
               headers: { 'Access-Token': KOMOD_TOKEN }
             });
             if (detailRes.data?.success && detailRes.data?.data) {
               photo = extractKomodAvatar(detailRes.data.data);
-              
-              // Подшиваем найденное фото прямо в объект на верхний уровень,
-              // чтобы фронтенд (функция deepSearch) моментально его нашел
               if (photo) {
+                // Жестко привязываем фото на верхний уровень для фронтенда
                 group.photo_200 = photo;
+                group.photo_100 = photo;
+                group.photo_50 = photo;
               }
             }
           } catch (e) {
-            console.log(`[KOM-OD Modal] Ошибка получения деталей группы ${groupId}`);
+            console.log(`[KOM-OD Modal] Ошибка получения деталей группы ${komodId}`);
           }
         }
+        
         return group;
       }));
 
       const authData = response.data?.auth || null;
 
-      // Отдаем на фронтенд УЖЕ ОБОГАЩЕННЫЙ массив
+      // Отдаем на фронтенд финальный массив с фотографиями
       return res.json({ success: true, groups: enrichedItems, auth: authData });
       
     } catch (apiError) {
