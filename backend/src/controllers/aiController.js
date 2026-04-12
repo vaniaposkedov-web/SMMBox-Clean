@@ -6,15 +6,17 @@ exports.generateText = async (req, res) => {
     try {
         const { text, systemPrompt } = req.body;
         
-        // Оставляем хардкод ключа
+        // Временно хардкодим ключ, пока не разберемся с .env
         const apiKey = '7374972655d53927687b3f7d8418580c';
         
-        // Возвращаем классический универсальный URL
-        const apiUrl = 'https://api.kie.ai/v1/chat/completions'; 
+        // 1. Используем актуальную модель из документации Kie.ai
+        const modelName = 'gpt-5-2'; // Или 'gemini-3.1-pro'
+        
+        // 2. Модель указывается прямо в URL
+        const apiUrl = `https://api.kie.ai/${modelName}/v1/chat/completions`; 
 
         const response = await axios.post(apiUrl, {
-            // 🔄 МЕНЯЕМ МОДЕЛЬ на 100% рабочую:
-            model: "gpt-3.5-turbo", // Если захочешь мощнее, потом попробуй "gpt-4o"
+            // 3. Параметр model отсюда убран, так как он уже есть в URL
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: text }
@@ -33,15 +35,12 @@ exports.generateText = async (req, res) => {
         console.log(JSON.stringify(response.data, null, 2));
         console.log('========================\n');
 
-        // 1. Если всё прошло успешно:
+        // Успешный ответ
         if (response.data && response.data.choices && response.data.choices.length > 0) {
             return res.json({ success: true, text: response.data.choices[0].message.content });
         } 
         
-        // 2. Если Kie.ai прислал ошибку (как в прошлый раз):
-        if (response.data && response.data.msg) {
-            throw new Error(`Kie.ai: ${response.data.msg}`);
-        }
+        // Обработка ошибок по стандарту Kie
         if (response.data && response.data.error) {
             throw new Error(`Kie.ai: ${response.data.error.message || response.data.error}`);
         }
@@ -50,7 +49,6 @@ exports.generateText = async (req, res) => {
 
     } catch (error) {
         console.error('[KIE API ERROR]:', error.message);
-        // Теперь мы отдаем реальную ошибку на фронтенд, чтобы ты видел её в Alert!
         res.status(500).json({ success: false, error: error.message });
     }
 };
