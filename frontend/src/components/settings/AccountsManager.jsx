@@ -106,10 +106,22 @@ export default function AccountsManager() {
 
   const handleOpenGroupsSelector = async (profileId) => {
     setIsGroupsLoading(true);
+    // Получаем профиль из стора, чтобы взять его имя и аватарку
+    const profile = profiles.find(p => p.id === profileId);
     const data = await useStore.getState().fetchKomodGroups(profileId);
+    
     if (data.success) {
-      setSelectableGroups(data.groups || []);
-      setKomodSelected([]); // Сбрасываем старые галочки
+      // Создаем "фиктивный" объект для личной страницы
+      const personalWall = {
+        id: 'wall_profile', // уникальный префикс для фильтрации при сохранении
+        name: profile?.name || 'Моя страница (Стена)',
+        photo_50: profile?.avatarUrl || '', // используем аватар профиля
+        is_profile_dummy: true // флаг, чтобы отличить от группы
+      };
+
+      // Добавляем личную страницу в начало списка
+      setSelectableGroups([personalWall, ...(data.groups || [])]);
+      setKomodSelected([]); 
       setKomodModal({ isOpen: true, profileId });
     } else {
       alert(data.error);
@@ -147,7 +159,6 @@ export default function AccountsManager() {
     }
   };
 
-  // --- 1. ЛОГИКА СОХРАНЕНИЯ ВЫБРАННЫХ ПЛОЩАДОК (ГРУППЫ И СТЕНА) ---
   const handleSaveKomodGroups = async () => {
     if (komodSelected.length === 0) return;
     setIsSyncingVk(true);
@@ -155,43 +166,33 @@ export default function AccountsManager() {
     setKomodModal({ isOpen: false, profileId: null }); 
     
     let addedCount = 0;
-    let lastError = null;
     
     for (const uniqueId of komodSelected) {
-      const group = selectableGroups.find((g, i) => {
-        const gId = g.apiGroupData?.id || g.id || g.group_id || `idx-${i}`;
-        return String(gId) === String(uniqueId);
-      });
+      const group = selectableGroups.find(g => g.id === uniqueId);
+      if (!group) continue;
 
-      if (group) {
-        // Если это личная страница (dummy профиль)
-        if (group.is_profile_dummy) {
-          try {
-            const res = await fetch('/api/accounts/vk/komod-add-profile', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ profileId: komodModal.profileId })
-            });
-            const data = await res.json();
-            if (data.success) addedCount++;
-            else lastError = data.error;
-          } catch (err) { lastError = 'Ошибка сети при добавлении стены'; }
-        } 
-        // Если это обычное сообщество
-        else {
-          const groupId = group.apiGroupData?.id || group.id || group.group_id;
-          const screenName = group.apiGroupData?.name || group.screen_name || `club${groupId}`;
-          const groupUrl = `https://vk.com/${screenName}`;
-          const title = group.apiGroupData?.name || group.name || group.title;
-          
-          const res = await useStore.getState().addVkKomodGroup(groupUrl, title, komodModal.profileId);
-          if (res.success) addedCount++;
-          else lastError = res.error;
-        }
+      if (group.is_profile_dummy) {
+        // Логика добавления личной страницы
+        try {
+          const res = await fetch('/api/accounts/vk/komod-add-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ profileId: komodModal.profileId })
+          });
+          if (res.ok) addedCount++;
+        } catch (e) { console.error("Ошибка добавления стены"); }
+      } else {
+        // Логика добавления группы через API Kom-od
+        const groupId = group.id;
+        const screenName = group.screen_name || `club${groupId}`;
+        const groupUrl = `https://vk.com/${screenName}`;
+        const title = group.name;
+        
+        const res = await useStore.getState().addVkKomodGroup(groupUrl, title, komodModal.profileId);
+        if (res.success) addedCount++;
       }
     }
     
-    // Синхронизируем и обновляем интерфейс
     await useStore.getState().syncVkKomod();
     await handleRefreshProfiles();
     setIsSyncingVk(false);
@@ -199,14 +200,10 @@ export default function AccountsManager() {
     if (addedCount > 0) {
       setAddedGroupsCount(addedCount);
       setVkConnectStatus('groups_success'); 
-    } else if (lastError) {
-      alert(`Ошибка: ${lastError}`);
-      setVkConnectStatus('idle');
     } else {
       setVkConnectStatus('idle');
     }
   };
-
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -223,21 +220,25 @@ export default function AccountsManager() {
         setIsSyncingVk(true);
         setVkConnectStatus('syncing_profile'); 
         
+        // 1. Подтверждаем хэш в Kom-od
         const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
         if (!confirmResult.success) {
            alert('Ошибка шлюза: ' + (confirmResult.error || 'Аккаунт не найден.'));
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
 
+        // 2. Обновляем список профилей, чтобы наш новый аккаунт появился в системе
         await useStore.getState().syncVkKomod();
         await handleRefreshProfiles();
         setIsSyncingVk(false);
         
+        // 3. Находим ID только что привязанного профиля
         const updatedProfiles = useStore.getState().profiles;
         const vkProf = updatedProfiles.find(p => p.provider === 'VK');
         
         setVkConnectStatus('idle');
         
+        // 4. ВМЕСТО авто-добавления стены, сразу открываем окно выбора
         if (vkProf?.id) {
           handleOpenGroupsSelector(vkProf.id);
         }
@@ -1104,7 +1105,11 @@ export default function AccountsManager() {
                     className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF] shadow-inner' : 'bg-gray-900 border-gray-800 hover:bg-gray-800'}`}
                   >
                     <div className="relative shrink-0">
-                      <img src={avatar} className="w-12 h-12 rounded-full object-cover border border-gray-700" alt="avatar" />
+                      <img 
+                          src={group.photo_50 || group.apiGroupData?.photo_50 || 'https://via.placeholder.com/50'} 
+                          className="w-12 h-12 rounded-full object-cover border border-gray-700" 
+                          alt="avatar" 
+                        />
                       {isPersonal && (
                         <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#0077FF] border-2 border-[#111318] rounded-full flex items-center justify-center text-white" title="Личный профиль">
                           <UserCircle size={12} />
