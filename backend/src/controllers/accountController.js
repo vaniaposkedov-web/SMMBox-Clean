@@ -11,7 +11,6 @@ exports.getKomodGroupsForSelection = async (req, res) => {
     const { profileId } = req.query;
     const userId = String(req.user?.userId || req.user?.id);
 
-    // БЕЗОПАСНОСТЬ: Ищем профиль только среди профилей текущего пользователя
     const profile = await prisma.socialProfile.findFirst({ 
       where: { id: profileId, userId: userId } 
     });
@@ -22,10 +21,14 @@ exports.getKomodGroupsForSelection = async (req, res) => {
       headers: { 'Access-Token': KOMOD_TOKEN }
     });
 
+    // Берем не только группы, но и объект auth с данными профиля
     const groups = response.data?.data || [];
-    res.json({ success: true, groups });
+    const authData = response.data?.auth || null; 
+
+    // Отправляем на фронт всё вместе
+    res.json({ success: true, groups, auth: authData });
   } catch (error) {
-    console.error('Ошибка получения групп из Komod:', error.message);
+    console.error('Ошибка получения групп komod:', error);
     res.status(500).json({ error: 'Не удалось загрузить список групп из шлюза' });
   }
 };
