@@ -106,43 +106,22 @@ export default function AccountsManager() {
   };
 
 
- // --- ТОЧНЫЙ ПОИСК ПО ДОКУМЕНТАЦИИ KOM-OD ---
-  const extractAvatar = (obj) => {
+ const extractAvatar = (obj) => {
     if (!obj || typeof obj !== 'object') return null;
 
     try {
-      // 1. Ищем аватарку групп (в info.rawData)
-      let info = obj.info;
-      if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
-      
-      let raw = info?.rawData;
-      if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
-      
-      if (raw) {
-         if (raw.photo_200) return raw.photo_200;
-         if (raw.photo_100) return raw.photo_100;
-         if (raw.photo_50) return raw.photo_50;
-         if (raw.photo) return raw.photo;
-      }
+      // 1. Ищем через нашу функцию deepSearch (самый надежный способ, игнорирующий кривизну структуры API)
+      const deepAvatar = deepSearch(obj, ['photo_200', 'photo_100', 'photo_50', 'avatar', 'photo']);
+      if (deepAvatar) return deepAvatar;
 
-      // 2. Ищем аватарку личной страницы (в apiUserData)
-      let apiUser = obj.apiUserData || obj.auth;
-      if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e){} }
-      
-      if (apiUser) {
-         if (apiUser.photo_200) return apiUser.photo_200;
-         if (apiUser.photo_100) return apiUser.photo_100;
-         if (apiUser.photo_50) return apiUser.photo_50;
-      }
-
-      // 3. Резервный поиск по всему объекту
+      // 2. Резервный поиск по всему объекту (улучшенный regex для всех доменов ВК, включая заглушки vk.com/images/)
       const fullStr = JSON.stringify(obj, null, 2);
-      const vkUrlMatch = fullStr.match(/https?:\/\/[a-zA-Z0-9-]+\.userapi\.com[^\s"'\\]+/i);
+      const vkUrlMatch = fullStr.match(/https?:\/\/(?:[a-zA-Z0-9-]+\.)?(?:userapi\.com|vk\.com\/images)[^\s"'\\]+/i);
       if (vkUrlMatch) return vkUrlMatch[0].replace(/\\/g, '');
 
     } catch(e) {}
     
-    return obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || null;
+    return null;
   };
 
   const extractName = (obj) => {
@@ -192,7 +171,8 @@ export default function AccountsManager() {
     return null;
   };
 
-  // --- УЛЬТРА-РЕКУРСИВНЫЙ ПОИСК ДАННЫХ ---
+ // --- УЛЬТРА-РЕКУРСИВНЫЙ ПОИСК ДАННЫХ ---
+  // ✅ ИСПРАВЛЕНИЕ: Перенесли deepSearch ВЫШЕ, чтобы её можно было использовать в extractAvatar
   const deepSearch = (obj, targetKeys) => {
     if (!obj || typeof obj !== 'object') return null;
     
@@ -1134,8 +1114,8 @@ export default function AccountsManager() {
                         {accountName}
                       </span>
                       {isPersonal && (
-                        <span className="text-[8px] text-gray-500 uppercase font-black mt-0.5">
-                          Профиль
+                        <span className="text-[8px] text-gray-500 uppercase font-black mt-0.5 tracking-wider">
+                          Личная страница
                         </span>
                       )}
                     </div>

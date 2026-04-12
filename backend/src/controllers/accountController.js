@@ -57,7 +57,6 @@ const extractKomodName = (obj) => {
   return obj.name || obj.title || null;
 };
 
-// --- БЕЗОПАСНАЯ ЗАГРУЗКА СООБЩЕСТВ ИЗ ШЛЮЗА ---
 exports.getKomodGroupsForSelection = async (req, res) => {
   try {
     const profileId = req.query.profileId || req.query.id || req.body?.profileId || req.params?.id;
@@ -75,19 +74,33 @@ exports.getKomodGroupsForSelection = async (req, res) => {
         headers: { 'Access-Token': KOMOD_TOKEN }
       });
 
-      const groups = response.data?.data || [];
+      // ✅ ИСПРАВЛЕНИЕ: Надежно распаковываем массив (как мы это делали в syncVkKomod)
+      let items = [];
+      const resData = response.data?.data;
+      const resGroups = response.data?.groups;
+
+      if (Array.isArray(resData)) {
+          if (resData[0]?.items && Array.isArray(resData[0].items)) items = resData[0].items;
+          else items = resData;
+      } else if (resData?.items) {
+          items = resData.items;
+      } else if (resGroups?.items) {
+          items = resGroups.items;
+      } else if (Array.isArray(resGroups)) {
+          items = resGroups;
+      }
+
       const authData = response.data?.auth || null;
 
-      return res.json({ success: true, groups, auth: authData });
+      return res.json({ success: true, groups: items, auth: authData });
     } catch (apiError) {
-      // Если шлюз отдал 404, значит аккаунт удален или устарел. Перехватываем это мягко!
       if (apiError.response && apiError.response.status === 404) {
         return res.json({ 
           success: false, 
           error: 'Этот профиль устарел или удален в шлюзе. Удалите его из списка (крестиком) и авторизуйте заново.' 
         });
       }
-      throw apiError; // Остальные ошибки пробрасываем дальше
+      throw apiError; 
     }
 
   } catch (error) {
