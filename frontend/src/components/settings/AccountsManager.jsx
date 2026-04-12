@@ -138,6 +138,7 @@ export default function AccountsManager() {
     }
   };
 
+  // --- 1. ЛОГИКА СОХРАНЕНИЯ ВЫБРАННЫХ ПЛОЩАДОК (ГРУППЫ И СТЕНА) ---
   const handleSaveKomodGroups = async () => {
     if (komodSelected.length === 0) return;
     setIsSyncingVk(true);
@@ -148,28 +149,41 @@ export default function AccountsManager() {
     let lastError = null;
     
     for (const uniqueId of komodSelected) {
-      // Ищем группу, учитывая новый объект apiGroupData
       const group = selectableGroups.find((g, i) => {
         const gId = g.apiGroupData?.id || g.id || g.group_id || `idx-${i}`;
         return String(gId) === String(uniqueId);
       });
 
       if (group) {
-        const groupId = group.apiGroupData?.id || group.id || group.group_id;
-        const screenName = group.apiGroupData?.screen_name || group.screen_name || `club${groupId}`;
-        const groupUrl = group.url || `https://vk.com/${screenName}`;
-        const title = group.apiGroupData?.name || group.name || group.title;
-        
-        const res = await useStore.getState().addVkKomodGroup(groupUrl, title, komodModal.profileId);
-        if (res.success) addedCount++;
-        else lastError = res.error;
+        // Если это личная страница (dummy профиль)
+        if (group.is_profile_dummy) {
+          try {
+            const res = await fetch('/api/accounts/vk/komod-add-profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ profileId: komodModal.profileId })
+            });
+            const data = await res.json();
+            if (data.success) addedCount++;
+            else lastError = data.error;
+          } catch (err) { lastError = 'Ошибка сети при добавлении стены'; }
+        } 
+        // Если это обычное сообщество
+        else {
+          const groupId = group.apiGroupData?.id || group.id || group.group_id;
+          const screenName = group.apiGroupData?.name || group.screen_name || `club${groupId}`;
+          const groupUrl = `https://vk.com/${screenName}`;
+          const title = group.apiGroupData?.name || group.name || group.title;
+          
+          const res = await useStore.getState().addVkKomodGroup(groupUrl, title, komodModal.profileId);
+          if (res.success) addedCount++;
+          else lastError = res.error;
+        }
       }
     }
     
-    if (addedCount > 0 || !lastError) {
-      await useStore.getState().syncVkKomod();
-    }
-    
+    // Синхронизируем и обновляем интерфейс
+    await useStore.getState().syncVkKomod();
     await handleRefreshProfiles();
     setIsSyncingVk(false);
     
@@ -177,12 +191,55 @@ export default function AccountsManager() {
       setAddedGroupsCount(addedCount);
       setVkConnectStatus('groups_success'); 
     } else if (lastError) {
-      alert(`Ошибка: ${JSON.stringify(lastError)}`);
+      alert(`Ошибка: ${lastError}`);
       setVkConnectStatus('idle');
     } else {
       setVkConnectStatus('idle');
     }
   };
+
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlHash = params.get('vk_komod_hash');
+    const pendingHash = localStorage.getItem('vk_pending_hash');
+    const hashToProcess = urlHash || pendingHash;
+
+    if (hashToProcess && processingHash.current !== hashToProcess) {
+      processingHash.current = hashToProcess; 
+      if (urlHash) navigate(window.location.pathname, { replace: true });
+      if (pendingHash) localStorage.removeItem('vk_pending_hash');
+
+      const finalizeAuth = async () => {
+        setIsSyncingVk(true);
+        setVkConnectStatus('syncing_profile'); 
+        
+        const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
+        if (!confirmResult.success) {
+           alert('Ошибка шлюза: ' + (confirmResult.error || 'Аккаунт не найден.'));
+           setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
+        }
+
+        // Синхронизируем профили без авто-создания аккаунтов
+        await useStore.getState().syncVkKomod();
+        await handleRefreshProfiles();
+        setIsSyncingVk(false);
+        
+        const updatedProfiles = useStore.getState().profiles;
+        const vkProf = updatedProfiles.find(p => p.provider === 'VK');
+        
+        setVkConnectStatus('idle');
+        
+        // СРАЗУ открываем окно выбора, где будет и стена, и группы
+        if (vkProf?.id) {
+          handleOpenGroupsSelector(vkProf.id);
+        }
+      };
+      
+      finalizeAuth();
+    }
+  }, [handleRefreshProfiles, navigate]);
+
 
   const handleRefreshProfiles = async () => {
     setIsRefreshingProfiles(true);
@@ -223,61 +280,7 @@ export default function AccountsManager() {
 
   const processingHash = useRef(null);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlHash = params.get('vk_komod_hash');
-    const pendingHash = localStorage.getItem('vk_pending_hash');
-    
-    const hashToProcess = urlHash || pendingHash;
-
-    if (hashToProcess && processingHash.current !== hashToProcess) {
-      processingHash.current = hashToProcess; 
-
-      if (urlHash) navigate(window.location.pathname, { replace: true });
-      if (pendingHash) localStorage.removeItem('vk_pending_hash');
-
-      setTimeout(() => {
-        document.getElementById('vk-management-block')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-
-      const finalizeAuth = async () => {
-        setIsSyncingVk(true);
-        setVkConnectStatus('syncing_profile'); // ВКЛЮЧАЕМ ПРОГРЕСС-БАР ПРОФИЛЯ
-        
-        const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
-        
-        if (!confirmResult.success) {
-           alert('Ошибка шлюза: ' + (confirmResult.error || 'Аккаунт не найден.'));
-           setIsSyncingVk(false);
-           setVkConnectStatus('idle');
-           return; 
-        }
-
-        const syncResult = await useStore.getState().syncVkKomod();
-        await handleRefreshProfiles(); // Ждем обновления профилей
-        setIsSyncingVk(false);
-        
-        if (syncResult.success) {
-          const updatedProfiles = useStore.getState().profiles;
-          const vkProf = updatedProfiles.find(p => p.provider === 'VK');
-          
-          // Убираем статус загрузки
-          setVkConnectStatus('idle'); 
-          
-          // Сразу автоматически открываем окно выбора групп и стены!
-          if (vkProf?.id) {
-            handleOpenGroupsSelector(vkProf.id);
-          }
-        }
-         else {
-          alert('Шлюз подтвердил хэш, но список аккаунтов пуст.');
-          setVkConnectStatus('idle');
-        }
-      };
-      
-      finalizeAuth();
-    }
-  }, [handleRefreshProfiles, navigate]);
+  
  
   const handleConnectVkOAuth = () => {
     const hash = 'vk_' + user.id + '_' + Date.now();
@@ -825,169 +828,69 @@ export default function AccountsManager() {
      {/* === БЛОК ВЫБОРА СОЦСЕТИ === */}
       <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-5 sm:p-6 flex flex-col gap-5 mt-6 shadow-xl max-w-md mx-auto w-full relative overflow-hidden">
         
-        {/* Динамическое свечение */}
         <div className={`absolute top-0 left-0 w-full h-full opacity-10 transition-colors duration-700 pointer-events-none ${
           selectedNetwork === 'VK' 
             ? 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#0077FF] via-transparent to-transparent' 
             : 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#2AABEE] via-transparent to-transparent'
         }`} />
 
-        <h2 className="text-base sm:text-lg font-bold text-white text-center relative z-10">
-          Выберите платформу
-        </h2>
+        <h2 className="text-base font-bold text-white text-center relative z-10">Выберите платформу</h2>
 
-        {/* Компактные горизонтальные плашки */}
         <div className="grid grid-cols-2 gap-3 relative z-10">
-          
           {/* Плашка ВК */}
           <div
             onClick={() => setSelectedNetwork('VK')}
-            className={`relative border rounded-2xl py-3 px-3 flex flex-row items-center justify-center gap-3 transition-all duration-300 cursor-pointer overflow-hidden group ${
-              selectedNetwork === 'VK' 
-                ? 'border-[#0077FF] bg-[#0077FF]/10 shadow-[0_0_15px_rgba(0,119,255,0.15)] scale-[1.02]' 
-                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800 opacity-60 hover:opacity-100 scale-100'
+            className={`relative border rounded-2xl py-3 flex flex-row items-center justify-center gap-3 transition-all cursor-pointer ${
+              selectedNetwork === 'VK' ? 'border-[#0077FF] bg-[#0077FF]/10 scale-[1.02]' : 'border-gray-800 bg-gray-900/50 opacity-60'
             }`}
           >
-            {selectedNetwork === 'VK' && (
-              <div className="absolute top-1.5 right-1.5 text-[#0077FF] animate-in zoom-in duration-200">
-                <Check size={14} strokeWidth={4} />
-              </div>
-            )}
-            
-            {/* Оригинальная иконка ВКонтакте */}
-            <div className="w-8 h-8 shrink-0 flex items-center justify-center bg-[#0077FF] text-white rounded-[9px]">
-               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                 <path d="M15.076 2.404c2.203 0 3.305 0 3.99.685.684.685.684 1.787.684 3.99v9.842c0 2.203 0 3.305-.685 3.99-.684.684-1.786.684-3.989.684H8.924c-2.203 0-3.305 0-3.99-.684-.684-.685-.684-1.787-.684-3.99V7.08c0-2.203 0-3.305.685-3.99.684-.684 1.786-.684 3.989-.684h6.152zm-3.69 11.23c2.28 0 2.652-1.528 2.652-1.528.272-1.543-1.077-2.316-1.077-2.316.48-.485 1.054-1.396.962-2.355-.13-1.353-1.127-1.455-1.127-1.455H11.2c-.397 0-.54.266-.54.266-.098.27-.087 1.48.513 1.93.305.23.167.927.167.927-.06 1.134-.783 1.258-.783 1.258-1.543 0-2.43-1.638-2.585-2.617-.066-.425-.33-.8-.71-.838l-1.334-.025s-.356.027-.478.163c-.106.118-.08.358-.08.358s.664 1.558 1.417 2.836c.925 1.573 2.067 2.76 3.655 2.76h.945s.31-.035.438-.163c.12-.12.115-.36.115-.36v-.845zM15.42 13.634s.885.86 1.265 1.196c.294.26.544.33.544.33h1.364s.715-.045.378-.607c-.027-.045-.19-.4-.897-1.073-1.156-1.1-1.01-1.35 0 0 0 0 1.62 2.25 1.77 2.615.115.28-.27.275-.27.275l-1.688.02s-.25-.015-.434-.136c-.23-.153-.49-.558-.49-.558-.335-.453-.695-.694-.96-.73-.424-.055-.654.43-.654.43v.68s-.02.21-.136.3c-.108.083-.263.085-.263.085-1.22 0-2.548-.56-3.64-1.748-1.5-1.627-2.64-4.52-2.64-4.52s-.066-.164-.004-.253c.058-.083.21-.107.21-.107l1.78-.02s.16 0 .235.07c.068.066.11.205.11.205s.28 1.056.884 1.89c1.07 1.48 1.543 1.69 1.744 1.58.267-.145.215-1.695.215-1.69500-.31-.1-.484-.28-.59-.136-.082-.35-.11-.27-.156.126-.07.395-.1.85-.1.554 0 .99.043 1.265.176.24.116.14.39.14 1.135 0 .61-.1 1.28.274 1.45.182.083.61-.065 1.5-1.573.43-.728.775-1.92.775-1.92s.04-.134.14-.195c.09-.056.223-.04.223-.04l1.79-.02s.54-.066.626.23c.095.33-.51 1.28-1.15 2.15-1.42 1.94-1.53 1.785 0 0 0 0z" />
-               </svg>
-            </div>
-            <h3 className={`font-bold text-base sm:text-lg transition-colors ${selectedNetwork === 'VK' ? 'text-white' : 'text-gray-300'}`}>
-              ВК
-            </h3>
+            <img src="/icons8-vk.svg" alt="VK" className="w-8 h-8 object-contain" />
+            <h3 className="font-bold text-white text-lg">ВК</h3>
+            {selectedNetwork === 'VK' && <div className="absolute top-1.5 right-2 text-[#0077FF]"><Check size={14} strokeWidth={4} /></div>}
           </div>
 
-          {/* Плашка Telegram */}
+          {/* Плашка ТГ */}
           <div
             onClick={() => setSelectedNetwork('TG')}
-            className={`relative border rounded-2xl py-3 px-3 flex flex-row items-center justify-center gap-3 transition-all duration-300 cursor-pointer overflow-hidden group ${
-              selectedNetwork === 'TG' 
-                ? 'border-[#2AABEE] bg-[#2AABEE]/10 shadow-[0_0_15px_rgba(42,171,238,0.15)] scale-[1.02]' 
-                : 'border-gray-800 bg-gray-900/50 hover:bg-gray-800 opacity-60 hover:opacity-100 scale-100'
+            className={`relative border rounded-2xl py-3 flex flex-row items-center justify-center gap-3 transition-all cursor-pointer ${
+              selectedNetwork === 'TG' ? 'border-[#2AABEE] bg-[#2AABEE]/10 scale-[1.02]' : 'border-gray-800 bg-gray-900/50 opacity-60'
             }`}
           >
-            {selectedNetwork === 'TG' && (
-              <div className="absolute top-1.5 right-1.5 text-[#2AABEE] animate-in zoom-in duration-200">
-                <Check size={14} strokeWidth={4} />
-              </div>
-            )}
-
-            {/* Оригинальная иконка Telegram */}
-            <div className="w-8 h-8 shrink-0 flex items-center justify-center bg-[#2AABEE] text-white rounded-full">
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 ml-[-2px] mt-[1px]">
-                <path d="M21.016 3.69c-1.3-.8-2.8-.2-4.1.3L4.716 9.69c-1.8.8-2.1 2.2-.4 3.1l4.4 1.5 1.5 5.5c.3 1.1 1.3 1.3 2 1l2-1.9 4.3 3.3c1.3 1 2.5.5 3-1.2L24.216 4.79c.4-1.7-.5-2.7-2.1-1.1h-.1c-.4 0-.8.1-1 .1v-.1zm-10.4 8.7l5.4-4.8c.3-.3.6-.4.9-.1.3.2.1.6-.2.8l-6.2 5.5-.6 3.5-1.5-4.4 2.2-.5z"/>
-              </svg>
-            </div>
-            <h3 className={`font-bold text-base sm:text-lg transition-colors ${selectedNetwork === 'TG' ? 'text-white' : 'text-gray-300'}`}>
-              ТГ
-            </h3>
+            <img src="/icons8-телеграм.svg" alt="TG" className="w-8 h-8 object-contain" />
+            <h3 className="font-bold text-white text-lg">ТГ</h3>
+            {selectedNetwork === 'TG' && <div className="absolute top-1.5 right-2 text-[#2AABEE]"><Check size={14} strokeWidth={4} /></div>}
           </div>
         </div>
 
-        {/* Динамическая кнопка действия */}
         <button
-          onClick={() => {
-            if (selectedNetwork === 'VK') {
-              handleConnectVkOAuth();
-            } else {
-              setShowTgHelperModal(true);
-            }
-          }}
-          className={`relative z-10 w-full py-3.5 rounded-xl font-bold text-white transition-all duration-300 text-sm sm:text-base active:scale-95 flex justify-center items-center gap-2 ${
-            selectedNetwork === 'VK' 
-              ? 'bg-[#0077FF] hover:bg-[#0066CC] shadow-lg shadow-[#0077FF]/30' 
-              : 'bg-[#2AABEE] hover:bg-[#229EDF] shadow-lg shadow-[#2AABEE]/30'
+          onClick={() => selectedNetwork === 'VK' ? handleConnectVkOAuth() : setShowTgHelperModal(true)}
+          className={`relative z-10 w-full py-3.5 rounded-xl font-bold text-white transition-all text-sm active:scale-95 ${
+            selectedNetwork === 'VK' ? 'bg-[#0077FF] shadow-lg shadow-[#0077FF]/20' : 'bg-[#2AABEE] shadow-lg shadow-[#2AABEE]/20'
           }`}
         >
           Авторизовать {selectedNetwork === 'VK' ? 'ВК' : 'ТГ'}
         </button>
       </div>
-      {/* ========================================= */}
-
      
-
-      {/* === РАЗДЕЛЕННЫЙ И КОМПАКТНЫЙ СПИСОК АККАУНТОВ === */}
+{/* === КОМПАКТНЫЙ СПИСОК ПОДКЛЮЧЕННЫХ СЕТЕЙ === */}
       {(connectedVk.length > 0 || connectedTg.length > 0) && (
-        <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-5 sm:p-8 flex flex-col mt-6 mb-8 shadow-xl max-w-2xl mx-auto w-full">
-          <h2 className="text-xl font-bold text-white mb-6 text-center">Подключенные соцсети</h2>
-          
-          <div className="flex flex-col gap-6">
-            
-            {/* --- СЕКЦИЯ ВКОНТАКТЕ --- */}
-            {connectedVk.length > 0 && (
-              <div>
-                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#0077FF]"></div> ВКонтакте
-                </h3>
-                {/* Сетка в 2 колонки (grid-cols-2) для ПК и мобилок */}
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  {connectedVk.map(acc => (
-                    <div key={acc.id} className="flex items-center p-2 bg-gray-900/50 hover:bg-gray-800/80 border border-gray-800 rounded-xl transition-colors group">
-                      <img 
-                        src={acc.avatarUrl || 'https://via.placeholder.com/40'} 
-                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-700 shrink-0" 
-                        alt="avatar" 
-                      />
-                      <div className="ml-2 sm:ml-3 min-w-0 flex-1">
-                        <h4 className="text-white font-semibold text-xs sm:text-sm truncate">{acc.name}</h4>
-                      </div>
-                      <button 
-                        onClick={() => removeAccount(acc.id)} 
-                        className="text-gray-500 hover:text-rose-500 p-1.5 sm:p-2 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all shrink-0 ml-1"
-                        title="Отключить"
-                      >
-                        <X size={14} className="sm:w-[16px] sm:h-[16px]" />
-                      </button>
-                    </div>
-                  ))}
+        <div className="max-w-md mx-auto w-full mt-8 mb-4 px-1">
+          <h2 className="text-[10px] font-bold text-gray-500 mb-3 uppercase tracking-[0.2em] text-center">Подключено</h2>
+          <div className="grid grid-cols-2 gap-2">
+            {[...connectedVk, ...connectedTg].map(acc => (
+              <div key={acc.id} className="flex items-center justify-between p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <img src={acc.avatarUrl || 'https://via.placeholder.com/40'} className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0" alt="" />
+                  <span className="text-white font-bold text-xs">{acc.provider === 'VK' ? 'ВК' : 'ТГ'}</span>
                 </div>
+                <button onClick={() => removeAccount(acc.id)} className="text-gray-500 hover:text-rose-500 p-1.5 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all">
+                  <X size={14} />
+                </button>
               </div>
-            )}
-
-            {/* --- СЕКЦИЯ TELEGRAM --- */}
-            {connectedTg.length > 0 && (
-              <div>
-                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#0088CC]"></div> Telegram
-                </h3>
-                {/* Сетка в 2 колонки (grid-cols-2) для ПК и мобилок */}
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  {connectedTg.map(acc => (
-                    <div key={acc.id} className="flex items-center p-2 bg-gray-900/50 hover:bg-gray-800/80 border border-gray-800 rounded-xl transition-colors group">
-                      <img 
-                        src={acc.avatarUrl || 'https://via.placeholder.com/40'} 
-                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-700 shrink-0" 
-                        alt="avatar" 
-                      />
-                      <div className="ml-2 sm:ml-3 min-w-0 flex-1">
-                        <h4 className="text-white font-semibold text-xs sm:text-sm truncate">{acc.name}</h4>
-                      </div>
-                      <button 
-                        onClick={() => removeAccount(acc.id)} 
-                        className="text-gray-500 hover:text-rose-500 p-1.5 sm:p-2 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all shrink-0 ml-1"
-                        title="Отключить"
-                      >
-                        <X size={14} className="sm:w-[16px] sm:h-[16px]" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
+            ))}
           </div>
         </div>
       )}
-      {/* ============================================== */}
-      
       
     
 
