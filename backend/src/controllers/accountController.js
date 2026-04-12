@@ -126,13 +126,31 @@ exports.syncVkKomod = async (req, res) => {
         continue; // Защита от кражи чужого профиля
       }
 
+      // Извлекаем правильное имя и аватарку из шлюза
       const extractedName = extractKomodName(acc);
       const profileName = extractedName || 'Профиль ВК';
       
       const extractedAvatar = extractKomodAvatar(acc);
       const profileAvatar = extractedAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(profileName)}&background=0077FF&color=fff`;
 
+      // ВОТ ЗДЕСЬ БЫЛА ОШИБКА: upsert был пустым. Теперь он заполнен:
       const vkProfile = await prisma.socialProfile.upsert({
+        where: { 
+          provider_providerAccountId: { provider: 'VK', providerAccountId: providerAccountId } 
+        },
+        update: { 
+          name: profileName, 
+          avatarUrl: profileAvatar, 
+          accessToken: KOMOD_TOKEN 
+        },
+        create: { 
+          userId: userId, 
+          provider: 'VK', 
+          providerAccountId: providerAccountId, 
+          name: profileName, 
+          avatarUrl: profileAvatar, 
+          accessToken: KOMOD_TOKEN 
+        }
       });
 
       currentUserProfileIds.push(vkProfile.id);
