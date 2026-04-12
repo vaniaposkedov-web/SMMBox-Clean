@@ -494,23 +494,21 @@ export const useStore = create(
         } catch (error) {}
       },
 
-      addVkKomodGroup: async (url, title, profileId, avatarUrl) => { // 1. ДОБАВИЛИ СЮДА
-  try {
-    const res = await fetch('/api/accounts/vk/komod-add', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${get().token}`
+      addVkKomodGroup: async (url, title, profileId, avatarUrl) => { // <-- Добавили 4-й аргумент
+        try {
+          const res = await fetch('/api/accounts/vk/komod-add', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${get().token}`
+            },
+            body: JSON.stringify({ url, title, profileId, avatarUrl }) // <-- Передаем на бэкенд!
+          });
+          return await res.json();
+        } catch (error) {
+          return { success: false, error: 'Network error' };
+        }
       },
-      // 2. И ОБЯЗАТЕЛЬНО ДОБАВИЛИ В ТЕЛО ЗАПРОСА
-      body: JSON.stringify({ url, title, profileId, avatarUrl }) 
-    });
-    return await res.json();
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-},
-
       // Добавь это рядом с функцией syncVkKomod:
       confirmVkKomod: async (hash) => {
         try {

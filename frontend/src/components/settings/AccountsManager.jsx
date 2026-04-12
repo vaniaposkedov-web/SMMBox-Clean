@@ -107,16 +107,18 @@ export default function AccountsManager() {
 
 
  // --- АГРЕССИВНЫЙ ПОИСК С УЧЕТОМ ФОРМАТА KOM-OD (info.rawData) ---
+  // --- АГРЕССИВНЫЙ ПОИСК С УЧЕТОМ ФОРМАТА KOM-OD (С РЕНТГЕНОМ) ---
   const extractAvatar = (obj) => {
     if (!obj || typeof obj !== 'object') return null;
     
-    // Распаковываем info из строки, если нужно
     let info = obj.info;
     if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
     
-    // Распаковываем rawData из строки, если нужно
     let raw = info?.rawData;
     if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
+    
+    // 🔥 РЕНТГЕН: ВЫВОДИМ ДАННЫЕ В КОНСОЛЬ БРАУЗЕРА
+    console.log(`[ФРОНТЕНД] Данные для "${obj.name || obj.title || 'Без названия'}":`, { info, raw, original: obj });
     
     if (raw) {
        if (raw.photo_200) return raw.photo_200;
@@ -124,7 +126,6 @@ export default function AccountsManager() {
        if (raw.photo_50) return raw.photo_50;
     }
     
-    // Распаковываем apiUserData из строки
     let apiUser = obj.apiUserData;
     if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e){} }
     
