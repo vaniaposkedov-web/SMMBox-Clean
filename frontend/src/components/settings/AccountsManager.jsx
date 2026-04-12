@@ -352,6 +352,9 @@ export default function AccountsManager() {
 }, [user?.id, fetchAccounts, fetchProfiles]);
 
   useEffect(() => {
+    // Обязательно ждем загрузки данных пользователя, иначе запросы упадут
+    if (!user?.id) return;
+
     const params = new URLSearchParams(window.location.search);
     const urlHash = params.get('vk_komod_hash');
     const pendingHash = localStorage.getItem('vk_pending_hash');
@@ -366,7 +369,14 @@ export default function AccountsManager() {
         setIsSyncingVk(true);
         setVkConnectStatus('syncing_profile'); 
         
-        const beforeProfiles = useStore.getState().profiles.filter(p => p.provider === 'VK').map(p => p.id);
+        // 1. ПРИНУДИТЕЛЬНО ЗАГРУЖАЕМ ПРОФИЛИ ДО СИНХРОНИЗАЦИИ
+        // После редиректа состояние (state) пустое. Если не загрузить сейчас, 
+        // скрипт выберет первый попавшийся аккаунт.
+        await fetchProfiles(user.id);
+        
+        const profilesBefore = useStore.getState().profiles.filter(p => p.provider === 'VK');
+        // Используем точный ID шлюза (providerAccountId) вместо локального ID
+        const beforeAccountIds = profilesBefore.map(p => String(p.providerAccountId));
 
         const confirmResult = await useStore.getState().confirmVkKomod(hashToProcess);
         if (!confirmResult.success) {
@@ -374,7 +384,6 @@ export default function AccountsManager() {
            setIsSyncingVk(false); setVkConnectStatus('idle'); return; 
         }
 
-        // 1. Улучшенное извлечение ID аккаунта из ответа Kom-od (Исправление)
         let confirmedKomodId = null;
         if (confirmResult.data?.data) {
            confirmedKomodId = confirmResult.data.data.id || confirmResult.data.data.account_id;
@@ -383,36 +392,38 @@ export default function AccountsManager() {
            confirmedKomodId = confirmResult.data.id || confirmResult.data.account_id;
         }
 
+        // 2. Синхронизируем базу со шлюзом
         await useStore.getState().syncVkKomod();
         await handleRefreshProfiles();
         
-        const currentAccounts = useStore.getState().accounts;
-        const autoAddedWall = currentAccounts.find(a => a.provider === 'VK' && a.providerId.startsWith('wall_'));
-        if (autoAddedWall) {
-          await useStore.getState().removeAccount(autoAddedWall.id);
-          await handleRefreshProfiles();
-        }
-
         const updatedProfiles = useStore.getState().profiles;
         const vkProfilesAfter = updatedProfiles.filter(p => p.provider === 'VK');
         
         let vkProf = null;
 
-        // 2. Ищем профиль строго по ID, который мы только что подтвердили
+        // 3. Ищем строго по ID шлюза
         if (confirmedKomodId) {
           vkProf = vkProfilesAfter.find(p => String(p.providerAccountId) === String(confirmedKomodId));
         }
 
-        // 3. Резервный поиск: ищем новый профиль
+        // 4. Резервный поиск: ищем профиль, которого ТОЧНО не было до синхронизации
         if (!vkProf) {
-          vkProf = vkProfilesAfter.find(p => !beforeProfiles.includes(p.id));
+          vkProf = vkProfilesAfter.find(p => !beforeAccountIds.includes(String(p.providerAccountId)));
         }
         
-        // 4. Если ничего не сработало, берем последний из списка
         if (!vkProf) vkProf = vkProfilesAfter[vkProfilesAfter.length - 1];
         
         if (vkProf?.id) {
-          const profile = updatedProfiles.find(p => p.id === vkProf.id);
+          // 5. ИСПРАВЛЕНИЕ ОПАСНОГО БАГА: Удаляем авто-стену ТОЛЬКО для нового аккаунта!
+          const currentAccounts = useStore.getState().accounts;
+          const autoAddedWall = currentAccounts.find(a => a.provider === 'VK' && a.providerId === `wall_${vkProf.providerAccountId}`);
+          
+          if (autoAddedWall) {
+            await useStore.getState().removeAccount(autoAddedWall.id);
+            await handleRefreshProfiles();
+          }
+
+          const profile = useStore.getState().profiles.find(p => p.id === vkProf.id);
           const data = await useStore.getState().fetchKomodGroups(vkProf.id);
           
           setIsSyncingVk(false);
@@ -446,8 +457,7 @@ export default function AccountsManager() {
       
       finalizeAuth();
     }
-  }, [handleRefreshProfiles, navigate]);
-
+  }, [handleRefreshProfiles, navigate, user?.id]);
   
 
   // Слушаем ответ от официального окна ВКонтакте
