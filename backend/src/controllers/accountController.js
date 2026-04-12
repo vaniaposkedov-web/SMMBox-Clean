@@ -81,30 +81,38 @@ const extractKomodName = (obj) => {
   return obj.name || obj.title || null;
 };
 
-// --- ВОЗВРАЩАЕМ ПРАВИЛЬНУЮ ЗАГРУЗКУ СООБЩЕСТВ ИЗ ШЛЮЗА ---
+// --- БЕЗОПАСНАЯ ЗАГРУЗКА СООБЩЕСТВ ИЗ ШЛЮЗА ---
 exports.getKomodGroupsForSelection = async (req, res) => {
   try {
     const profileId = req.query.profileId || req.query.id || req.body?.profileId || req.params?.id;
     const userId = String(req.user?.userId || req.user?.id);
 
-    // Строго проверяем, что профиль принадлежит текущему юзеру
     const profile = await prisma.socialProfile.findFirst({
       where: { id: profileId, userId: userId }
     });
 
-    if (!profile) {
-      return res.status(403).json({ error: 'Профиль не найден' });
+    if (!profile) return res.status(403).json({ error: 'Профиль не найден' });
+
+    try {
+      // Запрашиваем сообщества
+      const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
+        headers: { 'Access-Token': KOMOD_TOKEN }
+      });
+
+      const groups = response.data?.data || [];
+      const authData = response.data?.auth || null;
+
+      return res.json({ success: true, groups, auth: authData });
+    } catch (apiError) {
+      // Если шлюз отдал 404, значит аккаунт удален или устарел. Перехватываем это мягко!
+      if (apiError.response && apiError.response.status === 404) {
+        return res.json({ 
+          success: false, 
+          error: 'Этот профиль устарел или удален в шлюзе. Удалите его из списка (крестиком) и авторизуйте заново.' 
+        });
+      }
+      throw apiError; // Остальные ошибки пробрасываем дальше
     }
-
-    // Делаем запрос к правильному эндпоинту шлюза, который отдает ВСЕ сообщества страницы
-    const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
-      headers: { 'Access-Token': KOMOD_TOKEN }
-    });
-
-    const groups = response.data?.data || [];
-    const authData = response.data?.auth || null;
-
-    res.json({ success: true, groups, auth: authData });
 
   } catch (error) {
     console.error('Ошибка загрузки сообществ:', error.message);
