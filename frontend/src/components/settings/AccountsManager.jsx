@@ -335,6 +335,22 @@ export default function AccountsManager() {
     setVkConnectStatus(addedCount > 0 ? 'groups_success' : 'idle');
   };
 
+
+  // --- АВТО-ЧЕКЕР (POLLING) ---
+  // Каждые 5 секунд запрашиваем список аккаунтов, чтобы новые каналы ТГ 
+  // появлялись автоматически сразу после добавления бота пользователем.
+  useEffect(() => {
+    let interval;
+    if (user?.id) {
+      interval = setInterval(() => {
+        fetchAccounts(user.id);
+        // Если открыто модальное окно ТГ или ВК, можно также обновлять профили
+        fetchProfiles(user.id);
+      }, 5000); // 5 секунд — оптимально, чтобы не грузить сервер и быть "в теме"
+    }
+    return () => clearInterval(interval);
+  }, [user?.id, fetchAccounts, fetchProfiles]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlHash = params.get('vk_komod_hash');
@@ -1041,57 +1057,58 @@ export default function AccountsManager() {
       <div className="max-w-md mx-auto w-full mt-8 mb-4 px-1">
         <h2 className="text-[10px] font-bold text-gray-500 mb-3 uppercase tracking-[0.2em] text-center">Подключено</h2>
         
-        {/* Если пусто — показываем заглушку, иначе — выводим сетку */}
-        {/* Если пусто — показываем заглушку, иначе — выводим сетку */}
         {(connectedVk.length === 0 && connectedTg.length === 0) ? (
           <div className="text-center p-4 bg-[#0d0f13] border border-gray-800 border-dashed rounded-xl text-gray-500 text-sm">
             Пока нет добавленных платформ
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* ИСПРАВЛЕНИЕ 1: Адаптивная сетка, элементы больше не пропадают */}
+          /* ИСПРАВЛЕНИЕ: grid-cols-2 зафиксирован, gap-2 для компактности на мобильных */
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
             {[...connectedVk, ...connectedTg].map(acc => {
               const isPersonal = acc.provider === 'VK' && acc.providerId.startsWith('wall_');
               const accountName = acc.name || acc.title || (acc.provider === 'VK' ? 'ВК' : 'ТГ');
               const avatar = getValidAvatar(acc.avatarUrl || extractAvatar(acc), accountName);
-              const isVk = acc.provider === 'VK'; // Флаг для проверки соцсети
+              const isVk = acc.provider === 'VK';
 
               return (
-                <div key={acc.id} className="flex items-center justify-between p-3 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
-                  <div className="flex items-center gap-3 min-w-0">
-                    
-                    {/* ИСПРАВЛЕНИЕ 2: Обертка для аватарки и маленькой иконки соцсети */}
+                <div key={acc.id} className="flex flex-col p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors relative group">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {/* Аватарка с иконкой соцсети */}
                     <div className="relative shrink-0">
                       <img 
                         src={avatar} 
                         onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, accountName); }} 
-                        className="w-10 h-10 rounded-full object-cover border border-gray-800" 
+                        className="w-8 h-8 rounded-full object-cover border border-gray-800" 
                         alt="" 
                       />
-                      {/* Маленькая иконка соцсети в правом нижнем углу */}
-                      <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#0d0f13] ${isVk ? 'bg-[#0077FF]' : 'bg-[#2AABEE]'}`}>
+                      <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center border border-[#0d0f13] ${isVk ? 'bg-[#0077FF]' : 'bg-[#2AABEE]'}`}>
                         {isVk ? (
-                          <span className="text-[8px] font-bold text-white">VK</span>
+                          <span className="text-[7px] font-bold text-white">VK</span>
                         ) : (
-                          <Send size={8} className="text-white -ml-0.5" />
+                          <Send size={7} className="text-white" />
                         )}
                       </div>
                     </div>
                     
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-white font-bold text-sm truncate">
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-white font-bold text-[11px] sm:text-xs truncate">
                         {accountName}
                       </span>
                       {isPersonal && (
-                        <span className="text-[9px] text-gray-500 uppercase font-bold leading-none mt-0.5 tracking-wide">
-                          Личная страница
+                        <span className="text-[7px] text-gray-500 uppercase font-black leading-none mt-0.5">
+                          Профиль
                         </span>
                       )}
                     </div>
+
+                    {/* Кнопка удаления */}
+                    <button 
+                      onClick={() => removeAccount(acc.id)} 
+                      className="text-gray-600 hover:text-rose-500 transition-colors p-1"
+                    >
+                      <X size={14} />
+                    </button>
                   </div>
-                  <button onClick={() => removeAccount(acc.id)} className="text-gray-500 hover:text-rose-500 p-2 bg-gray-800/50 hover:bg-rose-500/10 rounded-lg transition-all">
-                    <X size={16} />
-                  </button>
                 </div>
               );
             })}
