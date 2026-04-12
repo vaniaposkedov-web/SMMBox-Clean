@@ -312,15 +312,17 @@ export default function AccountsManager() {
             if (res.ok) addedCount++;
           } catch (e) { console.error("Ошибка добавления стены", e); }
         } else {
-          // ИСПРАВЛЕНИЕ: Жестко вытаскиваем ID или короткое имя, используя глубокий поиск
-          const groupId = extractId(group) || deepSearch(group, ['id', 'group_id', 'uid']);
-          let screenName = extractScreenName(group) || deepSearch(group, ['screen_name', 'domain']);
-          
-          if (!screenName && groupId) screenName = `club${groupId}`;
-          
-          // ЗАЩИТА: Блокируем отправку мусора
-          if (!screenName || screenName === 'clubnull' || screenName === 'clubundefined') {
-             console.error("Пропуск: не удалось определить ссылку для группы", group);
+          // ЖЕЛЕЗОБЕТОННОЕ ИЗВЛЕЧЕНИЕ ССЫЛКИ НА ГРУППУ
+          const groupId = group.id || group.group_id || group.uid;
+          let screenName = group.screen_name || group.domain;
+
+          if (!screenName && groupId) {
+             screenName = `club${groupId}`;
+          }
+
+          // ЗАЩИТА: Блокируем отправку битых ссылок
+          if (!screenName || screenName.includes('null') || screenName.includes('undefined')) {
+             console.error("Пропуск: не удалось собрать URL для группы", group);
              continue; 
           }
 
