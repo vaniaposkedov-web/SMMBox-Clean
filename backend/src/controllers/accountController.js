@@ -6,31 +6,31 @@ const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 
 
-const extractKomodAvatar = (obj, label = 'Unknown') => {
+// --- УЛЬТРА-ПАРСЕР АВАТАРОК ---
+const extractKomodAvatar = (obj) => {
   if (!obj || typeof obj !== 'object') return null;
-  
-  // 1. Прямая проверка верхнего уровня (для прокси-ответов VK)
-  const topLevelPhoto = obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo;
-  if (topLevelPhoto) return topLevelPhoto;
 
-  // 2. Глубокая проверка структуры Kom-od (rawData)
+  // 1. Ищем во всех возможных полях верхнего уровня (прокси ВК)
+  const direct = obj.photo_200 || obj.photo_100 || obj.photo_50 || obj.avatar || obj.photo || obj.image;
+  if (direct && typeof direct === 'string' && direct.startsWith('http')) return direct;
+
+  // 2. Лезем вглубь info -> rawData (фикс Алексея)
   let info = obj.info;
-  if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e) {} }
+  if (typeof info === 'string') { try { info = JSON.parse(info); } catch(e){} }
   
-  if (info && info.rawData) {
-    let raw = info.rawData;
-    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e) {} }
+  if (info) {
+    let raw = info.rawData || info.apiGroupData || info.apiUserData;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch(e){} }
     if (raw && typeof raw === 'object') {
-      return raw.photo_200 || raw.photo_100 || raw.photo_50;
+      const rawPhoto = raw.photo_200 || raw.photo_100 || raw.photo_50 || raw.photo_max || raw.photo_max_orig;
+      if (rawPhoto) return rawPhoto;
     }
   }
 
-  // 3. Проверка apiUserData (для профилей)
-  let apiUser = obj.apiUserData;
-  if (typeof apiUser === 'string') { try { apiUser = JSON.parse(apiUser); } catch(e) {} }
-  if (apiUser) return apiUser.photo_200 || apiUser.photo_100 || apiUser.photo_50;
-
-  return null;
+  // 3. Последний шанс: ищем любую строку похожую на URL картинки в объекте
+  const str = JSON.stringify(obj);
+  const match = str.match(/https?:\/\/[^\s"']+\.(?:jpg|jpeg|png|webp|gif)(?:[^\s"']*)/i);
+  return match ? match[0].replace(/\\/g, '') : null;
 };
 
 
@@ -59,137 +59,66 @@ const extractKomodName = (obj) => {
 
 exports.getKomodGroupsForSelection = async (req, res) => {
   try {
-    const profileId = req.query.profileId || req.query.id || req.body?.profileId || req.params?.id;
+    const profileId = req.query.profileId || req.query.id;
     const userId = String(req.user?.userId || req.user?.id);
 
-    const profile = await prisma.socialProfile.findFirst({
-      where: { id: profileId, userId: userId }
-    });
-
+    const profile = await prisma.socialProfile.findFirst({ where: { id: profileId, userId } });
     if (!profile) return res.status(403).json({ error: 'Профиль не найден' });
 
-    try {
-      // 1. Запрашиваем список сообществ из шлюза
-      const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
-        headers: { 'Access-Token': KOMOD_TOKEN }
-      });
+    // 1. Получаем список групп
+    const response = await axios.get(`${KOMOD_BASE_URL}/account/${profile.providerAccountId}/api-groups`, {
+      headers: { 'Access-Token': KOMOD_TOKEN }
+    });
 
-      let items = [];
-      const resData = response.data?.data;
-      const resGroups = response.data?.groups;
-
-      if (Array.isArray(resData)) {
-          if (resData[0]?.items && Array.isArray(resData[0].items)) items = resData[0].items;
-          else items = resData;
-      } else if (resData?.items) {
-          items = resData.items;
-      } else if (resGroups?.items) {
-          items = resGroups.items;
-      } else if (Array.isArray(resGroups)) {
-          items = resGroups;
-      }
-
-      // 2. Создаем словари для быстрого поиска аватарок
-      const dbAvatarMapById = {};
-      const dbAvatarMapByName = {};
-      const komodMap = {};
-
-      // А) Из локальной БД (по ID и по Имени)
-      try {
-        const existingAccounts = await prisma.account.findMany({ where: { provider: 'VK' } });
-        for (const acc of existingAccounts) {
-          if (acc.avatarUrl && !acc.avatarUrl.includes('ui-avatars')) {
-            const rawId = String(acc.providerId).replace('group_', '').replace('wall_', '');
-            dbAvatarMapById[rawId] = acc.avatarUrl;
-            if (acc.name) dbAvatarMapByName[acc.name.trim().toLowerCase()] = acc.avatarUrl;
-          }
-        }
-      } catch (e) { }
-
-      // Б) Из общего списка Kom-od
-      try {
-        const allGroupsRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-        let komodItems = [];
-        const kData = allGroupsRes.data?.data;
-        if (Array.isArray(kData)) {
-           if (kData[0]?.items) komodItems = kData[0].items;
-           else komodItems = kData;
-        } else if (kData?.items) {
-           komodItems = kData.items;
-        }
-        for (const g of komodItems) {
-          const vUid = String(g.uid || g.group_id).replace(/\D/g, '');
-          if (vUid && g.id) komodMap[vUid] = String(g.id); 
-        }
-      } catch (e) { }
-
-      // 3. УЛЬТИМАТИВНОЕ ОБОГАЩЕНИЕ СПИСКА СООБЩЕСТВ
-      const enrichedItems = await Promise.all(items.map(async (group) => {
-        let photo = extractKomodAvatar(group);
-        const groupName = extractKomodName(group) || '';
-
-        // ✅ ГЛАВНЫЙ ФИКС: Разделяем внутренний ID шлюза и реальный ID ВКонтакте
-        // Если есть и id, и uid -> id это шлюз, uid это ВК.
-        const komodIdFromObj = group.uid ? group.id : null;
-        const vkIdRaw = String(group.uid || group.group_id || group.id).replace(/\D/g, '');
-        
-        // Находим точный системный ID шлюза для запроса к исправленному методу Алексея
-        const resolvedKomodId = komodIdFromObj || komodMap[vkIdRaw];
-
-        // Стратегия 1: Поиск в нашей БД по VK ID
-        if (!photo && dbAvatarMapById[vkIdRaw]) {
-          photo = dbAvatarMapById[vkIdRaw];
-        }
-
-        // Стратегия 2: Поиск в нашей БД по названию группы (спасет, если ID разъехались)
-        if (!photo && groupName && dbAvatarMapByName[groupName.trim().toLowerCase()]) {
-          photo = dbAvatarMapByName[groupName.trim().toLowerCase()];
-        }
-
-        // Стратегия 3: Точечный запрос к исправленному API Алексея (строго по системному ID!)
-        if (!photo && resolvedKomodId) {
-          try {
-            const detailRes = await axios.get(`${KOMOD_BASE_URL}/group/${resolvedKomodId}`, {
-              headers: { 'Access-Token': KOMOD_TOKEN }
-            });
-            if (detailRes.data?.success && detailRes.data?.data) {
-              photo = extractKomodAvatar(detailRes.data.data);
-            }
-          } catch (e) {}
-        }
-
-        // Подшиваем найденное фото для фронтенда
-        if (photo) {
-          group.photo_200 = photo;
-          group.photo_100 = photo;
-          group.photo_50 = photo;
-          group.avatar = photo; 
-        }
-
-        return group;
-      }));
-
-      const authData = response.data?.auth || null;
-
-      // Отдаем на фронтенд финальный массив
-      return res.json({ success: true, groups: enrichedItems, auth: authData });
-      
-    } catch (apiError) {
-      if (apiError.response && apiError.response.status === 404) {
-        return res.json({ 
-          success: false, 
-          error: 'Этот профиль устарел или удален в шлюзе. Удалите его из списка (крестиком) и авторизуйте заново.' 
-        });
-      }
-      throw apiError; 
+    let items = [];
+    const resData = response.data?.data;
+    if (Array.isArray(resData)) {
+      items = (resData[0]?.items && Array.isArray(resData[0].items)) ? resData[0].items : resData;
+    } else if (resData?.items) {
+      items = resData.items;
     }
 
+    // 2. Обогащаем данными (последовательно, чтобы не словить бан от API)
+    const enrichedItems = [];
+    for (let group of items) {
+      let photo = extractKomodAvatar(group);
+
+      // Если фото нет, пробуем найти внутренний ID группы в системе Kom-od
+      // В списке /api-groups ID часто является внутренним ID, если группа уже известна системе
+      const potentialKomodId = group.id; 
+      const vkId = String(group.uid || group.group_id || group.id).replace(/\D/g, '');
+
+      if (!photo && potentialKomodId && String(potentialKomodId).length < 10) {
+        try {
+          const detail = await axios.get(`${KOMOD_BASE_URL}/group/${potentialKomodId}`, {
+            headers: { 'Access-Token': KOMOD_TOKEN },
+            timeout: 2000
+          });
+          if (detail.data?.success) {
+            photo = extractKomodAvatar(detail.data.data);
+          }
+        } catch (e) { /* Игнорируем ошибки одиночных запросов */ }
+      }
+
+      // Если всё еще нет фото — используем API-заглушку самого ВК (работает всегда)
+      if (!photo && vkId) {
+        photo = `https://vk.com/images/community_200.png`; // Дефолтная иконка сообщества
+      }
+
+      if (photo) {
+        group.photo_200 = photo;
+        group.photo_50 = photo;
+        group.avatar = photo;
+      }
+      enrichedItems.push(group);
+    }
+
+    res.json({ success: true, groups: enrichedItems, auth: response.data?.auth || null });
   } catch (error) {
-    console.error('Ошибка загрузки сообществ:', error.message);
-    res.status(500).json({ error: 'Ошибка API шлюза: ' + error.message });
+    console.error('Ошибка:', error.message);
+    res.status(500).json({ error: error.message });
   }
 };
-
 
 
 
