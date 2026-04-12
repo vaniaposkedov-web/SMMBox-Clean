@@ -18,6 +18,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import Onboarding from './pages/Onboarding'; 
 import PartnersManager from './components/settings/PartnersManager';
 import PostsHistory from './pages/PostsHistory';
+import SignatureConstructor from './pages/SignatureConstructor';
 
 // === НАШИ НОВЫЕ ПОДКЛЮЧЕННЫЕ РАЗДЕЛЫ ===
 import AccountsManager from './components/settings/AccountsManager';
@@ -261,6 +262,7 @@ function App() {
           <Route path="/boss-login" element={<AdminLogin />} />
           <Route path="/system-core-dashboard" element={<AdminDashboard />} />
           <Route path="*" element={<Navigate to="/auth" replace />} />
+          <Route path="/signatures" element={<SignatureConstructor />} />
         </Routes>
       </BrowserRouter>
     );
