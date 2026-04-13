@@ -134,20 +134,22 @@ export default function Publish() {
 
     return scheduledPostsRaw.map(p => {
       const d = new Date(p.publishAt || p.createdAt);
-      
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
       const localISODate = `${year}-${month}-${day}`;
+      
+      const prov = (p.account?.provider || '').toUpperCase();
       
       return {
         id: p.id,
         date: localISODate,
         time: d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
         text: p.text || 'Без текста',
-        network: p.account?.provider === 'vk' ? 'VK' : 'TG',
-        color: p.account?.provider === 'vk' ? 'bg-blue-600' : 'bg-sky-500',
+        network: prov === 'VK' ? 'VK' : 'TG',
+        color: prov === 'VK' ? 'bg-blue-500' : 'bg-sky-500',
         accountName: p.account?.name || 'Аккаунт',
+        accountAvatar: p.account?.avatarUrl || null, // ФИКС: Сохраняем аватарку
         status: p.status, 
         rawPublishAt: p.publishAt
       };
@@ -593,9 +595,16 @@ const handlePublish = async () => {
                 postsForSelectedDate.map(post => (
                   <div key={post.id} className={`bg-admin-card border border-gray-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:bg-gray-900/80 group ${post.status === 'PUBLISHED' ? 'opacity-80 grayscale-[30%] bg-gray-900/50' : ''}`}>
                     <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
-                      <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 flex items-center justify-center text-white border border-gray-700/50 ${post.color}`}>
-                        <div className="w-6 h-6 sm:w-7 sm:h-7">
-                          {post.network === 'VK' ? <IconVK /> : <IconTG />}
+                      <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 bg-gray-800 flex items-center justify-center text-white border border-gray-700/50">
+                        {post.accountAvatar ? (
+                          <img src={post.accountAvatar} alt={post.accountName} className="w-full h-full object-cover rounded-xl" />
+                        ) : (
+                          <span className="text-xs font-bold text-gray-400">{post.accountName.substring(0, 2).toUpperCase()}</span>
+                        )}
+                        <div className={`absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full border-2 border-[#111318] flex items-center justify-center ${post.color}`}>
+                          <div className="w-2.5 h-2.5 flex items-center justify-center text-white">
+                            {post.network === 'VK' ? <IconVK /> : <IconTG />}
+                          </div>
                         </div>
                       </div>
                       <div className="min-w-0 flex-1">
