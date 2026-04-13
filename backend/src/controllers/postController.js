@@ -57,10 +57,9 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         (g.url && String(g.url).includes(cleanId))
     );
 
-    // 2. АВТО-РЕГИСТРАЦИЯ: Если группы/профиля нет, добавляем через API Kom-od
+    // 2. АВТО-РЕГИСТРАЦИЯ
     if (!targetGroup) {
         console.log(`\n[KOMOD] Цель ${providerId} не найдена в шлюзе. Пробуем авто-регистрацию...`);
-        
         const addForm = new FormData();
         if (isWall) {
             addForm.append('account_id', cleanId);
@@ -78,47 +77,31 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             });
 
             if (addRes.data && addRes.data.success !== false) {
-                // Перезапрашиваем список, чтобы получить внутренний ID новой группы
                 const newGrpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
                 const newGroups = newGrpRes.data?.data?.items || newGrpRes.data?.data || [];
                 targetGroup = newGroups.find(g => String(g.uid) === cleanId || String(g.account_id) === cleanId);
-                
-                if (targetGroup) {
-                    console.log(`[KOMOD] ✅ Авто-регистрация успешна! ID в шлюзе: ${targetGroup.id}`);
-                } else {
-                    throw new Error('Авто-регистрация прошла, но группа не найдена в списке.');
-                }
-            } else {
-                console.error('[KOMOD ADD ERROR]', addRes.data);
-                throw new Error('Шлюз отклонил авто-регистрацию.');
             }
-        } catch (addError) {
-            console.error('[KOMOD AUTO-ADD ERROR]', addError.message);
-            throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и нажмите "Подключить стену".`);
-        }
+        } catch (addError) {}
+        
+        if (!targetGroup) throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и подключите стену.`);
     }
 
     targetGroupId = targetGroup.id;
-
-    let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
-
-    if (!publishAtDate) {
-        targetDate.setMinutes(targetDate.getMinutes() + 1);
-    }
-
-    // === ИСПРАВЛЕНИЕ: СТАВИМ ЧАСОВОЙ ПОЯС ТВОЕГО ШЛЮЗА (+05:00) ===
-    const komodTimezone = 'Asia/Yekaterinburg'; 
-    const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
-    const formattedDate = tzString.substring(0, 16);
-
     form.append('group_id', targetGroupId);
-    form.append('publish_at', formattedDate); 
     form.append('via_api', '1');
+
+    // === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ===
+    // Если publishAtDate ПУСТОЙ (это делает Cron), мы ВООБЩЕ НЕ ПЕРЕДАЕМ publish_at.
+    // Пусть шлюз публикует пост МГНОВЕННО, не ставя его в свою очередь.
+    if (publishAtDate) {
+        let targetDate = new Date(publishAtDate);
+        const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
+        const formattedDate = tzString.substring(0, 16).replace('T', ' ');
+        form.append('publish_at', formattedDate);
+    }
     
     const media = [];
-    if (text) {
-        media.push({ type: 'text', text: text });
-    }
+    if (text) media.push({ type: 'text', text: text });
 
     if (imageBuffers && imageBuffers.length > 0) {
         const images = [];
@@ -136,45 +119,14 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     form.append('media', JSON.stringify(media));
 
-    console.log(`\n=== [KOMOD POST START] Отправка поста в targetGroupId: ${targetGroupId} ===`);
-    
     const postRes = await axios.post(`${KOMOD_BASE_URL}/post`, form, {
-        headers: { 
-            ...form.getHeaders(), 
-            'Access-Token': token 
-        },
+        headers: { ...form.getHeaders(), 'Access-Token': token },
         maxBodyLength: Infinity,
         validateStatus: status => status < 500
     });
 
     if (postRes.data && postRes.data.success === false) {
-        throw new Error('Ошибка шлюза при публикации: ' + JSON.stringify(postRes.data.errors));
-    }
-
-    const postId = postRes.data?.data?.id;
-    if (postId) {
-        const checkStatus = async (delay, attempt) => {
-            setTimeout(async () => {
-                try {
-                    const checkRes = await axios.get(`${KOMOD_BASE_URL}/post/${postId}?logs=1`, {
-                        headers: { 'Access-Token': token },
-                        validateStatus: () => true
-                    });
-                    
-                    const postData = checkRes.data?.data;
-                    if (postData) {
-                        console.log(`\n⏳ [Проверка #${attempt}] СТАТУС ПОСТА ${postId}`);
-                        console.log(`> Опубликован: ${postData.published === '1' ? 'ДА ✅' : 'В ОЧЕРЕДИ ⏳'}`);
-                        if (postData.logs && postData.logs.length > 0) {
-                            postData.logs.forEach(l => console.log(`> ЛОГ: ${l.message}`));
-                        }
-                    }
-                } catch (e) {}
-            }, delay);
-        };
-
-        checkStatus(15000, 1);
-        checkStatus(30000, 2);
+        throw new Error('Ошибка шлюза: ' + JSON.stringify(postRes.data.errors));
     }
 }
 
@@ -524,8 +476,9 @@ exports.getScheduledPosts = async (req, res) => {
         const posts = await prisma.post.findMany({
             where: { 
                 account: { userId: userId }, 
-                status: { in: ['SCHEDULED', 'PUBLISHED'] },
-                publishAt: { not: null } // 🟢 ИСПРАВЛЕНИЕ: Игнорируем моментальные посты!
+                // ФИКС: Добавляем FAILED, чтобы ты видел в календаре, если пост сломался
+                status: { in: ['SCHEDULED', 'PUBLISHED', 'FAILED'] },
+                publishAt: { not: null } 
             },
             include: { account: { select: { name: true, provider: true } } },
             orderBy: { publishAt: 'asc' },
