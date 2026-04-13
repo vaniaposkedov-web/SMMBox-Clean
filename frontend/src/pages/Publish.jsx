@@ -392,7 +392,7 @@ const handlePublish = async () => {
             publishAt = localDate.toISOString(); 
         }
 
-        const result = await createPostAction(text, base64Images, selectedAccounts, accountsData, publishAt);
+        const result = await createPostAction(text, base64Images, selectedAccounts, publishAt);
 
         if (result.success) {
             setIsPublishing(false);

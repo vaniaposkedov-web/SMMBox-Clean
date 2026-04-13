@@ -605,44 +605,33 @@ export const useStore = create(
      // ... предыдущий код стора
 
       createPostAction: async (text, mediaUrls, accountIds, publishAt) => {
-        try {
-          const state = get();
-          
-          // УМНАЯ СБОРКА (Blueprint): 
-          // Стор сам находит выбранные аккаунты и прикрепляет к ним их уникальные настройки.
-          // Компоненту публикации больше не нужно об этом думать.
-          const accountsData = accountIds.map(id => {
-            const acc = state.accounts.find(a => a.id === id);
-            
-            // Если аккаунт не найден (например, был удален), пропускаем
-            if (!acc) return null;
+          try {
+            const state = get();
+            const accountsData = accountIds.map(id => {
+              const acc = state.accounts.find(a => a.id === id);
+              if (!acc) return null;
+              return {
+                accountId: acc.id,
+                // Сюда бэкенд ждет настройки подписи и вотермарка
+                applySignature: true, 
+                applyWatermark: true,
+                signatureText: acc.signature || ''
+              };
+            }).filter(Boolean);
 
-            return {
-              accountId: acc.id,
-              provider: acc.provider,     // 'VK' или 'TELEGRAM'
-              providerId: acc.providerId, // ID группы или канала
-              
-              // Передаем точечные настройки для бэкенда
-              signature: acc.signature !== undefined ? acc.signature : null,
-              watermark: acc.watermark || null
-            };
-          }).filter(Boolean); // Очищаем от null
-
-          // Отправляем пакет на бэкенд
-          const res = await fetch('/api/posts/create', {
-            method: 'POST', 
-            headers: { 
-              'Content-Type': 'application/json', 
-              'Authorization': `Bearer ${state.token}` 
-            }, 
-            body: JSON.stringify({ 
-              text, 
-              mediaUrls, 
-              accountIds, 
-              accounts: accountsData, // <-- Бэкенд получит массив с детальными инструкциями для каждого паблика
-              publishAt 
-            })
-          });
+            const res = await fetch('/api/posts/create', {
+              method: 'POST', 
+              headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Bearer ${state.token}` 
+              }, 
+              body: JSON.stringify({ 
+                text, 
+                mediaUrls, 
+                accounts: accountsData, // Передаем массив объектов, как ждет бэкенд
+                publishAt 
+              })
+            });
           
           const data = await res.json();
           if (res.ok && data.success) {

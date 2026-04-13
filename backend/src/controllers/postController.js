@@ -303,6 +303,7 @@ async function applyWatermark(imageBuffer, wmConfig) {
 }
 
 // Полный исправленный метод создания поста
+// В методе exports.createPost
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
@@ -310,16 +311,16 @@ exports.createPost = async (req, res) => {
         let parsedPublishAt = null;
         let isScheduled = false;
 
-        // ЖЕСТКОЕ РАЗДЕЛЕНИЕ: Если передана дата, это отложенный пост
-        if (publishAt && publishAt !== 'null' && publishAt !== 'undefined' && publishAt !== '') {
+        // Более надежная проверка даты
+        if (publishAt && publishAt !== 'null' && String(publishAt).trim() !== "") {
             const tempDate = new Date(publishAt);
-            const now = new Date();
             if (!isNaN(tempDate.getTime())) {
-                // Защита: если выбрали время в прошлом (текущую минуту), планируем на +1 минуту вперед
-                parsedPublishAt = tempDate <= now ? new Date(now.getTime() + 60000) : tempDate;
+                parsedPublishAt = tempDate;
                 isScheduled = true;
+                console.log(`[DEBUG] Пост определен как ОТЛОЖЕННЫЙ на: ${parsedPublishAt}`);
             }
         }
+// ...
         
         if (!accounts || accounts.length === 0) {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
