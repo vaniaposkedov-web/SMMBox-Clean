@@ -183,7 +183,6 @@ export default function Publish() {
       if (tempDraft.text) setText(tempDraft.text);
       if (tempDraft.photos) setPhotos(tempDraft.photos); 
       if (tempDraft.selectedAccounts) setSelectedAccounts(tempDraft.selectedAccounts);
-      if (tempDraft.accountOverrides) setAccountOverrides(tempDraft.accountOverrides);
       if (tempDraft.applyWatermark !== undefined) setApplyWatermark(tempDraft.applyWatermark);
       if (tempDraft.applySignature !== undefined) setApplySignature(tempDraft.applySignature);
       if (tempDraft.step) setStep(tempDraft.step);
@@ -204,7 +203,7 @@ export default function Publish() {
       });
     }, 500); 
     return () => clearTimeout(timer);
-  }, [text, selectedAccounts, accountOverrides, applyWatermark, applySignature, step, view, publishMode, scheduleTime, selectedCalendarDate, saveTempDraft]);
+  }, [text, selectedAccounts, applyWatermark, applySignature, step, view, publishMode, scheduleTime, selectedCalendarDate, saveTempDraft]);
 
   const toggleAccount = (id) => {
     setSelectedAccounts(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
@@ -469,7 +468,6 @@ export default function Publish() {
     setPhotos([]);
     setText('');
     setSelectedAccounts([]);
-    setAccountOverrides({});
     setScheduleTime('');
     setStep(1);
     setIsPublishing(false); 
