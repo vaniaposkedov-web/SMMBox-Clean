@@ -373,7 +373,7 @@ exports.createPost = async (req, res) => {
                             accountId: job.account.id,
                             text: job.finalText,
                             mediaUrls: JSON.stringify(thumbnailsForDb),
-                            publishAt: new Date(), // ФИКС: Ставим ТЕКУЩЕЕ время, чтобы пост отобразился в истории календаря
+                            publishAt: null, // ФИКС: null скрывает моментальный пост из календаря
                             status: 'PUBLISHED' 
                         }
                     });
@@ -382,12 +382,13 @@ exports.createPost = async (req, res) => {
                     hasErrors = true;
                     lastError = err.message;
                     
+                    // В блоке ошибки (catch)
                     await prisma.post.create({
                         data: {
                             accountId: job.account.id,
                             text: job.finalText,
                             mediaUrls: "[]",
-                            publishAt: new Date(), // ФИКС: Оставляем время даже при ошибке
+                            publishAt: null, // ФИКС: null скрывает моментальный пост из календаря
                             status: 'FAILED' 
                         }
                     });
@@ -476,11 +477,11 @@ exports.getScheduledPosts = async (req, res) => {
         const posts = await prisma.post.findMany({
             where: { 
                 account: { userId: userId }, 
-                // ФИКС: Добавляем FAILED, чтобы ты видел в календаре, если пост сломался
                 status: { in: ['SCHEDULED', 'PUBLISHED', 'FAILED'] },
-                publishAt: { not: null } 
+                publishAt: { not: null } // Это правило как раз отсеет моментальные посты
             },
-            include: { account: { select: { name: true, provider: true } } },
+            // ФИКС: Добавили avatarUrl: true
+            include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
             orderBy: { publishAt: 'asc' },
             take: 150
         });
