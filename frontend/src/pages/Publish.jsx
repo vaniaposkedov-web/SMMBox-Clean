@@ -166,13 +166,20 @@ export default function Publish() {
   
 
   const groupedAccounts = useMemo(() => {
-    const filtered = accounts.filter(acc => 
-      acc.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      acc.provider.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filtered = accounts.filter(acc => {
+      // Жесткая защита от null и undefined
+      const name = acc?.name || '';
+      const prov = acc?.provider || '';
+      const query = searchQuery?.toLowerCase() || '';
+      
+      return name.toLowerCase().includes(query) || prov.toLowerCase().includes(query);
+    });
+    
     return filtered.reduce((acc, curr) => {
-      if (!acc[curr.provider]) acc[curr.provider] = [];
-      acc[curr.provider].push(curr);
+      // Приводим провайдер к ВЕРХНЕМУ регистру (VK, TELEGRAM), чтобы не плодить дубликаты
+      const prov = (curr.provider || 'unknown').toUpperCase();
+      if (!acc[prov]) acc[prov] = [];
+      acc[prov].push(curr);
       return acc;
     }, {});
   }, [searchQuery, accounts]);
@@ -395,7 +402,7 @@ const handlePublish = async () => {
             publishAt = localDate.toISOString(); 
         }
 
-        const result = await createPostAction(text, base64Images, selectedAccounts, publishAt);
+        const result = await createPostAction(text, base64Images, accountsData, publishAt);
 
         if (result.success) {
         setIsPublishing(false);
@@ -862,7 +869,7 @@ const handlePublish = async () => {
                   Object.entries(groupedAccounts).map(([provider, providerAccounts]) => (
                     <div key={provider} className="mb-4 last:mb-0">
                       <h3 className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 pl-1 flex items-center gap-2">
-                        {provider === 'vk' ? 'ВКонтакте' : provider === 'tg' ? 'Telegram' : provider}
+                        {provider === 'VK' ? 'ВКонтакте' : provider === 'TELEGRAM' ? 'Telegram' : provider}
                         <span className="bg-gray-800 text-gray-400 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] ml-2">{providerAccounts.length}</span>
                       </h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
