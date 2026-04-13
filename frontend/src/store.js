@@ -64,7 +64,12 @@ export const useStore = create(
       
       fetchProfiles: async (userId) => {
         try {
-          const res = await fetch(`/api/accounts/profiles?userId=${userId}`);
+          const token = localStorage.getItem('token') || get().token;
+          if (!token || token === 'null') return;
+          
+          const res = await fetch(`/api/accounts/profiles?userId=${userId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
           if (res.ok) {
             const data = await res.json();
             if (data.success) set({ profiles: data.profiles });
@@ -474,12 +479,19 @@ export const useStore = create(
 
       fetchAccounts: async (userId) => {
         try {
-          const res = await fetch(`/api/accounts?userId=${userId}`);
+          const token = localStorage.getItem('token') || get().token;
+          if (!token || token === 'null') return;
+
+          const res = await fetch(`/api/accounts?userId=${userId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
           if (res.ok) {
             const data = await res.json();
             set({ accounts: data });
           }
-        } catch (error) {}
+        } catch (error) {
+          console.error("Ошибка загрузки аккаунтов:", error);
+        }
       },
 
       globalSettings: { signature: '', watermark: null },

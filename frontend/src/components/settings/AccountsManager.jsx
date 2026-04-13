@@ -11,6 +11,7 @@ import {
 
 import CustomTelegramButton from '../../components/CustomTelegramButton';
 import CustomVkButton from '../../components/CustomVkButton';
+import { io } from 'socket.io-client';
 
 export default function AccountsManager() {
   const navigate = useNavigate();
@@ -329,17 +330,31 @@ export default function AccountsManager() {
   // --- АВТО-ЧЕКЕР (POLLING) ---
   // Каждые 5 секунд запрашиваем список аккаунтов, чтобы новые каналы ТГ 
   // появлялись автоматически сразу после добавления бота пользователем.
+// --- WEB SOCKETS: АВТО-ОБНОВЛЕНИЕ ДАННЫХ БЕЗ НАГРУЗКИ ---
   useEffect(() => {
-  let interval;
-  if (user?.id) {
-    // Авто-чекер: опрашиваем сервер каждые 5 секунд, чтобы новые ТГ каналы появлялись сами
-    interval = setInterval(() => {
+    if (!user?.id) return;
+
+    // Первичная загрузка
+    fetchAccounts(user.id);
+    fetchProfiles(user.id);
+
+    // Подключаемся к WebSocket серверу
+    const socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
+      query: { userId: user.id },
+      transports: ['websocket'] 
+    });
+
+    // Слушаем сигнал от бэкенда об обновлении аккаунтов
+    socket.on('ACCOUNTS_UPDATED', () => {
+      console.log('Получен сигнал от сервера: обновляем аккаунты!');
       fetchAccounts(user.id);
       fetchProfiles(user.id);
-    }, 5000);
-  }
-  return () => clearInterval(interval);
-}, [user?.id, fetchAccounts, fetchProfiles]);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user?.id, fetchAccounts, fetchProfiles]);
 
   useEffect(() => {
     // Обязательно ждем загрузки данных пользователя, иначе запросы упадут
