@@ -506,28 +506,32 @@ export const useStore = create(
         } catch (error) {}
       },
 
-      addVkKomodGroup: async (url, title, profileId, avatarUrl) => { // <-- Добавили 4-й аргумент
+      addVkKomodGroup: async (url, title, profileId, avatarUrl) => {
         try {
+          // 🟢 ИСПРАВЛЕНИЕ ДЛЯ МОБИЛОК: Жестко берем токен из памяти
+          const authToken = localStorage.getItem('token') || get().token; 
           const res = await fetch('/api/accounts/vk/komod-add', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${get().token}`
+              'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ url, title, profileId, avatarUrl }) // <-- Передаем на бэкенд!
+            body: JSON.stringify({ url, title, profileId, avatarUrl })
           });
           return await res.json();
         } catch (error) {
           return { success: false, error: 'Network error' };
         }
       },
-      // Добавь это рядом с функцией syncVkKomod:
+
       confirmVkKomod: async (hash) => {
         try {
+          // 🟢 ИСПРАВЛЕНИЕ ДЛЯ МОБИЛОК
+          const authToken = localStorage.getItem('token') || get().token;
           const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/accounts/vk/komod-confirm`, {
             method: 'POST',
             headers: { 
-              'Authorization': `Bearer ${get().token}`,
+              'Authorization': `Bearer ${authToken}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({ hash })
@@ -568,17 +572,18 @@ export const useStore = create(
 
       syncVkKomod: async () => {
         try {
+          // 🟢 ИСПРАВЛЕНИЕ ДЛЯ МОБИЛОК
+          const authToken = localStorage.getItem('token') || get().token;
           const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/accounts/vk/komod-sync`, {
             method: 'POST',
             headers: { 
-              'Authorization': `Bearer ${get().token}`,
+              'Authorization': `Bearer ${authToken}`,
               'Content-Type': 'application/json'
             }
           });
           const data = await res.json();
           if (data.success) {
             await get().fetchAccounts(get().user?.id);
-            // ИСПРАВЛЕНИЕ: Теперь мы возвращаем count, чтобы окно показало успех
             return { success: true, count: data.count }; 
           }
           return { success: false, error: data.error };
@@ -589,8 +594,10 @@ export const useStore = create(
 
       
       fetchKomodGroups: async (profileId) => {
+        // 🟢 ИСПРАВЛЕНИЕ ДЛЯ МОБИЛОК
+        const authToken = localStorage.getItem('token') || get().token;
         const res = await fetch(`/api/accounts/vk/komod-groups?profileId=${profileId}`, {
-          headers: { 'Authorization': `Bearer ${get().token}` }
+          headers: { 'Authorization': `Bearer ${authToken}` }
         });
         return await res.json();
       },
