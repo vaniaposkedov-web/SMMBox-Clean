@@ -22,6 +22,12 @@ const IconTG = () => (
 );
 
 export default function Publish() {
+  
+  const publishDraft = useStore((state) => state.publishDraft); // ✅ ОБЯЗАТЕЛЬНО ДОБАВИТЬ ЭТУ СТРОКУ
+  
+  
+  // Состояния для публикации
+  const [scheduleTime, setScheduleTime] = useState('');
   const { 
     user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings, 
     tempDraft, saveTempDraft, createPostAction,
@@ -48,7 +54,7 @@ export default function Publish() {
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   });
-  const [scheduleTime, setScheduleTime] = useState('');
+  
 
   const [isImprovingAI, setIsImprovingAI] = useState(false);
   const [aiProgress, setAiProgress] = useState(0);
@@ -339,11 +345,15 @@ export default function Publish() {
     }
   };
 
-  const handlePublish = async () => {
-    if (selectedAccounts.length === 0) return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
+const handlePublish = async () => {
+    if (selectedAccounts.length === 0) {
+      return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
+    }
     
-    // ПРОВЕРЯЕМ ТОЛЬКО ВРЕМЯ (так как дата уже есть в publishDraft)
-    if (publishMode === 'schedule' && !scheduleTime) return setTimeout(() => alert('Укажите время публикации!'), 10);
+    // Если включен режим отложенной публикации, время обязательно
+    if (publishMode === 'schedule' && !scheduleTime) {
+      return setTimeout(() => alert('Укажите время публикации!'), 10);
+    }
     
     setIsPublishing(true);
 
@@ -372,12 +382,12 @@ export default function Publish() {
 
         let publishAt = null;
         if (publishMode === 'schedule') {
-            // Берем дату из предыдущего шага (или сегодняшнюю, если по какой-то причине её нет)
+            // Берем дату из хранилища (выбранную на шаге 2)
             const baseDate = publishDraft?.publishDate || new Date().toISOString().split('T')[0];
             const [year, month, day] = baseDate.split('-');
             const [hours, minutes] = scheduleTime.split(':');
             
-            // Склеиваем локальную дату и время
+            // Создаем дату в локальном времени пользователя
             const localDate = new Date(year, month - 1, day, hours, minutes);
             publishAt = localDate.toISOString(); 
         }
@@ -388,6 +398,7 @@ export default function Publish() {
             setIsPublishing(false);
             if (saveTempDraft) saveTempDraft(null); 
             
+            // Обновляем список постов в календаре, если это была отложка
             if (publishMode === 'schedule') {
                 await fetchScheduledPosts(); 
             }
@@ -398,6 +409,7 @@ export default function Publish() {
             setTimeout(() => alert(result.error || 'Ошибка сервера'), 50);
         }
     } catch (error) {
+        console.error("Ошибка при публикации:", error);
         setIsPublishing(false);
         setTimeout(() => alert('Произошла ошибка соединения с сервером.'), 50);
     }
