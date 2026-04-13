@@ -382,13 +382,16 @@ const handlePublish = async () => {
 
         let publishAt = null;
         if (publishMode === 'schedule') {
-            // Берем дату из хранилища (выбранную на шаге 2)
-            const baseDate = publishDraft?.publishDate || new Date().toISOString().split('T')[0];
+            // ИСПРАВЛЕНИЕ: Берем локальную дату, без сдвигов по Гринвичу
+            const baseDate = selectedCalendarDate || new Date().toLocaleDateString('en-CA'); // Формат YYYY-MM-DD
             const [year, month, day] = baseDate.split('-');
             const [hours, minutes] = scheduleTime.split(':');
             
-            // Создаем дату в локальном времени пользователя
-            const localDate = new Date(year, month - 1, day, hours, minutes);
+            // Создаем честную локальную дату
+            const localDate = new Date();
+            localDate.setFullYear(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+            localDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+            
             publishAt = localDate.toISOString(); 
         }
 
