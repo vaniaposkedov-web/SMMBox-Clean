@@ -37,8 +37,7 @@ export default function Publish() {
   
   const [applyWatermark, setApplyWatermark] = useState(true);
   const [applySignature, setApplySignature] = useState(true);
-  const [accountOverrides, setAccountOverrides] = useState({});
-
+  
   const [publishMode, setPublishMode] = useState('now');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
     const d = new Date();
@@ -200,7 +199,7 @@ export default function Publish() {
     if (!isRestored.current || !saveTempDraft || step === 4) return; 
     const timer = setTimeout(() => {
       saveTempDraft({ 
-        text, selectedAccounts, accountOverrides, applyWatermark, applySignature,
+        text, selectedAccounts, applyWatermark, applySignature,
         step, view, publishMode, scheduleTime, selectedCalendarDate
       });
     }, 500); 
@@ -227,49 +226,9 @@ export default function Publish() {
     );
   };
 
-  const getEffectiveSetting = (accountId, settingType) => {
-    const acc = accounts.find(a => a.id === accountId);
-    // Проверяем, есть ли у аккаунта индивидуальные настройки в БД
-    const hasCustomConfig = acc?.watermark !== null || acc?.signature !== null;
-    const mode = accountOverrides[accountId]?.mode || (hasCustomConfig ? 'custom' : 'template');
-    
-    if (mode === 'custom') {
-      if (accountOverrides[accountId] && accountOverrides[accountId][settingType] !== undefined) {
-         return accountOverrides[accountId][settingType];
-      }
-      return true; // Если включен режим "Свои", по умолчанию применяем их
-    }
-    return settingType === 'watermark' ? applyWatermark : applySignature;
-  };
+ 
 
-  const handleModeChange = (accountId, newMode) => {
-    setAccountOverrides(prev => {
-      if (newMode === 'template') {
-        const next = { ...prev };
-        delete next[accountId];
-        return next;
-      } else {
-        return {
-          ...prev,
-          [accountId]: { mode: 'custom', watermark: applyWatermark, signature: applySignature }
-        };
-      }
-    });
-  };
 
-  const handleOverride = (accountId, settingType) => {
-    setAccountOverrides(prev => {
-      let currentVal = getEffectiveSetting(accountId, settingType);
-      if (prev[accountId] && prev[accountId][settingType] !== undefined) currentVal = prev[accountId][settingType];
-      return {
-        ...prev,
-        [accountId]: {
-          ...(prev[accountId] || { mode: 'custom' }),
-          [settingType]: !currentVal
-        }
-      };
-    });
-  };
 
   const handleGlobalToggle = (type) => {
     if (type === 'watermark') setApplyWatermark(prev => !prev);
