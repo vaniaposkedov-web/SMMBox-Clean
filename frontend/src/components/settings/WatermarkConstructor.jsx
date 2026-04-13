@@ -8,7 +8,7 @@ import {
 
 const defaultWatermark = {
   type: 'text', 
-  text: 'SMMBOX', 
+  text: 'GLOBOX', 
   position: 'br', // tl, tc, tr, cl, cc, cr, bl, bc, br
   margin: 5,      
   opacity: 80,    
@@ -390,7 +390,7 @@ export default function WatermarkConstructor() {
              {settings.type === 'image' && settings.image ? (
                <img src={settings.image} style={getWatermarkStyle()} alt="Watermark" />
              ) : (
-               <div style={getWatermarkStyle()}>{settings.text || 'SMMBOX'}</div>
+               <div style={getWatermarkStyle()}>{settings.text || 'GLOBOX'}</div>
              )}
           </div>
         </div>
