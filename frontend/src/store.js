@@ -607,35 +607,37 @@ export const useStore = create(
       createPostAction: async (text, mediaUrls, accountIds, publishAt) => {
           try {
             const state = get();
+            
             const accountsData = accountIds.map(id => {
               const acc = state.accounts.find(a => a.id === id);
               if (!acc) return null;
               return {
                 accountId: acc.id,
-                // Сюда бэкенд ждет настройки подписи и вотермарка
                 applySignature: true, 
                 applyWatermark: true,
-                signatureText: acc.signature || ''
+                signatureText: acc.signature || '',
+                watermarkConfig: acc.watermark || null // Добавил передачу конфига
               };
             }).filter(Boolean);
 
             const res = await fetch('/api/posts/create', {
-              method: 'POST', 
-              headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${state.token}` 
-              }, 
-              body: JSON.stringify({ 
-                text, 
-                mediaUrls, 
-                accounts: accountsData, // Передаем массив объектов, как ждет бэкенд
-                publishAt 
-              })
+                method: 'POST', 
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Authorization': `Bearer ${state.token}` 
+                }, 
+                body: JSON.stringify({ 
+                    text, 
+                    mediaUrls, 
+                    accounts: accountsData, // ФИКС: Передаем полные настройки, а не просто ID
+                    publishAt: publishAt || null
+                })
             });
           
           const data = await res.json();
           if (res.ok && data.success) {
-            if (publishAt) get().fetchScheduledPosts();
+            // ФИКС: Обновляем календарь В ЛЮБОМ СЛУЧАЕ, так как моментальные посты теперь тоже пишутся в историю
+            get().fetchScheduledPosts();
             return { success: true };
           }
           return { success: false, error: data.error || 'Ошибка при обработке сервером' };
@@ -643,7 +645,6 @@ export const useStore = create(
           return { success: false, error: 'Ошибка соединения.' }; 
         }
       },
-
       // ... следующий код стора
 
       fetchSharedPosts: async () => {
