@@ -480,7 +480,8 @@ export default function Publish() {
 
   if (view === 'start') {
     return (
-      <div className="min-h-[100dvh] bg-admin-bg px-4 py-8 flex flex-col items-center justify-center animate-fade-in relative pb-24 md:pb-0">
+      // Добавлен key="start-view"
+      <div key="start-view" className="min-h-[100dvh] bg-admin-bg px-4 py-8 flex flex-col items-center justify-center animate-fade-in relative pb-24 md:pb-0">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-blue-500/10 blur-[100px] rounded-full pointer-events-none"></div>
         <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-3xl flex items-center justify-center mb-6 relative z-10 border border-blue-500/20">
           <LayoutTemplate size={32} />
@@ -516,7 +517,8 @@ export default function Publish() {
     const postsForSelectedDate = realScheduledPosts.filter(p => p.date === selectedCalendarDate);
 
     return (
-      <div className="min-h-[100dvh] bg-admin-bg px-4 py-6 sm:p-8 pb-32 md:pb-8 animate-fade-in">
+      // Добавлен key="calendar-view"
+      <div key="calendar-view" className="min-h-[100dvh] bg-admin-bg px-4 py-6 sm:p-8 pb-32 md:pb-8 animate-fade-in">
         <div className="max-w-3xl mx-auto">
           <button onClick={() => setView('start')} className="flex items-center gap-2 text-gray-400 hover:text-white mb-4 sm:mb-6 transition-colors min-h-[44px] px-2 -ml-2 rounded-xl active:bg-gray-800 w-max">
             <ChevronLeft size={24} />
@@ -667,7 +669,8 @@ export default function Publish() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-admin-bg pb-[120px] md:pb-24 font-sans relative animate-fade-in">
+    // Добавлен key="wizard-view"
+    <div key="wizard-view" className="min-h-[100dvh] bg-admin-bg pb-[120px] md:pb-24 font-sans relative animate-fade-in">
       <div className="p-4 sm:p-8 max-w-3xl mx-auto">
         
         {step < 4 && (
