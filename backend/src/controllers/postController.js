@@ -375,19 +375,24 @@ exports.createPost = async (req, res) => {
         // === ВЕТКА А: ОТЛОЖЕННЫЙ ПОСТ ===
         if (isScheduled) {
             for (const job of accountJobs) {
-                const finalImagesToSave = job.processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
+                // ПРАВИЛЬНО создаем миниатюры для отложенного поста
+                const finalImagesToSave = await Promise.all(job.processedBuffers.map(async (buf) => {
+                    const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
+                    return 'data:image/jpeg;base64,' + thumb.toString('base64');
+                }));
+
                 await prisma.post.create({
                     data: {
                         accountId: job.account.id,
                         text: job.finalText,
                         mediaUrls: JSON.stringify(finalImagesToSave),
-                        publishAt: parsedPublishAt, // Сохраняем дату (маркер отложенного поста)
-                        status: 'SCHEDULED' 
+                        publishAt: parsedPublishAt, // Строго сохраняем БУДУЩУЮ дату
+                        status: 'SCHEDULED' // Оставляем статус для Cron-планировщика
                     }
                 });
             }
             return res.status(200).json({ success: true, message: 'Запланировано' });
-        } 
+        }
         
         // === ВЕТКА Б: МОМЕНТАЛЬНАЯ ПУБЛИКАЦИЯ ===
         else {
@@ -416,7 +421,7 @@ exports.createPost = async (req, res) => {
                             accountId: job.account.id,
                             text: job.finalText,
                             mediaUrls: JSON.stringify(thumbnailsForDb),
-                            publishAt: null, // МАРКЕР моментального поста (не попадет в календарь)
+                            publishAt: new Date(), // ФИКС: Ставим ТЕКУЩЕЕ время, чтобы пост отобразился в истории календаря
                             status: 'PUBLISHED' 
                         }
                     });
@@ -430,7 +435,7 @@ exports.createPost = async (req, res) => {
                             accountId: job.account.id,
                             text: job.finalText,
                             mediaUrls: "[]",
-                            publishAt: null,
+                            publishAt: new Date(), // ФИКС: Оставляем время даже при ошибке
                             status: 'FAILED' 
                         }
                     });

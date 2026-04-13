@@ -395,16 +395,16 @@ const handlePublish = async () => {
         const result = await createPostAction(text, base64Images, selectedAccounts, publishAt);
 
         if (result.success) {
-            setIsPublishing(false);
-            if (saveTempDraft) saveTempDraft(null); 
-            
-            // Обновляем список постов в календаре, если это была отложка
-            if (publishMode === 'schedule') {
-                await fetchScheduledPosts(); 
-            }
-            
-            setStep(4); 
-        } else {
+        setIsPublishing(false);
+        // КРИТИЧЕСКИЙ ФИКС: Сброс всех локальных состояний
+        setText('');
+        setPhotos([]);
+        setSelectedAccounts([]);
+        if (saveTempDraft) saveTempDraft(null); 
+        
+        await fetchScheduledPosts(); // Обновляем календарь сразу
+        setStep(4); 
+    } else {
             setIsPublishing(false);
             setTimeout(() => alert(result.error || 'Ошибка сервера'), 50);
         }
