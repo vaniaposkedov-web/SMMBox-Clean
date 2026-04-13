@@ -37,8 +37,7 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
     }
 }
 
-// === ДОБАВЛЕН ПАРАМЕТР publishAtDate ===
-// === ДОБАВЛЕН ПАРАМЕТР publishAtDate ===
+// === ЛОГИКА ОТПРАВКИ В KOM-OD (ВК) ===
 async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null) {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
@@ -77,13 +76,17 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('group_id', targetGroupId);
     form.append('via_api', '1'); // <--- Принудительно через API
     
-    // === ИСПРАВЛЕНИЕ: Мгновенный пост отправляется СРАЗУ, без publish_at ===
+    // === ИСПРАВЛЕНИЕ 1: Жесткая проверка даты ===
     if (publishAtDate) {
-        const komodTimezone = 'Europe/Moscow'; 
         const targetDate = new Date(publishAtDate);
-        const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
-        const formattedDate = tzString.substring(0, 16);
-        form.append('publish_at', formattedDate); 
+        // Если дата в будущем (с запасом 1 минута) - планируем. Иначе отправляем СРАЗУ (для Cron).
+        if (targetDate.getTime() > Date.now() + 60000) {
+            const komodTimezone = 'Europe/Moscow'; 
+            // Надежное форматирование без "T", чтобы API kom-od не ругался
+            const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
+            const formattedDate = tzString.substring(0, 16).replace('T', ' '); 
+            form.append('publish_at', formattedDate); 
+        }
     }
 
     const media = [];
@@ -230,17 +233,14 @@ async function sendToVK(token, groupId, text, imageBuffers) {
     if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
 }
 
-// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ (ИДЕАЛЬНАЯ АРХИТЕКТУРА) ===
-// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ (ИДЕАЛЬНАЯ АРХИТЕКТУРА) ===
+// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ ===
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
         
-        // === 1. ГИБКАЯ И БЕЗОПАСНАЯ ПРОВЕРКА ДАТЫ ===
         let parsedPublishAt = null;
         let isScheduled = false;
 
-        // Если с фронтенда пришла дата, пробуем её расшифровать
         if (publishAt && publishAt !== 'null' && publishAt !== 'undefined') {
             const tempDate = new Date(publishAt);
             if (!isNaN(tempDate.getTime())) {
@@ -253,7 +253,6 @@ exports.createPost = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        // 2. ОПТИМИЗАЦИЯ ИСХОДНИКОВ (СИНХРОННО)
         const rawImageBuffers = mediaUrls.map(img => Buffer.from(img.replace(/^data:image\/\w+;base64,/, ""), 'base64'));
         const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
             return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
@@ -261,15 +260,12 @@ exports.createPost = async (req, res) => {
 
         const accountJobs = [];
 
-        // 3. СИНХРОННОЕ НАЛОЖЕНИЕ ВОДЯНЫХ ЗНАКОВ ДЛЯ ВСЕХ АККАУНТОВ
         for (const accData of accounts) {
             const account = await prisma.account.findUnique({ where: { id: accData.accountId } });
             if (!account) continue;
 
             let finalText = text || '';
             
-            // === ИСПРАВЛЕНИЕ: Бронебойное извлечение подписи ===
-            // Сначала смотрим то, что пришло с фронтенда, если пусто - берем напрямую из БД
             const sigText = accData.signatureText !== undefined ? accData.signatureText : (accData.signature !== undefined ? accData.signature : account.signature);
             const applySig = accData.applySignature !== undefined ? accData.applySignature : !!sigText;
 
@@ -279,14 +275,12 @@ exports.createPost = async (req, res) => {
 
             let processedBuffers = optimizedBaseBuffers;
             
-            // === ИСПРАВЛЕНИЕ: Бронебойное извлечение водяного знака ===
             const wmConfig = accData.watermarkConfig !== undefined ? accData.watermarkConfig : (accData.watermark !== undefined ? accData.watermark : account.watermark);
             const applyWm = accData.applyWatermark !== undefined ? accData.applyWatermark : !!wmConfig;
 
             if (applyWm && wmConfig && processedBuffers.length > 0) {
                 let wm = wmConfig;
                 if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
-                if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} } 
                 if (!wm || typeof wm !== 'object') wm = {};
                 
                 const wmType = wm.type || 'text'; 
@@ -302,6 +296,8 @@ exports.createPost = async (req, res) => {
                         const metadata = await image.metadata();
                         const width = metadata.width || 1000;
                         const height = metadata.height || 1000;
+                        // === ИСПРАВЛЕНИЕ 2: Адаптация размера шрифта под меньшую сторону фото ===
+                        const baseDimension = Math.min(width, height);
                         
                         let watermarkBuffer;
                         let wmPixelWidth = 0;
@@ -309,7 +305,8 @@ exports.createPost = async (req, res) => {
 
                         if (wmType === 'text') {
                             const scaleFactor = (Number(wm.size) || 100) / 100;
-                            const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
+                            // Считаем шрифт от меньшей стороны, чтобы не ломалось на вертикальных фото
+                            const fontSize = Math.max(16, Math.floor(baseDimension * 0.04 * scaleFactor));
                             const paddingX = Math.max(4, Math.floor(fontSize * 1.5)); 
                             const paddingY = Math.max(4, Math.floor(fontSize * 1)); 
                             
@@ -362,7 +359,7 @@ exports.createPost = async (req, res) => {
                         } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
                             const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
                             const scaleFactor = (Number(wm.size) || 100) / 100;
-                            const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
+                            const targetWidth = Math.max(50, Math.floor(baseDimension * 0.15 * scaleFactor));
 
                             watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
                                 .resize({ width: targetWidth })
@@ -394,40 +391,31 @@ exports.createPost = async (req, res) => {
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
-                        let targetX = 90;
-                        let targetY = 85;
+                        // === ИСПРАВЛЕНИЕ 3: Железобетонная логика позиционирования (адаптив к краям) ===
+                        let leftPos = 0;
+                        let topPos = 0;
+                        const marginPercent = wm.margin !== undefined ? Number(wm.margin) / 100 : 0.05;
+                        const marginPx = Math.floor(baseDimension * marginPercent); // Отступ в пикселях
 
-                        if (wm.x !== undefined && wm.x !== null && !isNaN(Number(wm.x))) {
-                            targetX = Number(wm.x);
-                        } else if (wm.position) {
-                            const posToCoords = {
-                                'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
-                                'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
-                                'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
-                            };
-                            if (posToCoords[wm.position]) {
-                                targetX = posToCoords[wm.position].x;
-                                targetY = posToCoords[wm.position].y;
-                            }
+                        if (wm.position) {
+                            // Горизонталь
+                            if (wm.position.includes('l')) leftPos = marginPx;
+                            else if (wm.position.includes('r')) leftPos = width - wmPixelWidth - marginPx;
+                            else leftPos = Math.floor((width - wmPixelWidth) / 2); // по центру
+
+                            // Вертикаль
+                            if (wm.position.includes('t')) topPos = marginPx;
+                            else if (wm.position.includes('b')) topPos = height - wmPixelHeight - marginPx;
+                            else topPos = Math.floor((height - wmPixelHeight) / 2); // по центру
+                        } else {
+                            // Старый фолбэк
+                            leftPos = Math.floor((width * (90/100)) - (wmPixelWidth / 2));
+                            topPos = Math.floor((height * (85/100)) - (wmPixelHeight / 2));
                         }
 
-                        if (wm.y !== undefined && wm.y !== null && !isNaN(Number(wm.y))) {
-                            targetY = Number(wm.y);
-                        }
-
-                        targetX = Math.max(0, Math.min(100, targetX));
-                        targetY = Math.max(0, Math.min(100, targetY));
-
-                        const centerX = Math.floor(width * (targetX / 100));
-                        const centerY = Math.floor(height * (targetY / 100));
-                        
-                        let leftPos = Math.floor(centerX - (wmPixelWidth / 2));
-                        let topPos = Math.floor(centerY - (wmPixelHeight / 2));
-
-                        if (leftPos + wmPixelWidth > width) leftPos = width - wmPixelWidth;
-                        if (topPos + wmPixelHeight > height) topPos = height - wmPixelHeight;
-                        if (leftPos < 0) leftPos = 0;
-                        if (topPos < 0) topPos = 0;
+                        // Защита от выхода за границы и "прилипания" к отрицательным координатам (0,0)
+                        leftPos = Math.max(0, Math.min(leftPos, width - wmPixelWidth));
+                        topPos = Math.max(0, Math.min(topPos, height - wmPixelHeight));
 
                         return await image
                             .composite([{ input: watermarkBuffer, top: Math.round(topPos), left: Math.round(leftPos) }])
@@ -447,9 +435,7 @@ exports.createPost = async (req, res) => {
             });
         }
 
-        // 4. ОТПРАВКА ДАННЫХ В ЗАВИСИМОСТИ ОТ ТИПА ПОСТА
         if (isScheduled) {
-            // Для отложенных: СРАЗУ сохраняем качественные фото в базу данных
             for (const job of accountJobs) {
                 const finalImagesToSave = job.processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
                 await prisma.post.create({
@@ -462,10 +448,8 @@ exports.createPost = async (req, res) => {
                     }
                 });
             }
-            // Гарантированно отдаем ответ фронтенду ТОЛЬКО после сохранения
             return res.status(200).json({ success: true, message: 'Запланировано' });
         } else {
-            // Для мгновенных: Сохраняем ТОЛЬКО легкие миниатюры для истории (экономия места)
             for (const job of accountJobs) {
                 const thumbnailsForDb = await Promise.all(job.processedBuffers.map(async (buf) => {
                     const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
@@ -482,10 +466,8 @@ exports.createPost = async (req, res) => {
                 });
             }
 
-            // Отпускаем пользователя (перекидываем на зеленый экран)
             res.status(200).json({ success: true, message: 'Отправка запущена' });
 
-            // А сами тяжелые файлы отправляем в ВК/ТГ в фоновом режиме
             setTimeout(async () => {
                 for (const job of accountJobs) {
                     try {
@@ -496,7 +478,6 @@ exports.createPost = async (req, res) => {
                         } else if (providerType === 'vk') {
                             const isKomod = job.account.providerId.startsWith('wall_') || job.account.providerId.startsWith('group_');
                             if (isKomod) {
-                                // === СЕКРЕТ ЗДЕСЬ: ПЕРЕДАЕМ null ДЛЯ МГНОВЕННОЙ ОТПРАВКИ ===
                                 await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
                             } else {
                                 await sendToVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
@@ -505,7 +486,6 @@ exports.createPost = async (req, res) => {
                     } catch (err) {
                         console.error(`[BACKGROUND ERROR] ${job.account.name}:`, err.message);
                         
-                        // Меняем статус на ошибку, чтобы юзер не ждал вечно
                         await prisma.post.updateMany({
                             where: { accountId: job.account.id, status: 'PUBLISHED' },
                             data: { status: 'FAILED' }
@@ -520,9 +500,6 @@ exports.createPost = async (req, res) => {
         if (!res.headersSent) res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
     }
 };
-
-
-
 
 // === ТАЙМЕР (CRON): АВТОМАТИЧЕСКАЯ ОТПРАВКА ОТЛОЖЕННЫХ ПОСТОВ ===
 exports.initCron = () => {
@@ -539,7 +516,6 @@ exports.initCron = () => {
                     const account = post.account;
                     const mediaUrls = JSON.parse(post.mediaUrls || '[]');
                     
-                    // Берем уже ИДЕАЛЬНО ГОТОВЫЕ фото с водяным знаком прямо из базы
                     const imageBuffers = mediaUrls.map(img => {
                         const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
                         return Buffer.from(base64Data, 'base64');
@@ -552,14 +528,12 @@ exports.initCron = () => {
                     } else if (providerType === 'vk') {
                         const isKomod = account.providerId.startsWith('wall_') || account.providerId.startsWith('group_');
                         if (isKomod) {
-                            // === ПЕРЕДАЕМ ЗАПЛАНИРОВАННУЮ ДАТУ ===
                             await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, post.publishAt);
                         } else {
                             await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
                         }
                     }
 
-                    // ПОСЛЕ успешной публикации, сжимаем эти фото до миниатюр (чтобы БД не распухла)
                     const thumbnailsForDb = await Promise.all(imageBuffers.map(async (buf) => {
                         const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
                         return 'data:image/jpeg;base64,' + thumb.toString('base64');
@@ -577,7 +551,7 @@ exports.initCron = () => {
     });
 };
 
-// === ПОЛУЧИТЬ ОТЛОЖЕННЫЕ И ОПУБЛИКОВАННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
+// === РОУТЫ ДЛЯ КАЛЕНДАРЯ И ШАРИНГА (ОСТАВЛЕНЫ БЕЗ ИЗМЕНЕНИЙ) ===
 exports.getScheduledPosts = async (req, res) => {
     try {
         const userId = getUserId(req);
@@ -593,13 +567,11 @@ exports.getScheduledPosts = async (req, res) => {
             take: 150
         });
 
-        // ЗАЩИТА: Не отдаем тяжелые Base64-картинки фронтенду, чтобы не вызвать ошибку QuotaExceededError
-        // ЗАЩИТА: Отдаем только ОДНУ картинку для превью, чтобы не вызвать ошибку
         const lightweightPosts = posts.map(p => {
             let firstImage = [];
             try {
                 const parsed = JSON.parse(p.mediaUrls || '[]');
-                if (parsed.length > 0) firstImage = [parsed[0]]; // Берем только 1 фото
+                if (parsed.length > 0) firstImage = [parsed[0]];
             } catch(e) {}
             
             return { ...p, mediaUrls: JSON.stringify(firstImage) };
@@ -611,7 +583,6 @@ exports.getScheduledPosts = async (req, res) => {
     }
 };
 
-// === ОБНОВИТЬ СУЩЕСТВУЮЩИЙ ОТЛОЖЕННЫЙ ПОСТ (РЕДАКТИРОВАНИЕ) ===
 exports.updateScheduledPost = async (req, res) => {
     try {
         const { id } = req.params;
