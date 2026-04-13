@@ -472,11 +472,17 @@ exports.initCron = () => {
                 include: { account: true }
             });
 
+            // Добавил логирование, чтобы ты в консоли видел, когда срабатывает отложенный пост
+            if (postsToPublish.length > 0) {
+                console.log(`\n[CRON] ⏰ Найдено отложенных постов для отправки: ${postsToPublish.length}`);
+            }
+
             for (const post of postsToPublish) {
                 try {
                     const account = post.account;
                     const mediaUrls = JSON.parse(post.mediaUrls || '[]');
                     
+                    // Берем уже ИДЕАЛЬНО ГОТОВЫЕ фото с водяным знаком прямо из базы
                     const imageBuffers = mediaUrls.map(img => {
                         const base64Data = img.includes(',') ? img.split(',')[1] : img;
                         return Buffer.from(base64Data, 'base64');
@@ -487,9 +493,18 @@ exports.initCron = () => {
                         const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                         await sendToTelegram(botToken, account.providerId, post.text, imageBuffers);
                     } else if (providerType === 'vk') {
-                        await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, post.publishAt);
+                        const isKomod = account.providerId.startsWith('wall_') || account.providerId.startsWith('group_');
+                        if (isKomod) {
+                            // === ИСПРАВЛЕНИЕ: Передаем null вместо post.publishAt ===
+                            // Раз время сработало, значит пост нужно выпустить немедленно.
+                            // null заставит шлюз добавить +1 минуту и принять пост без ошибки "времени в прошлом"
+                            await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, null);
+                        } else {
+                            await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
+                        }
                     }
 
+                    // ПОСЛЕ успешной публикации, сжимаем эти фото до миниатюр (чтобы БД не распухла)
                     const thumbnailsForDb = await Promise.all(imageBuffers.map(async (buf) => {
                         const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
                         return 'data:image/jpeg;base64,' + thumb.toString('base64');
@@ -499,14 +514,16 @@ exports.initCron = () => {
                         where: { id: post.id },
                         data: { status: 'PUBLISHED', mediaUrls: JSON.stringify(thumbnailsForDb) } 
                     });
+                    
+                    console.log(`[CRON] ✅ Отложенный пост #${post.id} успешно отправлен!`);
                 } catch (err) {
+                    console.error(`[CRON ERROR] Ошибка отправки отложенного поста #${post.id}:`, err.message);
                     await prisma.post.update({ where: { id: post.id }, data: { status: 'FAILED' } });
                 }
             }
         } catch (e) {}
     });
 };
-
 // === ПОЛУЧИТЬ ОТЛОЖЕННЫЕ И ОПУБЛИКОВАННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
 exports.getScheduledPosts = async (req, res) => {
     try {
