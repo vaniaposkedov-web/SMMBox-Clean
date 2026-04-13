@@ -55,6 +55,7 @@ model User {
   isPro                    Boolean @default(false)
   proExpiresAt             DateTime? 
   transactions             Transaction[] 
+  systemLogs               SystemLog[]
 }
 
 model SocialProfile {
@@ -228,11 +229,11 @@ model SystemSettings {
 
 model SystemLog {
   id        String   @id @default(uuid())
-  userId    String?  // Может быть null, если юзер еще не авторизован
-  level     String   @default("ERROR") // ERROR, WARNING, INFO
-  module    String   // Где упало: 'KOMOD_API', 'WEBSOCKET', 'TELEGRAM'
-  message   String   // Краткая суть: 'Неверный шлюз или просроченный токен'
-  details   String?  @db.Text // JSON или полный StackTrace для дебага
+  userId    String?  
+  level     String   @default("ERROR") 
+  module    String   
+  message   String   
+  details   String?  @db.Text 
   createdAt DateTime @default(now())
 
   user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
