@@ -13,7 +13,7 @@ const IconVK = () => (
   </svg>
 );
 
-const [postTime, setPostTime] = useState('');
+
 
 const IconTG = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
@@ -27,7 +27,7 @@ export default function Publish() {
     tempDraft, saveTempDraft, createPostAction,
     myPartners, sharePostAction, fetchPartnerData
   } = useStore();
-  
+  const [postTime, setPostTime] = useState('');
   const isRestored = useRef(false);
 
   const [view, setView] = useState('start'); 
