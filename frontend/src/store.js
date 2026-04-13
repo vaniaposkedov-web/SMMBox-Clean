@@ -604,21 +604,9 @@ export const useStore = create(
 
      // ... предыдущий код стора
 
-      createPostAction: async (text, mediaUrls, accountIds, publishAt) => {
+      createPostAction: async (text, mediaUrls, accountsData, publishAt) => {
           try {
             const state = get();
-            
-            const accountsData = accountIds.map(id => {
-              const acc = state.accounts.find(a => a.id === id);
-              if (!acc) return null;
-              return {
-                accountId: acc.id,
-                applySignature: true, 
-                applyWatermark: true,
-                signatureText: acc.signature || '',
-                watermarkConfig: acc.watermark || null // Добавил передачу конфига
-              };
-            }).filter(Boolean);
 
             const res = await fetch('/api/posts/create', {
                 method: 'POST', 
@@ -629,15 +617,15 @@ export const useStore = create(
                 body: JSON.stringify({ 
                     text, 
                     mediaUrls, 
-                    accounts: accountsData, // ФИКС: Передаем полные настройки, а не просто ID
-                    publishAt: publishAt || null
+                    accounts: accountsData, // ФИКС: Принимаем уже готовую сборку со всеми настройками вотермарков
+                    publishAt: publishAt || null 
                 })
             });
           
           const data = await res.json();
           if (res.ok && data.success) {
-            // ФИКС: Обновляем календарь В ЛЮБОМ СЛУЧАЕ, так как моментальные посты теперь тоже пишутся в историю
-            get().fetchScheduledPosts();
+            // Обновляем отложку, если это был запланированный пост
+            if (publishAt) get().fetchScheduledPosts();
             return { success: true };
           }
           return { success: false, error: data.error || 'Ошибка при обработке сервером' };
