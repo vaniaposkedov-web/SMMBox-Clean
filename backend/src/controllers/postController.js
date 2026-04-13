@@ -310,11 +310,13 @@ exports.createPost = async (req, res) => {
         let parsedPublishAt = null;
         let isScheduled = false;
 
-        // Валидация даты планирования
+        // ЖЕСТКОЕ РАЗДЕЛЕНИЕ: Если передана дата, это отложенный пост
         if (publishAt && publishAt !== 'null' && publishAt !== 'undefined' && publishAt !== '') {
             const tempDate = new Date(publishAt);
+            const now = new Date();
             if (!isNaN(tempDate.getTime())) {
-                parsedPublishAt = tempDate;
+                // Защита: если выбрали время в прошлом (текущую минуту), планируем на +1 минуту вперед
+                parsedPublishAt = tempDate <= now ? new Date(now.getTime() + 60000) : tempDate;
                 isScheduled = true;
             }
         }
@@ -340,9 +342,7 @@ exports.createPost = async (req, res) => {
         const accountJobs = [];
 
         // Формирование очереди заданий (подписи, водяные знаки)
-        // Формирование очереди заданий (подписи, водяные знаки)
         for (const accData of accounts) {
-            // Обязательно подтягиваем watermark из БД, если он не пришел с фронта
             const account = await prisma.account.findUnique({ 
                 where: { id: accData.accountId },
                 include: { watermark: true } 
@@ -357,14 +357,11 @@ exports.createPost = async (req, res) => {
                 finalText += `\n\n${sigText}`;
             }
 
-            // Клонируем буферы для этого конкретного аккаунта
             let processedBuffers = [...optimizedBaseBuffers];
             
-            // Получаем конфиг: либо кастомный из модалки публикации, либо из настроек аккаунта
             let wmConfig = accData.watermarkConfig || account.watermark;
             let applyWm = accData.applyWatermark === true || (accData.applyWatermark === undefined && !!wmConfig);
 
-            // 🟢 ПРИМЕНЯЕМ АДАПТИВНЫЙ ЗНАК
             if (applyWm && wmConfig && processedBuffers.length > 0) {
                 processedBuffers = await Promise.all(
                     processedBuffers.map(buf => applyWatermark(buf, wmConfig))
@@ -374,7 +371,7 @@ exports.createPost = async (req, res) => {
             accountJobs.push({ account, finalText, processedBuffers });
         }
 
-        // ВЕТКА А: Отложенный пост
+        // === ВЕТКА А: ОТЛОЖЕННЫЙ ПОСТ ===
         if (isScheduled) {
             for (const job of accountJobs) {
                 const finalImagesToSave = job.processedBuffers.map(buf => 'data:image/jpeg;base64,' + buf.toString('base64'));
@@ -383,7 +380,7 @@ exports.createPost = async (req, res) => {
                         accountId: job.account.id,
                         text: job.finalText,
                         mediaUrls: JSON.stringify(finalImagesToSave),
-                        publishAt: parsedPublishAt,
+                        publishAt: parsedPublishAt, // Сохраняем дату (маркер отложенного поста)
                         status: 'SCHEDULED' 
                     }
                 });
@@ -391,7 +388,7 @@ exports.createPost = async (req, res) => {
             return res.status(200).json({ success: true, message: 'Запланировано' });
         } 
         
-        // ВЕТКА Б: Мгновенная публикация (ОБНОВЛЕНО: Ждем реального ответа!)
+        // === ВЕТКА Б: МОМЕНТАЛЬНАЯ ПУБЛИКАЦИЯ ===
         else {
             let hasErrors = false;
             let lastError = '';
@@ -404,11 +401,10 @@ exports.createPost = async (req, res) => {
                         const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                         await sendToTelegram(botToken, job.account.providerId, job.finalText, job.processedBuffers);
                     } else if (providerType === 'vk') {
-                        // Постинг через шлюз (включая личные страницы)
                         await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
                     }
 
-                    // Сохраняем историю (сжимаем для БД)
+                    // Сжимаем фото для сохранения в истории
                     const thumbnailsForDb = await Promise.all(job.processedBuffers.map(async (buf) => {
                         const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
                         return 'data:image/jpeg;base64,' + thumb.toString('base64');
@@ -419,6 +415,7 @@ exports.createPost = async (req, res) => {
                             accountId: job.account.id,
                             text: job.finalText,
                             mediaUrls: JSON.stringify(thumbnailsForDb),
+                            publishAt: null, // МАРКЕР моментального поста (не попадет в календарь)
                             status: 'PUBLISHED' 
                         }
                     });
@@ -427,24 +424,20 @@ exports.createPost = async (req, res) => {
                     hasErrors = true;
                     lastError = err.message;
                     
-                    // Фиксируем ошибку в базе
                     await prisma.post.create({
                         data: {
                             accountId: job.account.id,
                             text: job.finalText,
                             mediaUrls: "[]",
+                            publishAt: null,
                             status: 'FAILED' 
                         }
                     });
                 }
             }
 
-            // Если были ошибки - возвращаем 500, чтобы фронтенд показал Alert
             if (hasErrors) {
-                return res.status(500).json({ 
-                    success: false, 
-                    error: `Не удалось отправить пост во все аккаунты. Последняя ошибка: ${lastError}` 
-                });
+                return res.status(500).json({ success: false, error: `Не удалось отправить пост во все аккаунты. Последняя ошибка: ${lastError}` });
             }
 
             return res.status(200).json({ success: true, message: 'Успешно опубликовано' });
@@ -466,7 +459,6 @@ exports.initCron = () => {
                 include: { account: true }
             });
 
-            // Добавил логирование, чтобы ты в консоли видел, когда срабатывает отложенный пост
             if (postsToPublish.length > 0) {
                 console.log(`\n[CRON] ⏰ Найдено отложенных постов для отправки: ${postsToPublish.length}`);
             }
@@ -476,7 +468,6 @@ exports.initCron = () => {
                     const account = post.account;
                     const mediaUrls = JSON.parse(post.mediaUrls || '[]');
                     
-                    // Берем уже ИДЕАЛЬНО ГОТОВЫЕ фото с водяным знаком прямо из базы
                     const imageBuffers = mediaUrls.map(img => {
                         const base64Data = img.includes(',') ? img.split(',')[1] : img;
                         return Buffer.from(base64Data, 'base64');
@@ -487,18 +478,12 @@ exports.initCron = () => {
                         const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                         await sendToTelegram(botToken, account.providerId, post.text, imageBuffers);
                     } else if (providerType === 'vk') {
-                        const isKomod = account.providerId.startsWith('wall_') || account.providerId.startsWith('group_');
-                        if (isKomod) {
-                            // === ИСПРАВЛЕНИЕ: Передаем null вместо post.publishAt ===
-                            // Раз время сработало, значит пост нужно выпустить немедленно.
-                            // null заставит шлюз добавить +1 минуту и принять пост без ошибки "времени в прошлом"
-                            await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, null);
-                        } else {
-                            await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
-                        }
+                        // 🟢 ИСПРАВЛЕНИЕ: Всегда отправляем через шлюз, функция sendToVK удалена.
+                        // Передаем null в качестве времени, чтобы шлюз принял пост к публикации немедленно (так как время по Cron уже пришло).
+                        await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, null);
                     }
 
-                    // ПОСЛЕ успешной публикации, сжимаем эти фото до миниатюр (чтобы БД не распухла)
+                    // Сжимаем фото для сохранения в истории
                     const thumbnailsForDb = await Promise.all(imageBuffers.map(async (buf) => {
                         const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
                         return 'data:image/jpeg;base64,' + thumb.toString('base64');
@@ -506,7 +491,11 @@ exports.initCron = () => {
 
                     await prisma.post.update({
                         where: { id: post.id },
-                        data: { status: 'PUBLISHED', mediaUrls: JSON.stringify(thumbnailsForDb) } 
+                        data: { 
+                            status: 'PUBLISHED', 
+                            mediaUrls: JSON.stringify(thumbnailsForDb) 
+                            // ВАЖНО: Мы НЕ обнуляем publishAt, чтобы пост остался в календаре как завершенный
+                        } 
                     });
                     
                     console.log(`[CRON] ✅ Отложенный пост #${post.id} успешно отправлен!`);
@@ -518,7 +507,9 @@ exports.initCron = () => {
         } catch (e) {}
     });
 };
-// === ПОЛУЧИТЬ ОТЛОЖЕННЫЕ И ОПУБЛИКОВАННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
+
+
+// === ПОЛУЧИТЬ ТОЛЬКО ОТЛОЖЕННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
 exports.getScheduledPosts = async (req, res) => {
     try {
         const userId = getUserId(req);
@@ -527,7 +518,8 @@ exports.getScheduledPosts = async (req, res) => {
         const posts = await prisma.post.findMany({
             where: { 
                 account: { userId: userId }, 
-                status: { in: ['SCHEDULED', 'PUBLISHED'] } 
+                status: { in: ['SCHEDULED', 'PUBLISHED'] },
+                publishAt: { not: null } // 🟢 ИСПРАВЛЕНИЕ: Игнорируем моментальные посты!
             },
             include: { account: { select: { name: true, provider: true } } },
             orderBy: { publishAt: 'asc' },
