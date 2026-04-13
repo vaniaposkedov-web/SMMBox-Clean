@@ -249,13 +249,30 @@ async function sendToVK(token, groupId, text, imageBuffers) {
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
-        const isScheduled = publishAt ? true : false;
         
+        // === 1. УМНАЯ И БЕЗОПАСНАЯ ПРОВЕРКА ДАТЫ ===
+        let parsedPublishAt = null;
+        let isScheduled = false;
+
+        // Проверяем, что дата передана и не является мусором
+        if (publishAt && publishAt !== 'null' && publishAt !== 'undefined') {
+            parsedPublishAt = new Date(publishAt);
+            
+            // Если JS не смог распарсить дату (Invalid Date), возвращаем ошибку клиенту, а не роняем сервер
+            if (isNaN(parsedPublishAt.getTime())) {
+                return res.status(400).json({ 
+                    success: false, 
+                    error: 'Сбой времени. Пожалуйста, проверьте выбранную дату и время публикации.' 
+                });
+            }
+            isScheduled = true;
+        }
+
         if (!accounts || accounts.length === 0) {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        // 1. ОПТИМИЗАЦИЯ ИСХОДНИКОВ (СИНХРОННО)
+        // 2. ОПТИМИЗАЦИЯ ИСХОДНИКОВ (СИНХРОННО)
         const rawImageBuffers = mediaUrls.map(img => Buffer.from(img.replace(/^data:image\/\w+;base64,/, ""), 'base64'));
         const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
             return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
@@ -263,7 +280,7 @@ exports.createPost = async (req, res) => {
 
         const accountJobs = [];
 
-        // 2. СИНХРОННОЕ НАЛОЖЕНИЕ ВОДЯНЫХ ЗНАКОВ ДЛЯ ВСЕХ АККАУНТОВ
+        // 3. СИНХРОННОЕ НАЛОЖЕНИЕ ВОДЯНЫХ ЗНАКОВ ДЛЯ ВСЕХ АККАУНТОВ
         for (const accData of accounts) {
             const account = await prisma.account.findUnique({ where: { id: accData.accountId } });
             if (!account) continue;
@@ -439,7 +456,7 @@ exports.createPost = async (req, res) => {
             });
         }
 
-        // 3. ОТПРАВКА ДАННЫХ В ЗАВИСИМОСТИ ОТ ТИПА ПОСТА
+        // 4. ОТПРАВКА ДАННЫХ В ЗАВИСИМОСТИ ОТ ТИПА ПОСТА
         if (isScheduled) {
             // Для отложенных: СРАЗУ сохраняем качественные фото в базу данных
             for (const job of accountJobs) {
@@ -449,7 +466,7 @@ exports.createPost = async (req, res) => {
                         accountId: job.account.id,
                         text: job.finalText,
                         mediaUrls: JSON.stringify(finalImagesToSave),
-                        publishAt: new Date(publishAt),
+                        publishAt: parsedPublishAt, // ✅ БЕЗОПАСНАЯ И ПРОВЕРЕННАЯ ДАТА ИЗ ШАГА 1
                         status: 'SCHEDULED' 
                     }
                 });
@@ -474,13 +491,9 @@ exports.createPost = async (req, res) => {
                 });
             }
 
-            // === УВЕДОМЛЯЕМ ВСЕХ ПАРТНЕРОВ О ВАШЕЙ НОВОЙ ПУБЛИКАЦИИ ===
-            
-
             // Отпускаем пользователя (перекидываем на зеленый экран)
             res.status(200).json({ success: true, message: 'Отправка запущена' });
 
-            // А сами тяжелые файлы отправляем в ВК/ТГ в фоновом режиме
             // А сами тяжелые файлы отправляем в ВК/ТГ в фоновом режиме
             setTimeout(async () => {
                 for (const job of accountJobs) {
