@@ -225,3 +225,15 @@ model SystemSettings {
   aiPrompt  String   @db.Text               // Тот самый промпт для нейросети
   updatedAt DateTime @updatedAt
 }
+
+model SystemLog {
+  id        String   @id @default(uuid())
+  userId    String?  // Может быть null, если юзер еще не авторизован
+  level     String   @default("ERROR") // ERROR, WARNING, INFO
+  module    String   // Где упало: 'KOMOD_API', 'WEBSOCKET', 'TELEGRAM'
+  message   String   // Краткая суть: 'Неверный шлюз или просроченный токен'
+  details   String?  @db.Text // JSON или полный StackTrace для дебага
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

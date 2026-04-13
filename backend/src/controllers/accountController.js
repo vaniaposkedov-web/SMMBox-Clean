@@ -4,6 +4,7 @@ const prisma = new PrismaClient();
 // В начало файла accountController.js
 const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6d359a019';
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
+const { logEvent } = require('../utils/logger');
 
 
 // --- УНИВЕРСАЛЬНЫЙ ПАРСЕР ПО СТРУКТУРЕ АЛЕКСЕЯ ---
@@ -462,6 +463,18 @@ exports.syncVkKomod = async (req, res) => {
     res.json({ success: true, count: validGroupProviderIds.length });
   } catch (error) {
     console.error('Ошибка синхронизации syncVkKomod:', error);
+    
+    // === ЗАПИСЬ ОШИБКИ В БАЗУ ===
+    const userId = String(req.user?.userId || req.user?.id);
+    if (userId && userId !== 'undefined') {
+      await logEvent(
+        userId, 
+        'ERROR', 
+        'KOMOD_API', 
+        'Ошибка при синхронизации ВК', 
+        error.response?.data || error.message
+      );
+    }
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
@@ -1287,5 +1300,13 @@ exports.telegramWebhook = async (req, res) => {
     }
   } catch (error) {
     console.error('Ошибка в Webhook Telegram:', error);
+
+    await logEvent(
+      null, // ID юзера неизвестен, если бот упал на системном уровне
+      'ERROR', 
+      'TELEGRAM_WEBHOOK', 
+      'Сбой при обработке сообщения от Telegram', 
+      error.message
+    );
   }
 };
