@@ -390,32 +390,21 @@ export default function Publish() {
         
         const accountsData = selectedAccounts.map(id => {
           const acc = accounts.find(a => a.id === id);
-          const hasCustomConfig = acc?.watermark !== null || acc?.signature !== null;
-          const mode = accountOverrides[id]?.mode || (hasCustomConfig ? 'custom' : 'template');
           
-          let wmConfig = null;
-          let sigText = '';
-          
-          if (mode === 'custom') {
-              wmConfig = acc?.watermark !== null ? acc.watermark : (globalSettings?.watermark || watermarkSettings);
-              sigText = acc?.signature !== null ? acc.signature : (globalSettings?.signature || '');
-          } else {
-              wmConfig = globalSettings?.watermark || watermarkSettings;
-              sigText = globalSettings?.signature || '';
-          }
-
-          const activeWM = accountOverrides[id]?.watermark !== undefined 
-              ? accountOverrides[id].watermark 
-              : (mode === 'custom' ? true : applyWatermark);
-              
-          const activeSig = accountOverrides[id]?.signature !== undefined 
-              ? accountOverrides[id].signature 
-              : (mode === 'custom' ? true : applySignature);
+          // Фоновая проверка: если у аккаунта есть свой знак/подпись, берем их. 
+          // Иначе проверяем включены ли глобальные настройки.
+          const wmConfig = (acc?.watermark !== null && acc?.watermark !== undefined) 
+            ? acc.watermark 
+            : (applyWatermark ? (globalSettings?.watermark || watermarkSettings) : null);
+            
+          const sigText = (acc?.signature !== null && acc?.signature !== undefined) 
+            ? acc.signature 
+            : (applySignature ? (globalSettings?.signature || '') : null);
 
           return {
             accountId: id,
-            applyWatermark: activeWM,
-            applySignature: activeSig,
+            applyWatermark: !!wmConfig,
+            applySignature: !!sigText,
             watermarkConfig: wmConfig,
             signatureText: sigText
           };
@@ -860,65 +849,31 @@ export default function Publish() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                         {providerAccounts.map(acc => {
                           const isSelected = selectedAccounts.includes(acc.id);
-                          const hasCustomConfig = acc.watermark !== null || acc.signature !== null;
-                          const overrideMode = accountOverrides[acc.id]?.mode || (hasCustomConfig ? 'custom' : 'template');
-                          const isWatermarkActive = getEffectiveSetting(acc.id, 'watermark');
-                          const isSignatureActive = getEffectiveSetting(acc.id, 'signature');
-                          
-                          // === ВОТ ЭТИ ДВЕ СТРОКИ МЫ ВОЗВРАЩАЕМ ===
                           const avatarSrc = acc.avatarUrl || acc.photo_url || acc.avatar;
                           const iconColor = provider === 'vk' ? 'text-blue-500' : 'text-sky-400';
-                          // ========================================
                           
                           return (
-                            <div key={acc.id} className={`flex flex-col rounded-2xl border transition-all overflow-hidden group ${isSelected ? (publishMode === 'schedule' ? 'bg-gray-800 border-purple-500/50 shadow-md shadow-purple-500/10' : 'bg-gray-800 border-blue-500/50 shadow-md shadow-blue-500/10') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'}`}>
-                              <div onClick={() => toggleAccount(acc.id)} className="flex items-center gap-3 p-3 w-full text-left cursor-pointer min-h-[56px]">
-                                <div className="relative w-10 h-10 rounded-xl shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
-                                  {avatarSrc ? <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-xl" /> : <span className="text-xs sm:text-sm">{acc.name.substring(0, 2).toUpperCase()}</span>}
-                                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
-                                    <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex items-center justify-center">
+                            <div 
+                              key={acc.id} 
+                              onClick={() => toggleAccount(acc.id)} 
+                              className={`flex flex-col rounded-xl border transition-all overflow-hidden cursor-pointer active:scale-95 ${isSelected ? (publishMode === 'schedule' ? 'bg-purple-500/10 border-purple-500/50 shadow-sm' : 'bg-blue-500/10 border-blue-500/50 shadow-sm') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700 hover:bg-gray-800/50'}`}
+                            >
+                              <div className="flex items-center gap-2.5 p-2.5 w-full text-left min-h-[48px]">
+                                <div className="relative w-8 h-8 rounded-lg shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
+                                  {avatarSrc ? <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-lg" /> : <span className="text-[10px] sm:text-xs">{acc.name.substring(0, 2).toUpperCase()}</span>}
+                                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
+                                    <div className="w-2.5 h-2.5 flex items-center justify-center">
                                       {provider.toLowerCase() === 'vk' ? <IconVK /> : <IconTG />}
                                     </div>
                                   </div>
                                 </div>
-                                <div className="flex-1 min-w-0 pr-2">
-                                  <p className={`text-xs sm:text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>{acc.name}</p>
-                                  {isSelected && (
-                                    <div className="flex gap-2 mt-0.5">
-                                      <span className={`text-[9px] sm:text-[10px] flex items-center gap-1 ${isWatermarkActive ? 'text-blue-400' : 'text-gray-500'}`}>
-                                        <Check size={10} className={isWatermarkActive ? 'block' : 'hidden'} /><span className={!isWatermarkActive ? 'line-through' : ''}>Знак</span>
-                                      </span>
-                                      <span className={`text-[9px] sm:text-[10px] flex items-center gap-1 ${isSignatureActive ? 'text-purple-400' : 'text-gray-500'}`}>
-                                        <Check size={10} className={isSignatureActive ? 'block' : 'hidden'} /><span className={!isSignatureActive ? 'line-through' : ''}>Подпись</span>
-                                      </span>
-                                    </div>
-                                  )}
+                                <div className="flex-1 min-w-0 pr-1">
+                                  <p className={`text-[11px] sm:text-xs font-bold truncate transition-colors ${isSelected ? 'text-white' : 'text-gray-400'}`}>{acc.name}</p>
                                 </div>
-                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? (publishMode === 'schedule' ? 'border-purple-500 bg-purple-500' : 'border-blue-500 bg-blue-500') : 'border-gray-600'}`}>
-                                  <CheckCircle2 size={12} className={`text-white ${isSelected ? 'block' : 'hidden'}`} />
+                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? (publishMode === 'schedule' ? 'border-purple-500 bg-purple-500' : 'border-blue-500 bg-blue-500') : 'border-gray-600'}`}>
+                                  <CheckCircle2 size={10} className={`text-white ${isSelected ? 'block' : 'hidden'}`} />
                                 </div>
                               </div>
-
-                              {isSelected && (
-                                <div className="bg-gray-900/50 border-t border-gray-700/50 px-3 py-2 sm:py-2.5 flex flex-col gap-2">
-                                  <div className="flex items-center justify-between">
-                                    <label className="text-[9px] sm:text-[10px] text-gray-500 uppercase font-bold">Настройки:</label>
-                                    <select className="bg-gray-950 text-white text-base sm:text-[11px] p-1 sm:p-1.5 rounded border border-gray-700 outline-none" value={overrideMode} onChange={(e) => handleModeChange(acc.id, e.target.value)}>
-                                      <option value="template">По шаблону</option>
-                                      <option value="custom">Свои</option>
-                                    </select>
-                                  </div>
-                                  {overrideMode === 'custom' && (
-                                    <div className="flex items-center justify-between pt-2 border-t border-gray-800/50">
-                                      <span className="text-[9px] sm:text-[10px] text-gray-400 hidden sm:inline">Только для этой группы:</span>
-                                      <div className="flex gap-2 w-full sm:w-auto">
-                                        <button onClick={() => handleOverride(acc.id, 'watermark')} className={`flex-1 flex items-center justify-center gap-1 text-[10px] sm:text-[11px] px-2 py-2 sm:py-1.5 rounded-lg border ${isWatermarkActive ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-gray-800 text-gray-500 border-transparent'}`}><Settings size={12}/> Знак</button>
-                                        <button onClick={() => handleOverride(acc.id, 'signature')} className={`flex-1 flex items-center justify-center gap-1 text-[10px] sm:text-[11px] px-2 py-2 sm:py-1.5 rounded-lg border ${isSignatureActive ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' : 'bg-gray-800 text-gray-500 border-transparent'}`}><PenTool size={12}/> Подпись</button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
                             </div>
                           );
                         })}
