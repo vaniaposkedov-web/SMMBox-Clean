@@ -250,22 +250,19 @@ exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
         
-        // === 1. УМНАЯ И БЕЗОПАСНАЯ ПРОВЕРКА ДАТЫ ===
+        // === 1. ГИБКАЯ И БЕЗОПАСНАЯ ПРОВЕРКА ДАТЫ ===
         let parsedPublishAt = null;
         let isScheduled = false;
 
-        // Проверяем, что дата передана и не является мусором
+        // Если с фронтенда пришла дата, пробуем её расшифровать
+        // Если прилетел мусор (Invalid Date), мы не роняем сервер и не выдаем ошибку,
+        // а просто публикуем пост мгновенно (isScheduled остается false)
         if (publishAt && publishAt !== 'null' && publishAt !== 'undefined') {
-            parsedPublishAt = new Date(publishAt);
-            
-            // Если JS не смог распарсить дату (Invalid Date), возвращаем ошибку клиенту, а не роняем сервер
-            if (isNaN(parsedPublishAt.getTime())) {
-                return res.status(400).json({ 
-                    success: false, 
-                    error: 'Сбой времени. Пожалуйста, проверьте выбранную дату и время публикации.' 
-                });
+            const tempDate = new Date(publishAt);
+            if (!isNaN(tempDate.getTime())) {
+                parsedPublishAt = tempDate;
+                isScheduled = true;
             }
-            isScheduled = true;
         }
 
         if (!accounts || accounts.length === 0) {
@@ -505,8 +502,9 @@ exports.createPost = async (req, res) => {
                         } else if (providerType === 'vk') {
                             const isKomod = job.account.providerId.startsWith('wall_') || job.account.providerId.startsWith('group_');
                             if (isKomod) {
-                                // === ПЕРЕДАЕМ ТЕКУЩУЮ ДАТУ ===
-                                await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, new Date());
+                                // === СЕКРЕТ ЗДЕСЬ: ПЕРЕДАЕМ null ДЛЯ МГНОВЕННОЙ ОТПРАВКИ ===
+                                // Функция sendToKomodVK увидит null и сама накинет 1 минуту к текущему времени!
+                                await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
                             } else {
                                 await sendToVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
                             }
@@ -529,6 +527,9 @@ exports.createPost = async (req, res) => {
         if (!res.headersSent) res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
     }
 };
+
+
+
 
 // === ТАЙМЕР (CRON): АВТОМАТИЧЕСКАЯ ОТПРАВКА ОТЛОЖЕННЫХ ПОСТОВ ===
 exports.initCron = () => {
