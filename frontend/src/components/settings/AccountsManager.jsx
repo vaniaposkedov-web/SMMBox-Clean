@@ -236,18 +236,19 @@ export default function AccountsManager() {
   const handleAddMyWall = async (profileId) => {
     try {
       setIsSyncingVk(true);
+      // 🟢 Жестко берем токен из памяти
+      const currentToken = localStorage.getItem('token') || token; 
       const res = await fetch('/api/accounts/vk/komod-add-profile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // Исправили user.token на token
+          'Authorization': `Bearer ${currentToken}` 
         },
         body: JSON.stringify({ profileId })
       });
       
       const data = await res.json();
       if (data.success) {
-        // Вызываем авто-синхронизацию, чтобы стена сразу подтянулась на экран!
         await useStore.getState().syncVkKomod();
         alert('Личная стена успешно добавлена!');
         await handleRefreshProfiles();
@@ -281,9 +282,11 @@ export default function AccountsManager() {
         
         if (group.is_profile_dummy) {
           try {
+            // 🟢 Жестко берем токен из памяти
+            const currentToken = localStorage.getItem('token') || token;
             const res = await fetch('/api/accounts/vk/komod-add-profile', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentToken}` },
               body: JSON.stringify({ 
                 profileId: komodModal.profileId, 
                 avatarUrl: groupAvatar, 
