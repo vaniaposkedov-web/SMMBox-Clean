@@ -57,7 +57,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     } else if (providerId.startsWith('wall_')) {
         const accId = providerId.replace('wall_', '');
         
-        // Умный поиск: ищем стену по новому флагу is_profile от шлюза, либо по старым признакам
         let targetGroup = groups.find(g => 
             String(g.account_id) === String(accId) && 
             (String(g.is_profile) === '1' || g.is_profile === true || g.type === 'profile' || String(g.url).includes('vk.com/id') || String(g.uid) === String(g.user_id))
@@ -74,15 +73,21 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     if (!targetGroupId) throw new Error('Не удалось определить ID цели для публикации шлюза.');
 
     form.append('group_id', targetGroupId);
-    form.append('via_api', '1'); // <--- Принудительно через API
+    form.append('via_api', '1'); 
     
-    // Форматирование даты строго по документации Kom-od
+    // === ИСПРАВЛЕНИЕ: Форматирование даты по документации и защита Cron ===
     if (publishAtDate) {
-        const komodTimezone = 'Europe/Moscow'; 
         const targetDate = new Date(publishAtDate);
-        const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
-        const formattedDate = tzString.substring(0, 16);
-        form.append('publish_at', formattedDate); 
+        
+        // Отправляем publish_at ТОЛЬКО если дата реально в будущем (запас 1 мин)
+        // Если это Cron, время уже пришло -> публикуем как мгновенный пост
+        if (targetDate.getTime() > Date.now() + 60000) {
+            const komodTimezone = 'Europe/Moscow'; 
+            // Получаем "2015-10-17 15:16" и жестко вырезаем букву "T", если она есть
+            const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
+            const formattedDate = tzString.substring(0, 16).replace('T', ' '); 
+            form.append('publish_at', formattedDate); 
+        }
     }
 
     const media = [];
@@ -116,7 +121,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         throw new Error('Ошибка шлюза при публикации: ' + JSON.stringify(postRes.data.errors));
     }
 
-    // === УМНЫЙ ШПИОН ЗА ОЧЕРЕДЬЮ KOM-OD ===
     const postId = postRes.data?.data?.id;
     if (postId) {
         const checkStatus = async (delay, attempt) => {
@@ -133,21 +137,13 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                         console.log(`=== СТАТУС ПОСТА ${postId} (Через ${delay/1000} сек) ===`);
                         console.log(`Опубликован в ВК: ${postData.published === '1' ? 'ДА ✅' : 'В ОЧЕРЕДИ ⏳'}`);
                         console.log(`Произошла ошибка: ${postData.fail === '1' ? 'ДА ❌' : 'НЕТ ✅'}`);
-                        if (postData.logs && postData.logs.length > 0) {
-                            console.log('ЛОГИ ШЛЮЗА:');
-                            postData.logs.forEach(l => console.log(`> ${l.message}`));
-                        }
-                        console.log(`===========================================\n`);
                     }
-                } catch (e) {
-                    // Игнорируем ошибки сети при проверке
-                }
+                } catch (e) {}
             }, delay);
         };
 
         checkStatus(15000, 1);
         checkStatus(30000, 2);
-        checkStatus(60000, 3);
     }
 }
 
@@ -168,16 +164,32 @@ const getUserId = (req) => {
     return null;
 };
 
-// === ЛОГИКА ОТПРАВКИ В ВКОНТАКТЕ (ПАКЕТНАЯ ЗАГРУЗКА) ===
+// === ЛОГИКА ОТПРАВКИ В ВКОНТАКТЕ (ПАКЕТНАЯ ЗАГРУЗКА NATIVE API) ===
 async function sendToVK(token, groupId, text, imageBuffers) {
     const v = '5.131';
+    
+    // === ИСПРАВЛЕНИЕ: Интеллектуальное определение Группа/Личная страница ===
+    // В VK группы имеют отрицательный ID (например, -12345), личные профили - положительный (12345)
+    const isGroup = String(groupId).startsWith('-');
     const cleanGroupId = Math.abs(parseInt(groupId)); 
     let attachments = [];
 
     if (imageBuffers.length > 0) {
+        const uploadParams = { access_token: token, v };
+        
+        // Передаем group_id ТОЛЬКО если это группа! Иначе API выдаст ошибку Access Denied.
+        if (isGroup) {
+            uploadParams.group_id = cleanGroupId;
+        }
+
         const serverRes = await axios.get(`https://api.vk.com/method/photos.getWallUploadServer`, {
-            params: { group_id: cleanGroupId, access_token: token, v }
+            params: uploadParams
         });
+        
+        if (serverRes.data.error) {
+            throw new Error('VK Upload Server Error: ' + serverRes.data.error.error_msg);
+        }
+        
         const uploadUrl = serverRes.data.response.upload_url;
 
         const chunks = [];
@@ -193,16 +205,26 @@ async function sendToVK(token, groupId, text, imageBuffers) {
             
             const uploadRes = await axios.post(uploadUrl, form, { headers: form.getHeaders() });
 
+            const saveParams = {
+                photo: uploadRes.data.photo,
+                server: uploadRes.data.server,
+                hash: uploadRes.data.hash,
+                access_token: token,
+                v
+            };
+            
+            // Сохраняем фото в группу ТОЛЬКО если это группа
+            if (isGroup) {
+                saveParams.group_id = cleanGroupId;
+            }
+
             const saveRes = await axios.get(`https://api.vk.com/method/photos.saveWallPhoto`, {
-                params: {
-                    group_id: cleanGroupId,
-                    photo: uploadRes.data.photo,
-                    server: uploadRes.data.server,
-                    hash: uploadRes.data.hash,
-                    access_token: token,
-                    v
-                }
+                params: saveParams
             });
+
+            if (saveRes.data.error) {
+                 throw new Error('VK Save Photo Error: ' + saveRes.data.error.error_msg);
+            }
 
             if (saveRes.data.response) {
                 saveRes.data.response.forEach(savedPhoto => {
@@ -212,20 +234,24 @@ async function sendToVK(token, groupId, text, imageBuffers) {
         }
     }
 
+    // === ИСПРАВЛЕНИЕ: Правильный owner_id ===
     const postParams = new URLSearchParams({
-        owner_id: `-${cleanGroupId}`, 
-        from_group: 1,
+        owner_id: isGroup ? `-${cleanGroupId}` : cleanGroupId, // Минус только для групп
         message: text || '',
         access_token: token,
         v
     });
+
+    if (isGroup) {
+        postParams.append('from_group', '1'); // Пост от имени группы (только для сообществ)
+    }
 
     if (attachments.length > 0) {
         postParams.append('attachments', attachments.join(','));
     }
 
     const postRes = await axios.post(`https://api.vk.com/method/wall.post`, postParams);
-    if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
+    if (postRes.data.error) throw new Error('VK Wall Post Error: ' + postRes.data.error.error_msg);
 }
 
 // === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ ===
@@ -292,7 +318,6 @@ exports.createPost = async (req, res) => {
                         const width = metadata.width || 1000;
                         const height = metadata.height || 1000;
                         
-                        // ИСПРАВЛЕНИЕ: Базовый размер для адаптивного масштабирования
                         const baseSize = Math.min(width, height);
                         
                         let watermarkBuffer;
@@ -300,7 +325,6 @@ exports.createPost = async (req, res) => {
                         let wmPixelHeight = 0;
 
                         if (wmType === 'text') {
-                            // ИСПРАВЛЕНИЕ РАЗМЕРА: 20% из UI превращаются в адекватный fontSize
                             const fontSize = Math.max(16, Math.floor(baseSize * (Number(wm.size) || 20) / 400));
                             const paddingX = Math.max(4, Math.floor(fontSize * 0.8)); 
                             const paddingY = Math.max(4, Math.floor(fontSize * 0.6)); 
@@ -353,8 +377,6 @@ exports.createPost = async (req, res) => {
                             watermarkBuffer = Buffer.from(svgText);
                         } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
                             const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
-                            
-                            // ИСПРАВЛЕНИЕ РАЗМЕРА ЛОГОТИПА: Прямая привязка к процентам от baseSize
                             const targetWidth = Math.max(50, Math.floor(baseSize * (Number(wm.size) || 20) / 100));
 
                             watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
@@ -387,23 +409,19 @@ exports.createPost = async (req, res) => {
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
-                        // ИСПРАВЛЕНИЕ ПОЗИЦИИ: Точный расчет без отрицательных координат и прилипаний
                         const marginPx = Math.floor(baseSize * ((Number(wm.margin) || 5) / 100));
                         let leftPos = 0;
                         let topPos = 0;
                         const pos = wm.position || 'br';
 
-                        // Горизонталь
                         if (pos.includes('l')) leftPos = marginPx;
                         else if (pos.includes('r')) leftPos = width - wmPixelWidth - marginPx;
                         else leftPos = Math.floor((width - wmPixelWidth) / 2);
 
-                        // Вертикаль
                         if (pos.includes('t')) topPos = marginPx;
                         else if (pos.includes('b')) topPos = height - wmPixelHeight - marginPx;
                         else topPos = Math.floor((height - wmPixelHeight) / 2);
 
-                        // Железобетонная защита от выхода за холст (решает проблему "прилипания" к краю)
                         leftPos = Math.max(0, Math.min(leftPos, width - wmPixelWidth));
                         topPos = Math.max(0, Math.min(topPos, height - wmPixelHeight));
 
