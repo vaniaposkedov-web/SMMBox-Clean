@@ -37,7 +37,7 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
     }
 }
 
-// === ЛОГИКА ОТПРАВКИ В KOM-OD (ВК) ===
+// === ЛОГИКА ОТПРАВКИ В KOM-OD (VK) ===
 async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null) {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
@@ -76,17 +76,13 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('group_id', targetGroupId);
     form.append('via_api', '1'); // <--- Принудительно через API
     
-    // === ИСПРАВЛЕНИЕ 1: Жесткая проверка даты ===
+    // Форматирование даты строго по документации Kom-od
     if (publishAtDate) {
+        const komodTimezone = 'Europe/Moscow'; 
         const targetDate = new Date(publishAtDate);
-        // Если дата в будущем (с запасом 1 минута) - планируем. Иначе отправляем СРАЗУ (для Cron).
-        if (targetDate.getTime() > Date.now() + 60000) {
-            const komodTimezone = 'Europe/Moscow'; 
-            // Надежное форматирование без "T", чтобы API kom-od не ругался
-            const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
-            const formattedDate = tzString.substring(0, 16).replace('T', ' '); 
-            form.append('publish_at', formattedDate); 
-        }
+        const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
+        const formattedDate = tzString.substring(0, 16);
+        form.append('publish_at', formattedDate); 
     }
 
     const media = [];
@@ -149,7 +145,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             }, delay);
         };
 
-        // Проверяем статус 3 раза: через 15, 30 и 60 секунд
         checkStatus(15000, 1);
         checkStatus(30000, 2);
         checkStatus(60000, 3);
@@ -296,19 +291,19 @@ exports.createPost = async (req, res) => {
                         const metadata = await image.metadata();
                         const width = metadata.width || 1000;
                         const height = metadata.height || 1000;
-                        // === ИСПРАВЛЕНИЕ 2: Адаптация размера шрифта под меньшую сторону фото ===
-                        const baseDimension = Math.min(width, height);
+                        
+                        // ИСПРАВЛЕНИЕ: Базовый размер для адаптивного масштабирования
+                        const baseSize = Math.min(width, height);
                         
                         let watermarkBuffer;
                         let wmPixelWidth = 0;
                         let wmPixelHeight = 0;
 
                         if (wmType === 'text') {
-                            const scaleFactor = (Number(wm.size) || 100) / 100;
-                            // Считаем шрифт от меньшей стороны, чтобы не ломалось на вертикальных фото
-                            const fontSize = Math.max(16, Math.floor(baseDimension * 0.04 * scaleFactor));
-                            const paddingX = Math.max(4, Math.floor(fontSize * 1.5)); 
-                            const paddingY = Math.max(4, Math.floor(fontSize * 1)); 
+                            // ИСПРАВЛЕНИЕ РАЗМЕРА: 20% из UI превращаются в адекватный fontSize
+                            const fontSize = Math.max(16, Math.floor(baseSize * (Number(wm.size) || 20) / 400));
+                            const paddingX = Math.max(4, Math.floor(fontSize * 0.8)); 
+                            const paddingY = Math.max(4, Math.floor(fontSize * 0.6)); 
                             
                             const lines = String(wmText).split('\n');
                             let maxTextWidthRaw = 0;
@@ -321,7 +316,7 @@ exports.createPost = async (req, res) => {
                             }
                             
                             wmPixelWidth = Math.max(20, Math.floor(maxTextWidthRaw) + (paddingX * 2));
-                            const lineHeight = Math.max(20, Math.floor(fontSize * 1.25));
+                            const lineHeight = Math.floor(fontSize * 1.25);
                             wmPixelHeight = Math.max(20, (lines.length * lineHeight) + (paddingY * 2));
                             
                             const bgColor = wm.bgColor || '#000000';
@@ -358,8 +353,9 @@ exports.createPost = async (req, res) => {
                             watermarkBuffer = Buffer.from(svgText);
                         } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
                             const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
-                            const scaleFactor = (Number(wm.size) || 100) / 100;
-                            const targetWidth = Math.max(50, Math.floor(baseDimension * 0.15 * scaleFactor));
+                            
+                            // ИСПРАВЛЕНИЕ РАЗМЕРА ЛОГОТИПА: Прямая привязка к процентам от baseSize
+                            const targetWidth = Math.max(50, Math.floor(baseSize * (Number(wm.size) || 20) / 100));
 
                             watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
                                 .resize({ width: targetWidth })
@@ -391,29 +387,23 @@ exports.createPost = async (req, res) => {
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
-                        // === ИСПРАВЛЕНИЕ 3: Железобетонная логика позиционирования (адаптив к краям) ===
+                        // ИСПРАВЛЕНИЕ ПОЗИЦИИ: Точный расчет без отрицательных координат и прилипаний
+                        const marginPx = Math.floor(baseSize * ((Number(wm.margin) || 5) / 100));
                         let leftPos = 0;
                         let topPos = 0;
-                        const marginPercent = wm.margin !== undefined ? Number(wm.margin) / 100 : 0.05;
-                        const marginPx = Math.floor(baseDimension * marginPercent); // Отступ в пикселях
+                        const pos = wm.position || 'br';
 
-                        if (wm.position) {
-                            // Горизонталь
-                            if (wm.position.includes('l')) leftPos = marginPx;
-                            else if (wm.position.includes('r')) leftPos = width - wmPixelWidth - marginPx;
-                            else leftPos = Math.floor((width - wmPixelWidth) / 2); // по центру
+                        // Горизонталь
+                        if (pos.includes('l')) leftPos = marginPx;
+                        else if (pos.includes('r')) leftPos = width - wmPixelWidth - marginPx;
+                        else leftPos = Math.floor((width - wmPixelWidth) / 2);
 
-                            // Вертикаль
-                            if (wm.position.includes('t')) topPos = marginPx;
-                            else if (wm.position.includes('b')) topPos = height - wmPixelHeight - marginPx;
-                            else topPos = Math.floor((height - wmPixelHeight) / 2); // по центру
-                        } else {
-                            // Старый фолбэк
-                            leftPos = Math.floor((width * (90/100)) - (wmPixelWidth / 2));
-                            topPos = Math.floor((height * (85/100)) - (wmPixelHeight / 2));
-                        }
+                        // Вертикаль
+                        if (pos.includes('t')) topPos = marginPx;
+                        else if (pos.includes('b')) topPos = height - wmPixelHeight - marginPx;
+                        else topPos = Math.floor((height - wmPixelHeight) / 2);
 
-                        // Защита от выхода за границы и "прилипания" к отрицательным координатам (0,0)
+                        // Железобетонная защита от выхода за холст (решает проблему "прилипания" к краю)
                         leftPos = Math.max(0, Math.min(leftPos, width - wmPixelWidth));
                         topPos = Math.max(0, Math.min(topPos, height - wmPixelHeight));
 
@@ -551,7 +541,7 @@ exports.initCron = () => {
     });
 };
 
-// === РОУТЫ ДЛЯ КАЛЕНДАРЯ И ШАРИНГА (ОСТАВЛЕНЫ БЕЗ ИЗМЕНЕНИЙ) ===
+// === ПОЛУЧИТЬ ОТЛОЖЕННЫЕ И ОПУБЛИКОВАННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
 exports.getScheduledPosts = async (req, res) => {
     try {
         const userId = getUserId(req);
@@ -583,6 +573,7 @@ exports.getScheduledPosts = async (req, res) => {
     }
 };
 
+// === ОБНОВИТЬ СУЩЕСТВУЮЩИЙ ОТЛОЖЕННЫЙ ПОСТ (РЕДАКТИРОВАНИЕ) ===
 exports.updateScheduledPost = async (req, res) => {
     try {
         const { id } = req.params;
