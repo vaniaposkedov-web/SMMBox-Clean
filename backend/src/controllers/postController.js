@@ -16,7 +16,7 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         const form = new FormData();
         form.append('chat_id', chatId);
         if (text) form.append('caption', text);
-        form.append('photo', imageBuffers[0], { filename: 'image.jpg', contentType: 'image/jpeg' });
+        form.append('photo', imageBuffers[0], { filename: 'image.jpg', contentType: 'image/jpeg', knownLength: imageBuffers[0].length });
         await axios.post(`${baseUrl}/sendPhoto`, form, { headers: form.getHeaders() });
     } else {
         const form = new FormData();
@@ -30,7 +30,7 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         
         form.append('media', JSON.stringify(media));
         imageBuffers.forEach((buf, i) => {
-            form.append(`photo${i}`, buf, { filename: `photo${i}.jpg`, contentType: 'image/jpeg' });
+            form.append(`photo${i}`, buf, { filename: `photo${i}.jpg`, contentType: 'image/jpeg', knownLength: buf.length });
         });
         
         await axios.post(`${baseUrl}/sendMediaGroup`, form, { headers: form.getHeaders() });
@@ -44,7 +44,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     let targetGroupId = null;
 
-    // 1. Получаем список групп из шлюза
     const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
     const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
 
@@ -64,7 +63,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         
         if (!targetGroup) {
             console.log(`[KOMOD ERROR] Стена для account_id ${accId} не активирована в шлюзе.`);
-            throw new Error('Стена еще не активирована! Зайдите в "Мои социальные сети" и обязательно нажмите фиолетовую кнопку "Подключить стену".');
+            throw new Error('Стена еще не активирована! Зайдите в "Мои социальные сети" на сайте Kom-od и обязательно нажмите фиолетовую кнопку "Подключить стену".');
         } else {
             targetGroupId = targetGroup.id;
         }
@@ -75,7 +74,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
 
     if (!publishAtDate) {
-        // Для мгновенных постов накидываем 1 минуту, чтобы шлюз точно принял пост "в будущее"
         targetDate.setMinutes(targetDate.getMinutes() + 1);
     }
 
@@ -97,7 +95,12 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         imageBuffers.forEach((buf, index) => {
             const fileName = `file_${index + 1}`;
             images.push({ name: fileName });
-            form.append(fileName, buf, { filename: `photo_${Date.now()}_${index}.jpg`, contentType: 'image/jpeg' });
+            // ИСПРАВЛЕНИЕ 2: knownLength обязателен для стабильной передачи буфера в PHP
+            form.append(fileName, buf, { 
+                filename: `photo_${Date.now()}_${index}.jpg`, 
+                contentType: 'image/jpeg',
+                knownLength: buf.length 
+            });
         });
         media.push({ type: 'photo', images: images });
     }
@@ -111,6 +114,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             ...form.getHeaders(), 
             'Access-Token': token 
         },
+        maxBodyLength: Infinity, // Обязательно для тяжелых картинок
         validateStatus: status => status < 500
     });
 
@@ -118,13 +122,11 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         throw new Error('Ошибка шлюза при публикации: ' + JSON.stringify(postRes.data.errors));
     }
 
-    // === УМНЫЙ ШПИОН ЗА ОЧЕРЕДЬЮ KOM-OD ===
     const postId = postRes.data?.data?.id;
     if (postId) {
         const checkStatus = async (delay, attempt) => {
             setTimeout(async () => {
                 try {
-                    console.log(`\n⏳ [Проверка #${attempt}] Запрашиваем статус поста ${postId}...`);
                     const checkRes = await axios.get(`${KOMOD_BASE_URL}/post/${postId}?logs=1`, {
                         headers: { 'Access-Token': token },
                         validateStatus: () => true
@@ -132,9 +134,11 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                     
                     const postData = checkRes.data?.data;
                     if (postData) {
-                        console.log(`=== СТАТУС ПОСТА ${postId} (Через ${delay/1000} сек) ===`);
-                        console.log(`Опубликован в ВК: ${postData.published === '1' ? 'ДА ✅' : 'В ОЧЕРЕДИ ⏳'}`);
-                        console.log(`Произошла ошибка: ${postData.fail === '1' ? 'ДА ❌' : 'НЕТ ✅'}`);
+                        console.log(`\n⏳ [Проверка #${attempt}] СТАТУС ПОСТА ${postId}`);
+                        console.log(`> Опубликован: ${postData.published === '1' ? 'ДА ✅' : 'В ОЧЕРЕДИ ⏳'}`);
+                        if (postData.logs && postData.logs.length > 0) {
+                            postData.logs.forEach(l => console.log(`> ЛОГ: ${l.message}`));
+                        }
                     }
                 } catch (e) {}
             }, delay);
@@ -162,72 +166,11 @@ const getUserId = (req) => {
     return null;
 };
 
-// === ЛОГИКА ОТПРАВКИ В ВКОНТАКТЕ (NATIVE) ===
-async function sendToVK(token, groupId, text, imageBuffers) {
-    const v = '5.131';
-    const cleanGroupId = Math.abs(parseInt(groupId)); 
-    let attachments = [];
-
-    if (imageBuffers.length > 0) {
-        const serverRes = await axios.get(`https://api.vk.com/method/photos.getWallUploadServer`, {
-            params: { group_id: cleanGroupId, access_token: token, v }
-        });
-        const uploadUrl = serverRes.data.response.upload_url;
-
-        const chunks = [];
-        for (let i = 0; i < imageBuffers.length; i += 5) {
-            chunks.push(imageBuffers.slice(i, i + 5));
-        }
-
-        for (const chunk of chunks) {
-            const form = new FormData();
-            chunk.forEach((buf, index) => {
-                form.append(`file${index + 1}`, buf, { filename: `image${index + 1}.jpg`, contentType: 'image/jpeg' });
-            });
-            
-            const uploadRes = await axios.post(uploadUrl, form, { headers: form.getHeaders() });
-
-            const saveRes = await axios.get(`https://api.vk.com/method/photos.saveWallPhoto`, {
-                params: {
-                    group_id: cleanGroupId,
-                    photo: uploadRes.data.photo,
-                    server: uploadRes.data.server,
-                    hash: uploadRes.data.hash,
-                    access_token: token,
-                    v
-                }
-            });
-
-            if (saveRes.data.response) {
-                saveRes.data.response.forEach(savedPhoto => {
-                    attachments.push(`photo${savedPhoto.owner_id}_${savedPhoto.id}`);
-                });
-            }
-        }
-    }
-
-    const postParams = new URLSearchParams({
-        owner_id: `-${cleanGroupId}`, 
-        from_group: 1,
-        message: text || '',
-        access_token: token,
-        v
-    });
-
-    if (attachments.length > 0) {
-        postParams.append('attachments', attachments.join(','));
-    }
-
-    const postRes = await axios.post(`https://api.vk.com/method/wall.post`, postParams);
-    if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
-}
-
 // === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ ===
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
         
-        // === ИСПРАВЛЕНИЕ: ЖЕСТКАЯ ПРОВЕРКА ДАТЫ ДЛЯ PRISMA ===
         let parsedPublishAt = null;
         let isScheduled = false;
 
@@ -243,7 +186,12 @@ exports.createPost = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        const rawImageBuffers = mediaUrls.map(img => Buffer.from(img.replace(/^data:image\/\w+;base64,/, ""), 'base64'));
+        // Железобетонный парсинг Base64
+        const rawImageBuffers = mediaUrls.map(img => {
+            const base64Data = img.includes(',') ? img.split(',')[1] : img;
+            return Buffer.from(base64Data, 'base64');
+        });
+
         const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
             return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
         }));
@@ -255,14 +203,21 @@ exports.createPost = async (req, res) => {
             if (!account) continue;
 
             let finalText = text || '';
-            if (accData.applySignature && accData.signatureText) {
-                finalText += `\n\n${accData.signatureText}`;
+            const sigText = accData.signatureText !== undefined ? accData.signatureText : (accData.signature !== undefined ? accData.signature : account.signature);
+            const applySig = accData.applySignature !== undefined ? accData.applySignature : !!sigText;
+
+            if (applySig && sigText) {
+                finalText += `\n\n${sigText}`;
             }
 
             let processedBuffers = optimizedBaseBuffers;
             
-            if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
-                let wm = accData.watermarkConfig;
+            // ИСПРАВЛЕНИЕ 1: Умный фолбэк для настроек водяного знака
+            const wmConfig = accData.watermarkConfig !== undefined ? accData.watermarkConfig : (accData.watermark !== undefined ? accData.watermark : account.watermark);
+            const applyWm = accData.applyWatermark !== undefined ? accData.applyWatermark : !!wmConfig;
+
+            if (applyWm && wmConfig && processedBuffers.length > 0) {
+                let wm = wmConfig;
                 if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
                 if (!wm || typeof wm !== 'object') wm = {};
                 
@@ -280,7 +235,6 @@ exports.createPost = async (req, res) => {
                         const width = metadata.width || 1000;
                         const height = metadata.height || 1000;
                         
-                        // === АДАПТИВНЫЙ WATERMARK ===
                         const baseSize = Math.min(width, height);
                         
                         let watermarkBuffer;
@@ -372,7 +326,6 @@ exports.createPost = async (req, res) => {
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
-                        // Идеальное позиционирование (Адаптивное)
                         const marginPx = Math.floor(baseSize * ((Number(wm.margin) || 5) / 100));
                         let leftPos = 0;
                         let topPos = 0;
@@ -386,7 +339,6 @@ exports.createPost = async (req, res) => {
                         else if (pos.includes('b')) topPos = height - wmPixelHeight - marginPx;
                         else topPos = Math.floor((height - wmPixelHeight) / 2);
 
-                        // Жесткая защита от выхода за границы холста
                         leftPos = Math.max(0, Math.min(leftPos, width - wmPixelWidth));
                         topPos = Math.max(0, Math.min(topPos, height - wmPixelHeight));
 
@@ -416,7 +368,7 @@ exports.createPost = async (req, res) => {
                         accountId: job.account.id,
                         text: job.finalText,
                         mediaUrls: JSON.stringify(finalImagesToSave),
-                        publishAt: parsedPublishAt, // <--- ИСПРАВЛЕНИЕ: Передаем валидную дату
+                        publishAt: parsedPublishAt,
                         status: 'SCHEDULED' 
                     }
                 });
@@ -453,7 +405,8 @@ exports.createPost = async (req, res) => {
                             if (isKomod) {
                                 await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
                             } else {
-                                await sendToVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
+                                // Фолбэк на всякий случай, хотя у тебя все идет через Komod
+                                console.log('[WARNING] Обнаружен старый Native VK аккаунт, который не поддерживается шлюзом');
                             }
                         }
                     } catch (err) {
@@ -489,7 +442,7 @@ exports.initCron = () => {
                     const mediaUrls = JSON.parse(post.mediaUrls || '[]');
                     
                     const imageBuffers = mediaUrls.map(img => {
-                        const base64Data = img.replace(/^data:image\/\w+;base64,/, "");
+                        const base64Data = img.includes(',') ? img.split(',')[1] : img;
                         return Buffer.from(base64Data, 'base64');
                     });
 
@@ -501,8 +454,6 @@ exports.initCron = () => {
                         const isKomod = account.providerId.startsWith('wall_') || account.providerId.startsWith('group_');
                         if (isKomod) {
                             await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, post.publishAt);
-                        } else {
-                            await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
                         }
                     }
 
