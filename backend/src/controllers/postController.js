@@ -239,14 +239,22 @@ exports.createPost = async (req, res) => {
 
             let processedBuffers = optimizedBaseBuffers;
             
-            // === ИСПРАВЛЕНИЕ: ЖЕЛЕЗОБЕТОННЫЙ ПОДХВАТ ВОДЯНОГО ЗНАКА ===
-            let wmConfig = accData.watermarkConfig;
-            if (!wmConfig && account.watermark) {
-                wmConfig = account.watermark; // Берем дефолтный, если нет специфичного для поста
-            }
+            // === ИСПРАВЛЕНИЕ: ТОЧНЫЙ ПОДХВАТ НАСТРОЕК ВОДЯНОГО ЗНАКА ===
+            // Фронтенд может присылать настройки либо в watermarkConfig, либо в watermark
+            let wmConfig = accData.watermarkConfig !== undefined ? accData.watermarkConfig : (accData.watermark !== undefined ? accData.watermark : account.watermark);
             
-            // Если фронт явно передал false, отключаем. Иначе - включаем при наличии конфига.
-            const applyWm = accData.applyWatermark !== undefined ? accData.applyWatermark : !!wmConfig;
+            // Очищаем "пустые" значения, которые могут прийти строкой из БД
+            if (typeof wmConfig === 'string' && (wmConfig === 'null' || wmConfig === '{}' || wmConfig.trim() === '')) {
+                wmConfig = null;
+            }
+
+            // Фронтенд может передавать boolean (true/false) или строку ("true"/"false")
+            let applyWm = false;
+            if (accData.applyWatermark !== undefined && accData.applyWatermark !== null) {
+                applyWm = String(accData.applyWatermark) === 'true';
+            } else {
+                applyWm = !!wmConfig; // Если явно не передано, включаем при наличии настроек
+            }
 
             if (applyWm && wmConfig && processedBuffers.length > 0) {
                 console.log(`\n[WATERMARK] 🎨 Начинаем наложение водяного знака для аккаунта: ${account.name} (Фото: ${processedBuffers.length} шт.)`);
