@@ -195,7 +195,6 @@ const getUserId = (req) => {
     return null;
 };
 
-// === Вспомогательная функция для наложения водяного знака ===
 async function applyWatermark(imageBuffer, wmConfig) {
     if (!wmConfig) return imageBuffer;
     
@@ -203,75 +202,65 @@ async function applyWatermark(imageBuffer, wmConfig) {
         const metadata = await sharp(imageBuffer).metadata();
         const { width, height } = metadata;
 
-        // Базовый размер водяного знака (25% от ширины фото) умноженный на пользовательский масштаб
-        const scaleFactor = (wmConfig.size || 100) / 100;
-        const wmBaseWidth = Math.floor(width * 0.25 * scaleFactor);
-        const padding = Math.floor(width * 0.03); // 3% отступ от краев
+        // 🟢 АДАПТИВНЫЙ РАСЧЕТ: Берем 20% от МЕНЬШЕЙ стороны как базу
+        const shortestSide = Math.min(width, height);
+        const userScale = (wmConfig.size || 100) / 100;
+        
+        // Размер знака по ширине будет составлять примерно 30% от короткой стороны фото
+        const wmWidth = Math.floor(shortestSide * 0.3 * userScale);
+        const padding = Math.floor(shortestSide * 0.04); // 4% отступ
         const opacity = (wmConfig.opacity !== undefined ? wmConfig.opacity : 90) / 100;
 
         let overlayBuffer;
-        let overlayMeta;
 
-        // Генерируем водяной знак
         if (wmConfig.type === 'text') {
-            const text = wmConfig.text || 'SMMBOX';
-            const fontSize = Math.floor(wmBaseWidth / (text.length * 0.6));
+            const text = wmConfig.text || 'SMMDECK';
+            // Вычисляем размер шрифта так, чтобы текст вписался в wmWidth
+            const fontSize = Math.floor(wmWidth / (text.length * 0.6));
             const textColor = wmConfig.textColor || '#ffffff';
             const bgColor = wmConfig.bgColor || '#000000';
             const hasBg = wmConfig.hasBackground !== false;
 
-            // Для текста генерируем SVG на лету
+            // Генерируем SVG с адаптивным фоном и текстом
             const svg = `
-                <svg width="${wmBaseWidth + padding*2}" height="${fontSize + padding*2}">
+                <svg width="${wmWidth + padding}" height="${fontSize * 1.5}">
                     <style>
                         .bg { fill: ${bgColor}; opacity: ${hasBg ? opacity * 0.6 : 0}; }
                         .text { fill: ${textColor}; font-size: ${fontSize}px; font-family: sans-serif; font-weight: bold; opacity: ${opacity}; }
                     </style>
-                    <rect width="100%" height="100%" rx="${padding}" class="bg" />
+                    <rect width="100%" height="100%" rx="${fontSize/4}" class="bg" />
                     <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" class="text">${text}</text>
-                </svg>
-            `;
+                </svg>`;
             overlayBuffer = Buffer.from(svg);
         } else if (wmConfig.type === 'image' && wmConfig.image) {
             const base64Data = wmConfig.image.includes(',') ? wmConfig.image.split(',')[1] : wmConfig.image;
-            const imgBuf = Buffer.from(base64Data, 'base64');
-            overlayBuffer = await sharp(imgBuf)
-                .resize({ width: wmBaseWidth })
+            overlayBuffer = await sharp(Buffer.from(base64Data, 'base64'))
+                .resize({ width: wmWidth }) // Масштабируем логотип под адаптивную ширину
                 .ensureAlpha(opacity)
                 .toBuffer();
         } else {
             return imageBuffer;
         }
 
-        overlayMeta = await sharp(overlayBuffer).metadata();
+        const overlayMeta = await sharp(overlayBuffer).metadata();
 
-        // Расчет координат позиции
+        // 2. РАСЧЕТ ПОЗИЦИИ (с учетом адаптивных отступов)
         let left = padding;
         let top = padding;
+        const pos = wmConfig.position || 'br';
 
-        if (wmConfig.position === 'custom' && wmConfig.x !== undefined && wmConfig.y !== undefined) {
-            left = Math.floor((width * wmConfig.x) / 100) - Math.floor(overlayMeta.width / 2);
-            top = Math.floor((height * wmConfig.y) / 100) - Math.floor(overlayMeta.height / 2);
-        } else {
-            const pos = wmConfig.position || 'br';
-            if (pos.includes('r')) left = width - overlayMeta.width - padding;
-            if (pos.includes('c')) left = Math.floor((width - overlayMeta.width) / 2);
-            if (pos.includes('b')) top = height - overlayMeta.height - padding;
-            if (pos.includes('c') && pos.length === 2 && pos[1] === 'c') top = Math.floor((height - overlayMeta.height) / 2);
-        }
+        if (pos.includes('r')) left = width - overlayMeta.width - padding;
+        if (pos.includes('c')) left = Math.floor((width - overlayMeta.width) / 2);
+        if (pos.includes('b')) top = height - overlayMeta.height - padding;
+        if (pos === 'cc') top = Math.floor((height - overlayMeta.height) / 2);
 
-        // Защита от вылета за границы кадра
-        left = Math.max(0, Math.min(left, width - overlayMeta.width));
-        top = Math.max(0, Math.min(top, height - overlayMeta.height));
-
-        // Наложение слоев
         return await sharp(imageBuffer)
             .composite([{ input: overlayBuffer, top, left }])
             .toBuffer();
             
     } catch (err) {
         console.error('[WATERMARK ERROR]:', err);
-        return imageBuffer; // Если ошибка, публикуем оригинал, чтобы пост не пропал
+        return imageBuffer;
     }
 }
 
@@ -315,9 +304,9 @@ exports.createPost = async (req, res) => {
         // Формирование очереди заданий (подписи, водяные знаки)
         // Формирование очереди заданий (подписи, водяные знаки)
         for (const accData of accounts) {
+            // Обязательно подтягиваем watermark из БД, если он не пришел с фронта
             const account = await prisma.account.findUnique({ 
                 where: { id: accData.accountId },
-                // ВАЖНО: Подтягиваем настройки знака из БД
                 include: { watermark: true } 
             });
             if (!account) continue;
@@ -330,18 +319,14 @@ exports.createPost = async (req, res) => {
                 finalText += `\n\n${sigText}`;
             }
 
-            let processedBuffers = optimizedBaseBuffers;
+            // Клонируем буферы для этого конкретного аккаунта
+            let processedBuffers = [...optimizedBaseBuffers];
             
-            // Логика водяного знака
-            let wmConfig = accData.watermarkConfig !== undefined ? accData.watermarkConfig : (accData.watermark !== undefined ? accData.watermark : account.watermark);
-            
-            if (typeof wmConfig === 'string' && (wmConfig === 'null' || wmConfig === '{}' || wmConfig.trim() === '')) {
-                wmConfig = null;
-            }
+            // Получаем конфиг: либо кастомный из модалки публикации, либо из настроек аккаунта
+            let wmConfig = accData.watermarkConfig || account.watermark;
+            let applyWm = accData.applyWatermark === true || (accData.applyWatermark === undefined && !!wmConfig);
 
-            let applyWm = accData.applyWatermark !== undefined ? String(accData.applyWatermark) === 'true' : !!wmConfig;
-
-            // === ЗДЕСЬ ПРИМЕНЯЕТСЯ ВОДЯНОЙ ЗНАК ===
+            // 🟢 ПРИМЕНЯЕМ АДАПТИВНЫЙ ЗНАК
             if (applyWm && wmConfig && processedBuffers.length > 0) {
                 processedBuffers = await Promise.all(
                     processedBuffers.map(buf => applyWatermark(buf, wmConfig))
