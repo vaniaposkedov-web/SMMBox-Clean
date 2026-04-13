@@ -791,7 +791,8 @@ export default function Publish() {
                 </div>
               </div>
 
-              <div className="max-h-[350px] sm:max-h-[400px] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar space-y-4">
+              {/* ИСПРАВЛЕНИЕ: Убран max-h и overflow-y-auto, теперь список тянется вниз */}
+              <div className="pr-1 sm:pr-2 space-y-4">
                 {Object.keys(groupedAccounts).length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500 text-sm mb-2">Аккаунты не найдены</p>
@@ -841,31 +842,6 @@ export default function Publish() {
               </div>
             </div>
 
-            <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl">
-               <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Глобальный шаблон</h2>
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-3 sm:mt-4">
-                  <div className={`p-3 sm:p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer min-h-[64px] ${applyWatermark ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => handleGlobalToggle('watermark')}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${applyWatermark ? 'bg-blue-500/20 text-blue-500' : 'bg-gray-800 text-gray-500'}`}><Settings size={20} /></div>
-                      <div><p className="text-white font-bold text-sm">Водяной знак</p></div>
-                    </div>
-                    <div className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${applyWatermark ? 'bg-blue-500' : 'bg-gray-700'}`}>
-                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${applyWatermark ? 'left-7' : 'left-1'}`}></div>
-                    </div>
-                  </div>
-                  <div className={`p-3 sm:p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer min-h-[64px] ${applySignature ? 'bg-gray-800 border-gray-600' : 'bg-gray-900 border-gray-800'}`} onClick={() => handleGlobalToggle('signature')}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${applySignature ? 'bg-purple-500/20 text-purple-500' : 'bg-gray-800 text-gray-500'}`}><PenTool size={20} /></div>
-                      <div><p className="text-white font-bold text-sm">Подпись</p></div>
-                    </div>
-                    <div className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${applySignature ? 'bg-purple-500' : 'bg-gray-700'}`}>
-                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${applySignature ? 'left-7' : 'left-1'}`}></div>
-                    </div>
-                  </div>
-               </div>
-            </div>
-            
-            {/* === ИСПРАВЛЕНИЕ: ВЕРСТКА ДАТЫ И ВРЕМЕНИ (ШАГ 3) === */}
             {publishMode === 'schedule' && (
               <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl mb-4">
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-gray-900/50 p-3 sm:p-4 rounded-2xl border border-gray-800/50">

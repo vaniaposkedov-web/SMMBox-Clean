@@ -38,6 +38,7 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
 }
 
 // === ДОБАВЛЕН ПАРАМЕТР publishAtDate ===
+// === ДОБАВЛЕН ПАРАМЕТР publishAtDate ===
 async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null) {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
@@ -73,33 +74,17 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     if (!targetGroupId) throw new Error('Не удалось определить ID цели для публикации шлюза.');
 
-    let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
-
-    if (!publishAtDate) {
-        // Для мгновенных постов накидываем 1-2 минуты к текущему времени, 
-        // чтобы планировщик шлюза гарантированно успел его подхватить "прямо сейчас"
-        targetDate.setMinutes(targetDate.getMinutes() + 1);
-    }
-
-    // === БРОНЕБОЙНОЕ РЕШЕНИЕ ДЛЯ ЧАСОВЫХ ПОЯСОВ ===
-    // Здесь мы указываем тот пояс, который ты сохранил в настройках ЛК Kom-od.
-    // Если в Kom-od стоит Москва -> 'Europe/Moscow'
-    // Если оставил ЕКБ -> 'Asia/Yekaterinburg'
-    const komodTimezone = 'Europe/Moscow'; 
-
-    // Используем встроенный трюк JS: локаль 'sv-SE' (Швеция) 
-    // автоматически отдает дату в идеальном формате "YYYY-MM-DD HH:mm:ss", 
-    // при этом мы принудительно заставляем ее считать время по поясу шлюза.
-    const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
-    
-    // Отрезаем секунды, чтобы получить строго то, что требует API: "YYYY-MM-DD HH:mm"
-    const formattedDate = tzString.substring(0, 16);
-
     form.append('group_id', targetGroupId);
-    form.append('publish_at', formattedDate); // <--- ВОТ ОНО!
     form.append('via_api', '1'); // <--- Принудительно через API
     
-    // ... остальной код сборки media оставляем без изменений ...
+    // === ИСПРАВЛЕНИЕ: Мгновенный пост отправляется СРАЗУ, без publish_at ===
+    if (publishAtDate) {
+        const komodTimezone = 'Europe/Moscow'; 
+        const targetDate = new Date(publishAtDate);
+        const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
+        const formattedDate = tzString.substring(0, 16);
+        form.append('publish_at', formattedDate); 
+    }
 
     const media = [];
     if (text) {
@@ -246,6 +231,7 @@ async function sendToVK(token, groupId, text, imageBuffers) {
 }
 
 // === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ (ИДЕАЛЬНАЯ АРХИТЕКТУРА) ===
+// === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ (ИДЕАЛЬНАЯ АРХИТЕКТУРА) ===
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
@@ -255,8 +241,6 @@ exports.createPost = async (req, res) => {
         let isScheduled = false;
 
         // Если с фронтенда пришла дата, пробуем её расшифровать
-        // Если прилетел мусор (Invalid Date), мы не роняем сервер и не выдаем ошибку,
-        // а просто публикуем пост мгновенно (isScheduled остается false)
         if (publishAt && publishAt !== 'null' && publishAt !== 'undefined') {
             const tempDate = new Date(publishAt);
             if (!isNaN(tempDate.getTime())) {
@@ -283,14 +267,24 @@ exports.createPost = async (req, res) => {
             if (!account) continue;
 
             let finalText = text || '';
-            if (accData.applySignature && accData.signatureText) {
-                finalText += `\n\n${accData.signatureText}`;
+            
+            // === ИСПРАВЛЕНИЕ: Бронебойное извлечение подписи ===
+            // Сначала смотрим то, что пришло с фронтенда, если пусто - берем напрямую из БД
+            const sigText = accData.signatureText !== undefined ? accData.signatureText : (accData.signature !== undefined ? accData.signature : account.signature);
+            const applySig = accData.applySignature !== undefined ? accData.applySignature : !!sigText;
+
+            if (applySig && sigText) {
+                finalText += `\n\n${sigText}`;
             }
 
             let processedBuffers = optimizedBaseBuffers;
             
-            if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
-                let wm = accData.watermarkConfig;
+            // === ИСПРАВЛЕНИЕ: Бронебойное извлечение водяного знака ===
+            const wmConfig = accData.watermarkConfig !== undefined ? accData.watermarkConfig : (accData.watermark !== undefined ? accData.watermark : account.watermark);
+            const applyWm = accData.applyWatermark !== undefined ? accData.applyWatermark : !!wmConfig;
+
+            if (applyWm && wmConfig && processedBuffers.length > 0) {
+                let wm = wmConfig;
                 if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
                 if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} } 
                 if (!wm || typeof wm !== 'object') wm = {};
@@ -463,7 +457,7 @@ exports.createPost = async (req, res) => {
                         accountId: job.account.id,
                         text: job.finalText,
                         mediaUrls: JSON.stringify(finalImagesToSave),
-                        publishAt: parsedPublishAt, // ✅ БЕЗОПАСНАЯ И ПРОВЕРЕННАЯ ДАТА ИЗ ШАГА 1
+                        publishAt: parsedPublishAt,
                         status: 'SCHEDULED' 
                     }
                 });
@@ -503,7 +497,6 @@ exports.createPost = async (req, res) => {
                             const isKomod = job.account.providerId.startsWith('wall_') || job.account.providerId.startsWith('group_');
                             if (isKomod) {
                                 // === СЕКРЕТ ЗДЕСЬ: ПЕРЕДАЕМ null ДЛЯ МГНОВЕННОЙ ОТПРАВКИ ===
-                                // Функция sendToKomodVK увидит null и сама накинет 1 минуту к текущему времени!
                                 await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
                             } else {
                                 await sendToVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
