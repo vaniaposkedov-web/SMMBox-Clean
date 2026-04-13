@@ -37,55 +37,56 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
     }
 }
 
-// === ЛОГИКА ОТПРАВКИ СТРОГО ЧЕРЕЗ ШЛЮЗ KOM-OD (ВК) ===
+// === ЛОГИКА ОТПРАВКИ KOM-OD (РАБОЧАЯ ВЕРСИЯ С +1 МИНУТОЙ) ===
 async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null) {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
 
-    // 1. Получаем список всех групп и стен из шлюза
+    let targetGroupId = null;
+
+    // 1. Получаем список групп из шлюза
     const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
     const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
 
-    // Вычищаем ID от префиксов, которые мы могли сохранить в БД
-    const rawId = String(providerId).replace('wall_', '').replace('group_', '');
-
-    // 2. Ищем внутренний ID шлюза по совпадениям (uid, id, account_id)
-    const targetGroup = groups.find(g => 
-        String(g.uid) === rawId || 
-        String(g.id) === rawId || 
-        String(g.account_id) === rawId ||
-        (g.url && String(g.url).includes(rawId))
-    );
-
-    if (!targetGroup) {
-        console.error(`[KOMOD ERROR] Не удалось найти цель ${providerId} в ответе шлюза.`);
-        throw new Error(`Сообщество или страница не активирована в шлюзе Kom-od. Пожалуйста, переподключите её.`);
-    }
-
-    // Передаем строго внутренний ID Ком-ода
-    form.append('group_id', targetGroup.id);
-    form.append('via_api', '1'); // Принудительно через API
-    
-    // 3. Форматирование даты и ускорение очереди (direct: 1)
-    if (publishAtDate) {
-        const targetDate = new Date(publishAtDate);
-        // Если это отложенный пост (с запасом 1 мин) - передаем дату.
-        if (targetDate.getTime() > Date.now() + 60000) {
-            const moscowTime = new Date(targetDate.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-            const pad = (n) => String(n).padStart(2, '0');
-            const formattedDate = `${moscowTime.getFullYear()}-${pad(moscowTime.getMonth() + 1)}-${pad(moscowTime.getDate())} ${pad(moscowTime.getHours())}:${pad(moscowTime.getMinutes())}`;
-            
-            form.append('publish_at', formattedDate); 
+    if (providerId.startsWith('group_')) {
+        const vkUid = providerId.replace('group_', '');
+        const targetGroup = groups.find(g => String(g.uid) === String(vkUid) || String(g.url).includes(vkUid) || String(g.id) === String(vkUid));
+        
+        if (!targetGroup) throw new Error(`Группа не найдена в шлюзе Kom-od. Попробуйте переподключить её.`);
+        targetGroupId = targetGroup.id;
+    } else if (providerId.startsWith('wall_')) {
+        const accId = providerId.replace('wall_', '');
+        
+        let targetGroup = groups.find(g => 
+            String(g.account_id) === String(accId) && 
+            (String(g.is_profile) === '1' || g.is_profile === true || g.type === 'profile' || String(g.url).includes('vk.com/id') || String(g.uid) === String(g.user_id))
+        );
+        
+        if (!targetGroup) {
+            console.log(`[KOMOD ERROR] Стена для account_id ${accId} не активирована в шлюзе.`);
+            throw new Error('Стена еще не активирована! Зайдите в "Мои социальные сети" и обязательно нажмите фиолетовую кнопку "Подключить стену".');
         } else {
-            // Если время уже пришло (Cron) - публикуем моментально
-            form.append('direct', '1');
+            targetGroupId = targetGroup.id;
         }
-    } else {
-        // Обычный мгновенный пост - публикуем моментально в обход долгой очереди
-        form.append('direct', '1');
     }
 
-    // 4. Формирование блока media по документации
+    if (!targetGroupId) throw new Error('Не удалось определить ID цели для публикации шлюза.');
+
+    let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
+
+    if (!publishAtDate) {
+        // Для мгновенных постов накидываем 1 минуту, чтобы шлюз точно принял пост "в будущее"
+        targetDate.setMinutes(targetDate.getMinutes() + 1);
+    }
+
+    const komodTimezone = 'Europe/Moscow'; 
+    const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
+    const formattedDate = tzString.substring(0, 16);
+
+    form.append('group_id', targetGroupId);
+    form.append('publish_at', formattedDate); 
+    form.append('via_api', '1'); 
+    
     const media = [];
     if (text) {
         media.push({ type: 'text', text: text });
@@ -103,7 +104,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     form.append('media', JSON.stringify(media));
 
-    console.log(`\n=== [KOMOD POST START] Отправка поста в targetGroup.id: ${targetGroup.id} ===`);
+    console.log(`\n=== [KOMOD POST START] Отправка поста в targetGroupId: ${targetGroupId} ===`);
     
     const postRes = await axios.post(`${KOMOD_BASE_URL}/post`, form, {
         headers: { 
@@ -117,11 +118,13 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         throw new Error('Ошибка шлюза при публикации: ' + JSON.stringify(postRes.data.errors));
     }
 
+    // === УМНЫЙ ШПИОН ЗА ОЧЕРЕДЬЮ KOM-OD ===
     const postId = postRes.data?.data?.id;
     if (postId) {
         const checkStatus = async (delay, attempt) => {
             setTimeout(async () => {
                 try {
+                    console.log(`\n⏳ [Проверка #${attempt}] Запрашиваем статус поста ${postId}...`);
                     const checkRes = await axios.get(`${KOMOD_BASE_URL}/post/${postId}?logs=1`, {
                         headers: { 'Access-Token': token },
                         validateStatus: () => true
@@ -129,16 +132,14 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                     
                     const postData = checkRes.data?.data;
                     if (postData) {
-                        console.log(`⏳ [Проверка #${attempt}] СТАТУС ПОСТА ${postId}`);
-                        console.log(`> Опубликован: ${postData.published === '1' ? 'ДА ✅' : 'В ОЧЕРЕДИ ⏳'}`);
-                        if (postData.logs && postData.logs.length > 0) {
-                            console.log('ЛОГИ ШЛЮЗА:');
-                            postData.logs.forEach(l => console.log(`> ${l.message}`));
-                        }
+                        console.log(`=== СТАТУС ПОСТА ${postId} (Через ${delay/1000} сек) ===`);
+                        console.log(`Опубликован в ВК: ${postData.published === '1' ? 'ДА ✅' : 'В ОЧЕРЕДИ ⏳'}`);
+                        console.log(`Произошла ошибка: ${postData.fail === '1' ? 'ДА ❌' : 'НЕТ ✅'}`);
                     }
                 } catch (e) {}
             }, delay);
         };
+
         checkStatus(15000, 1);
         checkStatus(30000, 2);
     }
@@ -161,23 +162,72 @@ const getUserId = (req) => {
     return null;
 };
 
+// === ЛОГИКА ОТПРАВКИ В ВКОНТАКТЕ (NATIVE) ===
+async function sendToVK(token, groupId, text, imageBuffers) {
+    const v = '5.131';
+    const cleanGroupId = Math.abs(parseInt(groupId)); 
+    let attachments = [];
+
+    if (imageBuffers.length > 0) {
+        const serverRes = await axios.get(`https://api.vk.com/method/photos.getWallUploadServer`, {
+            params: { group_id: cleanGroupId, access_token: token, v }
+        });
+        const uploadUrl = serverRes.data.response.upload_url;
+
+        const chunks = [];
+        for (let i = 0; i < imageBuffers.length; i += 5) {
+            chunks.push(imageBuffers.slice(i, i + 5));
+        }
+
+        for (const chunk of chunks) {
+            const form = new FormData();
+            chunk.forEach((buf, index) => {
+                form.append(`file${index + 1}`, buf, { filename: `image${index + 1}.jpg`, contentType: 'image/jpeg' });
+            });
+            
+            const uploadRes = await axios.post(uploadUrl, form, { headers: form.getHeaders() });
+
+            const saveRes = await axios.get(`https://api.vk.com/method/photos.saveWallPhoto`, {
+                params: {
+                    group_id: cleanGroupId,
+                    photo: uploadRes.data.photo,
+                    server: uploadRes.data.server,
+                    hash: uploadRes.data.hash,
+                    access_token: token,
+                    v
+                }
+            });
+
+            if (saveRes.data.response) {
+                saveRes.data.response.forEach(savedPhoto => {
+                    attachments.push(`photo${savedPhoto.owner_id}_${savedPhoto.id}`);
+                });
+            }
+        }
+    }
+
+    const postParams = new URLSearchParams({
+        owner_id: `-${cleanGroupId}`, 
+        from_group: 1,
+        message: text || '',
+        access_token: token,
+        v
+    });
+
+    if (attachments.length > 0) {
+        postParams.append('attachments', attachments.join(','));
+    }
+
+    const postRes = await axios.post(`https://api.vk.com/method/wall.post`, postParams);
+    if (postRes.data.error) throw new Error(postRes.data.error.error_msg);
+}
 
 // === ОСНОВНОЙ КОНТРОЛЛЕР ПУБЛИКАЦИИ ===
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
+        const isScheduled = publishAt ? true : false;
         
-        let parsedPublishAt = null;
-        let isScheduled = false;
-
-        if (publishAt && publishAt !== 'null' && publishAt !== 'undefined') {
-            const tempDate = new Date(publishAt);
-            if (!isNaN(tempDate.getTime())) {
-                parsedPublishAt = tempDate;
-                isScheduled = true;
-            }
-        }
-
         if (!accounts || accounts.length === 0) {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
@@ -194,23 +244,15 @@ exports.createPost = async (req, res) => {
             if (!account) continue;
 
             let finalText = text || '';
-            
-            const sigText = accData.signatureText !== undefined ? accData.signatureText : (accData.signature !== undefined ? accData.signature : account.signature);
-            const applySig = accData.applySignature !== undefined ? accData.applySignature : !!sigText;
-
-            if (applySig && sigText) {
-                finalText += `\n\n${sigText}`;
+            if (accData.applySignature && accData.signatureText) {
+                finalText += `\n\n${accData.signatureText}`;
             }
 
             let processedBuffers = optimizedBaseBuffers;
             
-            const wmConfig = accData.watermarkConfig !== undefined ? accData.watermarkConfig : (accData.watermark !== undefined ? accData.watermark : account.watermark);
-            const applyWm = accData.applyWatermark !== undefined ? accData.applyWatermark : !!wmConfig;
-
-            if (applyWm && wmConfig && processedBuffers.length > 0) {
-                let wm = wmConfig;
+            if (accData.applyWatermark && accData.watermarkConfig && processedBuffers.length > 0) {
+                let wm = accData.watermarkConfig;
                 if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
-                if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} } 
                 if (!wm || typeof wm !== 'object') wm = {};
                 
                 const wmType = wm.type || 'text'; 
@@ -227,7 +269,7 @@ exports.createPost = async (req, res) => {
                         const width = metadata.width || 1000;
                         const height = metadata.height || 1000;
                         
-                        // АДАПТИВНАЯ МАТЕМАТИКА ВОДЯНОГО ЗНАКА
+                        // === ИСПРАВЛЕННЫЙ WATERMARK БЛОК ===
                         const baseSize = Math.min(width, height);
                         
                         let watermarkBuffer;
@@ -235,7 +277,6 @@ exports.createPost = async (req, res) => {
                         let wmPixelHeight = 0;
 
                         if (wmType === 'text') {
-                            // Размер шрифта в % от меньшей стороны
                             const fontSize = Math.max(16, Math.floor(baseSize * (Number(wm.size) || 20) / 400));
                             const paddingX = Math.max(4, Math.floor(fontSize * 0.8)); 
                             const paddingY = Math.max(4, Math.floor(fontSize * 0.6)); 
@@ -288,8 +329,6 @@ exports.createPost = async (req, res) => {
                             watermarkBuffer = Buffer.from(svgText);
                         } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
                             const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
-                            
-                            // Адаптивная ширина логотипа
                             const targetWidth = Math.max(50, Math.floor(baseSize * (Number(wm.size) || 20) / 100));
 
                             watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
@@ -322,18 +361,16 @@ exports.createPost = async (req, res) => {
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
-                        // ИДЕАЛЬНОЕ ПОЗИЦИОНИРОВАНИЕ (БЕЗ ПРИЛИПАНИЯ)
+                        // Идеальное позиционирование (Адаптивное)
                         const marginPx = Math.floor(baseSize * ((Number(wm.margin) || 5) / 100));
                         let leftPos = 0;
                         let topPos = 0;
                         const pos = wm.position || 'br';
 
-                        // Горизонталь
                         if (pos.includes('l')) leftPos = marginPx;
                         else if (pos.includes('r')) leftPos = width - wmPixelWidth - marginPx;
                         else leftPos = Math.floor((width - wmPixelWidth) / 2);
 
-                        // Вертикаль
                         if (pos.includes('t')) topPos = marginPx;
                         else if (pos.includes('b')) topPos = height - wmPixelHeight - marginPx;
                         else topPos = Math.floor((height - wmPixelHeight) / 2);
@@ -368,7 +405,7 @@ exports.createPost = async (req, res) => {
                         accountId: job.account.id,
                         text: job.finalText,
                         mediaUrls: JSON.stringify(finalImagesToSave),
-                        publishAt: parsedPublishAt,
+                        publishAt: new Date(publishAt),
                         status: 'SCHEDULED' 
                     }
                 });
@@ -401,8 +438,12 @@ exports.createPost = async (req, res) => {
                             const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                             await sendToTelegram(botToken, job.account.providerId, job.finalText, job.processedBuffers);
                         } else if (providerType === 'vk') {
-                            // === ВСЕ ПОСТЫ ВК ИДУТ ЧЕРЕЗ ШЛЮЗ KOM-OD ===
-                            await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
+                            const isKomod = job.account.providerId.startsWith('wall_') || job.account.providerId.startsWith('group_');
+                            if (isKomod) {
+                                await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
+                            } else {
+                                await sendToVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers);
+                            }
                         }
                     } catch (err) {
                         console.error(`[BACKGROUND ERROR] ${job.account.name}:`, err.message);
@@ -446,8 +487,12 @@ exports.initCron = () => {
                         const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                         await sendToTelegram(botToken, account.providerId, post.text, imageBuffers);
                     } else if (providerType === 'vk') {
-                        // === ВСЕ ПОСТЫ ВК ИДУТ ЧЕРЕЗ ШЛЮЗ KOM-OD ===
-                        await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, post.publishAt);
+                        const isKomod = account.providerId.startsWith('wall_') || account.providerId.startsWith('group_');
+                        if (isKomod) {
+                            await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, post.publishAt);
+                        } else {
+                            await sendToVK(account.accessToken, account.providerId, post.text, imageBuffers);
+                        }
                     }
 
                     const thumbnailsForDb = await Promise.all(imageBuffers.map(async (buf) => {
@@ -487,7 +532,7 @@ exports.getScheduledPosts = async (req, res) => {
             let firstImage = [];
             try {
                 const parsed = JSON.parse(p.mediaUrls || '[]');
-                if (parsed.length > 0) firstImage = [parsed[0]]; 
+                if (parsed.length > 0) firstImage = [parsed[0]];
             } catch(e) {}
             
             return { ...p, mediaUrls: JSON.stringify(firstImage) };
