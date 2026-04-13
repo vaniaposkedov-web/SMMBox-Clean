@@ -194,6 +194,7 @@ exports.getKomodGroupsForSelection = async (req, res) => {
 
 
 
+// 2. Исправленный метод добавления группы по ссылке
 exports.addVkKomodGroup = async (req, res) => {
   try {
     const { url, title, profileId, avatarUrl } = req.body;
@@ -208,31 +209,45 @@ exports.addVkKomodGroup = async (req, res) => {
       return res.status(400).json({ error: 'Некорректная ссылка на группу' });
     }
 
-    // 1. ОТПРАВЛЯЕМ ЗАПРОС В KOM-OD
+    // Извлекаем ID для проверки на дубликаты у других пользователей
+    const parsedId = url.split('/').pop().replace('club', '').replace('public', '').replace('event', '');
+    const providerId = `group_${parsedId}`;
+
+    // ПРОВЕРКА: Не привязана ли эта группа уже к другому пользователю?
+    const existingAcc = await prisma.account.findUnique({
+      where: { provider_providerId: { provider: 'VK', providerId: providerId } }
+    });
+
+    if (existingAcc && existingAcc.userId !== userId) {
+      return res.status(403).json({ error: 'Это сообщество уже привязано к другому пользователю!' });
+    }
+
+    // 1. Отправляем в Kom-od
     const params = new URLSearchParams();
     params.append('url', url);
     params.append('title', title || 'Без названия');
     params.append('account_id', profile.providerAccountId);
-    params.append('random_account', '0'); // ИСПРАВЛЕНИЕ: Явно выключаем рандомный аккаунт!
+    params.append('random_account', '0'); 
 
     try {
-      const kRes = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
+      await axios.post(`${KOMOD_BASE_URL}/group`, params, {
         headers: { 'Access-Token': KOMOD_TOKEN, 'Content-Type': 'application/x-www-form-urlencoded' },
-        validateStatus: () => true // Не падаем в catch при ошибках, чтобы прочитать ответ шлюза
+        validateStatus: () => true 
       });
-      console.log(`[KOM-OD] Ответ на добавление ${url}:`, kRes.status, kRes.data);
     } catch (apiError) {
-      console.error('[KOM-OD] Сетевая ошибка при добавлении группы:', apiError.message);
+      console.error('[KOM-OD] Ошибка при добавлении группы в шлюз:', apiError.message);
     }
 
-    // 2. ВОЗВРАЩАЕМ ЛОКАЛЬНОЕ СОХРАНЕНИЕ В БАЗУ
-    // Если шлюз тормозит, группа всё равно мгновенно появится у пользователя в интерфейсе!
-    const parsedId = url.split('/').pop().replace('club', '').replace('public', '').replace('event', '');
-    const providerId = `group_${parsedId}`;
-
+    // 2. Сохраняем локально (БЕЗ перезаписи userId в блоке update)
     const account = await prisma.account.upsert({
       where: { provider_providerId: { provider: 'VK', providerId: providerId } },
-      update: { name: title, avatarUrl: avatarUrl, isValid: true, profileId: profile.id, userId },
+      update: { 
+        name: title, 
+        avatarUrl: avatarUrl, 
+        isValid: true, 
+        profileId: profile.id 
+        // userId здесь НЕ обновляем, чтобы не "украсть" группу, если она уже существует
+      },
       create: {
         userId,
         provider: 'VK',
@@ -246,18 +261,19 @@ exports.addVkKomodGroup = async (req, res) => {
 
     res.json({ success: true, account });
   } catch (error) {
-    console.error(error);
+    console.error('Ошибка addVkKomodGroup:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 
 
+// 3. Полный исправленный метод синхронизации VK (БЕЗОПАСНЫЙ)
 exports.syncVkKomod = async (req, res) => {
   try {
     const userId = String(req.user?.userId || req.user?.id);
     if (!userId) return res.status(401).json({ error: 'Не авторизован' });
 
-    // 1. ПОЛУЧАЕМ АККАУНТЫ И УБИРАЕМ ДУБЛИКАТЫ
+    // 1. Получаем аккаунты шлюза
     const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const allAccountsRaw = accRes.data?.data?.items || [];
 
@@ -270,12 +286,11 @@ exports.syncVkKomod = async (req, res) => {
     }
     const allAccounts = Array.from(accountsMap.values());
 
-    // 2. ВЫТЯГИВАЕМ АВАТАРКИ ЛИЧНЫХ СТРАНИЦ И СООБЩЕСТВ В СЛОВАРЬ
+    // 2. Сбор метаданных (аватарки/имена)
     const metaMap = {};
-    const groupAvatarsMap = {}; // Секретный словарь для 100% получения аватарок
+    const groupAvatarsMap = {}; 
 
     for (const acc of allAccounts) {
-      // Аватарки личных страниц
       try {
         const detailRes = await axios.get(`${KOMOD_BASE_URL}/account/${acc.id}`, { headers: { 'Access-Token': KOMOD_TOKEN } });
         const data = detailRes.data?.data;
@@ -289,41 +304,34 @@ exports.syncVkKomod = async (req, res) => {
             };
           }
         }
-      } catch (e) { console.log(`Ошибка парсинга аккаунта ${acc.id}`); }
+      } catch (e) {}
 
-      // Аватарки сообществ (именно здесь шлюз отдает их без ошибок)
       try {
-      const groupsRes = await axios.get(`${KOMOD_BASE_URL}/account/${acc.id}/api-groups`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-      
-      // ✅ ИСПРАВЛЕНИЕ: Надежное извлечение массива групп
-      let items = [];
-      const resData = groupsRes.data?.data;
-      const resGroups = groupsRes.data?.groups;
+        const groupsRes = await axios.get(`${KOMOD_BASE_URL}/account/${acc.id}/api-groups`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+        let items = [];
+        const resData = groupsRes.data?.data;
+        const resGroups = groupsRes.data?.groups;
 
-      if (Array.isArray(resData)) {
-          // Если это массив объектов, проверяем, нет ли внутри 'items' (как в доках)
-          if (resData[0]?.items && Array.isArray(resData[0].items)) items = resData[0].items;
-          else items = resData;
-      } else if (resData?.items) {
-          items = resData.items;
-      } else if (resGroups?.items) {
-          items = resGroups.items;
-      } else if (Array.isArray(resGroups)) {
-          items = resGroups;
-      }
-
-      for (const g of items) {
-        const gUid = String(g.id || g.group_id || g.uid);
-        // Используем наш новый универсальный парсер
-        const gPhoto = extractKomodAvatar(g);
-        if (gUid && gPhoto) {
-          groupAvatarsMap[gUid] = gPhoto;
+        if (Array.isArray(resData)) {
+            if (resData[0]?.items && Array.isArray(resData[0].items)) items = resData[0].items;
+            else items = resData;
+        } else if (resData?.items) {
+            items = resData.items;
+        } else if (resGroups?.items) {
+            items = resGroups.items;
+        } else if (Array.isArray(resGroups)) {
+            items = resGroups;
         }
-      }
-    } catch (e) { console.log(`Ошибка парсинга групп для аккаунта ${acc.id}`); }
-}
 
-    // 3. СОХРАНЯЕМ ПРОФИЛИ В БАЗУ
+        for (const g of items) {
+          const gUid = String(g.id || g.group_id || g.uid);
+          const gPhoto = extractKomodAvatar(g);
+          if (gUid && gPhoto) groupAvatarsMap[gUid] = gPhoto;
+        }
+      } catch (e) {}
+    }
+
+    // 3. Сохранение ПРОФИЛЕЙ (С проверкой на принадлежность)
     const validAccIds = allAccounts.map(a => String(a.id));
     const existingVkProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
 
@@ -335,8 +343,14 @@ exports.syncVkKomod = async (req, res) => {
 
     for (const acc of allAccounts) {
       const pId = String(acc.id);
-      const existingProfile = existingVkProfiles.find(p => p.providerAccountId === pId);
       
+      // БЕЗОПАСНОСТЬ: Если этот профиль уже привязан к ДРУГОМУ пользователю - пропускаем его
+      const globalProfile = await prisma.socialProfile.findUnique({
+         where: { provider_providerAccountId: { provider: 'VK', providerAccountId: pId } }
+      });
+      if (globalProfile && globalProfile.userId !== userId) continue;
+
+      const existingProfile = existingVkProfiles.find(p => p.providerAccountId === pId);
       const name = metaMap[pId]?.name || acc.title || existingProfile?.name || 'Профиль ВК';
       let avatar = metaMap[pId]?.avatar;
       
@@ -349,12 +363,12 @@ exports.syncVkKomod = async (req, res) => {
 
       await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'VK', providerAccountId: pId } },
-        update: { name, avatarUrl: avatar, userId },
+        update: { name, avatarUrl: avatar }, // userId НЕ обновляем
         create: { userId, provider: 'VK', providerAccountId: pId, name, avatarUrl: avatar, accessToken: KOMOD_TOKEN }
       });
     }
 
-    // 4. ПОЛУЧАЕМ ГРУППЫ И УБИРАЕМ ДУБЛИКАТЫ (С жесткой проверкой на стену)
+    // 4. Получение ГРУПП
     const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
     const allGroupsRaw = grpRes.data?.data?.items || [];
 
@@ -379,66 +393,63 @@ exports.syncVkKomod = async (req, res) => {
     const myProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
     const myProfileAccountIds = myProfiles.map(p => String(p.providerAccountId));
 
-    // 5. СОХРАНЯЕМ ГРУППЫ И ПОДСТАВЛЯЕМ ФОТО
-      // 5. СОХРАНЯЕМ ГРУППЫ И ПОДСТАВЛЯЕМ ФОТО
-      for (const grp of allGroups) {
-        if (!myProfileAccountIds.includes(String(grp.account_id))) continue;
+    // 5. Сохранение ГРУПП (С защитой от угона)
+    for (const grp of allGroups) {
+      if (!myProfileAccountIds.includes(String(grp.account_id))) continue;
 
-        const parentProfile = myProfiles.find(p => String(p.providerAccountId) === String(grp.account_id));
-        
-        const urlStr = String(grp.url || '');
-        const isProfileByUrl = /^https?:\/\/(www\.)?vk\.com\/id\d+\/?$/i.test(urlStr);
-        const isProfileById = String(grp.uid || grp.id) === String(grp.account_id);
-        const isProfileByFlag = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
-        
-        const isWall = isProfileByFlag || isProfileByUrl || isProfileById;
-        const vkUid = String(grp.uid || grp.id);
-        const providerId = isWall ? `wall_${vkUid}` : `group_${vkUid}`;
-        validGroupProviderIds.push(providerId);
+      const parentProfile = myProfiles.find(p => String(p.providerAccountId) === String(grp.account_id));
+      
+      const urlStr = String(grp.url || '');
+      const isProfileByUrl = /^https?:\/\/(www\.)?vk\.com\/id\d+\/?$/i.test(urlStr);
+      const isProfileById = String(grp.uid || grp.id) === String(grp.account_id);
+      const isProfileByFlag = String(grp.is_profile) === '1' || String(grp.is_profile).toLowerCase() === 'true' || grp.is_profile === true;
+      
+      const isWall = isProfileByFlag || isProfileByUrl || isProfileById;
+      const vkUid = String(grp.uid || grp.id);
+      const providerId = isWall ? `wall_${vkUid}` : `group_${vkUid}`;
 
-        let finalName = grp.title || grp.name || 'Сообщество';
-        let finalAvatar = null;
-        
-        if (isWall) {
-          finalAvatar = parentProfile?.avatarUrl;
-        } else {
-          // Сначала пробуем взять из общего списка или резервного словаря
-          finalAvatar = extractKomodAvatar(grp) || groupAvatarsMap[vkUid];
+      // БЕЗОПАСНОСТЬ: Проверяем, не принадлежит ли группа другому пользователю
+      const globalAcc = await prisma.account.findUnique({
+         where: { provider_providerId: { provider: 'VK', providerId } }
+      });
+      if (globalAcc && globalAcc.userId !== userId) continue;
 
-          // ✅ ИСПРАВЛЕНИЕ: Если фото нет, делаем запрос к эндпоинту конкретной группы (/group/<id>)
-          // Именно этот метод починил разработчик API, добавив в него info.rawData
-          if (!finalAvatar && grp.id) {
-            try {
-              const detailGrpRes = await axios.get(`${KOMOD_BASE_URL}/group/${grp.id}`, { 
-                headers: { 'Access-Token': KOMOD_TOKEN } 
-              });
-              if (detailGrpRes.data?.success && detailGrpRes.data?.data) {
-                finalAvatar = extractKomodAvatar(detailGrpRes.data.data);
-              }
-            } catch (e) {
-              console.log(`[KOM-OD] Ошибка получения деталей группы ${grp.id}`);
+      validGroupProviderIds.push(providerId);
+
+      let finalName = grp.title || grp.name || 'Сообщество';
+      let finalAvatar = null;
+      
+      if (isWall) {
+        finalAvatar = parentProfile?.avatarUrl;
+      } else {
+        finalAvatar = extractKomodAvatar(grp) || groupAvatarsMap[vkUid];
+
+        if (!finalAvatar && grp.id) {
+          try {
+            const detailGrpRes = await axios.get(`${KOMOD_BASE_URL}/group/${grp.id}`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+            if (detailGrpRes.data?.success && detailGrpRes.data?.data) {
+              finalAvatar = extractKomodAvatar(detailGrpRes.data.data);
             }
-          }
+          } catch (e) {}
         }
-
-        // Защита от перезаписи старой доброй аватарки на null
-        const existingAcc = await prisma.account.findUnique({ where: { provider_providerId: { provider: 'VK', providerId } } });
-        if (!finalAvatar && existingAcc?.avatarUrl && !existingAcc.avatarUrl.includes('ui-avatars')) {
-            finalAvatar = existingAcc.avatarUrl;
-        }
-
-        if (!finalAvatar) {
-            finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=0d0f13&color=0077FF&rounded=true`;
-        }
-
-        await prisma.account.upsert({
-          where: { provider_providerId: { provider: 'VK', providerId } },
-          update: { name: finalName, avatarUrl: finalAvatar, isValid: true, profileId: parentProfile.id },
-          create: { userId, provider: 'VK', providerId, name: finalName, avatarUrl: finalAvatar, accessToken: KOMOD_TOKEN, profileId: parentProfile.id }
-        });
       }
 
-    // 6. ОЧИСТКА СТАРЫХ ДУБЛИКАТОВ ИЗ БАЗЫ
+      const existingAcc = await prisma.account.findUnique({ where: { provider_providerId: { provider: 'VK', providerId } } });
+      if (!finalAvatar && existingAcc?.avatarUrl && !existingAcc.avatarUrl.includes('ui-avatars')) {
+          finalAvatar = existingAcc.avatarUrl;
+      }
+      if (!finalAvatar) {
+          finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=0d0f13&color=0077FF&rounded=true`;
+      }
+
+      await prisma.account.upsert({
+        where: { provider_providerId: { provider: 'VK', providerId } },
+        update: { name: finalName, avatarUrl: finalAvatar, isValid: true, profileId: parentProfile.id }, // БЕЗ userId
+        create: { userId, provider: 'VK', providerId, name: finalName, avatarUrl: finalAvatar, accessToken: KOMOD_TOKEN, profileId: parentProfile.id }
+      });
+    }
+
+    // 6. Очистка
     const existingVkAccounts = await prisma.account.findMany({ where: { userId, provider: 'VK' } });
     for (const acc of existingVkAccounts) {
       if (acc.providerId.startsWith('group_') || acc.providerId.startsWith('wall_')) {
@@ -450,7 +461,7 @@ exports.syncVkKomod = async (req, res) => {
 
     res.json({ success: true, count: validGroupProviderIds.length });
   } catch (error) {
-    console.error(error);
+    console.error('Ошибка синхронизации syncVkKomod:', error);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
@@ -622,12 +633,24 @@ exports.saveVkGroups = async (req, res) => {
 };
 
 exports.getAccounts = async (req, res) => {
-  const { userId } = req.query; 
+  // Получаем ID пользователя строго из объекта req.user (заполняется вашим JWT-middleware)
+  // Это предотвращает получение чужих данных через подмену userId в query-параметрах
+  const userId = req.user?.userId || req.user?.id; 
+  
   try {
-    if (!userId) return res.status(400).json({ error: 'Не указан ID пользователя' });
-    const accounts = await prisma.account.findMany({ where: { userId: userId }, include: { watermark: true }, orderBy: { createdAt: 'desc' } });
+    if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+    
+    const accounts = await prisma.account.findMany({ 
+      where: { userId: String(userId) }, 
+      include: { watermark: true }, 
+      orderBy: { createdAt: 'desc' } 
+    });
+    
     res.json(accounts);
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера при загрузке групп' }); }
+  } catch (error) { 
+    console.error('Ошибка getAccounts:', error);
+    res.status(500).json({ error: 'Ошибка сервера при загрузке групп' }); 
+  }
 };
 
 exports.deleteAccount = async (req, res) => {
