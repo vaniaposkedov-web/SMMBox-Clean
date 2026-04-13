@@ -106,13 +106,14 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         targetDate.setMinutes(targetDate.getMinutes() + 1);
     }
 
-    const komodTimezone = 'Europe/Moscow'; 
+    // === ИСПРАВЛЕНИЕ: СТАВИМ ЧАСОВОЙ ПОЯС ТВОЕГО ШЛЮЗА (+05:00) ===
+    const komodTimezone = 'Asia/Yekaterinburg'; 
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: komodTimezone });
     const formattedDate = tzString.substring(0, 16);
 
     form.append('group_id', targetGroupId);
     form.append('publish_at', formattedDate); 
-    form.append('via_api', '1'); 
+    form.append('via_api', '1');
     
     const media = [];
     if (text) {
