@@ -13,6 +13,8 @@ const IconVK = () => (
   </svg>
 );
 
+const [postTime, setPostTime] = useState('');
+
 const IconTG = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
@@ -339,7 +341,9 @@ export default function Publish() {
 
   const handlePublish = async () => {
     if (selectedAccounts.length === 0) return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
-    if (publishMode === 'schedule' && (!selectedCalendarDate || !scheduleTime)) return setTimeout(() => alert('Укажите дату и время!'), 10);
+    
+    // ПРОВЕРЯЕМ ТОЛЬКО ВРЕМЯ (так как дата уже есть в publishDraft)
+    if (publishMode === 'schedule' && !scheduleTime) return setTimeout(() => alert('Укажите время публикации!'), 10);
     
     setIsPublishing(true);
 
@@ -349,8 +353,6 @@ export default function Publish() {
         const accountsData = selectedAccounts.map(id => {
           const acc = accounts.find(a => a.id === id);
           
-          // Фоновая проверка: если у аккаунта есть свой знак/подпись, берем их. 
-          // Иначе проверяем включены ли глобальные настройки.
           const wmConfig = (acc?.watermark !== null && acc?.watermark !== undefined) 
             ? acc.watermark 
             : (applyWatermark ? (globalSettings?.watermark || watermarkSettings) : null);
@@ -370,8 +372,12 @@ export default function Publish() {
 
         let publishAt = null;
         if (publishMode === 'schedule') {
-            const [year, month, day] = selectedCalendarDate.split('-');
+            // Берем дату из предыдущего шага (или сегодняшнюю, если по какой-то причине её нет)
+            const baseDate = publishDraft?.publishDate || new Date().toISOString().split('T')[0];
+            const [year, month, day] = baseDate.split('-');
             const [hours, minutes] = scheduleTime.split(':');
+            
+            // Склеиваем локальную дату и время
             const localDate = new Date(year, month - 1, day, hours, minutes);
             publishAt = localDate.toISOString(); 
         }
@@ -777,6 +783,44 @@ export default function Publish() {
 
         {step === 3 && (
           <div className="space-y-4 sm:space-y-6 animate-fade-in">
+            
+            {/* === НОВЫЙ БЛОК ВРЕМЕНИ СВЕРХУ (только если выбран отложенный постинг) === */}
+            {publishMode === 'schedule' && (
+              <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500 shrink-0">
+                    <Clock size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Время публикации</h2>
+                    <p className="text-xs sm:text-sm text-gray-400">
+                      Укажите точное время
+                      {publishDraft?.publishDate && <span className="text-purple-400 ml-1">(на {publishDraft.publishDate})</span>}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <input 
+                    type="time" 
+                    value={scheduleTime} 
+                    onChange={(e) => setScheduleTime(e.target.value)} 
+                    className="flex-1 sm:w-auto min-w-[120px] appearance-none bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-lg font-medium text-white outline-none focus:border-purple-500 transition-colors h-[50px] cursor-pointer" 
+                  />
+                  {scheduleTime && (
+                    <button 
+                      onClick={() => setScheduleTime('')} 
+                      className="w-[50px] h-[50px] flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20 shrink-0"
+                      title="Очистить время"
+                    >
+                      <X size={20} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* === БЛОК ВЫБОРА АККАУНТОВ === */}
             <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 <div>
@@ -794,7 +838,6 @@ export default function Publish() {
                 </div>
               </div>
 
-              {/* ИСПРАВЛЕНИЕ: Убран max-h и overflow-y-auto, теперь список тянется вниз */}
               <div className="pr-1 sm:pr-2 space-y-4">
                 {Object.keys(groupedAccounts).length === 0 ? (
                   <div className="text-center py-8">
@@ -844,21 +887,6 @@ export default function Publish() {
                 )}
               </div>
             </div>
-
-            {publishMode === 'schedule' && (
-              <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl mb-4">
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-gray-900/50 p-3 sm:p-4 rounded-2xl border border-gray-800/50">
-                    <div className="flex flex-col min-w-0">
-                      <label className="text-xs font-bold text-gray-500 uppercase ml-1 mb-1">Дата</label>
-                      <input type="date" value={selectedCalendarDate} onChange={(e) => setSelectedCalendarDate(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[48px]" />
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <label className="text-xs font-bold text-gray-500 uppercase ml-1 mb-1">Время</label>
-                      <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[48px]" />
-                    </div>
-                  </div>
-              </div>
-            )}
           </div>
         )}
 
