@@ -1055,6 +1055,15 @@ exports.saveVkGroupTokens = async (req, res) => {
       });
       savedCount++;
     }
+
+    if (req.app.get('io') && global.userSockets) {
+       const connectedSockets = global.userSockets.get(String(userId));
+       if (connectedSockets) {
+         connectedSockets.forEach(socketId => {
+           req.app.get('io').to(socketId).emit('ACCOUNTS_UPDATED');
+         });
+       }
+    }
     
     res.json({ success: true, count: savedCount });
   } catch (error) {
@@ -1098,9 +1107,16 @@ exports.addVkKomodProfile = async (req, res) => {
         data: { avatarUrl: avatarUrl, name: name || profile.name }
       });
     }
+    
 
-    // МЫ БОЛЬШЕ НЕ СОХРАНЯЕМ ACCOUNT ЗДЕСЬ! 
-    // Это сделает функция syncVkKomod с правильным VK UID, чтобы не было дубликатов.
+    if (req.app.get('io') && global.userSockets) {
+       const connectedSockets = global.userSockets.get(String(userId));
+       if (connectedSockets) {
+         connectedSockets.forEach(socketId => {
+           req.app.get('io').to(socketId).emit('ACCOUNTS_UPDATED');
+         });
+       }
+    }
     res.json({ success: true });
   } catch (error) {
     console.error('Error adding komod profile:', error);
@@ -1174,6 +1190,15 @@ exports.telegramWebhook = async (req, res) => {
           chat_id: tgUser.id,
           text: '✅ Ваш аккаунт Telegram успешно привязан! Вернитесь на сайт и нажмите кнопку "Обновить".'
         }).catch(e => console.log('Не удалось отправить сообщение об успехе'));
+      }
+
+      if (req.app.get('io') && global.userSockets) {
+         const connectedSockets = global.userSockets.get(String(userId));
+         if (connectedSockets) {
+           connectedSockets.forEach(socketId => {
+             req.app.get('io').to(socketId).emit('ACCOUNTS_UPDATED');
+           });
+         }
       }
       return; 
     }

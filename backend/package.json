@@ -27,7 +27,8 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.1",
     "openai": "^6.25.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.14",
