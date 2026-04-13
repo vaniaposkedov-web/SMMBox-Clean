@@ -203,14 +203,13 @@ async function applyWatermark(imageBuffer, wmConfig) {
         const metadata = await sharp(imageBuffer).metadata();
         const { width, height } = metadata;
 
-        // 1. Извлекаем параметры (1-в-1 как на фронтенде в WatermarkConstructor.jsx)
         const sizeValue = wmConfig.size !== undefined ? wmConfig.size : 20; 
         const marginValue = wmConfig.margin !== undefined ? wmConfig.margin : 5;
         const opacity = (wmConfig.opacity !== undefined ? wmConfig.opacity : 80) / 100;
         
-        // Отступы в пикселях (% от ширины и высоты кадра, как CSS top/left/bottom)
+        // 🟢 ИСПРАВЛЕНИЕ: Все расчеты ведем СТРОГО от ШИРИНЫ кадра
         const padX = Math.floor(width * (marginValue / 100));
-        const padY = Math.floor(height * (marginValue / 100));
+        const padY = Math.floor(width * (marginValue / 100));
 
         let overlayBuffer;
         let overlayMeta;
@@ -221,26 +220,21 @@ async function applyWatermark(imageBuffer, wmConfig) {
             const bgColor = wmConfig.bgColor || '#000000';
             const hasBg = wmConfig.hasBackground !== false;
             
-            // На фронте размер шрифта (rem) достигает 10rem при 100% шкалы. 
-            // В пропорциях экрана превью это около 35% от высоты кадра.
-            const fontSize = Math.max(10, Math.floor(height * (sizeValue / 100) * 0.35)); 
+            // Базовый размер шрифта: 100% на ползунке = 20% от ШИРИНЫ картинки
+            const fontSize = Math.max(12, Math.floor(width * (sizeValue / 100) * 0.20)); 
             
             const bgPaddingVal = wmConfig.bgPadding !== undefined ? wmConfig.bgPadding : 10;
-            
-            // Внутренние отступы плашки: `${bgPadding/25}em ${bgPadding/12}em`
             const innerPadV = Math.floor(fontSize * (bgPaddingVal / 25));
             const innerPadH = Math.floor(fontSize * (bgPaddingVal / 12));
             
-            // Защитный коэффициент 0.65 для ширины шрифта
-            const textWidth = Math.floor(fontSize * 0.65 * text.length);
+            // Расчет габаритов SVG
+            const textWidth = Math.floor(fontSize * 0.60 * text.length);
             const svgWidth = textWidth + (innerPadH * 2);
             const svgHeight = fontSize + (innerPadV * 2);
 
             const hasStroke = wmConfig.hasStroke;
             const strokeColor = wmConfig.strokeColor || '#000000';
-            const strokeWidthRaw = wmConfig.strokeWidth || 2;
-            // Масштабируем обводку относительно базовой высоты превью (условно 450px)
-            const strokeWidth = Math.max(1, Math.floor(strokeWidthRaw * (height / 450)));
+            const strokeWidth = Math.max(1, Math.floor((wmConfig.strokeWidth || 2) * (width / 1000)));
 
             const strokeAttr = hasStroke ? `stroke="${strokeColor}" stroke-width="${strokeWidth}" paint-order="stroke"` : '';
             const fontFam = wmConfig.fontFamily ? wmConfig.fontFamily.replace(/"/g, "'") : 'sans-serif';
@@ -249,13 +243,7 @@ async function applyWatermark(imageBuffer, wmConfig) {
                 <svg width="${svgWidth}" height="${svgHeight}">
                     <style>
                         .bg { fill: ${bgColor}; opacity: ${hasBg ? opacity * 0.6 : 0}; }
-                        .text { 
-                            fill: ${textColor}; 
-                            font-size: ${fontSize}px; 
-                            font-family: ${fontFam}; 
-                            font-weight: bold; 
-                            opacity: ${opacity}; 
-                        }
+                        .text { fill: ${textColor}; font-size: ${fontSize}px; font-family: ${fontFam}; font-weight: bold; opacity: ${opacity}; }
                     </style>
                     <rect width="100%" height="100%" rx="${fontSize * 0.2}" class="bg" />
                     <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" class="text" ${strokeAttr}>${text}</text>
@@ -265,19 +253,18 @@ async function applyWatermark(imageBuffer, wmConfig) {
         } else if (wmConfig.type === 'image' && wmConfig.image) {
             const base64Data = wmConfig.image.includes(',') ? wmConfig.image.split(',')[1] : wmConfig.image;
             
-            // На фронте высота картинки-логотипа задается как style.height = size%
-            // Берем процент строго от ВЫСОТЫ оригинального фото
-            const targetHeight = Math.max(10, Math.floor(height * (sizeValue / 100)));
+            // Для логотипа: 100% на ползунке = 35% от ШИРИНЫ фото
+            const targetWidth = Math.max(20, Math.floor(width * (sizeValue / 100) * 0.35));
             
             overlayBuffer = await sharp(Buffer.from(base64Data, 'base64'))
-                .resize({ height: targetHeight, withoutEnlargement: false })
+                .resize({ width: targetWidth, withoutEnlargement: false })
                 .ensureAlpha(opacity)
                 .toBuffer();
         } else {
             return imageBuffer;
         }
 
-        // Если в макете задан поворот (градусы)
+        // Поворот (если задан)
         if (wmConfig.angle) {
             overlayBuffer = await sharp(overlayBuffer)
                 .rotate(wmConfig.angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -286,35 +273,32 @@ async function applyWatermark(imageBuffer, wmConfig) {
 
         overlayMeta = await sharp(overlayBuffer).metadata();
 
-        // 2. Рассчитываем координаты наложения (с учетом отступов padX и padY)
+        // Расчет координат наложения
         let left = padX;
         let top = padY;
         const pos = wmConfig.position || 'br';
 
         if (wmConfig.position === 'custom' && wmConfig.x !== undefined && wmConfig.y !== undefined) {
-            // Кастомное перетаскивание мышкой
             left = Math.floor((width * wmConfig.x) / 100) - Math.floor(overlayMeta.width / 2);
             top = Math.floor((height * wmConfig.y) / 100) - Math.floor(overlayMeta.height / 2);
         } else {
-            // Привязка по сетке
             if (pos.includes('r')) left = width - overlayMeta.width - padX;
             if (pos.includes('c')) left = Math.floor((width - overlayMeta.width) / 2);
             if (pos.includes('b')) top = height - overlayMeta.height - padY;
             if (pos === 'cc') top = Math.floor((height - overlayMeta.height) / 2);
         }
 
-        // Жестко фиксируем границы, чтобы знак не вылезал за край кадра
+        // Защита: не даем знаку улететь за край экрана
         left = Math.max(0, Math.min(left, width - overlayMeta.width));
         top = Math.max(0, Math.min(top, height - overlayMeta.height));
 
-        // Финальное наложение
         return await sharp(imageBuffer)
             .composite([{ input: overlayBuffer, top, left }])
             .toBuffer();
             
     } catch (err) {
         console.error('[WATERMARK ERROR]:', err);
-        return imageBuffer; // Если возникнет ошибка, публикуем фото без знака, чтобы не терять пост
+        return imageBuffer; 
     }
 }
 
