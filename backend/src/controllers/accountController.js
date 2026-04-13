@@ -633,13 +633,27 @@ exports.saveVkGroups = async (req, res) => {
 };
 
 exports.getAccounts = async (req, res) => {
-  // Получаем ID пользователя строго из объекта req.user (заполняется вашим JWT-middleware)
-  // Это предотвращает получение чужих данных через подмену userId в query-параметрах
-  const userId = req.user?.userId || req.user?.id; 
-  
+  // 1. Пробуем получить ID из req.user (если стоит auth-middleware)
+  let userId = req.user?.userId || req.user?.id;
+
+  // 2. Если middleware нет на этом роуте, вручную читаем токен из заголовка!
+  if (!userId && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      try {
+          const jwt = require('jsonwebtoken');
+          const token = req.headers.authorization.split(' ')[1];
+          const decoded = jwt.decode(token);
+          if (decoded) {
+              userId = decoded.id || decoded.userId;
+          }
+      } catch (e) {
+          console.error("Ошибка парсинга токена:", e);
+      }
+  }
+
   try {
+    // Теперь, если фронтенд прислал токен, userId точно найдется
     if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-    
+
     const accounts = await prisma.account.findMany({ 
       where: { userId: String(userId) }, 
       include: { watermark: true }, 

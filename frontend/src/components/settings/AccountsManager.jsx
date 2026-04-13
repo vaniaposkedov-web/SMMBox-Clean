@@ -327,10 +327,7 @@ export default function AccountsManager() {
   };
 
 
-  // --- АВТО-ЧЕКЕР (POLLING) ---
-  // Каждые 5 секунд запрашиваем список аккаунтов, чтобы новые каналы ТГ 
-  // появлялись автоматически сразу после добавления бота пользователем.
-// --- WEB SOCKETS: АВТО-ОБНОВЛЕНИЕ ДАННЫХ БЕЗ НАГРУЗКИ ---
+ // --- WEB SOCKETS: АВТО-ОБНОВЛЕНИЕ ДАННЫХ БЕЗ НАГРУЗКИ ---
   useEffect(() => {
     if (!user?.id) return;
 
@@ -340,13 +337,15 @@ export default function AccountsManager() {
 
     // Подключаемся к WebSocket серверу
     const socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
-      query: { userId: user.id },
-      transports: ['websocket'] 
+      query: { userId: user.id }
+      // 🟢 ИСПРАВЛЕНИЕ: Мы удалили строку "transports: ['websocket']". 
+      // Теперь Socket.io сам обойдет блокировку NGINX на TimeWeb 
+      // и подключится через резервный канал связи!
     });
 
     // Слушаем сигнал от бэкенда об обновлении аккаунтов
     socket.on('ACCOUNTS_UPDATED', () => {
-      console.log('Получен сигнал от сервера: обновляем аккаунты!');
+      console.log('⚡ Получен сигнал от сервера: обновляем аккаунты!');
       fetchAccounts(user.id);
       fetchProfiles(user.id);
     });
