@@ -37,39 +37,68 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
     }
 }
 
-// === ЛОГИКА ОТПРАВКИ KOM-OD (ВК) ===
+// === ЛОГИКА ОТПРАВКИ KOM-OD (ВК) С АВТО-РЕГИСТРАЦИЕЙ ПРОФИЛЕЙ ===
 async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null) {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
 
     let targetGroupId = null;
+    const cleanId = providerId.replace('wall_', '').replace('group_', '');
+    const isWall = providerId.startsWith('wall_');
 
+    // 1. Получаем список групп из шлюза
     const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
     const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
 
-    if (providerId.startsWith('group_')) {
-        const vkUid = providerId.replace('group_', '');
-        const targetGroup = groups.find(g => String(g.uid) === String(vkUid) || String(g.url).includes(vkUid) || String(g.id) === String(vkUid));
+    let targetGroup = groups.find(g => 
+        String(g.uid) === cleanId || 
+        String(g.id) === cleanId || 
+        String(g.account_id) === cleanId ||
+        (g.url && String(g.url).includes(cleanId))
+    );
+
+    // 2. АВТО-РЕГИСТРАЦИЯ: Если группы/профиля нет, добавляем через API Kom-od
+    if (!targetGroup) {
+        console.log(`\n[KOMOD] Цель ${providerId} не найдена в шлюзе. Пробуем авто-регистрацию...`);
         
-        if (!targetGroup) throw new Error(`Группа не найдена в шлюзе Kom-od. Попробуйте переподключить её.`);
-        targetGroupId = targetGroup.id;
-    } else if (providerId.startsWith('wall_')) {
-        const accId = providerId.replace('wall_', '');
-        
-        let targetGroup = groups.find(g => 
-            String(g.account_id) === String(accId) && 
-            (String(g.is_profile) === '1' || g.is_profile === true || g.type === 'profile' || String(g.url).includes('vk.com/id') || String(g.uid) === String(g.user_id))
-        );
-        
-        if (!targetGroup) {
-            console.log(`[KOMOD ERROR] Стена для account_id ${accId} не активирована в шлюзе.`);
-            throw new Error('Стена еще не активирована! Зайдите в "Мои социальные сети" на сайте Kom-od и обязательно нажмите фиолетовую кнопку "Подключить стену".');
+        const addForm = new FormData();
+        if (isWall) {
+            addForm.append('account_id', cleanId);
+            addForm.append('is_profile', '1');
         } else {
-            targetGroupId = targetGroup.id;
+            addForm.append('url', `https://vk.com/club${cleanId}`);
+            addForm.append('title', `Авто-добавленная группа ${cleanId}`);
+            addForm.append('account_id', cleanId);
+        }
+
+        try {
+            const addRes = await axios.post(`${KOMOD_BASE_URL}/group`, addForm, {
+                headers: { ...addForm.getHeaders(), 'Access-Token': token },
+                validateStatus: () => true
+            });
+
+            if (addRes.data && addRes.data.success !== false) {
+                // Перезапрашиваем список, чтобы получить внутренний ID новой группы
+                const newGrpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
+                const newGroups = newGrpRes.data?.data?.items || newGrpRes.data?.data || [];
+                targetGroup = newGroups.find(g => String(g.uid) === cleanId || String(g.account_id) === cleanId);
+                
+                if (targetGroup) {
+                    console.log(`[KOMOD] ✅ Авто-регистрация успешна! ID в шлюзе: ${targetGroup.id}`);
+                } else {
+                    throw new Error('Авто-регистрация прошла, но группа не найдена в списке.');
+                }
+            } else {
+                console.error('[KOMOD ADD ERROR]', addRes.data);
+                throw new Error('Шлюз отклонил авто-регистрацию.');
+            }
+        } catch (addError) {
+            console.error('[KOMOD AUTO-ADD ERROR]', addError.message);
+            throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и нажмите "Подключить стену".`);
         }
     }
 
-    if (!targetGroupId) throw new Error('Не удалось определить ID цели для публикации шлюза.');
+    targetGroupId = targetGroup.id;
 
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
 
@@ -95,7 +124,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         imageBuffers.forEach((buf, index) => {
             const fileName = `file_${index + 1}`;
             images.push({ name: fileName });
-            // ИСПРАВЛЕНИЕ 2: knownLength обязателен для стабильной передачи буфера в PHP
             form.append(fileName, buf, { 
                 filename: `photo_${Date.now()}_${index}.jpg`, 
                 contentType: 'image/jpeg',
@@ -114,7 +142,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             ...form.getHeaders(), 
             'Access-Token': token 
         },
-        maxBodyLength: Infinity, // Обязательно для тяжелых картинок
+        maxBodyLength: Infinity,
         validateStatus: status => status < 500
     });
 
@@ -186,7 +214,6 @@ exports.createPost = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        // Железобетонный парсинг Base64
         const rawImageBuffers = mediaUrls.map(img => {
             const base64Data = img.includes(',') ? img.split(',')[1] : img;
             return Buffer.from(base64Data, 'base64');
@@ -212,11 +239,18 @@ exports.createPost = async (req, res) => {
 
             let processedBuffers = optimizedBaseBuffers;
             
-            // ИСПРАВЛЕНИЕ 1: Умный фолбэк для настроек водяного знака
-            const wmConfig = accData.watermarkConfig !== undefined ? accData.watermarkConfig : (accData.watermark !== undefined ? accData.watermark : account.watermark);
+            // === ИСПРАВЛЕНИЕ: ЖЕЛЕЗОБЕТОННЫЙ ПОДХВАТ ВОДЯНОГО ЗНАКА ===
+            let wmConfig = accData.watermarkConfig;
+            if (!wmConfig && account.watermark) {
+                wmConfig = account.watermark; // Берем дефолтный, если нет специфичного для поста
+            }
+            
+            // Если фронт явно передал false, отключаем. Иначе - включаем при наличии конфига.
             const applyWm = accData.applyWatermark !== undefined ? accData.applyWatermark : !!wmConfig;
 
             if (applyWm && wmConfig && processedBuffers.length > 0) {
+                console.log(`\n[WATERMARK] 🎨 Начинаем наложение водяного знака для аккаунта: ${account.name} (Фото: ${processedBuffers.length} шт.)`);
+                
                 let wm = wmConfig;
                 if (typeof wm === 'string') { try { wm = JSON.parse(wm); } catch(e) {} }
                 if (!wm || typeof wm !== 'object') wm = {};
@@ -401,13 +435,7 @@ exports.createPost = async (req, res) => {
                             const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                             await sendToTelegram(botToken, job.account.providerId, job.finalText, job.processedBuffers);
                         } else if (providerType === 'vk') {
-                            const isKomod = job.account.providerId.startsWith('wall_') || job.account.providerId.startsWith('group_');
-                            if (isKomod) {
-                                await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
-                            } else {
-                                // Фолбэк на всякий случай, хотя у тебя все идет через Komod
-                                console.log('[WARNING] Обнаружен старый Native VK аккаунт, который не поддерживается шлюзом');
-                            }
+                            await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
                         }
                     } catch (err) {
                         console.error(`[BACKGROUND ERROR] ${job.account.name}:`, err.message);
@@ -451,10 +479,7 @@ exports.initCron = () => {
                         const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                         await sendToTelegram(botToken, account.providerId, post.text, imageBuffers);
                     } else if (providerType === 'vk') {
-                        const isKomod = account.providerId.startsWith('wall_') || account.providerId.startsWith('group_');
-                        if (isKomod) {
-                            await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, post.publishAt);
-                        }
+                        await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, post.publishAt);
                     }
 
                     const thumbnailsForDb = await Promise.all(imageBuffers.map(async (buf) => {
