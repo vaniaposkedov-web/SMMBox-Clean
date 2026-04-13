@@ -37,7 +37,7 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
     }
 }
 
-// === ЛОГИКА ОТПРАВКИ KOM-OD (РАБОЧАЯ ВЕРСИЯ С +1 МИНУТОЙ) ===
+// === ЛОГИКА ОТПРАВКИ KOM-OD (ВК) ===
 async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null) {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
@@ -226,7 +226,18 @@ async function sendToVK(token, groupId, text, imageBuffers) {
 exports.createPost = async (req, res) => {
     try {
         const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
-        const isScheduled = publishAt ? true : false;
+        
+        // === ИСПРАВЛЕНИЕ: ЖЕСТКАЯ ПРОВЕРКА ДАТЫ ДЛЯ PRISMA ===
+        let parsedPublishAt = null;
+        let isScheduled = false;
+
+        if (publishAt && publishAt !== 'null' && publishAt !== 'undefined' && publishAt !== '') {
+            const tempDate = new Date(publishAt);
+            if (!isNaN(tempDate.getTime())) {
+                parsedPublishAt = tempDate;
+                isScheduled = true;
+            }
+        }
         
         if (!accounts || accounts.length === 0) {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
@@ -269,7 +280,7 @@ exports.createPost = async (req, res) => {
                         const width = metadata.width || 1000;
                         const height = metadata.height || 1000;
                         
-                        // === ИСПРАВЛЕННЫЙ WATERMARK БЛОК ===
+                        // === АДАПТИВНЫЙ WATERMARK ===
                         const baseSize = Math.min(width, height);
                         
                         let watermarkBuffer;
@@ -405,7 +416,7 @@ exports.createPost = async (req, res) => {
                         accountId: job.account.id,
                         text: job.finalText,
                         mediaUrls: JSON.stringify(finalImagesToSave),
-                        publishAt: new Date(publishAt),
+                        publishAt: parsedPublishAt, // <--- ИСПРАВЛЕНИЕ: Передаем валидную дату
                         status: 'SCHEDULED' 
                     }
                 });
