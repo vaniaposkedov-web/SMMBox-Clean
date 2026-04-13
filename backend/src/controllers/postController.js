@@ -66,17 +66,23 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('group_id', targetGroup.id);
     form.append('via_api', '1'); // Принудительно через API
     
-    // 3. Форматирование даты строго по документации Kom-od (2015-10-17 15:16)
+    // 3. Форматирование даты и ускорение очереди (direct: 1)
     if (publishAtDate) {
         const targetDate = new Date(publishAtDate);
-        // Если это отложенный пост (с запасом 1 мин) - передаем дату. Иначе шлем мгновенно.
+        // Если это отложенный пост (с запасом 1 мин) - передаем дату.
         if (targetDate.getTime() > Date.now() + 60000) {
             const moscowTime = new Date(targetDate.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
             const pad = (n) => String(n).padStart(2, '0');
             const formattedDate = `${moscowTime.getFullYear()}-${pad(moscowTime.getMonth() + 1)}-${pad(moscowTime.getDate())} ${pad(moscowTime.getHours())}:${pad(moscowTime.getMinutes())}`;
             
             form.append('publish_at', formattedDate); 
+        } else {
+            // Если время уже пришло (Cron) - публикуем моментально
+            form.append('direct', '1');
         }
+    } else {
+        // Обычный мгновенный пост - публикуем моментально в обход долгой очереди
+        form.append('direct', '1');
     }
 
     // 4. Формирование блока media по документации
@@ -125,6 +131,10 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                     if (postData) {
                         console.log(`⏳ [Проверка #${attempt}] СТАТУС ПОСТА ${postId}`);
                         console.log(`> Опубликован: ${postData.published === '1' ? 'ДА ✅' : 'В ОЧЕРЕДИ ⏳'}`);
+                        if (postData.logs && postData.logs.length > 0) {
+                            console.log('ЛОГИ ШЛЮЗА:');
+                            postData.logs.forEach(l => console.log(`> ${l.message}`));
+                        }
                     }
                 } catch (e) {}
             }, delay);
@@ -217,15 +227,18 @@ exports.createPost = async (req, res) => {
                         const width = metadata.width || 1000;
                         const height = metadata.height || 1000;
                         
+                        // АДАПТИВНАЯ МАТЕМАТИКА ВОДЯНОГО ЗНАКА
+                        const baseSize = Math.min(width, height);
+                        
                         let watermarkBuffer;
                         let wmPixelWidth = 0;
                         let wmPixelHeight = 0;
 
                         if (wmType === 'text') {
-                            const scaleFactor = (Number(wm.size) || 100) / 100;
-                            const fontSize = Math.max(16, Math.floor(width * 0.04 * scaleFactor));
-                            const paddingX = Math.max(4, Math.floor(fontSize * 1.5)); 
-                            const paddingY = Math.max(4, Math.floor(fontSize * 1)); 
+                            // Размер шрифта в % от меньшей стороны
+                            const fontSize = Math.max(16, Math.floor(baseSize * (Number(wm.size) || 20) / 400));
+                            const paddingX = Math.max(4, Math.floor(fontSize * 0.8)); 
+                            const paddingY = Math.max(4, Math.floor(fontSize * 0.6)); 
                             
                             const lines = String(wmText).split('\n');
                             let maxTextWidthRaw = 0;
@@ -238,7 +251,7 @@ exports.createPost = async (req, res) => {
                             }
                             
                             wmPixelWidth = Math.max(20, Math.floor(maxTextWidthRaw) + (paddingX * 2));
-                            const lineHeight = Math.max(20, Math.floor(fontSize * 1.25));
+                            const lineHeight = Math.floor(fontSize * 1.25);
                             wmPixelHeight = Math.max(20, (lines.length * lineHeight) + (paddingY * 2));
                             
                             const bgColor = wm.bgColor || '#000000';
@@ -275,8 +288,9 @@ exports.createPost = async (req, res) => {
                             watermarkBuffer = Buffer.from(svgText);
                         } else if (wmType === 'image' && typeof wm.image === 'string' && wm.image.length > 100) {
                             const imgBase64 = wm.image.includes(',') ? wm.image.split(',')[1] : wm.image;
-                            const scaleFactor = (Number(wm.size) || 100) / 100;
-                            const targetWidth = Math.max(50, Math.floor(width * 0.15 * scaleFactor));
+                            
+                            // Адаптивная ширина логотипа
+                            const targetWidth = Math.max(50, Math.floor(baseSize * (Number(wm.size) || 20) / 100));
 
                             watermarkBuffer = await sharp(Buffer.from(imgBase64, 'base64'))
                                 .resize({ width: targetWidth })
@@ -308,40 +322,25 @@ exports.createPost = async (req, res) => {
                         wmPixelWidth = wmMeta.width;
                         wmPixelHeight = wmMeta.height;
 
-                        let targetX = 90;
-                        let targetY = 85;
+                        // ИДЕАЛЬНОЕ ПОЗИЦИОНИРОВАНИЕ (БЕЗ ПРИЛИПАНИЯ)
+                        const marginPx = Math.floor(baseSize * ((Number(wm.margin) || 5) / 100));
+                        let leftPos = 0;
+                        let topPos = 0;
+                        const pos = wm.position || 'br';
 
-                        if (wm.x !== undefined && wm.x !== null && !isNaN(Number(wm.x))) {
-                            targetX = Number(wm.x);
-                        } else if (wm.position) {
-                            const posToCoords = {
-                                'tl': {x: 10, y: 15}, 'tc': {x: 50, y: 15}, 'tr': {x: 90, y: 15},
-                                'cl': {x: 10, y: 50}, 'cc': {x: 50, y: 50}, 'cr': {x: 90, y: 50},
-                                'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
-                            };
-                            if (posToCoords[wm.position]) {
-                                targetX = posToCoords[wm.position].x;
-                                targetY = posToCoords[wm.position].y;
-                            }
-                        }
+                        // Горизонталь
+                        if (pos.includes('l')) leftPos = marginPx;
+                        else if (pos.includes('r')) leftPos = width - wmPixelWidth - marginPx;
+                        else leftPos = Math.floor((width - wmPixelWidth) / 2);
 
-                        if (wm.y !== undefined && wm.y !== null && !isNaN(Number(wm.y))) {
-                            targetY = Number(wm.y);
-                        }
+                        // Вертикаль
+                        if (pos.includes('t')) topPos = marginPx;
+                        else if (pos.includes('b')) topPos = height - wmPixelHeight - marginPx;
+                        else topPos = Math.floor((height - wmPixelHeight) / 2);
 
-                        targetX = Math.max(0, Math.min(100, targetX));
-                        targetY = Math.max(0, Math.min(100, targetY));
-
-                        const centerX = Math.floor(width * (targetX / 100));
-                        const centerY = Math.floor(height * (targetY / 100));
-                        
-                        let leftPos = Math.floor(centerX - (wmPixelWidth / 2));
-                        let topPos = Math.floor(centerY - (wmPixelHeight / 2));
-
-                        if (leftPos + wmPixelWidth > width) leftPos = width - wmPixelWidth;
-                        if (topPos + wmPixelHeight > height) topPos = height - wmPixelHeight;
-                        if (leftPos < 0) leftPos = 0;
-                        if (topPos < 0) topPos = 0;
+                        // Жесткая защита от выхода за границы холста
+                        leftPos = Math.max(0, Math.min(leftPos, width - wmPixelWidth));
+                        topPos = Math.max(0, Math.min(topPos, height - wmPixelHeight));
 
                         return await image
                             .composite([{ input: watermarkBuffer, top: Math.round(topPos), left: Math.round(leftPos) }])
