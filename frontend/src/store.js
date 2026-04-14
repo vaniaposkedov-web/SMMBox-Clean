@@ -182,7 +182,9 @@ export const useStore = create(
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
-          const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${token}` } });
+          
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${baseUrl}/api/posts/scheduled`, { headers: { 'Authorization': `Bearer ${token}` } });
           if (!res.ok) return;
           const data = await res.json(); 
           set({ scheduledPosts: data.posts || data.scheduledPosts || [] }); 
@@ -383,7 +385,8 @@ export const useStore = create(
 
       fetchPartnerData: async (userId) => {
         try {
-          const res = await fetch(`/api/partners/data?userId=${userId}`, {
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${baseUrl}/api/partners/data?userId=${userId}`, {
             headers: { 'Authorization': `Bearer ${get().token}` }
           });
           if (res.ok) {
@@ -522,7 +525,8 @@ export const useStore = create(
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
 
-          const res = await fetch(`/api/accounts?userId=${userId}`, {
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${baseUrl}/api/accounts?userId=${userId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (res.ok) {
@@ -679,7 +683,9 @@ export const useStore = create(
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
-          const res = await fetch('/api/posts/shared', { headers: { 'Authorization': `Bearer ${token}` } });
+          
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${baseUrl}/api/posts/shared`, { headers: { 'Authorization': `Bearer ${token}` } });
           if (res.ok) {
             const data = await res.json();
             set({ sharedIncoming: data.incoming, sharedOutgoing: data.outgoing });
