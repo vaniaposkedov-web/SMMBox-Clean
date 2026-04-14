@@ -709,3 +709,40 @@ exports.retryPost = async (req, res) => {
         res.status(500).json({ success: false, error: 'Ошибка сервера при переотправке' });
     }
 };
+
+
+// === ОТМЕТИТЬ ПОСТ КАК ОПУБЛИКОВАННЫЙ И УВЕДОМИТЬ АВТОРА ===
+exports.markSharedPostPublished = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = getUserId(req);
+
+        const sharedPost = await prisma.sharedPost.findUnique({
+            where: { id },
+            include: { sender: true, receiver: true }
+        });
+
+        if (!sharedPost) return res.status(404).json({ success: false, error: 'Пост не найден' });
+        
+        // Обновляем статус поста
+        await prisma.sharedPost.update({
+            where: { id },
+            data: { isPublished: true }
+        });
+
+        // Отправляем уведомление автору поста
+        await prisma.notification.create({
+            data: {
+                userId: sharedPost.senderId,
+                type: 'SUCCESS',
+                text: `Партнер ${sharedPost.receiver.name || 'Без имени'} опубликовал ваш пост у себя!`,
+                metadata: JSON.stringify({ text: sharedPost.text, mediaUrls: sharedPost.mediaUrls })
+            }
+        });
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Ошибка в markSharedPostPublished:', error);
+        res.status(500).json({ success: false });
+    }
+};
