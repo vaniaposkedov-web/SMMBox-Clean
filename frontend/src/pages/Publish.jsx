@@ -99,21 +99,17 @@ export default function Publish() {
       const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
       const res = await sharePostAction(text, base64Images, selectedPartners);
       
-      setIsSharing(false); // ВАЖНО: сначала снимаем статус загрузки
-      
       if (res?.success) {
+        // Убрали все setTimeout для закрытия!
+        // React 18 автоматически склеит эти обновления и обновит DOM без краша.
+        setShowPartnerModal(false);
+        setIsSharing(false);
         setSelectedPartners([]);
         
-        // Показываем плашку
         setToastMessage('Пост успешно отправлен!');
         setTimeout(() => setToastMessage(null), 3000);
-        
-        // ВАЖНО: Разносим рендер по времени, чтобы React не словил ошибку insertBefore
-        setTimeout(() => {
-          setShowPartnerModal(false);
-        }, 50);
-        
       } else {
+        setIsSharing(false);
         setToastMessage('Ошибка при отправке поста');
         setTimeout(() => setToastMessage(null), 3000);
       }
@@ -407,16 +403,15 @@ const handlePublish = async () => {
         const result = await createPostAction(text, base64Images, accountsData, publishAt);
 
         if (result.success) {
-        setIsPublishing(false);
-        // КРИТИЧЕСКИЙ ФИКС: Сброс всех локальных состояний
-        setText('');
-        setPhotos([]);
-        setSelectedAccounts([]);
-        if (saveTempDraft) saveTempDraft(null); 
-        
-        await fetchScheduledPosts(); // Обновляем календарь сразу
-        setStep(4); 
-    } else {
+            setIsPublishing(false);
+            
+            // Мы убрали setText, setPhotos и setSelectedAccounts отсюда.
+            // Теперь контент сохранится для шага 4 (чтобы поделиться с партнерами).
+            if (saveTempDraft) saveTempDraft(null); 
+            
+            await fetchScheduledPosts(); // Обновляем календарь сразу
+            setStep(4); 
+        } else {
             setIsPublishing(false);
             setTimeout(() => alert(result.error || 'Ошибка сервера'), 50);
         }
