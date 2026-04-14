@@ -5,7 +5,8 @@ import {
   Bell, Inbox, X, Send, UserPlus, UserCheck, UserX,
   CheckCircle2, Image as ImageIcon, Share2, Layers,
   ChevronRight, Trash2, Maximize2, ChevronLeft, Download,
-  Loader2, Calendar, FileText, Clock, RefreshCw, PlusCircle 
+  Loader2, Calendar, FileText, Clock, RefreshCw, PlusCircle,
+  ChevronUp, CalendarClock
 } from 'lucide-react';
 
 // === Утилита для конвертации картинок в файлы ===
@@ -30,7 +31,7 @@ const base64ToFile = (base64String, filename) => {
 export default function Requests() {
   const { 
     user, fetchPartnerData, fetchSharedPosts,
-    acceptPartnership, declinePartnership, // <--- ИСПРАВЛЕННЫЕ ИМЕНА
+    acceptPartnership, declinePartnership,
     deleteSharedPostAction, saveTempDraft, 
     markSharedPostPublishedAction 
   } = useStore();
@@ -62,17 +63,18 @@ export default function Requests() {
   }, [user, fetchPartnerData, fetchSharedPosts]);
 
   const handleAcceptPartner = async (reqId) => {
-    await acceptPartnership(reqId); // <--- Используем правильное имя
+    await acceptPartnership(reqId);
     fetchPartnerData(user?.id);
   };
 
   const handleDeclinePartner = async (reqId) => {
-    await declinePartnership(reqId); // <--- Используем правильное имя
+    await declinePartnership(reqId);
     fetchPartnerData(user?.id);
   };
 
+  // ЛОГИКА: ОТКАЗАТЬСЯ ОТ ПОСТА
   const handleDeletePost = async (id) => {
-    if (window.confirm('Удалить этот пост из входящих?')) {
+    if (window.confirm('Вы уверены, что хотите отказаться от этого поста? Отправитель получит уведомление об отказе.')) {
       await deleteSharedPostAction(id);
       setPreviewPost(null);
       fetchSharedPosts();
@@ -115,13 +117,14 @@ export default function Requests() {
     } catch (error) { window.open(imgUrl, '_blank'); }
   };
 
+  // ЛОГИКА: СОГЛАСИТЬСЯ И ЗАПОСТИТЬ
   const handleUsePost = async (mode) => {
     if (!previewPost) return;
     setShowRetryMenu(false);
     setIsPreparing(true);
 
     try {
-      // Уведомляем бэкенд, что пост взят в публикацию
+      // Уведомляем бэкенд, что пост взят в работу
       await markSharedPostPublishedAction(previewPost.id);
 
       const reconstructedPhotos = currentMediaList.map((base64str, index) => {
@@ -148,38 +151,6 @@ export default function Requests() {
       setIsPreparing(false);
       alert("Не удалось подготовить пост. Попробуйте еще раз.");
     }
-  };
-
-  // === КОМПОНЕНТ СЕТКИ ФОТОГРАФИЙ ===
-  const PhotoGrid = ({ mediaUrls }) => {
-    const images = useMemo(() => {
-      try { return JSON.parse(mediaUrls || '[]'); } catch(e) { return []; }
-    }, [mediaUrls]);
-    
-    if (images.length === 0) return null;
-
-    return (
-      <div className={`grid gap-2 sm:gap-3 ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {images.slice(0, 4).map((img, i) => (
-          <div 
-            key={i} 
-            onClick={() => setFsImageIndex(i)}
-            className="relative aspect-square rounded-[1rem] sm:rounded-[1.5rem] overflow-hidden bg-gray-900 group cursor-pointer border border-gray-800"
-          >
-            <img src={img} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="media" />
-            {i === 3 && images.length > 4 && (
-              <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center border-l border-t border-gray-700">
-                <span className="text-white text-2xl sm:text-3xl font-black">+{images.length - 3}</span>
-                <span className="text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest">фото</span>
-              </div>
-            )}
-            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Maximize2 className="text-white drop-shadow-lg" size={24} />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
   };
 
   return (
@@ -286,9 +257,9 @@ export default function Requests() {
         </section>
       )}
 
-      {/* === ИДЕАЛЬНОЕ МОДАЛЬНОЕ ОКНО === */}
+      {/* === МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА ПОСТА (ОБНОВЛЕННОЕ) === */}
       {previewPost && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl animate-in fade-in duration-200">
           
           {isPreparing && (
             <div className="absolute inset-0 z-[160] bg-black/80 backdrop-blur-2xl flex flex-col items-center justify-center sm:rounded-[2.5rem]">
@@ -297,7 +268,8 @@ export default function Requests() {
             </div>
           )}
 
-          <div className="bg-[#0f1115] w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] md:max-w-[500px] sm:rounded-[2rem] shadow-2xl flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200 overflow-hidden">
+          {/* Использован h-full на мобилках вместо h-[100dvh], чтобы предотвратить скрытие кнопок */}
+          <div className="bg-[#0f1115] w-full h-full sm:h-auto sm:max-h-[90dvh] md:max-w-[500px] sm:rounded-[2rem] shadow-2xl flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200">
             
             {/* --- ШАПКА --- */}
             <div className="flex items-center justify-between px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-4 shrink-0 z-10">
@@ -354,31 +326,32 @@ export default function Requests() {
               </div>
             </div>
 
-            {/* --- ПОДВАЛ С КНОПКАМИ --- */}
-            <div className="p-4 sm:p-5 border-t border-gray-800/50 bg-[#0f1115] pb-[max(1rem,env(safe-area-inset-bottom))] shrink-0 flex gap-3 relative">
+            {/* --- ПОДВАЛ С КНОПКАМИ (Жестко зафиксирован внизу) --- */}
+            <div className="p-4 sm:p-5 border-t border-gray-800/50 bg-[#0f1115] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-5 shrink-0 flex gap-3 relative z-20">
                
                <button 
                  onClick={() => handleDeletePost(previewPost.id)}
-                 className="flex-1 bg-[#181a20] hover:bg-gray-800 border border-gray-800 text-gray-300 py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all active:scale-95"
+                 className="flex-1 bg-[#181a20] hover:bg-red-500/10 border border-gray-800 hover:border-red-500/30 text-gray-300 hover:text-red-400 py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all active:scale-95"
                >
-                 Удалить
+                 Отказаться
                </button>
                
                <div className="flex-[2] relative">
                  <button 
                    onClick={() => setShowRetryMenu(!showRetryMenu)}
-                   className="w-full bg-[#10B981] hover:bg-[#059669] text-white py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+                   className="w-full bg-[#10B981] hover:bg-[#059669] text-white py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-[0_0_20px_rgba(16,185,129,0.2)] flex justify-center items-center gap-2"
                  >
-                   Опубликовать пост
+                   Запостить
+                   <ChevronUp size={16} className={`transition-transform ${showRetryMenu ? 'rotate-180' : ''}`} />
                  </button>
                  
                  {showRetryMenu && (
-                   <div className="absolute bottom-[calc(100%+0.5rem)] right-0 w-full bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-bottom-2 duration-200">
+                   <div className="absolute bottom-[calc(100%+0.75rem)] right-0 w-full bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-bottom-2 duration-200">
                      <button onClick={() => handleUsePost('now')} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm text-white hover:bg-gray-700 font-bold transition-all rounded-xl mb-1">
-                       <Send size={16} className="text-blue-400"/> Прямо сейчас
+                       <Send size={16} className="text-blue-400"/> Запостить сейчас
                      </button>
                      <button onClick={() => handleUsePost('schedule')} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm text-white hover:bg-gray-700 font-bold transition-all rounded-xl border-t border-gray-700">
-                       <Clock size={16} className="text-purple-400"/> В очередь
+                       <CalendarClock size={16} className="text-purple-400"/> Запланировать
                      </button>
                    </div>
                  )}
