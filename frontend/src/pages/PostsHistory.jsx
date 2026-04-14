@@ -8,7 +8,6 @@ import {
   RefreshCw, Loader2, Maximize2, ChevronLeft
 } from 'lucide-react';
 
-// === Утилита для восстановления файлов из истории ===
 const base64ToFile = (base64String, filename) => {
   try {
     const arr = base64String.split(',');
@@ -40,7 +39,6 @@ export default function PostsHistory() {
   const [showRetryMenu, setShowRetryMenu] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
 
-  // Блокировка скролла фона
   useEffect(() => {
     if (selectedPost || fsImageIndex !== null) {
       document.body.style.overflow = 'hidden';
@@ -180,7 +178,7 @@ export default function PostsHistory() {
   return (
     <div className="w-full space-y-6 sm:space-y-8 font-sans pb-24 md:pb-12">
       
-      {/* === ШАПКА И ПОИСК === */}
+      {/* === ШАПКА === */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 bg-admin-card border border-gray-800 p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-white flex items-center gap-3 sm:gap-4 tracking-tighter">
@@ -252,7 +250,7 @@ export default function PostsHistory() {
         ))}
       </div>
 
-      {/* === ИДЕАЛЬНОЕ МОДАЛЬНОЕ ОКНО === */}
+      {/* === МОДАЛЬНОЕ ОКНО === */}
       {selectedPost && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl sm:p-6 md:p-10 animate-in fade-in duration-200">
           
@@ -263,27 +261,75 @@ export default function PostsHistory() {
             </div>
           )}
 
-          {/* КОНТЕЙНЕР: Full screen на мобильных (h-[100dvh]), окно по центру на ПК */}
           <div className="bg-[#0d0f13] w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] md:max-w-4xl sm:rounded-[2.5rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200 overflow-hidden">
             
-            {/* --- ШАПКА (Стиснута сверху, не скроллится) --- */}
-            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-800/50 bg-gray-900/50 shrink-0 z-10 pt-[max(1rem,env(safe-area-inset-top))]">
-                <div className="flex items-center gap-3 sm:gap-4">
+            {/* --- ШАПКА С КНОПКАМИ ДЕЙСТВИЙ --- */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800/50 bg-gray-900/50 shrink-0 z-10 pt-[max(1rem,env(safe-area-inset-top))]">
+                
+                <div className="flex items-center gap-3 sm:gap-4 hidden sm:flex">
                   <div className="p-2 sm:p-3 bg-blue-500/10 rounded-xl sm:rounded-2xl text-[#0077FF]">
                     <FileText size={20} className="sm:w-6 sm:h-6" />
                   </div>
-                  <h3 className="text-white font-black text-base sm:text-xl tracking-tight uppercase">Детали публикации</h3>
+                  <h3 className="text-white font-black text-base sm:text-xl tracking-tight uppercase line-clamp-1">Публикация</h3>
                 </div>
-                <button 
-                  onClick={() => setSelectedPost(null)} 
-                  className="p-2.5 sm:p-3 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-xl sm:rounded-2xl transition-all active:scale-90"
-                >
-                    <X size={20} className="sm:w-6 sm:h-6" />
-                </button>
+
+                <div className="flex items-center gap-1.5 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                  
+                  <div className="flex items-center gap-1.5 sm:gap-3">
+                    {/* Кнопка Поделиться */}
+                    <button 
+                      title="Поделиться с партнерами"
+                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-blue-400 hover:bg-blue-500 hover:text-white bg-gray-800 transition-all active:scale-95"
+                    >
+                      <Share2 size={18} className="sm:w-5 sm:h-5" />
+                    </button>
+                    
+                    {/* Кнопка Повторить с Dropdown */}
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowRetryMenu(!showRetryMenu)}
+                        title="Повторить пост"
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-purple-400 hover:bg-purple-500 hover:text-white bg-gray-800 transition-all active:scale-95"
+                      >
+                        <RefreshCw size={18} className="sm:w-5 sm:h-5" />
+                      </button>
+                      
+                      {showRetryMenu && (
+                        <div className="absolute top-[calc(100%+0.5rem)] left-0 sm:left-auto sm:right-0 w-56 sm:w-64 bg-gray-800 border border-gray-700 rounded-2xl sm:rounded-3xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-top-2 duration-200">
+                          <button onClick={() => handleDuplicatePost('schedule')} className="w-full flex items-center gap-3 sm:gap-4 px-4 py-3 sm:py-4 text-xs sm:text-sm text-white hover:bg-gray-700 font-black uppercase tracking-widest transition-all rounded-xl mb-1">
+                            <Clock size={16} className="text-purple-400 sm:w-5 sm:h-5"/> В очередь
+                          </button>
+                          <button onClick={() => handleDuplicatePost('now')} className="w-full flex items-center gap-3 sm:gap-4 px-4 py-3 sm:py-4 text-xs sm:text-sm text-white hover:bg-gray-700 font-black uppercase tracking-widest transition-all rounded-xl border-t border-gray-700">
+                            <Send size={16} className="text-blue-400 sm:w-5 sm:h-5"/> Прямо сейчас
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Кнопка Удалить */}
+                    <button 
+                      onClick={() => handleDelete(selectedPost.id)}
+                      title="Удалить из архива"
+                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white bg-gray-800 transition-all active:scale-95"
+                    >
+                      <Trash2 size={18} className="sm:w-5 sm:h-5" />
+                    </button>
+                  </div>
+
+                  <div className="w-px h-6 bg-gray-700 mx-1 hidden sm:block"></div>
+
+                  {/* Закрыть окно */}
+                  <button 
+                    onClick={() => setSelectedPost(null)} 
+                    className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center text-gray-400 hover:text-white bg-gray-900 hover:bg-gray-800 rounded-xl sm:rounded-2xl transition-all active:scale-90"
+                  >
+                      <X size={20} className="sm:w-6 sm:h-6" />
+                  </button>
+                </div>
             </div>
 
             {/* --- КОНТЕНТ (Свободно скроллится внутри) --- */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8 pb-[calc(2rem+env(safe-area-inset-bottom))]">
               
               <div className="flex items-center gap-3 sm:gap-5 mb-6 sm:mb-10 pb-6 sm:pb-8 border-b border-gray-800/30">
                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-[1.2rem] sm:rounded-[1.5rem] bg-gray-900 overflow-hidden border-2 border-gray-800 p-0.5 sm:p-1 shrink-0">
@@ -314,48 +360,6 @@ export default function PostsHistory() {
               <div className="mb-2">
                  <PhotoGrid mediaUrls={selectedPost.mediaUrls} />
               </div>
-            </div>
-
-            {/* --- ФУТЕР (Прижат к низу, учитывает safe-area iOS) --- */}
-            <div className="p-4 sm:p-6 border-t border-gray-800 bg-[#0d0f13] shrink-0 flex items-center justify-between gap-3 sm:gap-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-6 z-10">
-              
-              <div className="flex items-center gap-2 sm:gap-3">
-                <button 
-                  title="Поделиться с партнерами"
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center text-blue-400 hover:bg-blue-500 hover:text-white border border-blue-500/20 transition-all active:scale-95 bg-gray-900"
-                >
-                  <Share2 size={20} className="sm:w-6 sm:h-6" />
-                </button>
-                
-                <div className="relative">
-                  <button 
-                    onClick={() => setShowRetryMenu(!showRetryMenu)}
-                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl flex items-center justify-center text-purple-400 hover:bg-purple-500 hover:text-white border border-purple-500/20 transition-all active:scale-95 bg-gray-900"
-                  >
-                    <RefreshCw size={20} className="sm:w-6 sm:h-6" />
-                  </button>
-                  
-                  {showRetryMenu && (
-                    <div className="absolute bottom-[4.5rem] sm:bottom-20 left-0 w-56 sm:w-64 bg-gray-900 border border-gray-700 rounded-2xl sm:rounded-3xl shadow-2xl p-1.5 sm:p-2 z-50 animate-in slide-in-from-bottom-2 duration-200">
-                      <button onClick={() => handleDuplicatePost('schedule')} className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-3 sm:py-4 text-xs sm:text-sm text-white hover:bg-gray-800 font-black uppercase tracking-widest transition-all rounded-xl sm:rounded-2xl mb-1">
-                        <Clock size={18} className="text-purple-400 sm:w-5 sm:h-5"/> В очередь
-                      </button>
-                      <button onClick={() => handleDuplicatePost('now')} className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-3 sm:py-4 text-xs sm:text-sm text-white hover:bg-gray-800 font-black uppercase tracking-widest transition-all rounded-xl sm:rounded-2xl border-t border-gray-800">
-                        <Send size={18} className="text-blue-400 sm:w-5 sm:h-5"/> Прямо сейчас
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <button 
-                onClick={() => handleDelete(selectedPost.id)}
-                className="flex items-center justify-center gap-2 sm:gap-3 flex-1 sm:flex-none px-4 sm:px-8 py-3 sm:py-4 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl sm:rounded-[1.5rem] font-black text-[10px] sm:text-sm uppercase tracking-widest transition-all active:scale-95 border border-red-500/20 whitespace-nowrap"
-              >
-                <Trash2 size={18} className="sm:w-5 sm:h-5" /> 
-                <span className="hidden xs:inline">Удалить архив</span>
-                <span className="xs:hidden">Удалить</span>
-              </button>
             </div>
 
           </div>
