@@ -603,7 +603,7 @@ exports.shareWithPartners = async (req, res) => {
         const rawPartnerIds = req.body.partnerIds || req.body.partnerIdsStr;
         
         if (typeof rawPartnerIds === 'string') {
-            try { partnerIds = JSON.parse(rawPartnerIds); } catch (e) { console.error('Не смог распарсить partnerIds:', rawPartnerIds); }
+            try { partnerIds = JSON.parse(rawPartnerIds); } catch (e) { console.error('Не парсится partnerIds:', rawPartnerIds); }
         } else if (Array.isArray(rawPartnerIds)) {
             partnerIds = rawPartnerIds;
         }
@@ -616,13 +616,14 @@ exports.shareWithPartners = async (req, res) => {
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
         if (!sender) return res.status(404).json({ success: false, error: 'Отправитель не найден' });
 
-        // 🛡️ 2. БЕЗОПАСНАЯ ОБРАБОТКА ФАЙЛОВ
+        // 🛡️ 2. БЕЗОПАСНАЯ ОБРАБОТКА ФАЙЛОВ (И ОТ OOM, И ОТ ОШИБОК ПАРСИНГА)
         let savedImageUrls = [];
+        
         if (req.files && req.files.length > 0) {
+            // ВЕТКА А: Если фронтенд прислал файлы через FormData
             for (const file of req.files) {
                 try {
                     const buffer = await fs.promises.readFile(file.path);
-                    // Асинхронное удаление временного файла
                     fs.promises.unlink(file.path).catch(() => {});
                     
                     const optimizedBuf = await sharp(buffer)
@@ -633,21 +634,47 @@ exports.shareWithPartners = async (req, res) => {
                     const url = await saveImageToFile(optimizedBuf, 'shared');
                     if (url) savedImageUrls.push(url);
                 } catch (e) {
-                    console.error('Ошибка обработки фото партнера:', e);
+                    console.error('Ошибка обработки фото партнера (файл):', e);
                 }
             }
         } else if (req.body.mediaUrls) {
-             // Фолбек: если картинки всё еще шлют в Base64
-             const urls = typeof req.body.mediaUrls === 'string' ? JSON.parse(req.body.mediaUrls) : req.body.mediaUrls;
-             urls.forEach(img => {
-                 if(img && img.includes(',')) savedImageUrls.push(img); // Временный костыль, если FormData не сработала
-             });
+            // ВЕТКА Б: Если фронтенд прислал Base64 JSON (Защита от 502 ошибки!)
+            let urls = [];
+            if (typeof req.body.mediaUrls === 'string') {
+                try { urls = JSON.parse(req.body.mediaUrls); } catch(e) {}
+            } else if (Array.isArray(req.body.mediaUrls)) {
+                urls = req.body.mediaUrls;
+            }
+
+            for (const img of urls) {
+                // Строгая проверка, что это именно строка Base64, защита от "img.includes is not a function"
+                if (img && typeof img === 'string' && img.includes(',')) {
+                    try {
+                        const base64Data = img.split(',')[1];
+                        const buffer = Buffer.from(base64Data, 'base64');
+                        
+                        // Сжимаем и сохраняем НА ДИСК, а не в базу!
+                        const optimizedBuf = await sharp(buffer)
+                            .resize({ width: 2000, fit: 'inside', withoutEnlargement: true })
+                            .jpeg({ quality: 85 })
+                            .toBuffer();
+                            
+                        const url = await saveImageToFile(optimizedBuf, 'shared_base64');
+                        if (url) savedImageUrls.push(url);
+                    } catch (e) {
+                        console.error('Ошибка конвертации Base64 в файл:', e);
+                    }
+                } else if (img && typeof img === 'string' && img.startsWith('/uploads/')) {
+                    // Если вдруг прислали уже готовый путь
+                    savedImageUrls.push(img);
+                }
+            }
         }
 
         const mediaString = JSON.stringify(savedImageUrls);
         const postText = req.body.text || '';
 
-        // 🛡️ 3. ЗАПИСЬ В БАЗУ ДАННЫХ
+        // 🛡️ 3. ПОСЛЕДОВАТЕЛЬНАЯ ЗАПИСЬ В БАЗУ ДАННЫХ
         for (const receiverId of partnerIds) {
             try {
                 await prisma.sharedPost.create({
@@ -662,7 +689,7 @@ exports.shareWithPartners = async (req, res) => {
                     }
                 });
             } catch (dbError) {
-                console.error(`Ошибка записи для партнера ${receiverId}:`, dbError.message);
+                console.error(`Ошибка записи в БД для партнера ${receiverId}:`, dbError.message);
             }
         }
 
