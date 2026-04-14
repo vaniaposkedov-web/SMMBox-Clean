@@ -351,6 +351,14 @@ export default function Publish() {
   };
 
 const handlePublish = async () => {
+    // Проверка: заполнены ли данные профиля
+    const isVulnerable = user?.email?.includes('.local') || !user?.phone;
+    if (isVulnerable) {
+      setToastMessage('Заполните оставшиеся данные в профиле!');
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
     if (selectedAccounts.length === 0) {
       return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
     }
@@ -387,12 +395,10 @@ const handlePublish = async () => {
 
         let publishAt = null;
         if (publishMode === 'schedule') {
-            // ИСПРАВЛЕНИЕ: Берем локальную дату, без сдвигов по Гринвичу
-            const baseDate = selectedCalendarDate || new Date().toLocaleDateString('en-CA'); // Формат YYYY-MM-DD
+            const baseDate = selectedCalendarDate || new Date().toLocaleDateString('en-CA'); 
             const [year, month, day] = baseDate.split('-');
             const [hours, minutes] = scheduleTime.split(':');
             
-            // Создаем честную локальную дату
             const localDate = new Date();
             localDate.setFullYear(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
             localDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
@@ -405,11 +411,9 @@ const handlePublish = async () => {
         if (result.success) {
             setIsPublishing(false);
             
-            // Мы убрали setText, setPhotos и setSelectedAccounts отсюда.
-            // Теперь контент сохранится для шага 4 (чтобы поделиться с партнерами).
             if (saveTempDraft) saveTempDraft(null); 
             
-            await fetchScheduledPosts(); // Обновляем календарь сразу
+            await fetchScheduledPosts(); 
             setStep(4); 
         } else {
             setIsPublishing(false);

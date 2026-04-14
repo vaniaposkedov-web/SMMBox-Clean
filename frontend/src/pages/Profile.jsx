@@ -237,12 +237,6 @@ export default function Profile() {
   };
 
   const handleOpenProModal = () => {
-    if (!user?.name || !user?.phone || !user?.pavilion) {
-      alert('Для оформления PRO необходимо указать Имя, Павильон и Номер телефона!');
-      setActiveTab('settings');
-      setIsEditing(true);
-      return;
-    }
     setShowProModal(true);
   };
 
