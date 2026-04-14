@@ -662,3 +662,75 @@ exports.getSystemLogs = async (req, res) => {
         res.status(500).json({ success: false, error: 'Не удалось прочитать файлы логов' });
     }
 };
+
+
+// === ПОЛУЧИТЬ ПОЛНУЮ ИСТОРИЮ ПОСТОВ ===
+exports.getPostsHistory = async (req, res) => {
+    try {
+        // Функция getUserId у тебя уже есть в контроллере
+        const userId = getUserId(req);
+        if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
+
+        // Достаем все посты, где аккаунт принадлежит текущему юзеру
+        const posts = await prisma.post.findMany({
+            where: { 
+                account: { userId: userId } 
+            },
+            include: { 
+                account: { select: { name: true, provider: true, avatarUrl: true } } 
+            },
+            orderBy: [
+                { createdAt: 'desc' } // Сортируем от самых новых к старым
+            ],
+            take: 100 // Защита от перегрузки (пагинацию добавим позже, если потребуется)
+        });
+
+        // Облегчаем вес ответа (чтобы не гонять тяжелые base64, если они там есть)
+        const lightweightPosts = posts.map(p => {
+            let firstImage = [];
+            try {
+                const parsed = JSON.parse(p.mediaUrls || '[]');
+                if (parsed.length > 0) firstImage = [parsed[0]];
+            } catch(e) {}
+            
+            return { ...p, mediaUrls: JSON.stringify(firstImage) };
+        });
+
+        res.json({ success: true, posts: lightweightPosts });
+    } catch (error) {
+        console.error('Ошибка в getPostsHistory:', error);
+        res.status(500).json({ success: false, error: 'Ошибка при загрузке истории' });
+    }
+};
+
+// === ПЕРЕОТПРАВКА ПОСТА С ОШИБКОЙ ===
+exports.retryPost = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = getUserId(req);
+
+        const post = await prisma.post.findUnique({
+            where: { id },
+            include: { account: true }
+        });
+
+        if (!post) return res.status(404).json({ success: false, error: 'Пост не найден' });
+        if (post.account.userId !== userId) return res.status(403).json({ success: false, error: 'Нет доступа' });
+        if (post.status !== 'FAILED') return res.status(400).json({ success: false, error: 'Можно переотправлять только посты с ошибкой' });
+
+        // Переводим пост обратно в статус SCHEDULED и ставим время на "сейчас", 
+        // чтобы твой CRON-планировщик подхватил его в следующую минуту
+        const updatedPost = await prisma.post.update({
+            where: { id },
+            data: { 
+                status: 'SCHEDULED',
+                publishAt: new Date() 
+            }
+        });
+
+        res.json({ success: true, message: 'Пост отправлен в очередь на публикацию' });
+    } catch (error) {
+        console.error('Ошибка в retryPost:', error);
+        res.status(500).json({ success: false, error: 'Ошибка сервера при переотправке' });
+    }
+};
