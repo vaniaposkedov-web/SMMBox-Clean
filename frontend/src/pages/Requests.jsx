@@ -73,10 +73,22 @@ export default function Requests() {
   };
 
   // === ЛОГИКА: ОТКАЗАТЬСЯ ОТ ПОСТА ===
+  // === ЛОГИКА: ОТКАЗАТЬСЯ ОТ ПОСТА ===
   const handleDeletePost = async (id) => {
     if (window.confirm('Вы уверены, что хотите отказаться от этого поста? Отправителю будет отправлено уведомление.')) {
-      await deleteSharedPostAction(id);
+      
+      // 1. Мгновенно закрываем модальное окно
       setPreviewPost(null);
+      
+      // 2. Мгновенно убираем пост со страницы (оптимистичное обновление UI)
+      useStore.setState((state) => ({
+        sharedIncoming: state.sharedIncoming.filter(post => post.id !== id)
+      }));
+
+      // 3. Отправляем запрос на удаление на сервер в фоновом режиме
+      await deleteSharedPostAction(id);
+      
+      // 4. (Опционально) стягиваем свежие данные для страховки
       fetchSharedPosts();
     }
   };
