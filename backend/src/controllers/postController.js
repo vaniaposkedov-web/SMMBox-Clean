@@ -606,14 +606,15 @@ exports.shareWithPartners = async (req, res) => {
         if (!partnerIds || partnerIds.length === 0) return res.status(400).json({ success: false, error: 'Выберите партнера' });
 
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
+        if (!sender) return res.status(404).json({ success: false, error: 'Отправитель не найден' });
 
-        // ⚡ ОПТИМИЗАЦИЯ 1: Параллельная нарезка всех картинок сразу (Promise.all)
+        // ⚡ 1. ОПТИМИЗАЦИЯ: Параллельная и быстрая нарезка картинок
         let savedImageUrls = [];
         if (req.files && req.files.length > 0) {
             savedImageUrls = await Promise.all(req.files.map(async (file) => {
                 try {
                     const buffer = await fs.promises.readFile(file.path);
-                    fs.promises.unlink(file.path).catch(() => {}); // удаляем tmp асинхронно, не блокируя поток
+                    fs.promises.unlink(file.path).catch(() => {}); // Удаляем временный файл
                     
                     const optimizedBuf = await sharp(buffer)
                         .resize({ width: 2000, fit: 'inside', withoutEnlargement: true })
@@ -627,14 +628,14 @@ exports.shareWithPartners = async (req, res) => {
                 }
             }));
             
-            // Убираем null, если какое-то фото крашнулось
             savedImageUrls = savedImageUrls.filter(url => url !== null);
         }
 
         const mediaString = JSON.stringify(savedImageUrls);
 
-        // ⚡ ОПТИМИЗАЦИЯ 2: Параллельная запись всех уведомлений и постов в БД
-        await Promise.all(partnerIds.map(async (receiverId) => {
+        // 🛡️ 2. БЕЗОПАСНОСТЬ: Последовательная запись в базу (защита от краша Prisma)
+        // Занимает миллисекунды, поэтому цикл for...of здесь идеален
+        for (const receiverId of partnerIds) {
             await prisma.sharedPost.create({
                 data: { senderId: sender.id, receiverId, text: text || '', mediaUrls: mediaString }
             });
@@ -646,12 +647,12 @@ exports.shareWithPartners = async (req, res) => {
                     metadata: JSON.stringify({ text, mediaUrls: savedImageUrls })
                 }
             });
-        }));
+        }
 
         res.json({ success: true });
     } catch (error) {
         console.error('Ошибка шеринга:', error);
-        res.status(500).json({ success: false, error: `Ошибка: ${error.message}` });
+        res.status(500).json({ success: false, error: `Ошибка сервера: ${error.message}` });
     }
 };
 
