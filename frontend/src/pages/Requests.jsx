@@ -286,9 +286,9 @@ export default function Requests() {
         </section>
       )}
 
-      {/* === ИДЕАЛЬНОЕ МОДАЛЬНОЕ ОКНО (Точно как в истории, без кнопки поделиться) === */}
+      {/* === ИДЕАЛЬНОЕ МОДАЛЬНОЕ ОКНО === */}
       {previewPost && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl sm:p-6 md:p-10 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl animate-in fade-in duration-200">
           
           {isPreparing && (
             <div className="absolute inset-0 z-[160] bg-black/80 backdrop-blur-2xl flex flex-col items-center justify-center sm:rounded-[2.5rem]">
@@ -297,98 +297,93 @@ export default function Requests() {
             </div>
           )}
 
-          <div className="bg-[#0d0f13] w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] md:max-w-4xl sm:rounded-[2.5rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200 overflow-hidden">
+          <div className="bg-[#0f1115] w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] md:max-w-[500px] sm:rounded-[2rem] shadow-2xl flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200 overflow-hidden">
             
-            {/* --- ШАПКА С КНОПКАМИ ДЕЙСТВИЙ --- */}
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800/50 bg-gray-900/50 shrink-0 z-10 pt-[max(1rem,env(safe-area-inset-top))]">
-                
-                <div className="flex items-center gap-3 sm:gap-4 hidden sm:flex">
-                  <div className="p-2 sm:p-3 bg-emerald-500/10 rounded-xl sm:rounded-2xl text-emerald-400">
-                    <FileText size={20} className="sm:w-6 sm:h-6" />
-                  </div>
-                  <h3 className="text-white font-black text-base sm:text-xl tracking-tight uppercase line-clamp-1">Публикация от партнера</h3>
+            {/* --- ШАПКА --- */}
+            <div className="flex items-center justify-between px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-4 shrink-0 z-10">
+                <div className="min-w-0">
+                  <h2 className="text-white font-bold text-2xl tracking-tight leading-none truncate">{previewPost.sender?.name || 'Неизвестный партнер'}</h2>
+                  <p className="text-gray-400 text-sm mt-1 uppercase tracking-wider">{previewPost.sender?.pavilion || 'Без павильона'}</p>
                 </div>
-
-                <div className="flex items-center gap-1.5 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                  
-                  <div className="flex items-center gap-1.5 sm:gap-3">
-                    
-                    {/* Кнопка Опубликовать с Dropdown (Точно как кнопка Повторить) */}
-                    <div className="relative">
-                      <button 
-                        onClick={() => setShowRetryMenu(!showRetryMenu)}
-                        title="Создать публикацию"
-                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-emerald-400 hover:bg-emerald-500 hover:text-white bg-gray-800 transition-all active:scale-95"
-                      >
-                        <PlusCircle size={20} className="sm:w-6 sm:h-6" />
-                      </button>
-                      
-                      {showRetryMenu && (
-                        <div className="absolute top-[calc(100%+0.5rem)] left-0 sm:left-auto sm:right-0 w-56 sm:w-64 bg-gray-800 border border-gray-700 rounded-2xl sm:rounded-3xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-top-2 duration-200">
-                          <button onClick={() => handleUsePost('schedule')} className="w-full flex items-center gap-3 sm:gap-4 px-4 py-3 sm:py-4 text-xs sm:text-sm text-white hover:bg-gray-700 font-black uppercase tracking-widest transition-all rounded-xl mb-1">
-                            <Clock size={16} className="text-purple-400 sm:w-5 sm:h-5"/> В очередь
-                          </button>
-                          <button onClick={() => handleUsePost('now')} className="w-full flex items-center gap-3 sm:gap-4 px-4 py-3 sm:py-4 text-xs sm:text-sm text-white hover:bg-gray-700 font-black uppercase tracking-widest transition-all rounded-xl border-t border-gray-700">
-                            <Send size={16} className="text-blue-400 sm:w-5 sm:h-5"/> Прямо сейчас
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Кнопка Удалить */}
-                    <button 
-                      onClick={() => handleDeletePost(previewPost.id)}
-                      title="Удалить из входящих"
-                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white bg-gray-800 transition-all active:scale-95"
-                    >
-                      <Trash2 size={18} className="sm:w-5 sm:h-5" />
-                    </button>
-                  </div>
-
-                  <div className="w-px h-6 bg-gray-700 mx-1 hidden sm:block"></div>
-
-                  {/* Закрыть окно */}
-                  <button 
-                    onClick={() => setPreviewPost(null)} 
-                    className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center text-gray-400 hover:text-white bg-gray-900 hover:bg-gray-800 rounded-xl sm:rounded-2xl transition-all active:scale-90"
-                  >
-                      <X size={20} className="sm:w-6 sm:h-6" />
-                  </button>
-                </div>
+                <button 
+                  onClick={() => setPreviewPost(null)} 
+                  className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white bg-gray-800/60 hover:bg-gray-700 rounded-full transition-all active:scale-90 shrink-0 ml-4"
+                >
+                    <X size={20} />
+                </button>
             </div>
 
-            {/* --- КОНТЕНТ (Свободно скроллится внутри) --- */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+            {/* --- КОНТЕНТ (Свободно скроллится) --- */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pb-6">
               
-              <div className="flex items-center gap-3 sm:gap-5 mb-6 sm:mb-10 pb-6 sm:pb-8 border-b border-gray-800/30">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-[1.2rem] sm:rounded-[1.5rem] bg-gray-900 overflow-hidden border-2 border-gray-800 p-0.5 sm:p-1 shrink-0">
-                  {previewPost.sender?.avatarUrl ? <img src={previewPost.sender.avatarUrl} className="w-full h-full object-cover rounded-[1rem] sm:rounded-[1.1rem]"/> : <ImageIcon className="w-full h-full p-4 text-gray-600"/>}
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-white font-black text-lg sm:text-2xl tracking-tighter leading-tight truncate">{previewPost.sender?.name || 'Неизвестный партнер'}</h2>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1.5 sm:mt-2">
-                      <span className="text-[9px] sm:text-[10px] text-emerald-400 font-black uppercase tracking-[0.2em] bg-emerald-500/10 px-2 sm:px-3 py-1 rounded-md sm:rounded-lg border border-emerald-500/20">
-                        Входящий контент
-                      </span>
-                      <span className="text-[10px] sm:text-xs text-gray-500 font-bold flex items-center gap-1.5 sm:gap-2 truncate">
-                        <Calendar size={12} className="sm:w-3.5 sm:h-3.5" />
-                        {new Date(previewPost.createdAt).toLocaleString()}
-                      </span>
-                  </div>
-                </div>
-              </div>
-
-              {previewPost.text && (
-                <div className="mb-6 sm:mb-10 bg-gray-900/30 p-5 sm:p-8 rounded-[1.5rem] sm:rounded-[2rem] border border-gray-800/50">
-                  <p className="text-gray-100 text-sm sm:text-lg leading-relaxed whitespace-pre-wrap font-medium break-words">
-                    {previewPost.text}
-                  </p>
+              {/* ФОТОГРАФИИ (Горизонтальный скролл) */}
+              {currentMediaList.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 mb-4 -mx-1 px-1">
+                   {currentMediaList.map((img, i) => (
+                      <div 
+                        key={i} 
+                        onClick={() => setFsImageIndex(i)}
+                        className="relative w-[100px] h-[100px] sm:w-[120px] sm:h-[120px] rounded-2xl overflow-hidden shrink-0 cursor-pointer border border-gray-800 group"
+                      >
+                        <img src={img} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" alt="media" />
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Maximize2 className="text-white" size={20} />
+                        </div>
+                      </div>
+                   ))}
                 </div>
               )}
 
-              <div className="mb-2">
-                 <PhotoGrid mediaUrls={previewPost.mediaUrls} />
+              {/* КАРТОЧКА С ТЕКСТОМ */}
+              <div className="bg-[#181a20] rounded-[1.5rem] p-4 sm:p-5 border border-gray-800/60">
+                 <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-gray-800 overflow-hidden border border-gray-700 shrink-0">
+                       {previewPost.sender?.avatarUrl ? <img src={previewPost.sender.avatarUrl} className="w-full h-full object-cover"/> : <ImageIcon className="w-full h-full p-2 text-gray-500"/>}
+                    </div>
+                    <div className="min-w-0">
+                       <p className="text-white font-medium text-sm sm:text-base truncate">{previewPost.sender?.name || 'Партнер'}</p>
+                       <p className="text-gray-500 text-xs truncate">
+                         {new Date(previewPost.createdAt).toLocaleString('ru-RU', {day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'})}
+                       </p>
+                    </div>
+                 </div>
+                 
+                 <p className="text-gray-300 text-sm sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                   {previewPost.text || <span className="italic text-gray-600">Текст отсутствует</span>}
+                 </p>
               </div>
+            </div>
+
+            {/* --- ПОДВАЛ С КНОПКАМИ --- */}
+            <div className="p-4 sm:p-5 border-t border-gray-800/50 bg-[#0f1115] pb-[max(1rem,env(safe-area-inset-bottom))] shrink-0 flex gap-3 relative">
+               
+               <button 
+                 onClick={() => handleDeletePost(previewPost.id)}
+                 className="flex-1 bg-[#181a20] hover:bg-gray-800 border border-gray-800 text-gray-300 py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all active:scale-95"
+               >
+                 Удалить
+               </button>
+               
+               <div className="flex-[2] relative">
+                 <button 
+                   onClick={() => setShowRetryMenu(!showRetryMenu)}
+                   className="w-full bg-[#10B981] hover:bg-[#059669] text-white py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+                 >
+                   Опубликовать пост
+                 </button>
+                 
+                 {showRetryMenu && (
+                   <div className="absolute bottom-[calc(100%+0.5rem)] right-0 w-full bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-bottom-2 duration-200">
+                     <button onClick={() => handleUsePost('now')} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm text-white hover:bg-gray-700 font-bold transition-all rounded-xl mb-1">
+                       <Send size={16} className="text-blue-400"/> Прямо сейчас
+                     </button>
+                     <button onClick={() => handleUsePost('schedule')} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm text-white hover:bg-gray-700 font-bold transition-all rounded-xl border-t border-gray-700">
+                       <Clock size={16} className="text-purple-400"/> В очередь
+                     </button>
+                   </div>
+                 )}
+               </div>
+
             </div>
 
           </div>
