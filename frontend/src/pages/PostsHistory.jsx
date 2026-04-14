@@ -5,7 +5,7 @@ import {
   FileText, CheckCircle2, Clock, AlertCircle, Search,
   Calendar, Image as ImageIcon, Send, Trash2, 
   X, Share2, LayoutPanelLeft, ChevronRight, Download, 
-  RefreshCw, Loader2, Maximize2, ChevronLeft, PlusCircle
+  RefreshCw, Loader2, Maximize2, ChevronLeft, PlusCircle, ChevronUp
 } from 'lucide-react';
 
 const base64ToFile = (base64String, filename) => {
