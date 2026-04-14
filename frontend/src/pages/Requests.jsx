@@ -30,9 +30,9 @@ const base64ToFile = (base64String, filename) => {
 export default function Requests() {
   const { 
     user, fetchPartnerData, fetchSharedPosts,
-    acceptPartnershipRequest, declinePartnershipRequest,
+    acceptPartnership, declinePartnership, // <--- ИСПРАВЛЕННЫЕ ИМЕНА
     deleteSharedPostAction, saveTempDraft, 
-    markSharedPostPublishedAction // <--- ДОБАВИТЬ ЭТО
+    markSharedPostPublishedAction 
   } = useStore();
   
   const navigate = useNavigate();
@@ -62,12 +62,12 @@ export default function Requests() {
   }, [user, fetchPartnerData, fetchSharedPosts]);
 
   const handleAcceptPartner = async (reqId) => {
-    await acceptPartnershipRequest(reqId);
+    await acceptPartnership(reqId); // <--- Используем правильное имя
     fetchPartnerData(user?.id);
   };
 
   const handleDeclinePartner = async (reqId) => {
-    await declinePartnershipRequest(reqId);
+    await declinePartnership(reqId); // <--- Используем правильное имя
     fetchPartnerData(user?.id);
   };
 
