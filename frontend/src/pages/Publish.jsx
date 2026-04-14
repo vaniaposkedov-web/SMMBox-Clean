@@ -1106,8 +1106,22 @@ const handlePublish = async () => {
                     : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'
                 }`}
               >
-                {isSharing ? <Loader2 size={18} className="animate-spin" /> : partnerStatus === 'sent' ? <CheckCircle2 size={18} /> : <Send size={18} />}
-                {isSharing ? 'Отправка...' : partnerStatus === 'sent' ? 'Отправлено!' : `Отправить (${selectedPartners.length})`}
+                {isSharing ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    <span>Отправка...</span>
+                  </>
+                ) : partnerStatus === 'sent' ? (
+                  <>
+                    <CheckCircle2 size={18} />
+                    <span>Отправлено!</span>
+                  </>
+                ) : (
+                  <>
+                    <Send size={18} />
+                    <span>Отправить ({selectedPartners.length})</span>
+                  </>
+                )}
               </button>
             </div>
 
