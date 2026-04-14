@@ -8,7 +8,7 @@ import {
   Loader2, Calendar, FileText
 } from 'lucide-react';
 
-// === Утилита для конвертации картинок в файлы (как в Истории) ===
+// === Утилита для конвертации картинок в файлы ===
 const base64ToFile = (base64String, filename) => {
   try {
     const arr = base64String.split(',');
@@ -37,16 +37,14 @@ export default function Requests() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('all'); 
   
-  // Данные из стора
   const incomingRequests = useStore((state) => state.incomingRequests) || [];
   const sharedIncoming = useStore((state) => state.sharedIncoming) || []; 
 
-  // Состояния для модалки и слайдера
   const [previewPost, setPreviewPost] = useState(null);
   const [fsImageIndex, setFsImageIndex] = useState(null);
   const [isPreparing, setIsPreparing] = useState(false);
 
-  // Блокировка скролла фона
+  // === ЖЕСТКАЯ БЛОКИРОВКА СКРОЛЛА ФОНА ===
   useEffect(() => {
     if (previewPost || fsImageIndex !== null) {
       document.body.style.overflow = 'hidden';
@@ -56,7 +54,6 @@ export default function Requests() {
     return () => { document.body.style.overflow = 'unset'; };
   }, [previewPost, fsImageIndex]);
 
-  // Загрузка свежих данных
   useEffect(() => {
     if (user?.id) fetchPartnerData(user.id);
     fetchSharedPosts();
@@ -80,7 +77,6 @@ export default function Requests() {
     }
   };
 
-  // === ЛОГИКА СЛАЙДЕРА ФОТО ===
   const currentMediaList = useMemo(() => {
     if (!previewPost) return [];
     try {
@@ -117,7 +113,6 @@ export default function Requests() {
     } catch (error) { window.open(imgUrl, '_blank'); }
   };
 
-  // === ПАРСИНГ И ПЕРЕНОС В РЕДАКТОР ===
   const handleUsePost = () => {
     if (!previewPost) return;
     setIsPreparing(true);
@@ -147,7 +142,6 @@ export default function Requests() {
     }, 600);
   };
 
-  // Компонент сетки фото (из истории)
   const PhotoGrid = ({ mediaUrls }) => {
     const images = useMemo(() => {
       try { return JSON.parse(mediaUrls || '[]'); } catch(e) { return []; }
@@ -192,7 +186,7 @@ export default function Requests() {
         </div>
       </div>
 
-      {/* === ТАБЫ (Фильтрация) === */}
+      {/* === ТАБЫ === */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3 bg-gray-900/50 p-1.5 sm:p-2 rounded-[1.5rem] sm:rounded-[1.8rem] border border-gray-800">
         {[
           { id: 'all', label: 'Все', icon: Layers },
@@ -210,7 +204,7 @@ export default function Requests() {
         ))}
       </div>
 
-      {/* === СПИСОК: ЗАЯВКИ В ПАРТНЕРЫ === */}
+      {/* === ЗАЯВКИ В ПАРТНЕРЫ === */}
       {(activeTab === 'all' || activeTab === 'partners') && incomingRequests.length > 0 && (
         <section className="space-y-4">
            <h2 className="text-xs sm:text-sm font-black text-gray-500 uppercase tracking-[0.2em] px-2 sm:px-4">Запросы в партнеры</h2>
@@ -240,7 +234,7 @@ export default function Requests() {
         </section>
       )}
 
-      {/* === СПИСОК: ВХОДЯЩИЕ ПУБЛИКАЦИИ === */}
+      {/* === ВХОДЯЩИЕ ПУБЛИКАЦИИ === */}
       {(activeTab === 'all' || activeTab === 'posts') && (
         <section className="space-y-4">
            <h2 className="text-xs sm:text-sm font-black text-gray-500 uppercase tracking-[0.2em] px-2 sm:px-4">Входящий контент</h2>
@@ -283,7 +277,7 @@ export default function Requests() {
         </section>
       )}
 
-      {/* === МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА (Точная копия из PostsHistory, но другие кнопки) === */}
+      {/* === ИДЕАЛЬНОЕ МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА === */}
       {previewPost && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl sm:p-6 md:p-10 animate-in fade-in duration-200">
           
@@ -296,21 +290,54 @@ export default function Requests() {
 
           <div className="bg-[#0d0f13] w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] md:max-w-4xl sm:rounded-[2.5rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200 overflow-hidden">
             
-            {/* ШАПКА */}
-            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-800/50 bg-gray-900/50 shrink-0 z-10 pt-[max(1rem,env(safe-area-inset-top))]">
-                <div className="flex items-center gap-3 sm:gap-4">
-                  <div className="p-2 sm:p-3 bg-blue-500/10 rounded-xl sm:rounded-2xl text-[#0077FF]">
+            {/* --- ШАПКА С КНОПКАМИ ДЕЙСТВИЙ --- */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800/50 bg-gray-900/50 shrink-0 z-10 pt-[max(1rem,env(safe-area-inset-top))]">
+                
+                <div className="flex items-center gap-3 sm:gap-4 hidden sm:flex">
+                  <div className="p-2 sm:p-3 bg-emerald-500/10 rounded-xl sm:rounded-2xl text-emerald-400">
                     <FileText size={20} className="sm:w-6 sm:h-6" />
                   </div>
-                  <h3 className="text-white font-black text-base sm:text-xl tracking-tight uppercase">Публикация от партнера</h3>
+                  <h3 className="text-white font-black text-base sm:text-xl tracking-tight uppercase line-clamp-1">Публикация от партнера</h3>
                 </div>
-                <button onClick={() => setPreviewPost(null)} className="p-2.5 sm:p-3 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-xl sm:rounded-2xl transition-all active:scale-90">
-                    <X size={20} className="sm:w-6 sm:h-6" />
-                </button>
+
+                <div className="flex items-center gap-1.5 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                  
+                  <div className="flex items-center gap-1.5 sm:gap-3">
+                    
+                    {/* Кнопка Опубликовать */}
+                    <button 
+                      onClick={handleUsePost}
+                      title="Опубликовать"
+                      className="flex items-center gap-2 px-4 sm:px-6 h-10 sm:h-12 rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+                    >
+                      <Send size={18} className="sm:w-5 sm:h-5" />
+                      <span className="hidden xs:inline">Опубликовать</span>
+                    </button>
+
+                    {/* Кнопка Удалить */}
+                    <button 
+                      onClick={() => handleDeletePost(previewPost.id)}
+                      title="Удалить пост"
+                      className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white bg-gray-800 transition-all active:scale-95"
+                    >
+                      <Trash2 size={18} className="sm:w-5 sm:h-5" />
+                    </button>
+                  </div>
+
+                  <div className="w-px h-6 bg-gray-700 mx-1 hidden sm:block"></div>
+
+                  {/* Закрыть окно */}
+                  <button 
+                    onClick={() => setPreviewPost(null)} 
+                    className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center text-gray-400 hover:text-white bg-gray-900 hover:bg-gray-800 rounded-xl sm:rounded-2xl transition-all active:scale-90"
+                  >
+                      <X size={20} className="sm:w-6 sm:h-6" />
+                  </button>
+                </div>
             </div>
 
-            {/* КОНТЕНТ */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8">
+            {/* --- КОНТЕНТ (Свободно скроллится внутри) --- */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8 pb-[calc(2rem+env(safe-area-inset-bottom))]">
               <div className="flex items-center gap-3 sm:gap-5 mb-6 sm:mb-10 pb-6 sm:pb-8 border-b border-gray-800/30">
                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-[1.2rem] sm:rounded-[1.5rem] bg-gray-900 overflow-hidden border-2 border-gray-800 p-0.5 sm:p-1 shrink-0">
                   {previewPost.sender?.avatarUrl ? <img src={previewPost.sender.avatarUrl} className="w-full h-full object-cover rounded-[1rem] sm:rounded-[1.1rem]"/> : <ImageIcon className="w-full h-full p-4 text-gray-600"/>}
@@ -342,51 +369,53 @@ export default function Requests() {
               </div>
             </div>
 
-            {/* ФУТЕР (Крупные кнопки Опубликовать и Удалить) */}
-            <div className="p-4 sm:p-6 border-t border-gray-800 bg-[#0d0f13] shrink-0 flex items-center justify-between gap-3 sm:gap-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-6 z-10">
-              <button 
-                onClick={() => handleDeletePost(previewPost.id)}
-                className="flex items-center justify-center gap-2 sm:gap-3 px-5 sm:px-8 py-4 sm:py-5 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl sm:rounded-[1.5rem] font-black text-xs sm:text-sm uppercase tracking-widest transition-all active:scale-95 border border-red-500/20 shrink-0"
-              >
-                <Trash2 size={20} className="sm:w-5 sm:h-5" />
-                <span className="hidden xs:inline">Удалить</span>
-              </button>
-              
-              <button 
-                onClick={handleUsePost}
-                className="flex-1 flex items-center justify-center gap-3 sm:gap-4 px-4 sm:px-8 py-4 sm:py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl sm:rounded-[1.5rem] font-black text-xs sm:text-sm uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-blue-500/20"
-              >
-                <Send size={20} className="sm:w-5 sm:h-5" />
-                <span>Опубликовать у себя</span>
-              </button>
-            </div>
-
           </div>
         </div>
       )}
 
-      {/* === ПОЛНОЭКРАННЫЙ СЛАЙДЕР (Из истории) === */}
+      {/* === ПОЛНОЭКРАННЫЙ СЛАЙДЕР С НАВИГАЦИЕЙ === */}
       {fsImageIndex !== null && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black animate-in fade-in duration-200">
-          <button onClick={() => setFsImageIndex(null)} className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 sm:right-8 w-12 h-12 sm:w-14 sm:h-14 bg-gray-900/80 text-white rounded-full flex items-center justify-center transition-all z-[210] active:scale-90">
+          
+          <button 
+            onClick={() => setFsImageIndex(null)} 
+            className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 sm:right-8 w-12 h-12 sm:w-14 sm:h-14 bg-gray-900/80 text-white rounded-full flex items-center justify-center transition-all z-[210] active:scale-90"
+          >
             <X size={24} className="sm:w-8 sm:h-8" />
           </button>
-          <button onClick={handlePrevPhoto} disabled={fsImageIndex === 0} className="absolute left-2 sm:left-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[210] active:scale-75">
+
+          <button 
+            onClick={handlePrevPhoto} 
+            disabled={fsImageIndex === 0}
+            className="absolute left-2 sm:left-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[210] active:scale-75"
+          >
             <ChevronLeft size={40} className="sm:w-16 sm:h-16" />
           </button>
-          <button onClick={handleNextPhoto} disabled={fsImageIndex === currentMediaList.length - 1} className="absolute right-2 sm:right-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[210] active:scale-75">
+
+          <button 
+            onClick={handleNextPhoto} 
+            disabled={fsImageIndex === currentMediaList.length - 1}
+            className="absolute right-2 sm:right-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[210] active:scale-75"
+          >
             <ChevronRight size={40} className="sm:w-16 sm:h-16" />
           </button>
 
           <div className="w-full h-full flex items-center justify-center p-4 sm:p-12 select-none">
-            <img key={fsImageIndex} src={currentMediaList[fsImageIndex]} className="max-w-full max-h-[85vh] object-contain rounded-xl sm:rounded-2xl shadow-[0_0_80px_rgba(0,119,255,0.15)] animate-in zoom-in-95 duration-300" />
+            <img 
+              key={fsImageIndex}
+              src={currentMediaList[fsImageIndex]} 
+              className="max-w-full max-h-[85vh] object-contain rounded-xl sm:rounded-2xl shadow-[0_0_80px_rgba(0,119,255,0.15)] animate-in zoom-in-95 duration-300" 
+            />
           </div>
 
           <div className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-4 sm:gap-6 z-[210]">
              <div className="px-4 sm:px-6 py-1.5 sm:py-2 bg-gray-900/90 border border-gray-800 rounded-full text-white font-black text-[10px] sm:text-xs tracking-[0.3em] uppercase">
                 {fsImageIndex + 1} / {currentMediaList.length}
              </div>
-             <button onClick={() => handleDownload(currentMediaList[fsImageIndex])} className="flex items-center gap-3 sm:gap-4 px-6 sm:px-10 py-3.5 sm:py-5 bg-white text-black rounded-xl sm:rounded-[2rem] font-black text-xs sm:text-sm uppercase tracking-widest transition-all active:scale-95 shadow-2xl">
+             <button 
+               onClick={() => handleDownload(currentMediaList[fsImageIndex])}
+               className="flex items-center gap-3 sm:gap-4 px-6 sm:px-10 py-3.5 sm:py-5 bg-white text-black rounded-xl sm:rounded-[2rem] font-black text-xs sm:text-sm uppercase tracking-widest transition-all active:scale-95 shadow-2xl"
+             >
                <Download size={20} className="sm:w-6 sm:h-6" /> Сохранить фото
              </button>
           </div>
