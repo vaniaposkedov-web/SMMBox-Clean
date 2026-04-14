@@ -644,24 +644,36 @@ export const useStore = create(
 
      // ... предыдущий код стора
 
-      createPostAction: async (text, mediaUrls, accountsData, publishAt) => {
-          try {
-            const state = get();
-
-            const res = await fetch('/api/posts/create', {
-                method: 'POST', 
-                headers: { 
-                    'Content-Type': 'application/json', 
-                    'Authorization': `Bearer ${state.token}` 
-                }, 
-                body: JSON.stringify({ 
-                    text, 
-                    mediaUrls, 
-                    accounts: accountsData, // ФИКС: Принимаем уже готовую сборку со всеми настройками вотермарков
-                    publishAt: publishAt || null 
-                })
-            });
+      createPostAction: async (text, mediaBlobs, accountsData, publishAt) => {
+        try {
+          const state = get();
           
+          // Создаем объект FormData для передачи файлов как бинарников
+          const formData = new FormData();
+          
+          if (text) formData.append('text', text);
+          if (publishAt) formData.append('publishAt', publishAt);
+          
+          // Аккаунты передаем как строку
+          formData.append('accountsData', JSON.stringify(accountsData));
+
+          // Добавляем бинарные файлы
+          if (mediaBlobs && mediaBlobs.length > 0) {
+            mediaBlobs.forEach((blob, index) => {
+              formData.append('media', blob, `image_${index}.webp`);
+            });
+          }
+
+          const res = await fetch('/api/posts/create', {
+              method: 'POST', 
+              headers: { 
+                  // ВАЖНО: Мы НЕ указываем 'Content-Type: application/json',
+                  // браузер сам установит нужный boundary для FormData
+                  'Authorization': `Bearer ${state.token}` 
+              }, 
+              body: formData
+          });
+        
           const data = await res.json();
           if (res.ok && data.success) {
             // Обновляем отложку, если это был запланированный пост

@@ -273,7 +273,8 @@ export default function Publish() {
     setPhotos(prev => prev.filter(p => p.id !== idToRemove));
   };
 
-  const fileToBase64 = (file) => {
+  // Измененная функция: теперь возвращает бинарный WebP (Blob) вместо Base64 строки
+  const compressImageToWebP = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
@@ -282,8 +283,9 @@ export default function Publish() {
         img.src = event.target.result;
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 1200;
-          const MAX_HEIGHT = 1200;
+          // Разрешение можно сделать больше, WebP жмет очень эффективно
+          const MAX_WIDTH = 1920; 
+          const MAX_HEIGHT = 1920;
           let width = img.width;
           let height = img.height;
 
@@ -299,7 +301,11 @@ export default function Publish() {
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
+          
+          // Конвертируем в WebP с качеством 85% — экономия веса до 5-10 раз!
+          canvas.toBlob((blob) => {
+            resolve(blob);
+          }, 'image/webp', 0.85); 
         };
         img.onerror = error => reject(error);
       };
@@ -373,8 +379,7 @@ const handlePublish = async () => {
     setIsPublishing(true);
 
     try {
-        const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
-        
+        const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
         const accountsData = selectedAccounts.map(id => {
           const acc = accounts.find(a => a.id === id);
           
