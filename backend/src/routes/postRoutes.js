@@ -14,4 +14,7 @@ router.get('/scheduled', authMiddleware, postController.getScheduledPosts);
 router.put('/scheduled/:id', authMiddleware, postController.updateScheduledPost);
 router.delete('/scheduled/:id', authMiddleware, postController.deleteScheduledPost);
 
+router.get('/history', authMiddleware, postController.getPostsHistory);
+router.post('/retry/:id', authMiddleware, postController.retryPost);
+
 module.exports = router;

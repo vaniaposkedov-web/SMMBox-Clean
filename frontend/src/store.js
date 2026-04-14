@@ -16,6 +16,7 @@ export const useStore = create(
       sharedIncoming: [],
       sharedOutgoing: [],
       scheduledPosts: [],
+      postsHistory: [],
 
       watermarkSettings: {
         type: 'text',
@@ -134,6 +135,45 @@ export const useStore = create(
           return { success: false, error: data.error };
         } catch (error) {
           return { success: false, error: 'Ошибка соединения с сервером' };
+        }
+      },
+
+      fetchPostsHistory: async () => {
+        try {
+          const token = localStorage.getItem('token') || get().token;
+          if (!token) return;
+
+          const res = await fetch('/api/posts/history', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            set({ postsHistory: data.posts || [] });
+          }
+        } catch (error) {
+          console.error("Ошибка загрузки истории:", error);
+        }
+      },
+
+      // Метод для переотправки поста с ошибкой
+      retryFailedPost: async (postId) => {
+        try {
+          const token = localStorage.getItem('token') || get().token;
+          const res = await fetch(`/api/posts/retry/${postId}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (res.ok) {
+            // После успешного запроса обновляем и историю, и календарь
+            await get().fetchPostsHistory();
+            await get().fetchScheduledPosts();
+            return { success: true };
+          }
+          return { success: false };
+        } catch (error) {
+          return { success: false };
         }
       },
 
