@@ -829,36 +829,39 @@ export default function Profile() {
       {/* === МОДАЛЬНОЕ ОКНО ОФОРМЛЕНИЯ PRO === */}
       {showProModal && (
         <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-admin-card w-full max-w-md border-t sm:border border-purple-500/30 rounded-t-[2rem] sm:rounded-3xl p-6 sm:p-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-8 shadow-2xl relative transition-transform">
-            <button onClick={() => setShowProModal(false)} className="absolute top-4 sm:top-5 right-4 sm:right-5 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 sm:p-2.5 transition-colors z-10">
+          <div className="bg-[#1a1d24] w-full max-w-[420px] border-t sm:border border-gray-800 rounded-t-[2rem] sm:rounded-3xl p-6 sm:p-7 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-7 shadow-2xl relative transition-transform">
+            <button onClick={() => setShowProModal(false)} className="absolute top-4 sm:top-5 right-4 sm:right-5 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 transition-colors z-10">
               <X size={20} />
             </button>
 
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-5 sm:mb-6 shadow-lg shadow-yellow-500/20">
-              <Crown size={32} className="text-black sm:w-10 sm:h-10" />
+            <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] bg-[#EAB308] rounded-full flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
+              <Crown size={36} className="text-black" />
             </div>
             
             <div className="text-center">
-              <h3 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4">Оформление PRO</h3>
+              <h3 className="text-2xl sm:text-3xl font-extrabold text-white mb-4 uppercase tracking-wide">ПРО</h3>
               
-              <div className="text-gray-400 text-xs sm:text-sm mb-6 sm:mb-8 leading-relaxed space-y-3 sm:space-y-4">
+              <div className="text-gray-300 text-sm sm:text-[15px] mb-6 leading-snug space-y-3">
                 <p>
-                  Стоимость безлимитной PRO-подписки составляет <span className="text-yellow-400 font-bold text-sm sm:text-base px-1">2000 ₽ в месяц</span><br/>
-                  Оплата производится напрямую переводом на банковскую карту.
+                  Стоимость безлимитной PRO-подписки составляет <span className="text-[#EAB308] font-bold">2000 ₽ в месяц</span>
                 </p>
-                <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl text-left sm:text-center">
-                  <p className="text-gray-300">
-                    Нажмите на кнопку ниже, чтобы перейти в Telegram. Наш менеджер ответит вам в течение <span className="text-white font-bold">нескольких часов</span> и пришлет реквизиты. 
+                <p className="text-gray-400 text-[13px] sm:text-sm">
+                  Оплата производится прямым переводом на банковскую карту.
+                </p>
+                
+                <div className="bg-[#121419] border border-gray-800/60 p-4 sm:p-5 rounded-xl text-left mt-4 space-y-3">
+                  <p className="text-gray-300 leading-relaxed text-[13px] sm:text-sm">
+                    Нажмите кнопку ниже, чтобы перейти в Telegram. Наш менеджер ответит вам в течение <span className="text-white font-bold">нескольких часов</span> и пришлет реквизиты. 
                   </p>
-                  <p className="text-gray-300 mt-2">
-                    Подписка будет активирована <span className="text-emerald-400 font-bold">в течение дня</span> после оплаты!
+                  <p className="text-gray-300 leading-relaxed text-[13px] sm:text-sm">
+                    Подписка будет активирована <span className="text-[#10B981] font-bold">в течение суток</span> после оплаты!
                   </p>
                 </div>
               </div>
             </div>
 
-            <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-[#229ED9]/20 active:scale-95 min-h-[48px] mb-2 sm:mb-0">
-              <Send size={18} /> Написать менеджеру
+            <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-3.5 sm:py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-[#229ED9]/20 active:scale-95 text-[15px] min-h-[50px] mb-2 sm:mb-0">
+              <Send size={18} className="shrink-0 -ml-1" /> Написать обращение
             </button>
           </div>
         </div>
