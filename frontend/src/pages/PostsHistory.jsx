@@ -8,7 +8,6 @@ import {
   RefreshCw, MoreVertical, Loader2, Maximize2
 } from 'lucide-react';
 
-// Утилита base64ToFile (оставляем без изменений)
 const base64ToFile = (base64String, filename) => {
   try {
     const arr = base64String.split(',');
@@ -34,8 +33,8 @@ export default function PostsHistory() {
   const [activeTab, setActiveTab] = useState('published');
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [selectedPost, setSelectedPost] = useState(null); // Модалка поста
-  const [fullscreenImage, setFullscreenImage] = useState(null); // Fullscreen картинки
+  const [selectedPost, setSelectedPost] = useState(null); 
+  const [fullscreenImage, setFullscreenImage] = useState(null); 
   
   const [showRetryMenu, setShowRetryMenu] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
@@ -60,7 +59,6 @@ export default function PostsHistory() {
     return base;
   }, [postsHistory, activeTab, searchQuery]);
 
-  // === СКАЧИВАНИЕ ФОТО (оставляем без изменений) ===
   const handleDownload = async (imgUrl, index) => {
     try {
       const response = await fetch(imgUrl);
@@ -78,7 +76,6 @@ export default function PostsHistory() {
     }
   };
 
-  // === ПОВТОР ПОСТА (оставляем без изменений) ===
   const handleDuplicatePost = (mode) => {
     if (!selectedPost) return;
     setShowRetryMenu(false);
@@ -121,7 +118,6 @@ export default function PostsHistory() {
     }
   };
 
-  // === КОМПОНЕНТ: УМНАЯ СЕТКА ФОТОГРАФИЙ (Adaptive Grid) ===
   const PhotoGrid = ({ mediaUrls, onImageClick }) => {
     const images = useMemo(() => {
       try { return JSON.parse(mediaUrls || '[]'); } catch(e) { return []; }
@@ -142,22 +138,16 @@ export default function PostsHistory() {
       </div>
     );
 
-    // Логика сетки в зависимости от количества (до 10)
-    if (count === 1) {
-      return <PhotoItem img={images[0]} index={0} className="rounded-2xl border border-gray-800 max-h-[70vh] aspect-auto" />;
-    }
-
-    if (count === 2) {
-      return (
+    if (count === 1) return <PhotoItem img={images[0]} index={0} className="rounded-2xl border border-gray-800 max-h-[70vh] aspect-auto" />;
+    
+    if (count === 2) return (
         <div className="grid grid-cols-2 gap-2 aspect-[16/9]">
           <PhotoItem img={images[0]} index={0} className="rounded-l-2xl" />
           <PhotoItem img={images[1]} index={1} className="rounded-r-2xl" />
         </div>
-      );
-    }
+    );
 
-    if (count === 3) {
-      return (
+    if (count === 3) return (
         <div className="grid grid-cols-2 gap-2 aspect-[3/2]">
           <PhotoItem img={images[0]} index={0} className="rounded-l-2xl row-span-2" />
           <div className="grid grid-rows-2 gap-2">
@@ -165,21 +155,17 @@ export default function PostsHistory() {
             <PhotoItem img={images[2]} index={2} className="rounded-br-2xl" />
           </div>
         </div>
-      );
-    }
+    );
 
-    if (count === 4) {
-      return (
+    if (count === 4) return (
         <div className="grid grid-cols-2 gap-2 aspect-square">
           <PhotoItem img={images[0]} index={0} className="rounded-tl-2xl" />
           <PhotoItem img={images[1]} index={1} className="rounded-tr-2xl" />
           <PhotoItem img={images[2]} index={2} className="rounded-bl-2xl" />
           <PhotoItem img={images[3]} index={3} className="rounded-br-2xl" />
         </div>
-      );
-    }
+    );
 
-    // 5 и более фото
     return (
       <div className="grid grid-cols-2 gap-2 aspect-square">
         <PhotoItem img={images[0]} index={0} className="rounded-tl-2xl" />
@@ -199,7 +185,6 @@ export default function PostsHistory() {
   return (
     <div className="w-full space-y-6 font-sans pb-20">
       
-      {/* Шапка и Поиск (без изменений) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-admin-card border border-gray-800 p-6 rounded-3xl shadow-xl">
         <div>
           <h1 className="text-2xl font-black text-white flex items-center gap-3 tracking-tighter">
@@ -215,7 +200,6 @@ export default function PostsHistory() {
         </div>
       </div>
 
-      {/* Табы (без изменений) */}
       <div className="grid grid-cols-3 gap-2 bg-gray-900/50 p-1.5 rounded-2xl border border-gray-800">
         {[
           { id: 'published', label: 'Отправлено', icon: CheckCircle2, color: 'text-emerald-400' },
@@ -230,75 +214,78 @@ export default function PostsHistory() {
         ))}
       </div>
 
-      {/* Сетка карточек постов (без изменений) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredPosts.map(post => (
-          <div key={post.id} onClick={() => setSelectedPost(post)}
-            className="bg-admin-card border border-gray-800 rounded-3xl p-5 hover:border-gray-600 transition-all cursor-pointer group relative overflow-hidden shadow-lg flex flex-col h-full">
-            <div className="flex gap-4 mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-gray-900 border border-gray-800 shrink-0 overflow-hidden relative">
-                {post.mediaUrls && JSON.parse(post.mediaUrls).length > 0 ? (
-                  <img src={JSON.parse(post.mediaUrls)[0]} className="w-full h-full object-cover" />
-                ) : (
-                  <ImageIcon className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-700" size={24} />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-5 h-5 rounded-md bg-gray-800 overflow-hidden shrink-0 border border-gray-700">
-                    {post.account?.avatarUrl ? <img src={post.account.avatarUrl} className="w-full h-full object-cover"/> : null}
-                  </div>
-                  <span className="text-xs font-bold text-gray-400 truncate">{post.account?.name || 'Аккаунт'}</span>
+        {filteredPosts.map(post => {
+          let mediaCount = 0;
+          try { mediaCount = JSON.parse(post.mediaUrls || '[]').length; } catch(e) {}
+          
+          return (
+            <div key={post.id} onClick={() => setSelectedPost(post)}
+              className="bg-admin-card border border-gray-800 rounded-3xl p-5 hover:border-gray-600 transition-all cursor-pointer group relative overflow-hidden shadow-lg flex flex-col h-full">
+              <div className="flex gap-4 mb-4">
+                <div className="w-16 h-16 rounded-2xl bg-gray-900 border border-gray-800 shrink-0 overflow-hidden relative">
+                  {mediaCount > 0 ? (
+                    <img src={JSON.parse(post.mediaUrls)[0]} className="w-full h-full object-cover" />
+                  ) : (
+                    <ImageIcon className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-700" size={24} />
+                  )}
+                  {mediaCount > 1 && (
+                    <div className="absolute bottom-1 right-1 bg-black/80 text-[10px] text-white px-1.5 py-0.5 rounded-lg font-bold border border-white/10">
+                      +{mediaCount - 1}
+                    </div>
+                  )}
                 </div>
-                <p className="text-white text-sm line-clamp-2 font-medium leading-relaxed">
-                  {post.text || <span className="text-gray-600 italic">Без текста</span>}
-                </p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-5 h-5 rounded-md bg-gray-800 overflow-hidden shrink-0 border border-gray-700">
+                      {post.account?.avatarUrl ? <img src={post.account.avatarUrl} className="w-full h-full object-cover"/> : null}
+                    </div>
+                    <span className="text-xs font-bold text-gray-400 truncate">{post.account?.name || 'Аккаунт'}</span>
+                  </div>
+                  <p className="text-white text-sm line-clamp-2 font-medium leading-relaxed">
+                    {post.text || <span className="text-gray-600 italic">Без текста</span>}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-auto pt-4 border-t border-gray-800 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 bg-gray-900 px-2 py-1 rounded-md">
+                  <Calendar size={12} />
+                  {new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <ChevronRight className="text-gray-600 group-hover:text-[#0077FF] transition-colors" size={18}/>
               </div>
             </div>
-            <div className="mt-auto pt-4 border-t border-gray-800 flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gray-500 flex items-center gap-1.5 bg-gray-900 px-2 py-1 rounded-md">
-                <Calendar size={12} />
-                {new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-              </span>
-              <ChevronRight className="text-gray-600 group-hover:text-[#0077FF] transition-colors" size={18}/>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* === НОВАЯ КРАСИВАЯ АДАПТИВНАЯ МОДАЛКА ПОСТА === */}
+      {/* === ИСПРАВЛЕННАЯ МОДАЛКА: Отступы (p-4) и Закругления (rounded-[2rem]) === */}
       {selectedPost && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
           
-          {/* Лоадер подготовки (над модалкой) */}
           {isPreparing && (
-            <div className="absolute inset-0 z-[160] bg-black/80 backdrop-blur-lg flex flex-col items-center justify-center">
+            <div className="absolute inset-0 z-[160] bg-black/80 backdrop-blur-lg flex flex-col items-center justify-center rounded-[2rem]">
                <Loader2 className="animate-spin text-[#0077FF] mb-4" size={48} />
                <p className="text-white font-bold text-xl tracking-tight">Парсим медиафайлы...</p>
                <p className="text-gray-400 text-sm mt-1">Это займет пару секунд</p>
             </div>
           )}
 
-          {/* Кнопка закрыть (вне контейнера на десктопе) */}
-          <button onClick={() => setSelectedPost(null)} className="absolute top-6 right-6 z-[110] p-3 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white rounded-full transition-all hidden md:flex">
-            <X size={24} />
-          </button>
-
-          {/* Контейнер модалки: На мобильных во весь экран, на десктопе блоком */}
-          <div className="bg-admin-card w-full h-full md:h-auto md:max-h-[90vh] md:max-w-3xl md:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden relative border border-gray-800animate-in slide-in-from-bottom-10 duration-300">
+          {/* КОНТЕЙНЕР: Теперь всегда с отступами и круглыми краями */}
+          <div className="bg-admin-card w-full max-w-3xl max-h-[92vh] sm:max-h-[90vh] rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden relative border border-gray-800 animate-in zoom-in-95 duration-300">
             
-            {/* МОБИЛЬНАЯ ШАПКА (только заголовок и закрыть) */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-800 bg-gray-900 shrink-0 md:hidden z-10">
-                <h3 className="text-white font-bold">Просмотр публикации</h3>
-                <button onClick={() => setSelectedPost(null)} className="p-2 text-gray-400 hover:text-white bg-gray-800 rounded-lg">
+            {/* ЕДИНАЯ ШАПКА ДЛЯ ВСЕХ УСТРОЙСТВ */}
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/90 backdrop-blur-md shrink-0 z-10">
+                <h3 className="text-white font-bold text-sm sm:text-base flex items-center gap-2">
+                  <LayoutPanelLeft size={18} className="text-[#0077FF]" />
+                  Просмотр публикации
+                </h3>
+                <button onClick={() => setSelectedPost(null)} className="p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-xl transition-colors">
                     <X size={20} />
                 </button>
             </div>
 
-            {/* ОСНОВНОЙ КОНТЕНТ (Скроллится) */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 md:p-8 pb-32">
-              
-              {/* 1. Блок профиля (как в соцсети) */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 md:p-8 pb-[100px]">
               <div className="flex items-center gap-4 mb-6 md:mb-8 pb-6 border-b border-gray-800/50">
                 <div className="w-14 h-14 rounded-2xl bg-gray-900 overflow-hidden border-2 border-gray-800 shrink-0 shadow-inner p-0.5">
                   {selectedPost.account?.avatarUrl ? <img src={selectedPost.account.avatarUrl} className="w-full h-full object-cover rounded-[14px]"/> : <ImageIcon className="text-gray-700 w-full h-full p-3"/>}
@@ -315,7 +302,6 @@ export default function PostsHistory() {
                 </div>
               </div>
 
-              {/* 2. Текст поста (Крупно, читаемо) */}
               {selectedPost.text && (
                 <div className="mb-8 md:mb-10">
                   <p className="text-gray-100 text-base md:text-lg leading-relaxed whitespace-pre-wrap break-words font-medium">
@@ -324,18 +310,16 @@ export default function PostsHistory() {
                 </div>
               )}
 
-              {/* 3. Умная сетка фото ( Adaptive Grid ) */}
               <div className="mb-4">
                  <PhotoGrid 
                     mediaUrls={selectedPost.mediaUrls} 
                     onImageClick={setFullscreenImage} 
                  />
               </div>
-              
             </div>
 
-            {/* 4. ФИКСИРОВАННАЯ ПАНЕЛЬ ДЕЙСТВИЙ (Снизу, стикки) */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 border-t border-gray-800 bg-gray-900/90 backdrop-blur-lg shrink-0 z-10 flex items-center justify-between gap-3">
+            {/* ПЛАШКА С КНОПКАМИ СНИЗУ */}
+            <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5 border-t border-gray-800 bg-gray-900/90 backdrop-blur-lg shrink-0 z-10 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <button 
                   title="Поделиться с партнерами"
@@ -344,7 +328,6 @@ export default function PostsHistory() {
                   <Share2 size={20} />
                 </button>
                 
-                {/* Кнопка Повторить с Dropdown */}
                 <div className="relative">
                   <button 
                     onClick={() => setShowRetryMenu(!showRetryMenu)}
@@ -379,7 +362,6 @@ export default function PostsHistory() {
         </div>
       )}
 
-      {/* === FULL-SCREEN ПРОСМОТР ФОТО (без изменений) === */}
       {fullscreenImage && (
         <div className="fixed inset-0 z-[150] flex flex-col items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
           <button onClick={() => setFullscreenImage(null)} className="absolute top-6 right-6 w-12 h-12 bg-gray-900/50 hover:bg-gray-800 text-white rounded-full flex items-center justify-center z-10">
@@ -391,7 +373,7 @@ export default function PostsHistory() {
           <div className="absolute bottom-10 left-1/2 -translate-x-1/2">
             <button onClick={() => handleDownload(fullscreenImage.url, fullscreenImage.index)}
               className="flex items-center gap-3 px-8 py-4 bg-white hover:bg-gray-200 text-black rounded-2xl font-black transition-all active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.2)]">
-              <Download size={20} /> Скачать на устройство
+              <Download size={20} /> Скачать
             </button>
           </div>
         </div>
