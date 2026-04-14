@@ -295,11 +295,20 @@ async function applyWatermark(imageBuffer, wmConfig) {
     }
 }
 
-// Полный исправленный метод создания поста
+// Полный исправленный метод создания поста с поддержкой FormData и файлов на диске
 // В методе exports.createPost
 exports.createPost = async (req, res) => {
     try {
-        const { text, mediaUrls = [], accounts = [], publishAt } = req.body;
+        // Достаем данные с учетом того, что прислали FormData
+        const { text, accountsData, publishAt } = req.body;
+        
+        // Парсим аккаунты из строки
+        let accounts = [];
+        if (accountsData) {
+            accounts = typeof accountsData === 'string' ? JSON.parse(accountsData) : accountsData;
+        } else if (req.body.accounts) {
+            accounts = typeof req.body.accounts === 'string' ? JSON.parse(req.body.accounts) : req.body.accounts;
+        }
         
         let parsedPublishAt = null;
         let isScheduled = false;
@@ -313,23 +322,41 @@ exports.createPost = async (req, res) => {
                 console.log(`[DEBUG] Пост определен как ОТЛОЖЕННЫЙ на: ${parsedPublishAt}`);
             }
         }
-// ...
         
         if (!accounts || accounts.length === 0) {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        // Подготовка изображений (Buffer)
-        const rawImageBuffers = mediaUrls.map(img => {
-            const base64Data = img.includes(',') ? img.split(',')[1] : img;
-            return Buffer.from(base64Data, 'base64');
-        });
+        // Читаем файлы, которые Multer положил во временную папку
+        const rawImageBuffers = [];
+        
+        if (req.files && req.files.length > 0) {
+            for (const file of req.files) {
+                try {
+                    const buffer = await fs.promises.readFile(file.path);
+                    rawImageBuffers.push(buffer);
+                    // Удаляем временный файл с диска после загрузки в память
+                    await fs.promises.unlink(file.path).catch(e => console.error('Не удалось удалить temp файл:', e));
+                } catch (err) {
+                    console.error('Ошибка чтения файла:', err);
+                }
+            }
+        } else if (req.body.mediaUrls) {
+            // ФОЛЛБЕК: Если файлы все еще шлют в Base64 (например, откуда-то из другого места)
+            const urls = typeof req.body.mediaUrls === 'string' ? JSON.parse(req.body.mediaUrls) : req.body.mediaUrls;
+            urls.forEach(img => {
+                if(img && img.includes(',')) {
+                    const base64Data = img.split(',')[1];
+                    rawImageBuffers.push(Buffer.from(base64Data, 'base64'));
+                }
+            });
+        }
 
-        // Оптимизация (sharp)
+        // Оптимизация (sharp) - переводим в формат JPEG для API VK и Telegram
         const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
             return await sharp(buf)
                 .resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true })
-                .jpeg({ quality: 90 })
+                .jpeg({ quality: 90 }) // Оставляем JPEG, так как VK/TG его любят больше
                 .toBuffer();
         }));
 
@@ -446,6 +473,7 @@ exports.createPost = async (req, res) => {
         if (!res.headersSent) res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
     }
 };
+
 
 /// === ТАЙМЕР (CRON): АВТОМАТИЧЕСКАЯ ОТПРАВКА ОТЛОЖЕННЫХ ПОСТОВ ===
 exports.initCron = () => {

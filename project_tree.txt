@@ -1,0 +1,100 @@
+├── backend
+│   ├── prisma
+│   │   ├── migrations
+│   │   │   ├── 20260303114952_init_postgres
+│   │   │   │   └── migration.sql
+│   │   │   ├── 20260303152614_add_auth_fields
+│   │   │   │   └── migration.sql
+│   │   │   ├── 20260304115454_make_email_optional_for_tg
+│   │   │   │   └── migration.sql
+│   │   │   └── migration_lock.toml
+│   │   └── schema.prisma
+│   ├── src
+│   │   ├── controllers
+│   │   │   ├── accountController.js
+│   │   │   ├── adminController.js
+│   │   │   ├── aiController.js
+│   │   │   ├── authController.js
+│   │   │   ├── partnerController.js
+│   │   │   └── postController.js
+│   │   ├── middleware
+│   │   │   ├── adminAuth.js
+│   │   │   ├── auth.js
+│   │   │   └── upload.js
+│   │   ├── routes
+│   │   │   ├── accountRoutes.js
+│   │   │   ├── adminRoutes.js
+│   │   │   ├── aiRoutes.js
+│   │   │   ├── authRoutes.js
+│   │   │   ├── partnerRoutes.js
+│   │   │   └── postRoutes.js
+│   │   ├── utils
+│   │   │   ├── emailTemplates.js
+│   │   │   ├── log_post.js
+│   │   │   ├── logger.js
+│   │   │   └── sendEmail.js
+│   │   └── index.js
+│   ├── .dockerignore
+│   ├── .env
+│   ├── .gitignore
+│   ├── Dockerfile
+│   ├── package-lock.json
+│   └── package.json
+├── frontend
+│   ├── public
+│   │   ├── icons8-телеграм.svg
+│   │   ├── icons8-vk.svg
+│   │   └── vite.svg
+│   ├── src
+│   │   ├── assets
+│   │   │   └── react.svg
+│   │   ├── components
+│   │   │   ├── settings
+│   │   │   │   ├── AccountsManager.jsx
+│   │   │   │   ├── PartnersManager.jsx
+│   │   │   │   └── WatermarkConstructor.jsx
+│   │   │   ├── AdminRoute.jsx
+│   │   │   ├── CustomTelegramButton.jsx
+│   │   │   └── CustomVkButton.jsx
+│   │   ├── layouts
+│   │   │   └── AdminLayout.jsx
+│   │   ├── pages
+│   │   │   ├── admin
+│   │   │   │   ├── AdminDashboard.jsx
+│   │   │   │   └── AdminLogin.jsx
+│   │   │   ├── Auth.jsx
+│   │   │   ├── ForgotPassword.jsx
+│   │   │   ├── Onboarding.jsx
+│   │   │   ├── PostsHistory.jsx
+│   │   │   ├── PrivacyPolicy.jsx
+│   │   │   ├── Profile.jsx
+│   │   │   ├── Publish.jsx
+│   │   │   ├── Requests.jsx
+│   │   │   ├── ResetPassword.jsx
+│   │   │   ├── Settings.jsx
+│   │   │   ├── SignatureConstructor.jsx
+│   │   │   └── Subscription.jsx
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   ├── main.jsx
+│   │   └── store.js
+│   ├── .dockerignore
+│   ├── .gitignore
+│   ├── Dockerfile
+│   ├── eslint.config.js
+│   ├── index.html
+│   ├── nginx.conf
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── README.md
+│   ├── tailwind.config.js
+│   └── vite.config.js
+├── .env
+├── .env.example
+├── .gitignore
+├── deploy.sh
+├── docker-compose.yml
+├── package-lock.json
+├── package.json
+└── scan_tree.js
