@@ -5,8 +5,9 @@ const FormData = require('form-data');
 const sharp = require('sharp'); 
 const cron = require('node-cron'); 
 const jwt = require('jsonwebtoken');
+const { logPost } = require('../utils/log_post');
 
-// === ЛОГИКА ОТПРАВКИ В TELEGRAM ===
+// === ЛОГИКА ОТПРАВКИ В TELEGRAM ===В общем
 async function sendToTelegram(token, chatId, text, imageBuffers) {
     const baseUrl = `https://api.telegram.org/bot${token}`;
 
@@ -38,7 +39,7 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
 }
 
 // === ЛОГИКА ОТПРАВКИ KOM-OD (ВК) С АВТО-РЕГИСТРАЦИЕЙ ПРОФИЛЕЙ ===
-async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null) {
+async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null, userId = 'CRON') {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
 
@@ -46,7 +47,11 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     const cleanId = providerId.replace('wall_', '').replace('group_', '');
     const isWall = providerId.startsWith('wall_');
 
-    console.log(`\n[DEBUG KOMOD] Начинаем отправку. Провайдер: ${providerId}, Текст: ${text ? 'Да' : 'Нет'}, Фото: ${imageBuffers.length}`);
+    logPost(userId, 'VK', 'START', `Начинаем отправку. Провайдер: ${providerId}`, { 
+        hasText: !!text, 
+        imagesCount: imageBuffers.length,
+        publishAt: publishAtDate 
+    });
 
     // 1. Получаем список групп из шлюза
     const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
@@ -61,7 +66,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     // 2. АВТО-РЕГИСТРАЦИЯ
     if (!targetGroup) {
-        console.log(`[DEBUG KOMOD] Цель ${providerId} не найдена в шлюзе. Пробуем авто-регистрацию...`);
+        logPost(userId, 'VK', 'INFO', `Цель ${providerId} не найдена в шлюзе. Пробуем авто-регистрацию...`);
         const addForm = new FormData();
         if (isWall) {
             addForm.append('account_id', cleanId);
@@ -82,9 +87,10 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                 const newGrpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
                 const newGroups = newGrpRes.data?.data?.items || newGrpRes.data?.data || [];
                 targetGroup = newGroups.find(g => String(g.uid) === cleanId || String(g.account_id) === cleanId);
+                logPost(userId, 'VK', 'SUCCESS', `Авто-регистрация ${providerId} прошла успешно`);
             }
         } catch (addError) {
-            console.error('[DEBUG KOMOD] Ошибка авто-регистрации:', addError.message);
+            logPost(userId, 'VK', 'ERROR', `Ошибка авто-регистрации ${providerId}`, addError.message);
         }
         
         if (!targetGroup) throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и подключите стену.`);
@@ -94,15 +100,13 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('group_id', targetGroupId);
     form.append('via_api', '1');
 
-    // === ФИКС: ВСЕГДА ПЕРЕДАЕМ ВРЕМЯ ===
-    // Даже если пост моментальный (publishAtDate = null), передаем текущее время по Москве. 
-    // Шлюз упадет с ошибкой, если поле publish_at вообще отсутствует при via_api=1.
+    // === ФИКС КОТОРЫЙ МЫ ДЕЛАЛИ (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) ===
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
     const formattedDate = tzString.substring(0, 16).replace('T', ' ');
     form.append('publish_at', formattedDate);
     
-    console.log(`[DEBUG KOMOD] Установлено время публикации (MSK): ${formattedDate}`);
+    logPost(userId, 'VK', 'INFO', `Установлено время публикации (MSK): ${formattedDate}`);
     
     const media = [];
     if (text) media.push({ type: 'text', text: text });
@@ -123,18 +127,24 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     form.append('media', JSON.stringify(media));
 
-    console.log(`[DEBUG KOMOD] Отправляем POST запрос на шлюз...`);
+    try {
+        const postRes = await axios.post(`${KOMOD_BASE_URL}/post`, form, {
+            headers: { ...form.getHeaders(), 'Access-Token': token },
+            maxBodyLength: Infinity,
+            validateStatus: status => status < 500
+        });
 
-    const postRes = await axios.post(`${KOMOD_BASE_URL}/post`, form, {
-        headers: { ...form.getHeaders(), 'Access-Token': token },
-        maxBodyLength: Infinity,
-        validateStatus: status => status < 500
-    });
+        logPost(userId, 'VK', 'API_RESPONSE', `Ответ от шлюза Kom-od: HTTP ${postRes.status}`, postRes.data);
 
-    console.log(`[DEBUG KOMOD] Ответ от шлюза: HTTP ${postRes.status}`, JSON.stringify(postRes.data));
+        if (postRes.data && postRes.data.success === false) {
+            throw new Error('Ошибка шлюза: ' + JSON.stringify(postRes.data.errors));
+        }
 
-    if (postRes.data && postRes.data.success === false) {
-        throw new Error('Ошибка шлюза: ' + JSON.stringify(postRes.data.errors));
+        logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
+
+    } catch (error) {
+        logPost(userId, 'VK', 'ERROR', `Фатальная ошибка отправки в ${providerId}`, error.message || error.response?.data);
+        throw error;
     }
 }
 
@@ -367,7 +377,7 @@ exports.createPost = async (req, res) => {
                         const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                         await sendToTelegram(botToken, job.account.providerId, job.finalText, job.processedBuffers);
                     } else if (providerType === 'vk') {
-                        await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null);
+                        await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null, job.account.userId);
                     }
 
                     // Сжимаем фото для сохранения в истории
@@ -447,7 +457,7 @@ exports.initCron = () => {
                     } else if (providerType === 'vk') {
                         // 🟢 ИСПРАВЛЕНИЕ: Всегда отправляем через шлюз, функция sendToVK удалена.
                         // Передаем null в качестве времени, чтобы шлюз принял пост к публикации немедленно (так как время по Cron уже пришло).
-                        await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, null);
+                        await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, null, account.userId);
                     }
 
                     // Сжимаем фото для сохранения в истории
@@ -607,4 +617,48 @@ exports.markSharedPostRead = async (req, res) => {
     await prisma.sharedPost.update({ where: { id: req.body.id }, data: { isRead: true } });
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Ошибка' }); }
+};
+
+// === API ДЛЯ АДМИНКИ: ЧТЕНИЕ ЛОГОВ ПУБЛИКАЦИИ ===
+exports.getSystemLogs = async (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+    const { date } = req.query; 
+    
+    try {
+        const targetDate = date || new Date().toLocaleDateString('en-CA');
+        const logPath = path.join(__dirname, '../../logs', `posts_${targetDate}.log`);
+        
+        if (!fs.existsSync(logPath)) {
+            return res.json({ success: true, logs: [], message: 'За эту дату логов нет' });
+        }
+        
+        const fileContent = fs.readFileSync(logPath, 'utf-8');
+        const logLines = fileContent.split('\n').filter(line => line.trim() !== '');
+        
+        const parsedLogs = logLines.map((line, index) => {
+            const match = line.match(/^\[(.*?)\]\s+\[USER:(.*?)\]\s+\[(.*?)\]\s+\[(.*?)\]\s+(.*?)\s+\|\s+DETAILS:\s+(.*)$/);
+            
+            if (match) {
+                let parsedDetails = match[6];
+                try { parsedDetails = JSON.parse(match[6]); } catch (e) {}
+
+                return {
+                    id: `${targetDate}-${index}`,
+                    timestamp: match[1],
+                    userId: match[2],
+                    provider: match[3],
+                    action: match[4],      
+                    message: match[5],
+                    details: parsedDetails
+                };
+            }
+            return { id: `${targetDate}-${index}`, raw: line };
+        }).reverse(); 
+        
+        res.json({ success: true, logs: parsedLogs });
+    } catch (error) {
+        console.error('Ошибка чтения логов для админки:', error);
+        res.status(500).json({ success: false, error: 'Не удалось прочитать файлы логов' });
+    }
 };
