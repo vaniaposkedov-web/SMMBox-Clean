@@ -774,16 +774,37 @@ export const useStore = create(
         });
       },
 
+
+      markSharedPostPublishedAction: async (id) => {
+        try {
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${baseUrl}/api/posts/shared/${id}/publish`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${get().token}` }
+          });
+          if (res.ok) {
+            get().fetchSharedPosts(); 
+            return { success: true };
+          }
+          return { success: false };
+        } catch (error) { 
+          return { success: false }; 
+        }
+      },
+
       deleteSharedPostAction: async (id) => {
         try {
-          const res = await fetch(`/api/posts/shared/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` } });
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${baseUrl}/api/posts/shared/${id}`, { 
+            method: 'DELETE', 
+            headers: { 'Authorization': `Bearer ${get().token}` } 
+          });
           if (res.ok) get().fetchSharedPosts();
-        } catch (error) {}
-      }
-      
-
-      
-
+        } catch (error) {
+          console.error("Ошибка при удалении поста:", error);
+        }
+      },
+    
     }),
 
 
