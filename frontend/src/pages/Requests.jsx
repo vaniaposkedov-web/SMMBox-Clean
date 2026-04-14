@@ -72,9 +72,9 @@ export default function Requests() {
     fetchPartnerData(user?.id);
   };
 
-  // ЛОГИКА: ОТКАЗАТЬСЯ ОТ ПОСТА
+  // === ЛОГИКА: ОТКАЗАТЬСЯ ОТ ПОСТА ===
   const handleDeletePost = async (id) => {
-    if (window.confirm('Вы уверены, что хотите отказаться от этого поста? Отправитель получит уведомление об отказе.')) {
+    if (window.confirm('Вы уверены, что хотите отказаться от этого поста? Отправителю будет отправлено уведомление.')) {
       await deleteSharedPostAction(id);
       setPreviewPost(null);
       fetchSharedPosts();
@@ -117,14 +117,14 @@ export default function Requests() {
     } catch (error) { window.open(imgUrl, '_blank'); }
   };
 
-  // ЛОГИКА: СОГЛАСИТЬСЯ И ЗАПОСТИТЬ
+  // === ЛОГИКА: СОГЛАСИТЬСЯ И ЗАПОСТИТЬ ===
   const handleUsePost = async (mode) => {
     if (!previewPost) return;
     setShowRetryMenu(false);
     setIsPreparing(true);
 
     try {
-      // Уведомляем бэкенд, что пост взят в работу
+      // Сигнализируем серверу, что пост взят в работу (сервер рассылает уведомления)
       await markSharedPostPublishedAction(previewPost.id);
 
       const reconstructedPhotos = currentMediaList.map((base64str, index) => {
@@ -257,19 +257,19 @@ export default function Requests() {
         </section>
       )}
 
-      {/* === МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА ПОСТА (ОБНОВЛЕННОЕ) === */}
+      {/* === МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА ПОСТА (Z-INDEX 999 ДЛЯ ПЕРЕКРЫТИЯ НИЖНЕГО МЕНЮ) === */}
       {previewPost && (
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[999] flex flex-col sm:items-center sm:justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl animate-in fade-in duration-200">
           
           {isPreparing && (
-            <div className="absolute inset-0 z-[160] bg-black/80 backdrop-blur-2xl flex flex-col items-center justify-center sm:rounded-[2.5rem]">
+            <div className="absolute inset-0 z-[1000] bg-black/80 backdrop-blur-2xl flex flex-col items-center justify-center sm:rounded-[2.5rem]">
                <Loader2 className="animate-spin text-[#0077FF] mb-4 sm:mb-6" size={48} />
                <p className="text-white font-black text-xl sm:text-2xl tracking-tighter uppercase text-center px-4">Подготовка данных...</p>
             </div>
           )}
 
-          {/* Использован h-full на мобилках вместо h-[100dvh], чтобы предотвратить скрытие кнопок */}
-          <div className="bg-[#0f1115] w-full h-full sm:h-auto sm:max-h-[90dvh] md:max-w-[500px] sm:rounded-[2rem] shadow-2xl flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200">
+          {/* На мобилках w-full h-full без скруглений внизу */}
+          <div className="bg-[#0f1115] w-full h-full sm:h-auto sm:max-h-[90dvh] md:max-w-[500px] sm:rounded-[2rem] shadow-2xl flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200 overflow-hidden">
             
             {/* --- ШАПКА --- */}
             <div className="flex items-center justify-between px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-4 shrink-0 z-10">
@@ -326,7 +326,7 @@ export default function Requests() {
               </div>
             </div>
 
-            {/* --- ПОДВАЛ С КНОПКАМИ (Жестко зафиксирован внизу) --- */}
+            {/* --- ПОДВАЛ С КНОПКАМИ (Прибит к низу, перекрывает всё) --- */}
             <div className="p-4 sm:p-5 border-t border-gray-800/50 bg-[#0f1115] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-5 shrink-0 flex gap-3 relative z-20">
                
                <button 
@@ -346,7 +346,7 @@ export default function Requests() {
                  </button>
                  
                  {showRetryMenu && (
-                   <div className="absolute bottom-[calc(100%+0.75rem)] right-0 w-full bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-bottom-2 duration-200">
+                   <div className="absolute bottom-[calc(100%+0.75rem)] right-0 w-full bg-[#181a20] border border-gray-700 rounded-2xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-bottom-2 duration-200">
                      <button onClick={() => handleUsePost('now')} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm text-white hover:bg-gray-700 font-bold transition-all rounded-xl mb-1">
                        <Send size={16} className="text-blue-400"/> Запостить сейчас
                      </button>
@@ -365,11 +365,11 @@ export default function Requests() {
 
       {/* === ПОЛНОЭКРАННЫЙ СЛАЙДЕР С НАВИГАЦИЕЙ === */}
       {fsImageIndex !== null && (
-        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-black animate-in fade-in duration-200">
           
           <button 
             onClick={() => setFsImageIndex(null)} 
-            className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 sm:right-8 w-12 h-12 sm:w-14 sm:h-14 bg-gray-900/80 text-white rounded-full flex items-center justify-center transition-all z-[210] active:scale-90"
+            className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 sm:right-8 w-12 h-12 sm:w-14 sm:h-14 bg-gray-900/80 text-white rounded-full flex items-center justify-center transition-all z-[1010] active:scale-90"
           >
             <X size={24} className="sm:w-8 sm:h-8" />
           </button>
@@ -377,7 +377,7 @@ export default function Requests() {
           <button 
             onClick={handlePrevPhoto} 
             disabled={fsImageIndex === 0}
-            className="absolute left-2 sm:left-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[210] active:scale-75"
+            className="absolute left-2 sm:left-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[1010] active:scale-75"
           >
             <ChevronLeft size={40} className="sm:w-16 sm:h-16" />
           </button>
@@ -385,7 +385,7 @@ export default function Requests() {
           <button 
             onClick={handleNextPhoto} 
             disabled={fsImageIndex === currentMediaList.length - 1}
-            className="absolute right-2 sm:right-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[210] active:scale-75"
+            className="absolute right-2 sm:right-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[1010] active:scale-75"
           >
             <ChevronRight size={40} className="sm:w-16 sm:h-16" />
           </button>
@@ -398,7 +398,7 @@ export default function Requests() {
             />
           </div>
 
-          <div className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-4 sm:gap-6 z-[210]">
+          <div className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-4 sm:gap-6 z-[1010]">
              <div className="px-4 sm:px-6 py-1.5 sm:py-2 bg-gray-900/90 border border-gray-800 rounded-full text-white font-black text-[10px] sm:text-xs tracking-[0.3em] uppercase">
                 {fsImageIndex + 1} / {currentMediaList.length}
              </div>
