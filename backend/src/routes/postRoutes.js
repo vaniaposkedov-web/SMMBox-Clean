@@ -2,17 +2,17 @@ const express = require('express');
 const router = express.Router();
 const postController = require('../controllers/postController');
 const authMiddleware = require('../middleware/auth');
-const upload = require('../middleware/upload'); // Подключаем наш загрузчик
+const upload = require('../middleware/upload'); // ⚡ Подключили загрузчик
 
-// Добавляем middleware загрузки ТОЛЬКО на создание поста
+// ⚡ ИСПРАВЛЕНИЕ: Добавили upload.array('media', 10) чтобы сервер начал принимать файлы
 router.post('/create', authMiddleware, upload.array('media', 10), postController.createPost);
+router.post('/share', authMiddleware, upload.array('media', 10), postController.shareWithPartners);
 
-router.post('/share', authMiddleware, postController.shareWithPartners);
 router.get('/shared', authMiddleware, postController.getSharedPosts);
 router.delete('/shared/:id', authMiddleware, postController.deleteSharedPost);
 router.post('/shared/read', authMiddleware, postController.markSharedPostRead);
 
-// НОВЫЕ РОУТЫ ДЛЯ КАЛЕНДАРЯ И РЕДАКТИРОВАНИЯ
+// РОУТЫ ДЛЯ КАЛЕНДАРЯ И РЕДАКТИРОВАНИЯ
 router.get('/scheduled', authMiddleware, postController.getScheduledPosts);
 router.put('/scheduled/:id', authMiddleware, postController.updateScheduledPost);
 router.delete('/scheduled/:id', authMiddleware, postController.deleteScheduledPost);
