@@ -723,7 +723,22 @@ exports.getSharedPosts = async (req, res) => {
 
 exports.deleteSharedPost = async (req, res) => {
     try {
-        await prisma.sharedPost.delete({ where: { id: req.params.id } });
+        const post = await prisma.sharedPost.findUnique({
+            where: { id: req.params.id },
+            include: { receiver: { select: { name: true, pavilion: true } } }
+        });
+        
+        if (post) {
+            // Создаем уведомление для автора поста об отказе
+            await prisma.notification.create({
+                data: {
+                    userId: post.senderId,
+                    type: 'WARNING',
+                    text: `Партнер ${post.receiver?.name || 'Без имени'} (Павильон ${post.receiver?.pavilion || '?'}) отказался от публикации вашего поста.`
+                }
+            });
+            await prisma.sharedPost.delete({ where: { id: req.params.id } });
+        }
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false });
@@ -857,12 +872,12 @@ exports.markSharedPostPublished = async (req, res) => {
 
         const sharedPost = await prisma.sharedPost.findUnique({
             where: { id },
-            include: { sender: true, receiver: true }
+            include: { sender: true, receiver: { select: { name: true, pavilion: true } } }
         });
 
         if (!sharedPost) return res.status(404).json({ success: false, error: 'Пост не найден' });
         
-        // Обновляем статус поста
+        // Обновляем статус поста, чтобы он исчез из вкладки
         await prisma.sharedPost.update({
             where: { id },
             data: { isPublished: true }
@@ -873,7 +888,7 @@ exports.markSharedPostPublished = async (req, res) => {
             data: {
                 userId: sharedPost.senderId,
                 type: 'SUCCESS',
-                text: `Партнер ${sharedPost.receiver.name || 'Без имени'} опубликовал ваш пост у себя!`,
+                text: `Партнер ${sharedPost.receiver?.name || 'Без имени'} (Павильон ${sharedPost.receiver?.pavilion || '?'}) опубликовал ваш пост у себя!`,
                 metadata: JSON.stringify({ text: sharedPost.text, mediaUrls: sharedPost.mediaUrls })
             }
         });
