@@ -486,7 +486,7 @@ exports.initCron = () => {
 };
 
 
-// === ПОЛУЧИТЬ ТОЛЬКО ОТЛОЖЕННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
+/// === ПОЛУЧИТЬ ТОЛЬКО ОТЛОЖЕННЫЕ ПОСТЫ ДЛЯ КАЛЕНДАРЯ ===
 exports.getScheduledPosts = async (req, res) => {
     try {
         const userId = getUserId(req);
@@ -496,30 +496,19 @@ exports.getScheduledPosts = async (req, res) => {
             where: { 
                 account: { userId: userId }, 
                 status: { in: ['SCHEDULED', 'PUBLISHED', 'FAILED'] },
-                publishAt: { not: null } // Это правило как раз отсеет моментальные посты
+                publishAt: { not: null } 
             },
-            // ФИКС: Добавили avatarUrl: true
             include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
             orderBy: { publishAt: 'asc' },
             take: 150
         });
 
-        const lightweightPosts = posts.map(p => {
-            let firstImage = [];
-            try {
-                const parsed = JSON.parse(p.mediaUrls || '[]');
-                if (parsed.length > 0) firstImage = [parsed[0]];
-            } catch(e) {}
-            
-            return { ...p, mediaUrls: JSON.stringify(firstImage) };
-        });
-
-        res.json({ success: true, posts: lightweightPosts });
+        // 🟢 ИСПРАВЛЕНИЕ: БОЛЬШЕ НИКАКОЙ ОБРЕЗКИ. Отдаем массив mediaUrls целиком!
+        res.json({ success: true, posts: posts });
     } catch (error) {
         res.status(500).json({ success: false });
     }
 };
-
 // === ОБНОВИТЬ СУЩЕСТВУЮЩИЙ ОТЛОЖЕННЫЙ ПОСТ (РЕДАКТИРОВАНИЕ) ===
 exports.updateScheduledPost = async (req, res) => {
     try {
@@ -667,36 +656,22 @@ exports.getSystemLogs = async (req, res) => {
 // === ПОЛУЧИТЬ ПОЛНУЮ ИСТОРИЮ ПОСТОВ ===
 exports.getPostsHistory = async (req, res) => {
     try {
-        // Функция getUserId у тебя уже есть в контроллере
         const userId = getUserId(req);
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
-        // Достаем все посты, где аккаунт принадлежит текущему юзеру
         const posts = await prisma.post.findMany({
             where: { 
                 account: { userId: userId } 
             },
-            include: { 
-                account: { select: { name: true, provider: true, avatarUrl: true } } 
-            },
+            include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
             orderBy: [
-                { createdAt: 'desc' } // Сортируем от самых новых к старым
+                { createdAt: 'desc' }
             ],
-            take: 100 // Защита от перегрузки (пагинацию добавим позже, если потребуется)
+            take: 100 
         });
 
-        // Облегчаем вес ответа (чтобы не гонять тяжелые base64, если они там есть)
-        const lightweightPosts = posts.map(p => {
-            let firstImage = [];
-            try {
-                const parsed = JSON.parse(p.mediaUrls || '[]');
-                if (parsed.length > 0) firstImage = [parsed[0]];
-            } catch(e) {}
-            
-            return { ...p, mediaUrls: JSON.stringify(firstImage) };
-        });
-
-        res.json({ success: true, posts: lightweightPosts });
+        // 🟢 ИСПРАВЛЕНИЕ: Отдаем все фотографии без обрезки!
+        res.json({ success: true, posts: posts });
     } catch (error) {
         console.error('Ошибка в getPostsHistory:', error);
         res.status(500).json({ success: false, error: 'Ошибка при загрузке истории' });
