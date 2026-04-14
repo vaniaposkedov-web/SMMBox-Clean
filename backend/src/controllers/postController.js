@@ -6,6 +6,8 @@ const sharp = require('sharp');
 const cron = require('node-cron'); 
 const jwt = require('jsonwebtoken');
 const { logPost } = require('../utils/log_post');
+const fs = require('fs');
+const path = require('path');
 
 // === ЛОГИКА ОТПРАВКИ В TELEGRAM ===В общем
 async function sendToTelegram(token, chatId, text, imageBuffers) {
@@ -36,6 +38,27 @@ async function sendToTelegram(token, chatId, text, imageBuffers) {
         
         await axios.post(`${baseUrl}/sendMediaGroup`, form, { headers: form.getHeaders() });
     }
+}
+
+
+async function saveImageToFile(buffer, prefix = 'img') {
+    // Путь к папке backend/uploads/posts
+    const uploadsDir = path.join(__dirname, '../../uploads/posts');
+    
+    // Автоматически создаем папку, если ее нет
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    
+    // Генерируем уникальное имя файла
+    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+    const filePath = path.join(uploadsDir, fileName);
+    
+    // Сохраняем физический файл на диск
+    await fs.promises.writeFile(filePath, buffer);
+    
+    // Возвращаем относительный URL для базы данных
+    return `/uploads/posts/${fileName}`;
 }
 
 // === ЛОГИКА ОТПРАВКИ KOM-OD (ВК) С АВТО-РЕГИСТРАЦИЕЙ ПРОФИЛЕЙ ===
@@ -345,19 +368,18 @@ exports.createPost = async (req, res) => {
         // === ВЕТКА А: ОТЛОЖЕННЫЙ ПОСТ ===
         if (isScheduled) {
             for (const job of accountJobs) {
-                // ПРАВИЛЬНО создаем миниатюры для отложенного поста
-                const finalImagesToSave = await Promise.all(job.processedBuffers.map(async (buf) => {
-                    const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
-                    return 'data:image/jpeg;base64,' + thumb.toString('base64');
+                // СОХРАНЯЕМ ФАЙЛЫ (В высоком качестве для будущей публикации!)
+                const finalImagesUrls = await Promise.all(job.processedBuffers.map(async (buf) => {
+                    return await saveImageToFile(buf, 'scheduled');
                 }));
 
                 await prisma.post.create({
                     data: {
                         accountId: job.account.id,
                         text: job.finalText,
-                        mediaUrls: JSON.stringify(finalImagesToSave),
-                        publishAt: parsedPublishAt, // Строго сохраняем БУДУЩУЮ дату
-                        status: 'SCHEDULED' // Оставляем статус для Cron-планировщика
+                        mediaUrls: JSON.stringify(finalImagesUrls), // Сохраняем пути, а не Base64
+                        publishAt: parsedPublishAt,
+                        status: 'SCHEDULED'
                     }
                 });
             }
@@ -380,18 +402,18 @@ exports.createPost = async (req, res) => {
                         await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null, job.account.userId);
                     }
 
-                    // Сжимаем фото для сохранения в истории
-                    const thumbnailsForDb = await Promise.all(job.processedBuffers.map(async (buf) => {
-                        const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
-                        return 'data:image/jpeg;base64,' + thumb.toString('base64');
+                    // Сохраняем файлы ДЛЯ ИСТОРИИ (облегченные версии)
+                    const thumbnailsUrls = await Promise.all(job.processedBuffers.map(async (buf) => {
+                        const thumbBuf = await sharp(buf).resize({ width: 800, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
+                        return await saveImageToFile(thumbBuf, 'history');
                     }));
 
                     await prisma.post.create({
                         data: {
                             accountId: job.account.id,
                             text: job.finalText,
-                            mediaUrls: JSON.stringify(thumbnailsForDb),
-                            publishAt: null, // ФИКС: null скрывает моментальный пост из календаря
+                            mediaUrls: JSON.stringify(thumbnailsUrls), // Сохраняем пути
+                            publishAt: null, 
                             status: 'PUBLISHED' 
                         }
                     });
@@ -400,13 +422,12 @@ exports.createPost = async (req, res) => {
                     hasErrors = true;
                     lastError = err.message;
                     
-                    // В блоке ошибки (catch)
                     await prisma.post.create({
                         data: {
                             accountId: job.account.id,
                             text: job.finalText,
                             mediaUrls: "[]",
-                            publishAt: null, // ФИКС: null скрывает моментальный пост из календаря
+                            publishAt: null,
                             status: 'FAILED' 
                         }
                     });
@@ -426,7 +447,7 @@ exports.createPost = async (req, res) => {
     }
 };
 
-// === ТАЙМЕР (CRON): АВТОМАТИЧЕСКАЯ ОТПРАВКА ОТЛОЖЕННЫХ ПОСТОВ ===
+/// === ТАЙМЕР (CRON): АВТОМАТИЧЕСКАЯ ОТПРАВКА ОТЛОЖЕННЫХ ПОСТОВ ===
 exports.initCron = () => {
     cron.schedule('* * * * *', async () => {
         try {
@@ -445,33 +466,46 @@ exports.initCron = () => {
                     const account = post.account;
                     const mediaUrls = JSON.parse(post.mediaUrls || '[]');
                     
-                    const imageBuffers = mediaUrls.map(img => {
-                        const base64Data = img.includes(',') ? img.split(',')[1] : img;
-                        return Buffer.from(base64Data, 'base64');
-                    });
+                    const imageBuffers = [];
+                    
+                    // Читаем фото: поддержка и новых (файлы) и старых (Base64) постов
+                    for (const imgUrl of mediaUrls) {
+                        if (imgUrl.startsWith('data:')) {
+                            // Поддержка СТАРЫХ постов (Base64)
+                            const base64Data = imgUrl.split(',')[1];
+                            imageBuffers.push(Buffer.from(base64Data, 'base64'));
+                        } else {
+                            // Читаем НОВЫЕ файлы с диска
+                            const filePath = path.join(__dirname, '../..', imgUrl);
+                            try {
+                                const buf = await fs.promises.readFile(filePath);
+                                imageBuffers.push(buf);
+                            } catch (e) {
+                                console.error(`[CRON ERROR] Не найден файл ${filePath}`);
+                            }
+                        }
+                    }
 
                     const providerType = account.provider.toLowerCase();
                     if (providerType === 'telegram') {
                         const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
                         await sendToTelegram(botToken, account.providerId, post.text, imageBuffers);
                     } else if (providerType === 'vk') {
-                        // 🟢 ИСПРАВЛЕНИЕ: Всегда отправляем через шлюз, функция sendToVK удалена.
-                        // Передаем null в качестве времени, чтобы шлюз принял пост к публикации немедленно (так как время по Cron уже пришло).
                         await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, null, account.userId);
                     }
 
-                    // Сжимаем фото для сохранения в истории
-                    const thumbnailsForDb = await Promise.all(imageBuffers.map(async (buf) => {
-                        const thumb = await sharp(buf).resize({ width: 600, height: 600, fit: 'inside' }).jpeg({ quality: 60 }).toBuffer();
-                        return 'data:image/jpeg;base64,' + thumb.toString('base64');
+                    // Сжимаем фото для истории и сохраняем их как ФАЙЛЫ, а не Base64
+                    const thumbnailsUrls = await Promise.all(imageBuffers.map(async (buf) => {
+                        const thumbBuf = await sharp(buf).resize({ width: 800, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
+                        return await saveImageToFile(thumbBuf, 'history_cron');
                     }));
 
                     await prisma.post.update({
                         where: { id: post.id },
                         data: { 
                             status: 'PUBLISHED', 
-                            mediaUrls: JSON.stringify(thumbnailsForDb) 
-                            // ВАЖНО: Мы НЕ обнуляем publishAt, чтобы пост остался в календаре как завершенный
+                            mediaUrls: JSON.stringify(thumbnailsUrls) 
+                            // ВАЖНО: Мы НЕ обнуляем publishAt, чтобы пост остался в календаре
                         } 
                     });
                     
@@ -481,7 +515,9 @@ exports.initCron = () => {
                     await prisma.post.update({ where: { id: post.id }, data: { status: 'FAILED' } });
                 }
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error('[CRON FATAL ERROR]', e);
+        }
     });
 };
 
