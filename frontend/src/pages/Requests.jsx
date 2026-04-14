@@ -31,7 +31,8 @@ export default function Requests() {
   const { 
     user, fetchPartnerData, fetchSharedPosts,
     acceptPartnershipRequest, declinePartnershipRequest,
-    deleteSharedPostAction, saveTempDraft
+    deleteSharedPostAction, saveTempDraft, 
+    markSharedPostPublishedAction // <--- ДОБАВИТЬ ЭТО
   } = useStore();
   
   const navigate = useNavigate();
@@ -114,10 +115,13 @@ export default function Requests() {
     } catch (error) { window.open(imgUrl, '_blank'); }
   };
 
-  const handleUsePost = (mode) => {
+  const handleUsePost = async (mode) => {
     if (!previewPost) return;
     setShowRetryMenu(false);
     setIsPreparing(true);
+
+    // Уведомляем бэкенд, что пост взят в публикацию
+    await markSharedPostPublishedAction(previewPost.id);
 
     setTimeout(() => {
       const reconstructedPhotos = currentMediaList.map((base64str, index) => {
