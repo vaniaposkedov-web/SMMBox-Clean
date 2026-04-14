@@ -120,10 +120,10 @@ export default function Requests() {
     setShowRetryMenu(false);
     setIsPreparing(true);
 
-    // Уведомляем бэкенд, что пост взят в публикацию
-    await markSharedPostPublishedAction(previewPost.id);
+    try {
+      // Уведомляем бэкенд, что пост взят в публикацию
+      await markSharedPostPublishedAction(previewPost.id);
 
-    setTimeout(() => {
       const reconstructedPhotos = currentMediaList.map((base64str, index) => {
         const file = base64ToFile(base64str, `shared_${index}.jpg`);
         return file ? {
@@ -141,11 +141,13 @@ export default function Requests() {
         publishMode: mode 
       });
 
-      setTimeout(() => {
-        setIsPreparing(false);
-        navigate('/publish');
-      }, 300);
-    }, 600);
+      setIsPreparing(false);
+      navigate('/publish');
+    } catch (error) {
+      console.error("Ошибка подготовки поста:", error);
+      setIsPreparing(false);
+      alert("Не удалось подготовить пост. Попробуйте еще раз.");
+    }
   };
 
   // === КОМПОНЕНТ СЕТКИ ФОТОГРАФИЙ ===
@@ -315,10 +317,10 @@ export default function Requests() {
                     <div className="relative">
                       <button 
                         onClick={() => setShowRetryMenu(!showRetryMenu)}
-                        title="Опубликовать"
-                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-blue-400 hover:bg-blue-500 hover:text-white bg-gray-800 transition-all active:scale-95"
+                        title="Создать публикацию"
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-emerald-400 hover:bg-emerald-500 hover:text-white bg-gray-800 transition-all active:scale-95"
                       >
-                        <RefreshCw size={18} className="sm:w-5 sm:h-5" />
+                        <PlusCircle size={20} className="sm:w-6 sm:h-6" />
                       </button>
                       
                       {showRetryMenu && (

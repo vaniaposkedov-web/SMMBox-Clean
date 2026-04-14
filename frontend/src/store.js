@@ -687,6 +687,22 @@ export const useStore = create(
         } catch (error) {}
       },
 
+      markSharedPostPublishedAction: async (id) => {
+        try {
+          const res = await fetch(`/api/posts/shared/${id}/publish`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${get().token}` }
+          });
+          if (res.ok) {
+            get().fetchSharedPosts(); // Сразу обновляем список, чтобы пост пропал из входящих
+            return { success: true };
+          }
+          return { success: false };
+        } catch (error) { 
+          return { success: false }; 
+        }
+      },
+
       sharePostAction: async (text, mediaUrls, partnerIds) => {
         try {
           const token = localStorage.getItem('token') || get().token;
@@ -778,8 +794,15 @@ export const useStore = create(
           if (res.ok) get().fetchSharedPosts();
         } catch (error) {}
       }
+      
+
+      
 
     }),
+
+
+    
+
     {
       name: 'smmbox-storage',
       partialize: (state) => ({
