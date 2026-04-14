@@ -701,20 +701,39 @@ export const useStore = create(
 
       
 
-      sharePostAction: async (text, mediaUrls, partnerIds) => {
+      sharePostAction: async (text, mediaBlobs, partnerIds) => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
+          
+          // ⚡ ИСПРАВЛЕНИЕ: Используем FormData для передачи файлов, а не JSON
+          const formData = new FormData();
+          
+          if (text) formData.append('text', text);
+          formData.append('partnerIds', JSON.stringify(partnerIds));
+          
+          if (mediaBlobs && mediaBlobs.length > 0) {
+            mediaBlobs.forEach((blob, index) => {
+              formData.append('media', blob, `image_${index}.webp`);
+            });
+          }
+
           const res = await fetch('/api/posts/share', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ text, mediaUrls, partnerIds })
+            method: 'POST', 
+            // ВАЖНО: Убираем 'Content-Type': 'application/json', браузер поставит его сам для FormData
+            headers: { 'Authorization': `Bearer ${token}` }, 
+            body: formData
           });
+          
           const data = await res.json();
           if (res.ok && data.success) {
             get().fetchSharedPosts();
             return { success: true };
           }
           return { success: false, error: data.error };
-        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
+        } catch (error) { 
+          return { success: false, error: 'Ошибка соединения' }; 
+        }
       },
 
       saveVkGroupWithToken: async (userId, groupLink, accessToken) => {
