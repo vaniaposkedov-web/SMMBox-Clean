@@ -5,7 +5,7 @@ import {
   Bell, Inbox, X, Send, UserPlus, UserCheck, UserX,
   CheckCircle2, Image as ImageIcon, Share2, Layers,
   ChevronRight, Trash2, Maximize2, ChevronLeft, Download,
-  Loader2, Calendar, FileText
+  Loader2, Calendar, FileText, Clock, RefreshCw
 } from 'lucide-react';
 
 // === Утилита для конвертации картинок в файлы ===
@@ -43,6 +43,7 @@ export default function Requests() {
   const [previewPost, setPreviewPost] = useState(null);
   const [fsImageIndex, setFsImageIndex] = useState(null);
   const [isPreparing, setIsPreparing] = useState(false);
+  const [showRetryMenu, setShowRetryMenu] = useState(false);
 
   // === ЖЕСТКАЯ БЛОКИРОВКА СКРОЛЛА ФОНА ===
   useEffect(() => {
@@ -113,8 +114,9 @@ export default function Requests() {
     } catch (error) { window.open(imgUrl, '_blank'); }
   };
 
-  const handleUsePost = () => {
+  const handleUsePost = (mode) => {
     if (!previewPost) return;
+    setShowRetryMenu(false);
     setIsPreparing(true);
 
     setTimeout(() => {
@@ -132,7 +134,7 @@ export default function Requests() {
         photos: reconstructedPhotos,
         step: 1, 
         view: 'wizard',
-        publishMode: 'now' 
+        publishMode: mode 
       });
 
       setTimeout(() => {
@@ -142,6 +144,7 @@ export default function Requests() {
     }, 600);
   };
 
+  // === КОМПОНЕНТ СЕТКИ ФОТОГРАФИЙ ===
   const PhotoGrid = ({ mediaUrls }) => {
     const images = useMemo(() => {
       try { return JSON.parse(mediaUrls || '[]'); } catch(e) { return []; }
@@ -277,7 +280,7 @@ export default function Requests() {
         </section>
       )}
 
-      {/* === ИДЕАЛЬНОЕ МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА === */}
+      {/* === ИДЕАЛЬНОЕ МОДАЛЬНОЕ ОКНО (Точно как в истории, без кнопки поделиться) === */}
       {previewPost && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl sm:p-6 md:p-10 animate-in fade-in duration-200">
           
@@ -304,20 +307,32 @@ export default function Requests() {
                   
                   <div className="flex items-center gap-1.5 sm:gap-3">
                     
-                    {/* Кнопка Опубликовать */}
-                    <button 
-                      onClick={handleUsePost}
-                      title="Опубликовать"
-                      className="flex items-center gap-2 px-4 sm:px-6 h-10 sm:h-12 rounded-xl sm:rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-blue-500/20"
-                    >
-                      <Send size={18} className="sm:w-5 sm:h-5" />
-                      <span className="hidden xs:inline">Опубликовать</span>
-                    </button>
+                    {/* Кнопка Опубликовать с Dropdown (Точно как кнопка Повторить) */}
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowRetryMenu(!showRetryMenu)}
+                        title="Опубликовать"
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-blue-400 hover:bg-blue-500 hover:text-white bg-gray-800 transition-all active:scale-95"
+                      >
+                        <RefreshCw size={18} className="sm:w-5 sm:h-5" />
+                      </button>
+                      
+                      {showRetryMenu && (
+                        <div className="absolute top-[calc(100%+0.5rem)] left-0 sm:left-auto sm:right-0 w-56 sm:w-64 bg-gray-800 border border-gray-700 rounded-2xl sm:rounded-3xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-top-2 duration-200">
+                          <button onClick={() => handleUsePost('schedule')} className="w-full flex items-center gap-3 sm:gap-4 px-4 py-3 sm:py-4 text-xs sm:text-sm text-white hover:bg-gray-700 font-black uppercase tracking-widest transition-all rounded-xl mb-1">
+                            <Clock size={16} className="text-purple-400 sm:w-5 sm:h-5"/> В очередь
+                          </button>
+                          <button onClick={() => handleUsePost('now')} className="w-full flex items-center gap-3 sm:gap-4 px-4 py-3 sm:py-4 text-xs sm:text-sm text-white hover:bg-gray-700 font-black uppercase tracking-widest transition-all rounded-xl border-t border-gray-700">
+                            <Send size={16} className="text-blue-400 sm:w-5 sm:h-5"/> Прямо сейчас
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Кнопка Удалить */}
                     <button 
                       onClick={() => handleDeletePost(previewPost.id)}
-                      title="Удалить пост"
+                      title="Удалить из входящих"
                       className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white bg-gray-800 transition-all active:scale-95"
                     >
                       <Trash2 size={18} className="sm:w-5 sm:h-5" />
@@ -338,6 +353,7 @@ export default function Requests() {
 
             {/* --- КОНТЕНТ (Свободно скроллится внутри) --- */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+              
               <div className="flex items-center gap-3 sm:gap-5 mb-6 sm:mb-10 pb-6 sm:pb-8 border-b border-gray-800/30">
                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-[1.2rem] sm:rounded-[1.5rem] bg-gray-900 overflow-hidden border-2 border-gray-800 p-0.5 sm:p-1 shrink-0">
                   {previewPost.sender?.avatarUrl ? <img src={previewPost.sender.avatarUrl} className="w-full h-full object-cover rounded-[1rem] sm:rounded-[1.1rem]"/> : <ImageIcon className="w-full h-full p-4 text-gray-600"/>}
