@@ -598,8 +598,16 @@ exports.updateScheduledPost = async (req, res) => {
 
 exports.shareWithPartners = async (req, res) => {
     try {
-        const { text, partnerIds: partnerIdsStr } = req.body;
-        const partnerIds = partnerIdsStr ? JSON.parse(partnerIdsStr) : [];
+        // 🛡️ 1. БЕЗОПАСНЫЙ ПАРСИНГ ID ПАРТНЕРОВ
+        let partnerIds = [];
+        const rawPartnerIds = req.body.partnerIds || req.body.partnerIdsStr;
+        
+        if (typeof rawPartnerIds === 'string') {
+            try { partnerIds = JSON.parse(rawPartnerIds); } catch (e) { console.error('Не смог распарсить partnerIds:', rawPartnerIds); }
+        } else if (Array.isArray(rawPartnerIds)) {
+            partnerIds = rawPartnerIds;
+        }
+
         const senderId = getUserId(req);
 
         if (!senderId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
@@ -608,51 +616,60 @@ exports.shareWithPartners = async (req, res) => {
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
         if (!sender) return res.status(404).json({ success: false, error: 'Отправитель не найден' });
 
-        // ⚡ 1. ОПТИМИЗАЦИЯ: Параллельная и быстрая нарезка картинок
+        // 🛡️ 2. БЕЗОПАСНАЯ ОБРАБОТКА ФАЙЛОВ
         let savedImageUrls = [];
         if (req.files && req.files.length > 0) {
-            savedImageUrls = await Promise.all(req.files.map(async (file) => {
+            for (const file of req.files) {
                 try {
                     const buffer = await fs.promises.readFile(file.path);
-                    fs.promises.unlink(file.path).catch(() => {}); // Удаляем временный файл
+                    // Асинхронное удаление временного файла
+                    fs.promises.unlink(file.path).catch(() => {});
                     
                     const optimizedBuf = await sharp(buffer)
                         .resize({ width: 2000, fit: 'inside', withoutEnlargement: true })
                         .jpeg({ quality: 85 })
                         .toBuffer();
                         
-                    return await saveImageToFile(optimizedBuf, 'shared');
+                    const url = await saveImageToFile(optimizedBuf, 'shared');
+                    if (url) savedImageUrls.push(url);
                 } catch (e) {
-                    console.error('Ошибка обработки файла партнера:', e);
-                    return null;
+                    console.error('Ошибка обработки фото партнера:', e);
                 }
-            }));
-            
-            savedImageUrls = savedImageUrls.filter(url => url !== null);
+            }
+        } else if (req.body.mediaUrls) {
+             // Фолбек: если картинки всё еще шлют в Base64
+             const urls = typeof req.body.mediaUrls === 'string' ? JSON.parse(req.body.mediaUrls) : req.body.mediaUrls;
+             urls.forEach(img => {
+                 if(img && img.includes(',')) savedImageUrls.push(img); // Временный костыль, если FormData не сработала
+             });
         }
 
         const mediaString = JSON.stringify(savedImageUrls);
+        const postText = req.body.text || '';
 
-        // 🛡️ 2. БЕЗОПАСНОСТЬ: Последовательная запись в базу (защита от краша Prisma)
-        // Занимает миллисекунды, поэтому цикл for...of здесь идеален
+        // 🛡️ 3. ЗАПИСЬ В БАЗУ ДАННЫХ
         for (const receiverId of partnerIds) {
-            await prisma.sharedPost.create({
-                data: { senderId: sender.id, receiverId, text: text || '', mediaUrls: mediaString }
-            });
-            await prisma.notification.create({
-                data: { 
-                    userId: receiverId, 
-                    type: 'INFO',
-                    text: `Партнер ${sender?.name || 'Без имени'} поделился с вами новой публикацией.`,
-                    metadata: JSON.stringify({ text, mediaUrls: savedImageUrls })
-                }
-            });
+            try {
+                await prisma.sharedPost.create({
+                    data: { senderId: sender.id, receiverId, text: postText, mediaUrls: mediaString }
+                });
+                await prisma.notification.create({
+                    data: { 
+                        userId: receiverId, 
+                        type: 'INFO',
+                        text: `Партнер ${sender?.name || 'Без имени'} поделился с вами новой публикацией.`,
+                        metadata: JSON.stringify({ text: postText, mediaUrls: savedImageUrls })
+                    }
+                });
+            } catch (dbError) {
+                console.error(`Ошибка записи для партнера ${receiverId}:`, dbError.message);
+            }
         }
 
         res.json({ success: true });
     } catch (error) {
-        console.error('Ошибка шеринга:', error);
-        res.status(500).json({ success: false, error: `Ошибка сервера: ${error.message}` });
+        console.error('ФАТАЛЬНАЯ ОШИБКА ШЕРИНГА:', error);
+        res.status(500).json({ success: false, error: `Внутренняя ошибка сервера: ${error.message}` });
     }
 };
 

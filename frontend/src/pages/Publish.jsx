@@ -1106,22 +1106,15 @@ const handlePublish = async () => {
                     : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'
                 }`}
               >
-                {isSharing ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    <span>Отправка...</span>
-                  </>
-                ) : partnerStatus === 'sent' ? (
-                  <>
-                    <CheckCircle2 size={18} />
-                    <span>Отправлено!</span>
-                  </>
-                ) : (
-                  <>
-                    <Send size={18} />
-                    <span>Отправить ({selectedPartners.length})</span>
-                  </>
-                )}
+                {/* 🛡️ ЖЕСТКАЯ ОБЕРТКА ДЛЯ ЗАЩИТЫ REACT ОТ КРАША */}
+                <div className="flex items-center justify-center gap-2 pointer-events-none">
+                  {isSharing && <Loader2 size={18} className="animate-spin" />}
+                  {!isSharing && partnerStatus === 'sent' && <CheckCircle2 size={18} />}
+                  {!isSharing && partnerStatus !== 'sent' && <Send size={18} />}
+                  <span>
+                    {isSharing ? 'Отправка...' : partnerStatus === 'sent' ? 'Отправлено!' : `Отправить (${selectedPartners.length})`}
+                  </span>
+                </div>
               </button>
             </div>
 
