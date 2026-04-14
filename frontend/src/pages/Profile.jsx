@@ -829,39 +829,40 @@ export default function Profile() {
       {/* === МОДАЛЬНОЕ ОКНО ОФОРМЛЕНИЯ PRO === */}
       {showProModal && (
         <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="bg-[#1a1d24] w-full max-w-[420px] border-t sm:border border-gray-800 rounded-t-[2rem] sm:rounded-3xl p-6 sm:p-7 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-7 shadow-2xl relative transition-transform">
-            <button onClick={() => setShowProModal(false)} className="absolute top-4 sm:top-5 right-4 sm:right-5 text-gray-500 hover:text-white bg-gray-900 rounded-full p-2 transition-colors z-10">
-              <X size={20} />
+          <div className="bg-[#1e2128] w-full max-w-[460px] border-t sm:border border-gray-800 rounded-t-[2rem] sm:rounded-3xl p-6 sm:p-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-8 shadow-2xl relative transition-transform">
+            
+            <button onClick={() => setShowProModal(false)} className="absolute top-4 sm:top-5 right-4 sm:right-5 text-gray-500 hover:text-white bg-[#14171c] rounded-full p-2.5 transition-colors z-10">
+              <X size={22} />
             </button>
 
-            <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] bg-[#EAB308] rounded-full flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
-              <Crown size={36} className="text-black" />
+            <div className="w-20 h-20 sm:w-[88px] sm:h-[88px] bg-[#EAB308] rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-5 shadow-[0_0_40px_rgba(234,179,8,0.15)]">
+              <Crown size={40} className="text-black" />
             </div>
             
             <div className="text-center">
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-white mb-4 uppercase tracking-wide">ПРО</h3>
+              <h3 className="text-3xl sm:text-4xl font-extrabold text-white mb-5 uppercase tracking-wide">ПРО</h3>
               
-              <div className="text-gray-300 text-sm sm:text-[15px] mb-6 leading-snug space-y-3">
+              <div className="text-gray-300 text-base sm:text-lg mb-6 leading-relaxed space-y-3 sm:space-y-4">
                 <p>
-                  Стоимость безлимитной PRO-подписки составляет <span className="text-[#EAB308] font-bold">2000 ₽ в месяц</span>
+                  Стоимость безлимитной PRO-подписки составляет <span className="text-[#EAB308] font-bold block sm:inline mt-1 sm:mt-0">2000 ₽ в месяц</span>
                 </p>
-                <p className="text-gray-400 text-[13px] sm:text-sm">
+                <p className="text-gray-400 text-sm sm:text-base">
                   Оплата производится прямым переводом на банковскую карту.
                 </p>
                 
-                <div className="bg-[#121419] border border-gray-800/60 p-4 sm:p-5 rounded-xl text-left mt-4 space-y-3">
-                  <p className="text-gray-300 leading-relaxed text-[13px] sm:text-sm">
+                <div className="bg-[#14171c] border border-gray-800/80 p-5 sm:p-6 rounded-2xl text-left mt-6 space-y-4 shadow-inner">
+                  <p className="text-gray-300 leading-relaxed text-sm sm:text-[15px]">
                     Нажмите кнопку ниже, чтобы перейти в Telegram. Наш менеджер ответит вам в течение <span className="text-white font-bold">нескольких часов</span> и пришлет реквизиты. 
                   </p>
-                  <p className="text-gray-300 leading-relaxed text-[13px] sm:text-sm">
+                  <p className="text-gray-300 leading-relaxed text-sm sm:text-[15px]">
                     Подписка будет активирована <span className="text-[#10B981] font-bold">в течение суток</span> после оплаты!
                   </p>
                 </div>
               </div>
             </div>
 
-            <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-3.5 sm:py-4 rounded-xl font-bold transition-all flex justify-center items-center gap-2 shadow-lg shadow-[#229ED9]/20 active:scale-95 text-[15px] min-h-[50px] mb-2 sm:mb-0">
-              <Send size={18} className="shrink-0 -ml-1" /> Написать обращение
+            <button onClick={handleBuyPro} className="w-full mt-2 bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 sm:py-5 rounded-2xl font-bold transition-all flex justify-center items-center gap-2 shadow-[0_4px_20px_rgba(34,158,217,0.3)] active:scale-95 text-base sm:text-lg">
+              <Send size={22} className="shrink-0 -ml-1" /> Написать обращение
             </button>
           </div>
         </div>
