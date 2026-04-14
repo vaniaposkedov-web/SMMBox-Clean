@@ -46,6 +46,8 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     const cleanId = providerId.replace('wall_', '').replace('group_', '');
     const isWall = providerId.startsWith('wall_');
 
+    console.log(`\n[DEBUG KOMOD] Начинаем отправку. Провайдер: ${providerId}, Текст: ${text ? 'Да' : 'Нет'}, Фото: ${imageBuffers.length}`);
+
     // 1. Получаем список групп из шлюза
     const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
     const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
@@ -59,7 +61,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     // 2. АВТО-РЕГИСТРАЦИЯ
     if (!targetGroup) {
-        console.log(`\n[KOMOD] Цель ${providerId} не найдена в шлюзе. Пробуем авто-регистрацию...`);
+        console.log(`[DEBUG KOMOD] Цель ${providerId} не найдена в шлюзе. Пробуем авто-регистрацию...`);
         const addForm = new FormData();
         if (isWall) {
             addForm.append('account_id', cleanId);
@@ -81,7 +83,9 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                 const newGroups = newGrpRes.data?.data?.items || newGrpRes.data?.data || [];
                 targetGroup = newGroups.find(g => String(g.uid) === cleanId || String(g.account_id) === cleanId);
             }
-        } catch (addError) {}
+        } catch (addError) {
+            console.error('[DEBUG KOMOD] Ошибка авто-регистрации:', addError.message);
+        }
         
         if (!targetGroup) throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и подключите стену.`);
     }
@@ -90,15 +94,15 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('group_id', targetGroupId);
     form.append('via_api', '1');
 
-    // === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ===
-    // Если publishAtDate ПУСТОЙ (это делает Cron), мы ВООБЩЕ НЕ ПЕРЕДАЕМ publish_at.
-    // Пусть шлюз публикует пост МГНОВЕННО, не ставя его в свою очередь.
-    if (publishAtDate) {
-        let targetDate = new Date(publishAtDate);
-        const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
-        const formattedDate = tzString.substring(0, 16).replace('T', ' ');
-        form.append('publish_at', formattedDate);
-    }
+    // === ФИКС: ВСЕГДА ПЕРЕДАЕМ ВРЕМЯ ===
+    // Даже если пост моментальный (publishAtDate = null), передаем текущее время по Москве. 
+    // Шлюз упадет с ошибкой, если поле publish_at вообще отсутствует при via_api=1.
+    let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
+    const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
+    const formattedDate = tzString.substring(0, 16).replace('T', ' ');
+    form.append('publish_at', formattedDate);
+    
+    console.log(`[DEBUG KOMOD] Установлено время публикации (MSK): ${formattedDate}`);
     
     const media = [];
     if (text) media.push({ type: 'text', text: text });
@@ -119,11 +123,15 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     form.append('media', JSON.stringify(media));
 
+    console.log(`[DEBUG KOMOD] Отправляем POST запрос на шлюз...`);
+
     const postRes = await axios.post(`${KOMOD_BASE_URL}/post`, form, {
         headers: { ...form.getHeaders(), 'Access-Token': token },
         maxBodyLength: Infinity,
         validateStatus: status => status < 500
     });
+
+    console.log(`[DEBUG KOMOD] Ответ от шлюза: HTTP ${postRes.status}`, JSON.stringify(postRes.data));
 
     if (postRes.data && postRes.data.success === false) {
         throw new Error('Ошибка шлюза: ' + JSON.stringify(postRes.data.errors));
