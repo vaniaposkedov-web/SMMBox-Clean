@@ -236,6 +236,16 @@ export default function Profile() {
     setIsLinking(false);
   };
 
+  const handleOpenProModal = () => {
+    if (!user?.name || !user?.phone || !user?.pavilion) {
+      alert('Для оформления PRO необходимо указать Имя, Павильон и Номер телефона!');
+      setActiveTab('settings');
+      setIsEditing(true);
+      return;
+    }
+    setShowProModal(true);
+  };
+
   const handleBuyPro = () => {
     const message = `Здравствуйте! 👋\n\nЯ хочу приобрести подписку PRO для SMMBOX за 2000 руб.\nМой ID в системе: ${user.id}`;
     const tgLink = `https://t.me/${PRO_MANAGER_TG}?text=${encodeURIComponent(message)}`;
