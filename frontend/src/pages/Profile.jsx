@@ -489,7 +489,7 @@ export default function Profile() {
                 </p>
               </div>
               {!user?.isPro && (
-                <button onClick={() => setShowProModal(true)} className="relative z-10 shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-sm sm:text-base font-extrabold transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] active:scale-95 w-full sm:w-auto min-h-[48px]">
+                <button onClick={handleOpenProModal} className="relative z-10 shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-sm sm:text-base font-extrabold transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] active:scale-95 w-full sm:w-auto min-h-[48px]">
                   Подключить PRO
                 </button>
               )}
@@ -594,15 +594,15 @@ export default function Profile() {
               </h2>
               <div className="space-y-4">
                 <div>
-                  <label className="text-[10px] sm:text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Имя и Фамилия</label>
+                  <label className="text-[10px] sm:text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Имя и Фамилия <span className="text-red-500">*</span></label>
                   <input type="text" value={name} onChange={(e) => {setName(e.target.value); setIsEditing(true);}} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-base sm:text-sm text-white focus:border-blue-500 outline-none transition-all shadow-inner min-h-[48px]" />
                 </div>
                 <div>
-                  <label className="text-[10px] sm:text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Рабочий Павильон</label>
+                  <label className="text-[10px] sm:text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Рабочий Павильон <span className="text-red-500">*</span></label>
                   <input type="text" value={pavilion} onChange={(e) => {setPavilion(e.target.value); setIsEditing(true);}} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-base sm:text-sm text-white focus:border-blue-500 outline-none transition-all shadow-inner min-h-[48px]" />
                 </div>
                 <div>
-                  <label className="text-[10px] sm:text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Номер телефона</label>
+                  <label className="text-[10px] sm:text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Номер телефона <span className="text-red-500">*</span></label>
                   <input 
                     type="tel" 
                     value={phone} 
