@@ -6,7 +6,7 @@ import {
   Settings as SettingsIcon, LayoutDashboard, Lock, Eye, Share2, 
   Phone, Key, Users, Send, Loader2, Search, Plus, Crown
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 
 const IconVK = () => (
@@ -89,6 +89,26 @@ export default function Profile() {
     }
   }, [user?.id, fetchAccounts, fetchScheduledPosts, fetchPartnerData]);
 
+ 
+  const location = useLocation();
+  const [highlightForm, setHighlightForm] = useState(false);
+  
+  // ... твои вызовы useStore ...
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('tab') === 'settings') {
+      setActiveTab('settings');
+    }
+    if (searchParams.get('highlight') === 'true') {
+      setHighlightForm(true);
+      setTimeout(() => {
+        document.getElementById('personal-data-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+      setTimeout(() => setHighlightForm(false), 3000);
+    }
+  }, [location.search]);
+
   const formatPhoneNumber = (value) => {
     let input = value.replace(/\D/g, '');
     if (!input) return '';
@@ -140,7 +160,7 @@ export default function Profile() {
   }, [processedPosts, postFilter]);
 
   if (!user) return null;
-  const isVulnerable = user?.email?.includes('.local') || !user?.phone;
+  const isVulnerable = user?.email?.includes('.local') || !user?.phone || !user?.pavilion;
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -159,6 +179,10 @@ export default function Profile() {
   };
 
   const handleSave = async () => {
+    if (!name || !pavilion || !phone) {
+      alert('Пожалуйста, заполните все обязательные поля: Имя, Павильон, Телефон.');
+      return;
+    }
     setIsSaving(true);
     const formData = new FormData();
     formData.append('userId', user.id);
@@ -317,51 +341,28 @@ export default function Profile() {
       {/* УМНАЯ ПЛАШКА ЗАПРОСА ДАННЫХ */}
       {isVulnerable && (
         <div className="bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/30 rounded-3xl p-5 sm:p-6 mb-6 shadow-xl relative overflow-hidden animate-fade-in">
-          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative z-10">
-            <div className="flex items-start gap-3 sm:gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+            <div className="flex items-center gap-3 sm:gap-4">
               <div className="bg-red-500/20 p-2.5 sm:p-3 rounded-full text-red-500 shrink-0">
                 <AlertCircle size={24} className="sm:w-7 sm:h-7" />
               </div>
               <div>
-                <h3 className="text-white font-bold text-base sm:text-lg mb-1">Заполните профиль!</h3>
-                <p className="text-gray-400 text-xs sm:text-sm">Для полноценной работы укажите настоящую почту и номер телефона.</p>
+                <h3 className="text-white font-bold text-base sm:text-lg mb-0.5">Заполните профиль!</h3>
+                <p className="text-red-200/80 text-xs sm:text-sm">Для доступа к публикациям укажите почту, телефон и павильон.</p>
               </div>
             </div>
             
-            {!isCodeSent ? (
-              <form onSubmit={handleRequestCode} className="flex flex-col sm:flex-row w-full lg:w-auto gap-3 shrink-0 mt-2 lg:mt-0">
-                <div className="relative">
-                  <input type="email" value={realEmail} onChange={(e) => setRealEmail(e.target.value)} placeholder="Укажите Email" required className="w-full sm:w-48 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-red-500 transition-colors min-h-[48px]" />
-                  {linkError && <p className="text-red-500 text-[10px] mt-1 absolute -bottom-4 left-0 w-max">{linkError}</p>}
-                </div>
-                {!user?.phone && (
-                   <input 
-                     type="tel" 
-                     value={realPhone} 
-                     onChange={(e) => setRealPhone(formatPhoneNumber(e.target.value))} 
-                     placeholder="+7 (___) ___-__-__" 
-                     required 
-                     className="w-full sm:w-48 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-red-500 transition-colors min-h-[48px]" 
-                   />
-                )}
-                <button type="submit" disabled={isLinking} className="bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 shrink-0 min-h-[48px]">
-                  {isLinking ? 'Отправка...' : 'Подтвердить'}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleVerifyCode} className="flex flex-col sm:flex-row w-full lg:w-auto gap-3 shrink-0 mt-2 lg:mt-0">
-                <div className="relative w-full sm:w-auto">
-                  <input type="text" maxLength="6" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))} placeholder="Код из письма" required className="w-full sm:w-36 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-base sm:text-sm text-white text-center tracking-widest outline-none focus:border-green-500 transition-colors min-h-[48px]" />
-                  {linkError && <p className="text-red-500 text-[10px] mt-1 absolute -bottom-4 left-0 w-max">{linkError}</p>}
-                </div>
-                <div className="flex gap-2 w-full sm:w-auto">
-                  <button type="submit" disabled={isLinking || verifyCode.length !== 6} className="flex-1 sm:flex-none bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50 min-h-[48px]">
-                    {isLinking ? 'Проверка...' : 'Завершить'}
-                  </button>
-                  <button type="button" onClick={() => setIsCodeSent(false)} className="px-4 text-sm text-gray-400 hover:text-white transition-colors bg-gray-800 rounded-xl sm:bg-transparent sm:px-4 min-h-[48px]">Отмена</button>
-                </div>
-              </form>
-            )}
+            <button 
+              onClick={() => {
+                setActiveTab('settings');
+                setHighlightForm(true);
+                setTimeout(() => document.getElementById('personal-data-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+                setTimeout(() => setHighlightForm(false), 3000);
+              }}
+              className="w-full sm:w-auto bg-red-600 hover:bg-red-500 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 shrink-0 active:scale-95"
+            >
+              Перейти к заполнению
+            </button>
           </div>
         </div>
       )}
@@ -596,14 +597,18 @@ export default function Profile() {
               <h2 className="text-lg sm:text-xl font-bold text-white mb-5 sm:mb-6 flex items-center gap-2">
                 <Edit2 size={20} className="text-blue-500" /> Личные данные
               </h2>
-              <div className="space-y-4">
+              
+              <div 
+                id="personal-data-form" 
+                className={`space-y-3 transition-all duration-700 ${highlightForm ? 'ring-4 ring-red-500/60 bg-red-500/10 p-4 rounded-2xl scale-[1.02]' : 'p-1'}`}
+              >
                 <div>
                   <label className="text-[10px] sm:text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Имя и Фамилия <span className="text-red-500">*</span></label>
-                  <input type="text" value={name} onChange={(e) => {setName(e.target.value); setIsEditing(true);}} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-base sm:text-sm text-white focus:border-blue-500 outline-none transition-all shadow-inner min-h-[48px]" />
+                  <input type="text" value={name} onChange={(e) => {setName(e.target.value); setIsEditing(true);}} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500 outline-none transition-all shadow-inner min-h-[40px]" />
                 </div>
                 <div>
                   <label className="text-[10px] sm:text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Рабочий Павильон <span className="text-red-500">*</span></label>
-                  <input type="text" value={pavilion} onChange={(e) => {setPavilion(e.target.value); setIsEditing(true);}} className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-base sm:text-sm text-white focus:border-blue-500 outline-none transition-all shadow-inner min-h-[48px]" />
+                  <input type="text" value={pavilion} onChange={(e) => {setPavilion(e.target.value); setIsEditing(true);}} placeholder="Например: 2-1-15" className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500 outline-none transition-all shadow-inner min-h-[40px]" />
                 </div>
                 <div>
                   <label className="text-[10px] sm:text-xs text-gray-500 mb-1.5 block font-bold uppercase tracking-wider">Номер телефона <span className="text-red-500">*</span></label>
@@ -612,16 +617,16 @@ export default function Profile() {
                     value={phone} 
                     onChange={(e) => { setPhone(formatPhoneNumber(e.target.value)); setIsEditing(true); }} 
                     placeholder="+7 (___) ___-__-__"
-                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-base sm:text-sm text-white focus:border-blue-500 outline-none transition-all shadow-inner min-h-[48px]" 
+                    className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:border-blue-500 outline-none transition-all shadow-inner min-h-[40px]" 
                   />
                 </div>
                 
                 {isEditing && (
-                  <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-800 mt-6">
-                    <button onClick={handleSave} disabled={isSaving} className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-xl text-sm font-bold flex justify-center items-center gap-2 transition-colors disabled:opacity-50 shadow-lg shadow-blue-500/20 min-h-[48px] order-1 sm:order-2">
-                      {isSaving ? <><Loader2 size={18} className="animate-spin"/> Сохранение...</> : 'Сохранить изменения'}
+                  <div className="flex flex-col sm:flex-row gap-3 pt-3 border-t border-gray-800 mt-4">
+                    <button onClick={handleSave} disabled={isSaving} className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-sm font-bold flex justify-center items-center gap-2 transition-colors disabled:opacity-50 min-h-[40px] order-1 sm:order-2">
+                      {isSaving ? <><Loader2 size={16} className="animate-spin"/> Сохранение...</> : 'Сохранить'}
                     </button>
-                    <button onClick={cancelEdit} className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-white px-6 py-3.5 rounded-xl text-sm font-bold transition-colors border border-gray-700 min-h-[48px] order-2 sm:order-1">
+                    <button onClick={cancelEdit} className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition-colors border border-gray-700 min-h-[40px] order-2 sm:order-1">
                       Отмена
                     </button>
                   </div>

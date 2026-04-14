@@ -1,9 +1,10 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, 
   Send, CheckCircle2, Share2, Users, LayoutTemplate,
   Search, CalendarClock, Clock, Loader2,
-  Settings, PenTool, Check, Trash2, Plus
+  Settings, PenTool, Check, Trash2, Plus, AlertCircle
 } from 'lucide-react';
 import { useStore } from '../store';
 
@@ -24,7 +25,7 @@ const IconTG = () => (
 export default function Publish() {
   
   const publishDraft = useStore((state) => state.publishDraft); // ✅ ОБЯЗАТЕЛЬНО ДОБАВИТЬ ЭТУ СТРОКУ
-  
+  const navigate = useNavigate();
   
   // Состояния для публикации
   const [scheduleTime, setScheduleTime] = useState('');
@@ -506,6 +507,28 @@ const handlePublish = async () => {
     setView('start'); 
     if (saveTempDraft) saveTempDraft(null);
   };
+
+  if (isVulnerable) {
+    return (
+      <div className="min-h-[100dvh] bg-admin-bg px-4 py-8 flex flex-col items-center justify-center animate-fade-in relative z-50">
+        <div className="bg-admin-card border border-red-500/30 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center shadow-[0_0_40px_rgba(239,68,68,0.1)]">
+          <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-5 border border-red-500/20">
+            <AlertCircle size={32} />
+          </div>
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-3">Публикация недоступна</h2>
+          <p className="text-gray-400 text-sm sm:text-base mb-6 sm:mb-8 leading-relaxed">
+            Для создания постов необходимо заполнить профиль: укажите настоящую почту, номер телефона и ваш рабочий павильон.
+          </p>
+          <button 
+            onClick={() => navigate('/profile?tab=settings&highlight=true')} 
+            className="w-full bg-red-600 hover:bg-red-500 text-white py-3.5 sm:py-4 rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
+          >
+            Перейти к заполнению
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (view === 'start') {
     return (
