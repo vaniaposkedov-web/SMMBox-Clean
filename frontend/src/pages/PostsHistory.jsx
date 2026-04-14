@@ -288,10 +288,10 @@ export default function PostsHistory() {
                     <div className="relative">
                       <button 
                         onClick={() => setShowRetryMenu(!showRetryMenu)}
-                        title="Повторить пост"
-                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-purple-400 hover:bg-purple-500 hover:text-white bg-gray-800 transition-all active:scale-95"
+                        title="Создать на основе этого"
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-emerald-400 hover:bg-emerald-500 hover:text-white bg-gray-800 transition-all active:scale-95"
                       >
-                        <RefreshCw size={18} className="sm:w-5 sm:h-5" />
+                        <PlusCircle size={20} className="sm:w-6 sm:h-6" />
                       </button>
                       
                       {showRetryMenu && (
