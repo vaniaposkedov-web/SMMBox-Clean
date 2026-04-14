@@ -273,6 +273,42 @@ export default function Publish() {
     setPhotos(prev => prev.filter(p => p.id !== idToRemove));
   };
 
+
+  // 1. Старая функция (оставляем для партнеров, чтобы не ломать API шеринга)
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1200;
+          const MAX_HEIGHT = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height && width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          } else if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.onerror = error => reject(error);
+      };
+      reader.onerror = error => reject(error);
+    });
+  };
+
   // Измененная функция: теперь возвращает бинарный WebP (Blob) вместо Base64 строки
   const compressImageToWebP = (file) => {
     return new Promise((resolve, reject) => {
@@ -413,8 +449,7 @@ const handlePublish = async () => {
             publishAt = localDate.toISOString(); 
         }
 
-        const result = await createPostAction(text, base64Images, accountsData, publishAt);
-
+        const result = await createPostAction(text, webpBlobs, accountsData, publishAt);
         if (result.success) {
             setIsPublishing(false);
             
