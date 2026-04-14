@@ -5,7 +5,7 @@ import {
   Bell, Inbox, X, Send, UserPlus, UserCheck, UserX,
   CheckCircle2, Image as ImageIcon, Share2, Layers,
   ChevronRight, Trash2, Maximize2, ChevronLeft, Download,
-  Loader2, Calendar, FileText, Clock, RefreshCw
+  Loader2, Calendar, FileText, Clock, RefreshCw, PlusCircle 
 } from 'lucide-react';
 
 // === Утилита для конвертации картинок в файлы ===
