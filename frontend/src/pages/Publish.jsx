@@ -4,7 +4,8 @@ import {
   ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, 
   Send, CheckCircle2, Share2, Users, LayoutTemplate,
   Search, CalendarClock, Clock, Loader2,
-  Settings, PenTool, Check, Trash2, Plus, AlertCircle
+  Settings, PenTool, Check, Trash2, Plus, 
+  AlertCircle // <-- ОБЯЗАТЕЛЬНО ДОЛЖНА БЫТЬ ДОБАВЛЕНА СЮДА
 } from 'lucide-react';
 import { useStore } from '../store';
 
@@ -507,6 +508,8 @@ const handlePublish = async () => {
     setView('start'); 
     if (saveTempDraft) saveTempDraft(null);
   };
+
+  const isVulnerable = user?.email?.includes('.local') || !user?.phone || !user?.pavilion;
 
   if (isVulnerable) {
     return (
