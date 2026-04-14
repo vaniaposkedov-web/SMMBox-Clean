@@ -95,29 +95,38 @@ export default function Publish() {
   const [isSharing, setIsSharing] = useState(false);
   const handleShareToPartners = async () => {
     if (selectedPartners.length === 0) return;
+    
     setIsSharing(true);
+    setPartnerStatus('sending'); // Включаем статус загрузки
     
     try {
-      const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
-      const res = await sharePostAction(text, base64Images, selectedPartners);
+      const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
+      const res = await sharePostAction(text, webpBlobs, selectedPartners);
       
       if (res?.success) {
-        // Убрали все setTimeout для закрытия!
-        // React 18 автоматически склеит эти обновления и обновит DOM без краша.
-        setShowPartnerModal(false);
+        // ⚡ УЛУЧШЕНИЕ UX: Показываем статус успеха ПЕРЕД закрытием окна
+        setPartnerStatus('sent');
         setIsSharing(false);
-        setSelectedPartners([]);
+        setToastMessage('Отправлено партнерам!');
         
-        setToastMessage('Пост успешно отправлен!');
-        setTimeout(() => setToastMessage(null), 3000);
+        // Ждем 1.5 секунды, чтобы юзер увидел зеленую кнопку, и только потом закрываем
+        setTimeout(() => {
+          setShowPartnerModal(false);
+          setSelectedPartners([]);
+          setPartnerStatus('idle');
+          setTimeout(() => setToastMessage(null), 3000);
+        }, 1500);
+        
       } else {
         setIsSharing(false);
-        setToastMessage('Ошибка при отправке поста');
+        setPartnerStatus('idle');
+        setToastMessage('Ошибка при отправке: ' + (res?.error || ''));
         setTimeout(() => setToastMessage(null), 3000);
       }
     } catch (error) {
       setIsSharing(false);
-      setToastMessage('Ошибка при обработке фотографий');
+      setPartnerStatus('idle');
+      setToastMessage('Ошибка соединения при отправке');
       setTimeout(() => setToastMessage(null), 3000);
     }
   };
@@ -1090,11 +1099,15 @@ const handlePublish = async () => {
               </button>
               <button 
                 onClick={handleShareToPartners} 
-                disabled={isSharing || selectedPartners.length === 0} 
-                className="flex-[2] bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 text-sm active:scale-95 shadow-lg shadow-purple-500/20"
+                disabled={isSharing || selectedPartners.length === 0 || partnerStatus === 'sent'} 
+                className={`flex-[2] py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 text-sm active:scale-95 shadow-lg text-white disabled:opacity-50 ${
+                  partnerStatus === 'sent' 
+                    ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' 
+                    : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'
+                }`}
               >
-                {isSharing ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-                {isSharing ? 'Отправка...' : `Отправить (${selectedPartners.length})`}
+                {isSharing ? <Loader2 size={18} className="animate-spin" /> : partnerStatus === 'sent' ? <CheckCircle2 size={18} /> : <Send size={18} />}
+                {isSharing ? 'Отправка...' : partnerStatus === 'sent' ? 'Отправлено!' : `Отправить (${selectedPartners.length})`}
               </button>
             </div>
 

@@ -598,16 +598,43 @@ exports.updateScheduledPost = async (req, res) => {
 
 exports.shareWithPartners = async (req, res) => {
     try {
-        const { text, mediaUrls = [], partnerIds = [] } = req.body;
+        const { text, partnerIds: partnerIdsStr } = req.body;
+        const partnerIds = partnerIdsStr ? JSON.parse(partnerIdsStr) : [];
         const senderId = getUserId(req);
 
         if (!senderId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
         if (!partnerIds || partnerIds.length === 0) return res.status(400).json({ success: false, error: 'Выберите партнера' });
 
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
-        const mediaString = JSON.stringify(mediaUrls);
 
-        for (const receiverId of partnerIds) {
+        // ⚡ ОПТИМИЗАЦИЯ 1: Параллельная нарезка всех картинок сразу (Promise.all)
+        let savedImageUrls = [];
+        if (req.files && req.files.length > 0) {
+            savedImageUrls = await Promise.all(req.files.map(async (file) => {
+                try {
+                    const buffer = await fs.promises.readFile(file.path);
+                    fs.promises.unlink(file.path).catch(() => {}); // удаляем tmp асинхронно, не блокируя поток
+                    
+                    const optimizedBuf = await sharp(buffer)
+                        .resize({ width: 2000, fit: 'inside', withoutEnlargement: true })
+                        .jpeg({ quality: 85 })
+                        .toBuffer();
+                        
+                    return await saveImageToFile(optimizedBuf, 'shared');
+                } catch (e) {
+                    console.error('Ошибка обработки файла партнера:', e);
+                    return null;
+                }
+            }));
+            
+            // Убираем null, если какое-то фото крашнулось
+            savedImageUrls = savedImageUrls.filter(url => url !== null);
+        }
+
+        const mediaString = JSON.stringify(savedImageUrls);
+
+        // ⚡ ОПТИМИЗАЦИЯ 2: Параллельная запись всех уведомлений и постов в БД
+        await Promise.all(partnerIds.map(async (receiverId) => {
             await prisma.sharedPost.create({
                 data: { senderId: sender.id, receiverId, text: text || '', mediaUrls: mediaString }
             });
@@ -615,13 +642,15 @@ exports.shareWithPartners = async (req, res) => {
                 data: { 
                     userId: receiverId, 
                     type: 'INFO',
-                    text: `Партнер ${sender?.name || 'Без имени'} поделился с вами новой публикацией. Вы можете опубликовать её у себя!`,
-                    metadata: JSON.stringify({ text, mediaUrls })
+                    text: `Партнер ${sender?.name || 'Без имени'} поделился с вами новой публикацией.`,
+                    metadata: JSON.stringify({ text, mediaUrls: savedImageUrls })
                 }
             });
-        }
+        }));
+
         res.json({ success: true });
     } catch (error) {
+        console.error('Ошибка шеринга:', error);
         res.status(500).json({ success: false, error: `Ошибка: ${error.message}` });
     }
 };
