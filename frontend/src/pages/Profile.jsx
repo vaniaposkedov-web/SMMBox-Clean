@@ -4,7 +4,7 @@ import {
   User, Mail, Shield, Edit2, X, Hash, Camera, 
   Check, Copy, CalendarClock, CheckCircle2, AlertCircle, 
   Settings as SettingsIcon, LayoutDashboard, Lock, 
-  Phone, Key, Users, Send, Loader2, Plus, Crown
+  Phone, Key, Users, Send, Loader2, Plus, Crown, MessageCircle
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -178,10 +178,17 @@ export default function Profile() {
   };
 
   const handleBuyPro = () => {
-    const message = `Здравствуйте! 👋\n\nЯ хочу приобрести подписку PRO для SMMBOX за 2000 руб.\nМой ID в системе: ${user.id}`;
+    const message = `Здравствуйте! 👋\n\nЯ хочу приобрести подписку PRO для SADOVODPS за 2000 руб.\nМой ID в системе: ${user.id}`;
     const tgLink = `https://t.me/${PRO_MANAGER_TG}?text=${encodeURIComponent(message)}`;
     window.open(tgLink, '_blank');
     setShowProModal(false);
+  };
+
+  // Добавь этот блок кода:
+  const handleSupportClick = () => {
+    const message = `Здравствуйте! Мой ID: ${user?.id || 'Неизвестен'}. У меня возникла проблема:`;
+    const tgLink = `https://t.me/${PRO_MANAGER_TG}?text=${encodeURIComponent(message)}`;
+    window.open(tgLink, '_blank', 'noopener,noreferrer');
   };
 
   const getRegMethod = () => {
@@ -230,6 +237,15 @@ export default function Profile() {
         <div className="absolute top-0 left-0 bg-gradient-to-r from-emerald-500 to-green-500 text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-br-2xl shadow-lg shadow-green-500/20 uppercase tracking-widest z-20">
           Садовод SP
         </div>
+
+        {/* ⚡ КНОПКА ПОДДЕРЖКИ (Справа сверху) */}
+        <button
+          onClick={handleSupportClick}
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[10px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2 transition-all active:scale-95 z-20 shadow-lg"
+        >
+          <MessageCircle size={14} className="sm:w-4 sm:h-4 shrink-0" />
+          <span className="hidden sm:inline">Поддержка</span>
+        </button>
 
         <div className="relative group shrink-0 cursor-pointer" onClick={() => fileInputRef.current?.click()}>
           <div className="w-24 h-24 sm:w-28 sm:h-28 bg-gray-900 rounded-full flex items-center justify-center border-4 border-gray-800 shadow-inner overflow-hidden transition-all group-hover:border-blue-500/50 mt-2 sm:mt-0">
