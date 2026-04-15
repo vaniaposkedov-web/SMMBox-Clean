@@ -20,7 +20,7 @@ export const useStore = create(
 
       watermarkSettings: {
         type: 'text',
-        text: 'SMMBOX © 2024',
+        text: 'SADOVODPS',
         image: null, 
         position: 'br',
         hasBackground: true,

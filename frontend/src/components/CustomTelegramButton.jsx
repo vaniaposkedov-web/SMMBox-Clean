@@ -9,7 +9,7 @@ export default function CustomTelegramButton({ onAuthCallback }) {
       containerRef.current.innerHTML = '';
     }
 
-    const botName = import.meta.env.VITE_TG_BOT_NAME || 'smmbox_auth_bot';
+    const botName = import.meta.env.VITE_TG_BOT_NAME || 'sadovodps_auth_bot';
 
     const script = document.createElement('script');
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
