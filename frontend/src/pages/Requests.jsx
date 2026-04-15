@@ -6,7 +6,7 @@ import {
   CheckCircle2, Image as ImageIcon, Share2, Layers,
   ChevronRight, Trash2, Maximize2, ChevronLeft, Download,
   Loader2, Calendar, FileText, Clock, RefreshCw, PlusCircle,
-  ChevronUp, CalendarClock
+  ChevronUp, CalendarClock, Check
 } from 'lucide-react';
 
 // === Утилиты для картинок ===
