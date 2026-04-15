@@ -233,6 +233,20 @@ exports.addVkKomodGroup = async (req, res) => {
       return res.status(403).json({ error: 'Это сообщество уже привязано к другому пользователю!' });
     }
 
+    // Строгая проверка лимитов, если мы добавляем НОВЫЙ аккаунт
+    if (!existingAcc) {
+      const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+      const limits = getUserLimits(currentUser);
+      const vkCount = await prisma.account.count({ where: { userId, provider: 'VK' } });
+      const totalCount = await prisma.account.count({ where: { userId } });
+
+      if (limits.total === 10 && totalCount >= limits.total) {
+        return res.status(403).json({ error: `Бесплатный лимит (${limits.total} акк.) исчерпан.` });
+      } else if (vkCount >= limits.vk) {
+        return res.status(403).json({ error: `Лимит ВК (${limits.vk} акк.) исчерпан.` });
+      }
+    }
+
     // 1. Отправляем в Kom-od
     const params = new URLSearchParams();
     params.append('url', url);
@@ -369,7 +383,9 @@ exports.syncVkKomod = async (req, res) => {
          avatar = existingProfile.avatarUrl;
       }
       if (!avatar) {
-         avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0077FF&color=fff`;
+         const initials = name ? String(name).substring(0,2).toUpperCase() : 'VK';
+         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0077FF"/><text x="50%" y="50%" font-family="sans-serif" font-size="40" font-weight="bold" fill="#FFF" text-anchor="middle" dy=".3em">${initials}</text></svg>`;
+         avatar = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
       }
 
       await prisma.socialProfile.upsert({
@@ -450,7 +466,9 @@ exports.syncVkKomod = async (req, res) => {
           finalAvatar = existingAcc.avatarUrl;
       }
       if (!finalAvatar) {
-          finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(finalName)}&background=0d0f13&color=0077FF&rounded=true`;
+          const initials = finalName ? String(finalName).substring(0,2).toUpperCase() : 'VK';
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0d0f13"/><text x="50%" y="50%" font-family="sans-serif" font-size="40" font-weight="bold" fill="#0077FF" text-anchor="middle" dy=".3em">${initials}</text></svg>`;
+          finalAvatar = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
       }
 
       await prisma.account.upsert({
@@ -1086,11 +1104,21 @@ exports.saveVkGroupTokens = async (req, res) => {
 
     let savedCount = 0;
 
+   const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
+    const limits = getUserLimits(currentUser);
+
     for (const group of groups) {
-      // БЕЗОПАСНОСТЬ: Проверяем, не занята ли уже эта группа другим пользователем!
+      const totalCount = await prisma.account.count({ where: { userId: String(userId) } });
+      const vkCount = await prisma.account.count({ where: { userId: String(userId), provider: 'VK' } });
+
       const existingAccount = await prisma.account.findUnique({
         where: { provider_providerId: { provider: 'VK', providerId: String(group.id) } }
       });
+
+      if (!existingAccount) {
+        if (limits.total === 10 && totalCount >= limits.total) break;
+        if (vkCount >= limits.vk) break;
+      }
 
       if (existingAccount && existingAccount.userId !== String(userId)) {
         console.warn(`[SECURITY] Попытка перехвата группы ${group.id} пользователем ${userId}`);

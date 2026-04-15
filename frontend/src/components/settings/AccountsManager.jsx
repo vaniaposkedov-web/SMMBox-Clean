@@ -195,7 +195,9 @@ export default function AccountsManager() {
   const getValidAvatar = (url, fallbackName) => {
     const generateFallback = () => {
        const text = fallbackName ? String(fallbackName).substring(0,2).toUpperCase() : 'VK';
-       return `https://ui-avatars.com/api/?name=${encodeURIComponent(text)}&background=0d0f13&color=0077FF&rounded=true&bold=true`;
+       // Локальная мгновенная генерация SVG (без запросов в интернет)
+       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#0077FF"/><text x="50%" y="50%" font-family="sans-serif" font-size="40" font-weight="bold" fill="#FFF" text-anchor="middle" dy=".3em">${text}</text></svg>`;
+       return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
     };
     if (!url || typeof url !== 'string' || url.includes('camera_')) return generateFallback();
     let finalUrl = url.trim().startsWith('//') ? `https:${url.trim()}` : url.trim();
