@@ -75,15 +75,16 @@ export default function Requests() {
   const incomingPosts = useMemo(() => sharedIncoming.filter(post => !post.isPublished), [sharedIncoming]);
 
   const [previewPost, setPreviewPost] = useState(null);
+  const [previewNotification, setPreviewNotification] = useState(null);
   const [fsImageIndex, setFsImageIndex] = useState(null);
   const [isPreparing, setIsPreparing] = useState(false);
   const [showRetryMenu, setShowRetryMenu] = useState(false);
 
   useEffect(() => {
-    if (previewPost || fsImageIndex !== null) document.body.style.overflow = 'hidden';
+    if (previewPost || previewNotification || fsImageIndex !== null) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'unset';
     return () => { document.body.style.overflow = 'unset'; };
-  }, [previewPost, fsImageIndex]);
+  }, [previewPost, previewNotification, fsImageIndex]);
 
   useEffect(() => {
     if (user?.id) fetchPartnerData(user.id);
@@ -109,7 +110,16 @@ export default function Requests() {
     }
   };
 
-  const currentMediaList = useMemo(() => parseMediaUrls(previewPost?.mediaUrls), [previewPost]);
+  const currentMediaList = useMemo(() => {
+    if (previewPost) return parseMediaUrls(previewPost.mediaUrls);
+    if (previewNotification && previewNotification.metadata) {
+      try {
+        const meta = JSON.parse(previewNotification.metadata);
+        return parseMediaUrls(JSON.stringify(meta.mediaUrls));
+      } catch(e) {}
+    }
+    return [];
+  }, [previewPost, previewNotification]);
 
   const handleNextPhoto = useCallback((e) => {
     e?.stopPropagation();
@@ -208,6 +218,15 @@ export default function Requests() {
                          <p className="text-xs text-gray-500 mt-2 font-bold uppercase tracking-wider">
                            {new Date(note.createdAt).toLocaleString('ru-RU', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}
                          </p>
+                         {/* ⚡ НОВАЯ КНОПКА ОТКРЫТИЯ ДЕТАЛЕЙ */}
+                         {note.metadata && (
+                           <button 
+                             onClick={() => setPreviewNotification(note)}
+                             className="mt-3 text-xs sm:text-sm text-blue-400 hover:text-blue-300 font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-lg w-max active:scale-95"
+                           >
+                             <FileText size={14} /> Детали поста
+                           </button>
+                         )}
                       </div>
                       <button onClick={() => markNotificationAsRead(note.id)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 border border-gray-700">
                          <X size={14} />
@@ -376,20 +395,68 @@ export default function Requests() {
         </div>
       )}
 
-      {/* === ПОЛНОЭКРАННЫЙ ПРОСМОТР === */}
-      {fsImageIndex !== null && (
-        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-black animate-in fade-in duration-200">
-          <button onClick={() => setFsImageIndex(null)} className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 sm:right-8 w-12 h-12 sm:w-14 sm:h-14 bg-gray-900/80 text-white rounded-full flex items-center justify-center z-[1010] active:scale-90">
-            <X size={24} className="sm:w-8 sm:h-8" />
-          </button>
-          <button onClick={handlePrevPhoto} disabled={fsImageIndex === 0} className="absolute left-2 sm:left-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 z-[1010] active:scale-75">
-            <ChevronLeft size={40} className="sm:w-16 sm:h-16" />
-          </button>
-          <button onClick={handleNextPhoto} disabled={fsImageIndex === currentMediaList.length - 1} className="absolute right-2 sm:right-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 z-[1010] active:scale-75">
-            <ChevronRight size={40} className="sm:w-16 sm:h-16" />
-          </button>
-          <div className="w-full h-full flex items-center justify-center p-4 sm:p-12 select-none">
-            <img key={fsImageIndex} src={getImageUrl(currentMediaList[fsImageIndex])} className="max-w-full max-h-[85vh] object-contain rounded-xl sm:rounded-2xl shadow-[0_0_80px_rgba(0,119,255,0.15)] animate-in zoom-in-95 duration-300" />
+      {/* === МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА УВЕДОМЛЕНИЯ === */}
+      {previewNotification && (
+        <div className="fixed inset-0 z-[999] flex flex-col sm:items-center sm:justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl animate-in fade-in duration-200">
+          <div className="absolute inset-0" onClick={() => setPreviewNotification(null)}></div>
+          <div className="bg-[#0f1115] w-full h-full sm:h-auto sm:max-h-[90dvh] md:max-w-[500px] sm:rounded-[2rem] shadow-2xl flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200 overflow-hidden z-10">
+            
+            <div className="flex items-center justify-between px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-4 shrink-0 z-10 border-b border-gray-800/50">
+                <div className="min-w-0 flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${previewNotification.type === 'SUCCESS' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+                     {previewNotification.type === 'SUCCESS' ? <CheckCircle2 size={20}/> : <X size={20}/>}
+                  </div>
+                  <div>
+                    <h2 className="text-white font-bold text-lg tracking-tight leading-none truncate">
+                      {previewNotification.type === 'SUCCESS' ? 'Пост опубликован' : 'Отказ от публикации'}
+                    </h2>
+                    <p className="text-gray-400 text-xs mt-1 uppercase tracking-wider">Детали ответа</p>
+                  </div>
+                </div>
+                <button onClick={() => setPreviewNotification(null)} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white bg-gray-800/60 hover:bg-gray-700 rounded-full transition-all active:scale-90 shrink-0 ml-4">
+                    <X size={20} />
+                </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-6">
+              <p className="text-white text-sm font-medium mb-6 leading-relaxed bg-gray-900/50 p-4 rounded-xl border border-gray-800">
+                  {previewNotification.text}
+              </p>
+
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Содержимое поста:</h3>
+
+              {currentMediaList.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 mb-4 -mx-1 px-1">
+                   {currentMediaList.map((img, i) => (
+                      <div key={i} onClick={() => setFsImageIndex(i)} className="relative w-[100px] h-[100px] sm:w-[120px] sm:h-[120px] rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer group">
+                        <img src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
+                        <ImageIcon className="text-gray-700 w-8 h-8 hidden absolute" />
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Maximize2 className="text-white" size={20} />
+                        </div>
+                      </div>
+                   ))}
+                </div>
+              )}
+
+              <div className="bg-[#181a20] rounded-[1.5rem] p-4 sm:p-5 border border-gray-800/60">
+                 {(() => {
+                   try {
+                     const meta = JSON.parse(previewNotification.metadata);
+                     return <p className="text-gray-300 text-sm sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words">{meta.text || <span className="italic text-gray-600">Текст отсутствует</span>}</p>;
+                   } catch(e) { return null; }
+                 })()}
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-5 border-t border-gray-800/50 bg-[#0f1115] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-5 shrink-0 flex gap-3 relative z-20">
+               <button onClick={() => {
+                  markNotificationAsRead(previewNotification.id);
+                  setPreviewNotification(null);
+               }} className="w-full bg-[#181a20] hover:bg-gray-800 border border-gray-800 hover:border-gray-700 text-white py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all active:scale-95 flex justify-center items-center gap-2">
+                 <Check size={18} /> Отметить как прочитанное
+               </button>
+            </div>
           </div>
         </div>
       )}

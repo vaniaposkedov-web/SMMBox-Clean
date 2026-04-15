@@ -729,12 +729,14 @@ exports.deleteSharedPost = async (req, res) => {
         });
         
         if (post) {
-            // Создаем уведомление для автора поста об отказе
+            // Создаем уведомление для автора поста об отказе + сохраняем контент поста
             await prisma.notification.create({
                 data: {
                     userId: post.senderId,
                     type: 'WARNING',
-                    text: `Партнер ${post.receiver?.name || 'Без имени'} (Павильон ${post.receiver?.pavilion || '?'}) отказался от публикации вашего поста.`
+                    text: `Партнер ${post.receiver?.name || 'Без имени'} (Павильон ${post.receiver?.pavilion || '?'}) отказался от публикации вашего поста.`,
+                    // ⚡ ДОБАВЛЕНО: передаем metadata, чтобы можно было посмотреть, что за пост
+                    metadata: JSON.stringify({ text: post.text, mediaUrls: post.mediaUrls })
                 }
             });
             await prisma.sharedPost.delete({ where: { id: req.params.id } });
