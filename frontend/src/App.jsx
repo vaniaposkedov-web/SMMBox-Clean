@@ -154,10 +154,7 @@ function SupportWidget() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Формируем ссылку в Telegram с предзаполненным текстом
-  const tgMessage = `Здравствуйте! Мой ID: ${user?.id || 'Неизвестен'}. У меня возникла проблема:`;
-  const tgLink = `https://t.me/bnbslow?text=${encodeURIComponent(tgMessage)}`;
-
+  
   const handleMainClick = () => {
     if (isShrunk) {
       // Если плашка сжата, сразу перекидываем в Telegram
@@ -343,8 +340,7 @@ function UserLayout() {
         </div>
       </main>
       
-      {/* ⚡ ВНЕДРЕННЫЙ ВИДЖЕТ ПОДДЕРЖКИ */}
-      <SupportWidget />
+    
       
       <BottomNav />
     </div>
