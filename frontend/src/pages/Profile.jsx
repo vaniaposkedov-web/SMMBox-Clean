@@ -235,7 +235,7 @@ export default function Profile() {
         
         {/* ⚡ ПЛАШКА "САДОВОД SP" */}
         <div className="absolute top-0 left-0 bg-gradient-to-r from-emerald-500 to-green-500 text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-br-2xl shadow-lg shadow-green-500/20 uppercase tracking-widest z-20">
-          Садовод SP
+          SADOVODSP
         </div>
 
         {/* ⚡ КНОПКА ПОДДЕРЖКИ (Справа сверху) */}
@@ -244,7 +244,7 @@ export default function Profile() {
           className="absolute top-4 right-4 sm:top-5 sm:right-5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-[10px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2 transition-all active:scale-95 z-20 shadow-lg"
         >
           <MessageCircle size={14} className="sm:w-4 sm:h-4 shrink-0" />
-          <span className="hidden sm:inline">Поддержка</span>
+          <span>Поддержка</span>
         </button>
 
         <div className="relative group shrink-0 cursor-pointer" onClick={() => fileInputRef.current?.click()}>
