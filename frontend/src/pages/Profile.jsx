@@ -26,8 +26,9 @@ export default function Profile() {
 
   const PRO_MANAGER_TG = 'bnbslow'; 
   const [showProModal, setShowProModal] = useState(false);
+  const [selectedPlanModal, setSelectedPlanModal] = useState('PRO'); // 'BASIC' или 'PRO'
 
-  const [activeTab, setActiveTab] = useState('overview'); 
+  const [activeTab, setActiveTab] = useState('overview');
   
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -178,11 +179,14 @@ export default function Profile() {
   };
 
   const handleBuyPro = () => {
-    const message = `Здравствуйте! 👋\n\nЯ хочу приобрести подписку PRO для SADOVODPS за 2000 руб.\nМой ID в системе: ${user.id}`;
+    const planName = selectedPlanModal === 'PRO' ? 'Расширенный (PRO) за 1800 руб/мес' : 'Базовый за 1000 руб/мес';
+    const message = `Здравствуйте! 👋\n\nЯ хочу приобрести подписку "${planName}" для платформы SADOVODPS.\n\nМой ID в системе: ${user.id}`;
     const tgLink = `https://t.me/${PRO_MANAGER_TG}?text=${encodeURIComponent(message)}`;
     window.open(tgLink, '_blank');
     setShowProModal(false);
   };
+
+  const isSubscriptionActive = user?.isPro && (!user?.proExpiresAt || new Date(user.proExpiresAt) > new Date());
 
   // Добавь этот блок кода:
   const handleSupportClick = () => {
@@ -293,6 +297,15 @@ export default function Profile() {
             {user.pavilion && (
               <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-3 py-1 rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1.5 truncate max-w-full">
                 <LayoutDashboard size={12} className="shrink-0" /> <span className="truncate">Павильон: {user.pavilion}</span>
+              </span>
+            )}
+            {isSubscriptionActive ? (
+              <span className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-3 py-1 rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1.5">
+                <Crown size={12} className="shrink-0" /> Тариф: {user.proPlanType === 'BASIC' ? 'Базовый' : 'PRO'} (до {new Date(user.proExpiresAt).toLocaleDateString('ru-RU')})
+              </span>
+            ) : (
+              <span className="bg-gray-500/10 text-gray-400 border border-gray-500/20 px-3 py-1 rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1.5">
+                <Crown size={12} className="shrink-0" /> Тариф: Бесплатный
               </span>
             )}
           </div>
@@ -505,8 +518,14 @@ export default function Profile() {
               
               <div className="text-left mb-6 space-y-4">
                 {/* Базовый тариф */}
-                <div className="bg-[#14171c] border border-gray-800/80 p-4 sm:p-5 rounded-2xl shadow-inner">
-                  <h4 className="text-lg sm:text-xl font-bold text-white mb-2">Базовый — <span className="text-emerald-500">1000 ₽ / мес</span></h4>
+                <div 
+                  onClick={() => setSelectedPlanModal('BASIC')}
+                  className={`p-4 sm:p-5 rounded-2xl cursor-pointer transition-all border ${selectedPlanModal === 'BASIC' ? 'bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#14171c] border-gray-800/80 hover:border-gray-600 shadow-inner'}`}
+                >
+                  <h4 className="text-lg sm:text-xl font-bold text-white mb-2 flex items-center justify-between">
+                    <span>Базовый — <span className="text-emerald-500">1000 ₽ / мес</span></span>
+                    {selectedPlanModal === 'BASIC' && <CheckCircle2 size={20} className="text-emerald-500" />}
+                  </h4>
                   <ul className="text-gray-300 space-y-1.5 text-sm">
                     <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>До 15 аккаунтов ВКонтакте</li>
                     <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>До 5 каналов Telegram</li>
@@ -514,7 +533,10 @@ export default function Profile() {
                 </div>
 
                 {/* ПРО тариф */}
-                <div className="bg-[#14171c] border border-[#EAB308]/30 p-4 sm:p-5 rounded-2xl shadow-inner relative overflow-hidden">
+                <div 
+                  onClick={() => setSelectedPlanModal('PRO')}
+                  className={`p-4 sm:p-5 rounded-2xl relative overflow-hidden cursor-pointer transition-all border ${selectedPlanModal === 'PRO' ? 'bg-[#EAB308]/10 border-[#EAB308]/50 shadow-[0_0_15px_rgba(234,179,8,0.2)]' : 'bg-[#14171c] border-[#EAB308]/20 hover:border-[#EAB308]/40 shadow-inner'}`}
+                >
                   <div className="absolute top-0 right-0 bg-gradient-to-l from-[#EAB308] to-[#F59E0B] text-black text-[10px] font-bold px-2 py-1 rounded-bl-xl uppercase">PRO</div>
                   <h4 className="text-lg sm:text-xl font-bold text-white mb-2">Расширенный — <span className="text-[#EAB308]">1800 ₽ / мес</span></h4>
                   <ul className="text-gray-300 space-y-1.5 text-sm">

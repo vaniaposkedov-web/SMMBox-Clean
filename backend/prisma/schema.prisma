@@ -53,6 +53,8 @@ model User {
   receivedSharedPosts      SharedPost[] @relation("ReceivedSharedPosts")
 
   isPro                    Boolean @default(false)
+  proPlanType              String  @default("FREE") // FREE, BASIC, PRO
+  proExpiresAt             DateTime?
   proExpiresAt             DateTime? 
   transactions             Transaction[] 
   systemLogs               SystemLog[]
