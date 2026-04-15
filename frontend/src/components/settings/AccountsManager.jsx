@@ -79,10 +79,27 @@ export default function AccountsManager() {
     'bl': {x: 10, y: 85}, 'bc': {x: 50, y: 85}, 'br': {x: 90, y: 85}
   };
 
-  const isPro = user?.isPro || false;
-  const accountsLimit = 10;
-  const currentCount = accounts.length;
-  const isLimitReached = !isPro && currentCount >= accountsLimit;
+// Динамический расчет лимитов для интерфейса
+  const isExpired = user?.proExpiresAt && new Date(user.proExpiresAt) < new Date();
+  const isPaid = user?.isPro && !isExpired;
+  const planType = isPaid ? user?.proPlanType : 'FREE';
+
+  const limits = {
+    vk: planType === 'PRO' ? 20 : (planType === 'BASIC' ? 15 : 6),
+    tg: planType === 'PRO' ? 8 : (planType === 'BASIC' ? 5 : 4),
+    total: planType === 'PRO' ? 28 : (planType === 'BASIC' ? 20 : 10)
+  };
+
+  const vkCount = connectedVk.length;
+  const tgCount = connectedTg.length;
+  const currentCount = vkCount + tgCount;
+
+  const isVkLimitReached = vkCount >= limits.vk;
+  const isTgLimitReached = tgCount >= limits.tg;
+  const isTotalLimitReached = currentCount >= limits.total;
+  
+  // Флаг для блокировки главной кнопки выбора соцсети
+  const isLimitReached = selectedNetwork === 'VK' ? (isVkLimitReached || isTotalLimitReached) : (isTgLimitReached || isTotalLimitReached);
 
   const [isRefreshingProfiles, setIsRefreshingProfiles] = useState(false);
 
@@ -1051,19 +1068,31 @@ export default function AccountsManager() {
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight px-1 sm:px-0">Мои социальные сети</h1>
       </div>
 
-      {!isPro && (
-        <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors ${isLimitReached ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/10' : 'bg-gray-900 border-gray-800'}`}>
-          <div>
-            <p className="text-white font-bold text-base flex items-center gap-2">
-              Бесплатный тариф {isLimitReached && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest">Лимит исчерпан</span>}
-            </p>
-            <p className="text-gray-400 text-sm mt-1">Привязано аккаунтов (ВК + ТГ): <span className={isLimitReached ? 'text-red-400 font-bold' : 'text-white font-bold'}>{currentCount} / {accountsLimit}</span></p>
+      {/* Динамический блок лимитов */}
+      <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors ${isLimitReached ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/10' : 'bg-gray-900 border-gray-800'}`}>
+        <div>
+          <p className="text-white font-bold text-base flex items-center gap-2">
+            {!isPaid ? 'Бесплатный тариф' : (planType === 'PRO' ? 'Тариф PRO' : 'Тариф Базовый')} 
+            {isLimitReached && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest">Лимит исчерпан</span>}
+          </p>
+          
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-1.5">
+            <span className="text-gray-400 text-sm flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#0077FF]"></span> ВК: <span className={isVkLimitReached ? 'text-red-400 font-bold' : 'text-white font-bold'}>{vkCount} / {limits.vk}</span>
+            </span>
+            <span className="text-gray-400 text-sm flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#2AABEE]"></span> ТГ: <span className={isTgLimitReached ? 'text-red-400 font-bold' : 'text-white font-bold'}>{tgCount} / {limits.tg}</span>
+            </span>
+            <span className="text-gray-500 text-xs ml-2 border-l border-gray-700 pl-4 hidden sm:block">Всего: {currentCount}/{limits.total}</span>
           </div>
-          <button onClick={() => navigate('/profile')} className="w-full sm:w-auto text-sm bg-purple-600 hover:bg-purple-500 text-white px-6 py-3.5 sm:py-3 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 whitespace-nowrap min-h-[48px]">
-            Снять лимит (PRO)
-          </button>
         </div>
-      )}
+        
+        {planType !== 'PRO' && (
+          <button onClick={() => navigate('/profile?tab=subscription')} className="w-full sm:w-auto text-sm bg-purple-600 hover:bg-purple-500 text-white px-6 py-3.5 sm:py-3 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 whitespace-nowrap min-h-[48px]">
+            {!isPaid ? 'Снять лимиты (от 1000₽)' : 'Улучшить до PRO (1800₽)'}
+          </button>
+        )}
+      </div>
 
      {/* === БЛОК ВЫБОРА СОЦСЕТИ === */}
       <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-5 sm:p-6 flex flex-col gap-5 mt-6 shadow-xl max-w-md mx-auto w-full relative overflow-hidden">
@@ -1345,20 +1374,29 @@ export default function AccountsManager() {
                 <div className="w-full h-px bg-gray-800"></div>
 
                 {/* ШАГ 2: Выбор канала (ИСПРАВЛЕНИЕ 3) */}
+                {/* ШАГ 2: Выбор канала */}
                 <div>
                   <div className="flex gap-3 items-start mb-2">
                     <div className="w-6 h-6 rounded-full bg-[#0088CC]/20 border border-[#0088CC]/50 flex items-center justify-center text-xs font-bold text-[#0088CC] shrink-0 mt-0.5">2</div>
                     <p className="text-sm text-gray-400">Выберите сообщество, куда нужно добавить бота</p>
                   </div>
-                  <a
-                    href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setShowTgHelperModal(false)}
-                    className="w-full py-3.5 rounded-xl font-bold text-white transition-all flex justify-center items-center gap-3 bg-[#0088CC] hover:bg-[#0077B3] shadow-lg shadow-[#0088CC]/20 active:scale-95 text-base mt-3"
-                  >
-                    <Plus size={18} /> Выбрать канал в Telegram
-                  </a>
+                  
+                  {/* Умная проверка лимита для ТГ */}
+                  {isTgLimitReached || isTotalLimitReached ? (
+                    <div className="w-full py-3.5 rounded-xl font-bold text-white transition-all flex justify-center items-center gap-3 bg-red-500/10 border border-red-500/30 text-sm mt-3 cursor-not-allowed">
+                      <ShieldAlert size={18} className="text-red-400" /> Лимит каналов ({limits.tg}) исчерпан
+                    </div>
+                  ) : (
+                    <a
+                      href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setShowTgHelperModal(false)}
+                      className="w-full py-3.5 rounded-xl font-bold text-white transition-all flex justify-center items-center gap-3 bg-[#0088CC] hover:bg-[#0077B3] shadow-lg shadow-[#0088CC]/20 active:scale-95 text-base mt-3"
+                    >
+                      <Plus size={18} /> Выбрать канал в Telegram
+                    </a>
+                  )}
                 </div>
 
               </div>
@@ -1374,33 +1412,54 @@ export default function AccountsManager() {
           <div className="relative z-10 w-full max-w-lg bg-[#111318] border border-gray-700 rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
             
             <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-[#0077FF]/5 shrink-0">
-              <h3 className="text-lg font-bold text-white flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#0077FF] flex items-center justify-center text-white shadow-lg shadow-[#0077FF]/30">
-                  <Users size={20} />
-                </div>
-                Выберите страницы
-              </h3>
-              <button onClick={() => setKomodModal({ isOpen: false, profileId: null })} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-xl transition-colors">
+              <div className="flex flex-col">
+                <h3 className="text-lg font-bold text-white flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-[#0077FF] flex items-center justify-center text-white shadow-lg shadow-[#0077FF]/30">
+                    <Users size={20} />
+                  </div>
+                  Выберите страницы
+                </h3>
+                <p className={`text-sm mt-1.5 font-bold ${komodSelected.length >= (limits.vk - vkCount) ? 'text-red-400' : 'text-[#0077FF]'}`}>
+                  Лимит: {vkCount + komodSelected.length} / {limits.vk} аккаунтов
+                </p>
+              </div>
+              <button onClick={() => setKomodModal({ isOpen: false, profileId: null })} className="text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700 p-2 rounded-xl transition-colors self-start">
                 <X size={18} />
               </button>
             </div>
 
             <div className="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-2">
               {selectableGroups.map((group, index) => {
-                // ИСПОЛЬЗУЕМ НОВЫЕ ФУНКЦИИ ДЛЯ ИЗВЛЕЧЕНИЯ ИЗ RAW DATA
                 const uniqueId = extractId(group) || `idx-${index}`;
                 const isSelected = komodSelected.includes(uniqueId);
-                const isPersonal = group.is_profile_dummy;
                 
+                // Умная логика блокировки: если карточка не выбрана, а лимит достигнут - блокируем её
+                const isVkModalLimitReached = komodSelected.length >= (limits.vk - vkCount);
+                const isLocked = !isSelected && isVkModalLimitReached;
+                
+                const isPersonal = group.is_profile_dummy;
                 const groupName = extractName(group) || 'Без названия';
                 const avatar = getValidAvatar(extractAvatar(group), groupName);
 
                 return (
                   <div 
                     key={uniqueId} 
-                    onClick={() => setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId])}
-                    className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#0077FF]/10 border-[#0077FF]' : 'bg-gray-900 border-gray-800 hover:bg-gray-800'}`}
+                    onClick={() => {
+                      if (isLocked) return; // Если заблокировано - клик не работает
+                      setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId]);
+                    }}
+                    className={`relative flex items-center gap-4 p-3 rounded-2xl transition-all border overflow-hidden ${
+                      isSelected ? 'bg-[#0077FF]/10 border-[#0077FF] cursor-pointer' : 
+                      isLocked ? 'bg-gray-900 border-red-500/20 opacity-50 cursor-not-allowed' : 
+                      'bg-gray-900 border-gray-800 hover:bg-gray-800 cursor-pointer'
+                    }`}
                   >
+                    {/* Плашка блокировки с крестиком */}
+                    {isLocked && (
+                      <div className="absolute inset-0 bg-red-950/20 z-10 flex items-center justify-center backdrop-blur-[1px]">
+                         <X size={40} className="text-red-500/50" strokeWidth={3} />
+                      </div>
+                    )}
                     <img 
                       src={avatar} 
                       onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, groupName); }} 

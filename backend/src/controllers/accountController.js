@@ -7,13 +7,15 @@ const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 const { logEvent } = require('../utils/logger');
 
 // === ФУНКЦИЯ ПРОВЕРКИ ЛИМИТОВ И ПОДПИСКИ ===
+// === ФУНКЦИЯ ПРОВЕРКИ ЛИМИТОВ И ПОДПИСКИ ===
+// === ФУНКЦИЯ ПРОВЕРКИ ЛИМИТОВ И ПОДПИСКИ ===
 const getUserLimits = (user) => {
   const isExpired = user.proExpiresAt && new Date(user.proExpiresAt) < new Date();
   const plan = (user.isPro && !isExpired) ? user.proPlanType : 'FREE';
   
   if (plan === 'PRO') return { vk: 20, tg: 8, total: 28, isExpired };
   if (plan === 'BASIC') return { vk: 15, tg: 5, total: 20, isExpired };
-  return { vk: 0, tg: 0, total: 10, isExpired }; // FREE лимит: 10 аккаунтов суммарно
+  return { vk: 6, tg: 4, total: 10, isExpired }; // FREE лимит: 6 ВК, 4 ТГ, 10 суммарно
 };
 
 
