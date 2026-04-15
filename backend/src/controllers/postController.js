@@ -810,25 +810,47 @@ exports.getSystemLogs = async (req, res) => {
 };
 
 
-// === ПОЛУЧИТЬ ПОЛНУЮ ИСТОРИЮ ПОСТОВ ===
+// === ПОЛУЧИТЬ ПОЛНУЮ ИСТОРИЮ ПОСТОВ (ВК/ТГ + ПАРТНЕРЫ) ===
 exports.getPostsHistory = async (req, res) => {
     try {
         const userId = getUserId(req);
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
+        // 1. Берем обычные посты (VK / Telegram)
         const posts = await prisma.post.findMany({
-            where: { 
-                account: { userId: userId } 
-            },
+            where: { account: { userId: userId } },
             include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
-            orderBy: [
-                { createdAt: 'desc' }
-            ],
-            take: 100 
+            orderBy: [{ createdAt: 'desc' }],
+            take: 500 
         });
 
-        // 🟢 ИСПРАВЛЕНИЕ: Отдаем все фотографии без обрезки!
-        res.json({ success: true, posts: posts });
+        // 2. Берем посты, отправленные партнерам
+        const sharedPosts = await prisma.sharedPost.findMany({
+            where: { senderId: userId },
+            include: { receiver: { select: { name: true, avatarUrl: true, pavilion: true } } },
+            orderBy: [{ createdAt: 'desc' }],
+            take: 500
+        });
+
+        // 3. Форматируем отправленные партнерам под единый стандарт истории
+        const formattedShared = sharedPosts.map(sp => ({
+            id: sp.id,
+            text: sp.text,
+            mediaUrls: sp.mediaUrls,
+            status: 'PUBLISHED',
+            createdAt: sp.createdAt,
+            publishAt: sp.createdAt,
+            account: {
+                name: `Партнеру: ${sp.receiver?.name || 'Без имени'}`,
+                provider: 'partner',
+                avatarUrl: sp.receiver?.avatarUrl || null
+            }
+        }));
+
+        // 4. Объединяем всё вместе и сортируем по дате (от новых к старым)
+        const allPosts = [...posts, ...formattedShared].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        res.json({ success: true, posts: allPosts });
     } catch (error) {
         console.error('Ошибка в getPostsHistory:', error);
         res.status(500).json({ success: false, error: 'Ошибка при загрузке истории' });
