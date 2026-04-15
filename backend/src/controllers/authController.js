@@ -385,13 +385,79 @@ exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user?.userId || req.user?.id || req.body.userId;
     const { name, pavilion, phone } = req.body;
-    let avatarUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
-    const data = { name, pavilion, phone };
-    if (avatarUrl) data.avatarUrl = avatarUrl;
     
-    const updated = await prisma.user.update({ where: { id: String(userId) }, data });
+    if (!userId) {
+        return res.status(400).json({ success: false, error: 'ID пользователя не найден' });
+    }
+
+    // Формируем объект только с теми данными, которые реально пришли
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (pavilion !== undefined) data.pavilion = pavilion;
+    if (phone !== undefined) data.phone = phone;
+    
+    // ⚡ ПРАВИЛЬНАЯ ОБРАБОТКА АВАТАРКИ (с защитой от краша)
+    if (req.file) {
+        const fs = require('fs');
+        const path = require('path');
+        
+        try {
+            const sharp = require('sharp');
+            const uploadsDir = path.join(__dirname, '../../uploads/profiles');
+            
+            if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir, { recursive: true });
+            }
+            
+            const fileName = `avatar_${userId}_${Date.now()}.jpg`;
+            const filePath = path.join(uploadsDir, fileName);
+            
+            // Сжимаем аватарку и делаем её идеальным квадратом 400x400
+            await sharp(req.file.path)
+                .resize({ width: 400, height: 400, fit: 'cover' })
+                .jpeg({ quality: 85 })
+                .toFile(filePath);
+                
+            // Удаляем временный мусор
+            await fs.promises.unlink(req.file.path).catch(() => {});
+            
+            // Прописываем правильный путь (через /api/, чтобы обходить Nginx)
+            data.avatarUrl = `/api/uploads/profiles/${fileName}`;
+        } catch (imgErr) {
+            console.error("Ошибка при обработке картинки:", imgErr);
+            // Фолбек: если sharp по какой-то причине не сработал, просто копируем файл как есть
+            const ext = path.extname(req.file.originalname) || '.jpg';
+            const fileName = `avatar_${userId}_${Date.now()}${ext}`;
+            const destPath = path.join(__dirname, '../../uploads/profiles', fileName);
+            
+            if (!fs.existsSync(path.dirname(destPath))) fs.mkdirSync(path.dirname(destPath), { recursive: true });
+            
+            await fs.promises.copyFile(req.file.path, destPath);
+            await fs.promises.unlink(req.file.path).catch(() => {});
+            
+            data.avatarUrl = `/api/uploads/profiles/${fileName}`;
+        }
+    }
+    
+    // Сохраняем в базу данных
+    const updated = await prisma.user.update({ 
+        where: { id: String(userId) }, 
+        data 
+    });
+    
     res.json({ success: true, user: updated });
-  } catch (error) { res.status(500).json({ error: 'Ошибка обновления' }); }
+  } catch (error) { 
+    console.error('Ошибка обновления профиля:', error);
+    
+    // 🛡️ Перехватываем ошибку уникального номера телефона или почты
+    if (error.code === 'P2002') {
+        if (error.meta?.target?.includes('phone')) {
+            return res.status(400).json({ success: false, error: 'Этот номер телефона уже используется другим пользователем!' });
+        }
+    }
+    
+    res.status(500).json({ success: false, error: 'Ошибка сохранения данных: ' + error.message }); 
+  }
 };
 
 exports.completeOnboarding = async (req, res) => {
