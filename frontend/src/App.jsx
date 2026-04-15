@@ -142,8 +142,7 @@ function Sidebar() {
 
 // --- ВИДЖЕТ СЛУЖБЫ ПОДДЕРЖКИ ---
 function SupportWidget() {
-  const user = useStore((state) => state.user);
-  const [isShrunk, setIsShrunk] = useState(false);
+  
   const [showPopover, setShowPopover] = useState(false);
 
   // Таймер: через 10 секунд сжимаем кнопку

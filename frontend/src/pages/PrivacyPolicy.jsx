@@ -95,6 +95,10 @@ export default function PrivacyPolicy() {
                 </div>
               </section>
 
+              <div className="pt-4 mt-6 border-t border-gray-800">
+                 <p className="text-xs text-gray-500">*Telegram признанной экстремистской и запрещённой в РФ</p>
+              </div>
+
             </div>
           </div>
         </div>
