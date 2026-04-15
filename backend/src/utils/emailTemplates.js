@@ -6,7 +6,7 @@ const getBaseTemplate = (content) => `
       <tr>
         <td align="center" style="padding: 40px 0 20px 0;">
           <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.025em; color: #ffffff;">
-            SMM<span style="color: #3b82f6;">BOXSS</span>
+            SADOVOD<span style="color: #3b82f6;">PS</span>
           </h1>
         </td>
       </tr>

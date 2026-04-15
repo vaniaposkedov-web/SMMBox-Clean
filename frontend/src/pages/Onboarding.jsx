@@ -83,7 +83,7 @@ export default function Onboarding() {
   // Запуск чекера
   const startTgLinking = () => {
     // 1. Открываем Deep Link ссылку в новой вкладке (наше железобетонное решение)
-    window.open(`https://t.me/smmbox_auth_bot?start=bind_${user.id}`, '_blank');
+    window.open(`https://t.me/sadovodps_auth_bot?start=bind_${user.id}`, '_blank');
     // 2. Включаем на сайте окно "Ожидания ТГ"
     setTgChecker({ isWaiting: true });
   };
@@ -352,10 +352,10 @@ export default function Onboarding() {
                 ))}
                 
                 <div className="flex flex-row gap-2 w-full">
-                      <a href="https://t.me/smmbox_auth_bot?startchannel=true" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
+                     <a href="https://t.me/sadovodps_auth_bot?startchannel=true" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
                         <Plus size={16} /> Канал
                       </a>
-                      <a href="https://t.me/smmbox_auth_bot?startgroup=true" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
+                      <a href="https://t.me/sadovodps_auth_bot?startgroup=true" target="_blank" rel="noopener noreferrer" className="flex-1 bg-[#0088CC]/10 hover:bg-[#0088CC]/20 text-[#0088CC] border border-[#0088CC]/30 px-2 py-3 rounded-xl transition-all flex justify-center items-center gap-1.5 font-bold shadow-sm active:scale-95 text-center text-[12px] sm:text-sm">
                         <Plus size={16} /> Группа
                       </a>
                     </div>
