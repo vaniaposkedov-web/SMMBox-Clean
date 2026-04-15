@@ -104,6 +104,8 @@ export default function WatermarkConstructor() {
         setSelectedAccount(null);
       }, 1500);
       fetchAccounts(user.id);
+    } else {
+      alert(result.error || 'Не удалось сохранить настройки.');
     }
   };
 
@@ -113,7 +115,33 @@ export default function WatermarkConstructor() {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => updateSettings({ image: event.target.result, type: 'image' });
+      reader.onload = (event) => {
+        // Сжимаем логотип перед сохранением в Base64 (иначе сервер заблокирует запрос)
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 400; // Для логотипа этого более чем достаточно
+          const MAX_HEIGHT = 400;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height && width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          } else if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          // Сохраняем в PNG, чтобы не потерять прозрачный фон логотипа
+          updateSettings({ image: canvas.toDataURL('image/png', 0.9), type: 'image' });
+        };
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -250,8 +278,14 @@ export default function WatermarkConstructor() {
                     >
                       {/* Основная строка карточки */}
                       <div className="flex items-center gap-3 p-3">
-                        <div className="relative">
-                          <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700 object-cover" alt="" />
+                        <div className="relative shrink-0">
+                          {acc.avatarUrl ? (
+                            <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700 object-cover" alt="" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400">
+                              {acc.name?.substring(0, 2).toUpperCase()}
+                            </div>
+                          )}
                           <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-gray-900" title="Настроен"></div>
                         </div>
                         <div className="flex-1 min-w-0">
@@ -313,7 +347,13 @@ export default function WatermarkConstructor() {
                       onClick={() => handleSelectAccount(acc)}
                       className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-800 transition-all text-left border border-transparent hover:border-gray-700"
                     >
-                      <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-800 object-cover" alt="" />
+                      {acc.avatarUrl ? (
+                        <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-800 object-cover shrink-0" alt="" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full border border-gray-800 bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400 shrink-0">
+                          {acc.name?.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold text-white truncate">{acc.name}</div>
                         <div className="text-[9px] text-gray-500 uppercase font-black">{acc.provider}</div>
@@ -342,7 +382,13 @@ export default function WatermarkConstructor() {
           </button>
           <div className="h-5 w-px bg-gray-800 hidden sm:block" />
           <div className="flex items-center gap-2">
-             <img src={selectedAccount?.avatarUrl} className="w-6 h-6 rounded-full border border-gray-700" alt="" />
+             {selectedAccount?.avatarUrl ? (
+               <img src={selectedAccount.avatarUrl} className="w-6 h-6 rounded-full border border-gray-700 object-cover shrink-0" alt="" />
+             ) : (
+               <div className="w-6 h-6 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center text-[8px] font-bold text-gray-400 shrink-0">
+                 {selectedAccount?.name?.substring(0, 2).toUpperCase()}
+               </div>
+             )}
              <div className="flex flex-col">
                <h2 className="text-white font-bold text-[11px] leading-none">{selectedAccount?.name}</h2>
                <span className="text-[8px] text-blue-500 uppercase font-black tracking-widest mt-0.5">Настройка</span>

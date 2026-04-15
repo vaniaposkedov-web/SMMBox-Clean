@@ -628,8 +628,9 @@ export const useStore = create(
             method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ signature, watermark: watermarkData })
           });
           if (res.ok) { get().fetchAccounts(get().user.id); return { success: true }; }
-          return { success: false };
-        } catch (error) { return { success: false }; }
+          const data = await res.json().catch(() => ({}));
+          return { success: false, error: data.error || 'Ошибка при сохранении (возможно, файл слишком большой)' };
+        } catch (error) { return { success: false, error: 'Сетевая ошибка при сохранении' }; }
       },
 
       syncVkKomod: async () => {
