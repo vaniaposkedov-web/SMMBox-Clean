@@ -6,6 +6,16 @@ const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 const { logEvent } = require('../utils/logger');
 
+// === ФУНКЦИЯ ПРОВЕРКИ ЛИМИТОВ И ПОДПИСКИ ===
+const getUserLimits = (user) => {
+  const isExpired = user.proExpiresAt && new Date(user.proExpiresAt) < new Date();
+  const plan = (user.isPro && !isExpired) ? user.proPlanType : 'FREE';
+  
+  if (plan === 'PRO') return { vk: 20, tg: 8, total: 28, isExpired };
+  if (plan === 'BASIC') return { vk: 15, tg: 5, total: 20, isExpired };
+  return { vk: 0, tg: 0, total: 10, isExpired }; // FREE лимит: 10 аккаунтов суммарно
+};
+
 
 // --- УНИВЕРСАЛЬНЫЙ ПАРСЕР ПО СТРУКТУРЕ АЛЕКСЕЯ ---
 const extractKomodAvatar = (obj) => {
@@ -609,10 +619,16 @@ exports.saveTgAccounts = async (req, res) => {
     if (!tgProfile) tgProfile = await prisma.socialProfile.create({ data: { userId: String(userId), provider: 'TELEGRAM', providerAccountId: String(userId), name: 'Telegram Профиль' } });
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
     const tgCount = await prisma.account.count({ where: { userId: String(userId), provider: 'TELEGRAM' } });
-    const limitTg = currentUser.isPro ? 8 : 5;
+    const limits = getUserLimits(currentUser);
 
-    if ((tgCount + channels.length) > limitTg) {
-      return res.status(403).json({ error: `Лимит Telegram каналов: ${limitTg}. У вас уже ${tgCount}.` });
+    // Для FREE тарифа считаем общий лимит, для платных - раздельный
+    if (limits.total === 10) {
+      const totalCount = await prisma.account.count({ where: { userId: String(userId) } });
+      if ((totalCount + channels.length) > limits.total) {
+        return res.status(403).json({ error: `Бесплатный лимит: ${limits.total} аккаунтов. У вас уже ${totalCount}. Оформите подписку.` });
+      }
+    } else if ((tgCount + channels.length) > limits.tg) {
+      return res.status(403).json({ error: `Лимит Telegram каналов для вашего тарифа: ${limits.tg}. У вас уже ${tgCount}.` });
     }
     for (const channel of channels) {
       const safeProviderId = String(channel.chatId);
@@ -638,10 +654,15 @@ exports.saveVkGroups = async (req, res) => {
     if (!userId || !groups || groups.length === 0) return res.status(400).json({ error: 'Нет данных' });
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
     const vkCount = await prisma.account.count({ where: { userId: String(userId), provider: 'VK' } });
-    const limitVk = currentUser.isPro ? 20 : 15;
+    const limits = getUserLimits(currentUser);
 
-    if ((vkCount + groups.length) > limitVk) {
-      return res.status(403).json({ error: `Лимит аккаунтов ВК: ${limitVk}. У вас уже ${vkCount}.` });
+    if (!isTaken) {
+      if (limits.total === 10) {
+        const totalCount = await prisma.account.count({ where: { userId: String(userId) } });
+        if (totalCount >= limits.total) return res.status(403).json({ error: `Бесплатный лимит (${limits.total} акк.) исчерпан.` });
+      } else if (vkCount >= limits.vk) {
+        return res.status(403).json({ error: `Лимит ВК (${limits.vk} акк.) исчерпан. Пожалуйста, обновите тариф.` });
+      }
     }
     let vkProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'VK' } });
     const savedAccounts = await Promise.all(groups.map(async (group) => {
