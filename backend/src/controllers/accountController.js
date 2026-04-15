@@ -732,12 +732,22 @@ exports.deleteAccount = async (req, res) => {
     if (!account) return res.status(404).json({ error: 'Аккаунт не найден' });
 
     // Если это аккаунт Kom-od (определяем по токену), нужно удалить его и со шлюза
-    if (account.provider === 'VK' && account.accessToken === KOMOD_TOKEN) {
+    // Если это ВК-аккаунт, надежно удаляем его из шлюза KOM-OD
+    if (account.provider === 'VK') {
       try {
         const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
         const allGroups = grpRes.data?.data?.items || [];
-        const rawId = account.providerId.replace('wall_', '').replace('group_', '');
-        const komodGroup = allGroups.find(g => String(g.uid || g.id || g.account_id) === rawId);
+        
+        // Убираем префиксы и возможные минусы (в ВК id групп часто идут с минусом)
+        const rawId = account.providerId.replace('wall_', '').replace('group_', '').replace('-', '');
+        
+        // ИСПРАВЛЕНИЕ: Более гибкий поиск группы в шлюзе (чистим минусы и проверяем все возможные поля)
+        const komodGroup = allGroups.find(g => {
+          const u = String(g.uid || '').replace('-', '');
+          const i = String(g.id || '').replace('-', '');
+          const accUrl = String(g.url || '');
+          return u === rawId || i === rawId || accUrl.includes(rawId);
+        });
 
         if (komodGroup && komodGroup.id) {
           await axios.delete(`${KOMOD_BASE_URL}/group/${komodGroup.id}`, {

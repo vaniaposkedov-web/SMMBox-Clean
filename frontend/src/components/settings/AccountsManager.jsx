@@ -305,8 +305,17 @@ const handleSaveKomodGroups = async () => {
         });
         return res.ok;
       } else {
-        const screenName = group.screen_name || group.domain || `club${group.id || group.group_id}`;
-        const res = await useStore.getState().addVkKomodGroup(`https://vk.com/${screenName}`, groupName, komodModal.profileId, groupAvatar);
+        // ИСПРАВЛЕНИЕ 400 ОШИБКИ: Надежное формирование URL без "undefined"
+        const vkId = group.uid || group.group_id || group.id;
+        const screenName = group.screen_name || group.domain || (vkId ? `club${vkId}` : null);
+        
+        if (!screenName) {
+           console.error("Ошибка: Не удалось определить ID группы", group);
+           return false; // Пропускаем сломанную группу, не вызывая 400 ошибку
+        }
+        
+        const groupUrl = `https://vk.com/${screenName}`;
+        const res = await useStore.getState().addVkKomodGroup(groupUrl, groupName, komodModal.profileId, groupAvatar);
         return res.success;
       }
     });
@@ -1017,7 +1026,10 @@ const handleSaveKomodGroups = async () => {
                 {/* БЕЗОПАСНОСТЬ: Стену (isProfile) отключать нельзя, только сообщества */}
                 {!acc.providerId.startsWith('wall_') ? (
                   <button 
-                    onClick={() => removeAccount(acc.id)} 
+                    onClick={async () => {
+                      const res = await removeAccount(acc.id);
+                      if (!res.success) alert(res.error || 'Ошибка при отключении аккаунта');
+                    }} 
                     className="w-full sm:w-auto flex items-center justify-center gap-1.5 text-xs font-medium text-rose-500 hover:text-rose-400 transition-colors py-3 sm:py-2 px-3 bg-rose-500/5 hover:bg-rose-500/10 rounded-lg min-h-[44px] sm:min-h-0"
                   >
                     <Trash2 size={16} /> Отключить
