@@ -86,7 +86,7 @@ function Sidebar() {
         </NavLink>
 
         <NavLink to="/publish" className={linkClass}>
-          <PlusSquare size={18} /> Создать пост
+          <Plus size={22} strokeWidth={2.5} /> Создать пост
         </NavLink>
 
         {/* ⚡ ИЗМЕНЕННАЯ ВКЛАДКА УВЕДОМЛЕНИЙ (КОЛОКОЛЬЧИК) */}
@@ -118,7 +118,7 @@ function Sidebar() {
           
           {isMoreOpen && (
             <div className="pl-4 pr-2 py-2 mt-1 space-y-1 border-l-2 border-gray-800/50 ml-4 animate-in fade-in slide-in-from-top-2 duration-200">
-              <NavLink to="/publish" className={subLinkClass}><PlusSquare size={16} /> Создать пост</NavLink>
+              <NavLink to="/publish" className={subLinkClass}><Plus size={18} strokeWidth={2.5} /> Создать пост</NavLink>
               <NavLink to="/accounts" className={subLinkClass}><Layers size={16} /> Аккаунты и страницы</NavLink>
               <NavLink to="/posts" className={subLinkClass}><FileText size={16} /> Посты</NavLink>
               <NavLink to="/analytics" className={subLinkClass}><BarChart2 size={16} /> Аналитика</NavLink>
@@ -138,7 +138,7 @@ function Sidebar() {
   );
 }
 
-/// --- НИЖНЕЕ МЕНЮ ДЛЯ ТЕЛЕФОНОВ (ОБЫЧНЫЙ ЮЗЕР) ---
+// --- НИЖНЕЕ МЕНЮ ДЛЯ ТЕЛЕФОНОВ (ОБЫЧНЫЙ ЮЗЕР) ---
 function BottomNav() {
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
@@ -162,12 +162,9 @@ function BottomNav() {
         <div className="md:hidden fixed inset-0 bg-black/60 z-[90] backdrop-blur-sm" onClick={() => setIsMoreMenuOpen(false)}>
           <div className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-2 right-2 bg-admin-card border border-gray-800 rounded-2xl p-4 shadow-2xl animate-in slide-in-from-bottom-4 duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="grid grid-cols-3 gap-3">
-              <NavLink to="/publish" onClick={() => setIsMoreMenuOpen(false)} className="relative flex flex-col items-center justify-center px-2 -mt-6">
-                <div className="w-14 h-14 bg-[#0077FF] rounded-full flex items-center justify-center text-white shadow-[0_4px_20px_rgba(0,119,255,0.4)] border-[4px] border-admin-card active:scale-95 transition-transform">
-                    {/* ⚡ КРАСИВЫЙ БОЛЬШОЙ ПЛЮС */}
-                    <Plus size={32} strokeWidth={3} />
-                </div>
-                <span className="text-[10px] mt-1.5 font-bold text-gray-300">Пост</span>
+              <NavLink to="/publish" onClick={() => setIsMoreMenuOpen(false)} className={popoverLinkClass}>
+                <Plus size={24} strokeWidth={2.5} className="mb-2" />
+                <span className="text-[10px] text-center leading-tight">Создать<br/>пост</span>
               </NavLink>
               <NavLink to="/accounts" onClick={() => setIsMoreMenuOpen(false)} className={popoverLinkClass}>
                 <Layers size={22} className="mb-2" />
@@ -203,14 +200,15 @@ function BottomNav() {
         <NavLink to="/partners" className={linkClass} onClick={() => setIsMoreMenuOpen(false)}>
           <div className="relative">
             <Users size={22} />
-            {partnersBadgeCount > 0 && <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-admin-card" />}
+            {partnersBadgeCount > 0 && <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-admin-card animate-pulse" />}
           </div>
           <span className="text-[10px] mt-1 font-medium">Партнеры</span>
         </NavLink>
 
         <NavLink to="/publish" onClick={() => setIsMoreMenuOpen(false)} className="relative flex flex-col items-center justify-center px-2 -mt-6">
            <div className="w-14 h-14 bg-[#0077FF] rounded-full flex items-center justify-center text-white shadow-[0_4px_20px_rgba(0,119,255,0.4)] border-[4px] border-admin-card active:scale-95 transition-transform">
-              <PlusSquare size={26} className="ml-0.5" />
+              {/* ⚡ КРАСИВЫЙ БОЛЬШОЙ ПЛЮС */}
+              <Plus size={32} strokeWidth={3} />
            </div>
            <span className="text-[10px] mt-1.5 font-bold text-gray-300">Пост</span>
         </NavLink>
@@ -294,7 +292,6 @@ function App() {
           <Route path="/boss-login" element={<AdminLogin />} />
           <Route path="/system-core-dashboard" element={<AdminDashboard />} />
           <Route path="*" element={<Navigate to="/auth" replace />} />
-          
         </Routes>
       </BrowserRouter>
     );
