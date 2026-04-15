@@ -358,6 +358,33 @@ export default function AccountsManager() {
     };
   }, [user?.id, fetchAccounts, fetchProfiles]);
 
+  // === УМНОЕ ОБНОВЛЕНИЕ ПРИ ВОЗВРАТЕ ИЗ ТЕЛЕГРАМ ===
+  // Срабатывает, когда пользователь возвращается на вкладку сайта из приложения Telegram
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && user?.id) {
+        fetchAccounts(user.id);
+        fetchProfiles(user.id);
+      }
+    };
+
+    const handleFocus = () => {
+      if (user?.id) {
+        fetchAccounts(user.id);
+        fetchProfiles(user.id);
+      }
+    };
+
+    // Слушаем возвращение фокуса на вкладку или окно браузера
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [user?.id, fetchAccounts, fetchProfiles]);
+
   useEffect(() => {
     // Обязательно ждем загрузки данных пользователя, иначе запросы упадут
     if (!user?.id) return;
