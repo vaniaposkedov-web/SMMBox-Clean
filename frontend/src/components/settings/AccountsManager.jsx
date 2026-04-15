@@ -112,6 +112,7 @@ export default function AccountsManager() {
   const [vkConnectStatus, setVkConnectStatus] = useState('idle');
   const [newlyAddedProfileId, setNewlyAddedProfileId] = useState(null);
   const [addedGroupsCount, setAddedGroupsCount] = useState(0);
+  const [isWaitingForTg, setIsWaitingForTg] = useState(false); // Для Telegram
   const processingHash = useRef(null);
 
   
@@ -282,66 +283,38 @@ export default function AccountsManager() {
     }
   };
 
-  const handleSaveKomodGroups = async () => {
+const handleSaveKomodGroups = async () => {
     if (komodSelected.length === 0) return;
     setIsSyncingVk(true);
     setVkConnectStatus('syncing_groups'); 
     setKomodModal({ isOpen: false, profileId: null }); 
-    
-    let addedCount = 0;
-    for (const uniqueId of komodSelected) {
-      const group = selectableGroups.find((g, idx) => {
-        const gId = extractId(g) || `idx-${idx}`;
-        return String(gId) === String(uniqueId);
-      });
 
-      if (group) {
-        const groupName = extractName(group) || 'Личная страница';
-        const groupAvatar = extractAvatar(group); 
-        
-        if (group.is_profile_dummy) {
-          try {
-            // 🟢 Жестко берем токен из памяти
-            const currentToken = localStorage.getItem('token') || token;
-            const res = await fetch('/api/accounts/vk/komod-add-profile', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentToken}` },
-              body: JSON.stringify({ 
-                profileId: komodModal.profileId, 
-                avatarUrl: groupAvatar, 
-                name: groupName
-              })
-            });
-            if (res.ok) addedCount++;
-          } catch (e) { console.error("Ошибка добавления стены", e); }
-        } else {
-          // ЖЕЛЕЗОБЕТОННОЕ ИЗВЛЕЧЕНИЕ ССЫЛКИ НА ГРУППУ
-          const groupId = group.id || group.group_id || group.uid;
-          let screenName = group.screen_name || group.domain;
+    // Создаем массив задач для параллельного выполнения
+    const tasks = komodSelected.map(async (uniqueId) => {
+      const group = selectableGroups.find((g, idx) => String(extractId(g) || `idx-${idx}`) === String(uniqueId));
+      if (!group) return false;
 
-          if (!screenName && groupId) {
-             screenName = `club${groupId}`;
-          }
+      const groupAvatar = extractAvatar(group);
+      const groupName = extractName(group) || 'Без названия';
 
-          // ЗАЩИТА: Блокируем отправку битых ссылок
-          if (!screenName || screenName.includes('null') || screenName.includes('undefined')) {
-             console.error("Пропуск: не удалось собрать URL для группы", group);
-             continue; 
-          }
-
-          const groupUrl = `https://vk.com/${screenName}`;
-
-          const res = await useStore.getState().addVkKomodGroup(
-            groupUrl, 
-            groupName, 
-            komodModal.profileId, 
-            groupAvatar 
-          );
-          if (res.success) addedCount++;
-        }
+      if (group.is_profile_dummy) {
+        const res = await fetch('/api/accounts/vk/komod-add-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ profileId: komodModal.profileId, avatarUrl: groupAvatar, name: groupName })
+        });
+        return res.ok;
+      } else {
+        const screenName = group.screen_name || group.domain || `club${group.id || group.group_id}`;
+        const res = await useStore.getState().addVkKomodGroup(`https://vk.com/${screenName}`, groupName, komodModal.profileId, groupAvatar);
+        return res.success;
       }
-    }
+    });
+
+    const results = await Promise.all(tasks);
+    const addedCount = results.filter(Boolean).length;
     
+    setAddedGroupsCount(addedCount);
     await useStore.getState().syncVkKomod();
     await handleRefreshProfiles();
     setIsSyncingVk(false);
@@ -370,6 +343,7 @@ export default function AccountsManager() {
       console.log('⚡ Получен сигнал от сервера: обновляем аккаунты!');
       fetchAccounts(user.id);
       fetchProfiles(user.id);
+      setIsWaitingForTg(false); // Снимаем прогресс-бар, когда Telegram аккаунт прилетел в базу
     });
 
     return () => {
@@ -1388,10 +1362,13 @@ export default function AccountsManager() {
                     </div>
                   ) : (
                     <a
-                      href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => setShowTgHelperModal(false)}
+                    href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      setShowTgHelperModal(false);
+                      setIsWaitingForTg(true); // Включаем режим ожидания
+                    }}
                       className="w-full py-3.5 rounded-xl font-bold text-white transition-all flex justify-center items-center gap-3 bg-[#0088CC] hover:bg-[#0077B3] shadow-lg shadow-[#0088CC]/20 active:scale-95 text-base mt-3"
                     >
                       <Plus size={18} /> Выбрать канал в Telegram
