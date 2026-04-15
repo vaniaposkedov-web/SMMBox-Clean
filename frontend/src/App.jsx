@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
 import { 
   Plus, Inbox, Settings as SettingsIcon, User, Users, Box, LogOut, 
-  MoreHorizontal, ChevronDown, ChevronUp, Layers, FileText, BarChart2, Droplet, PenTool, Bell 
+  MoreHorizontal, ChevronDown, ChevronUp, Layers, FileText, BarChart2, 
+  Droplet, PenTool, Bell, MessageCircle, HelpCircle, Send, ChevronLeft, X 
 } from 'lucide-react';
 import { useStore } from './store'; 
 
@@ -138,6 +139,89 @@ function Sidebar() {
   );
 }
 
+
+// --- ВИДЖЕТ СЛУЖБЫ ПОДДЕРЖКИ ---
+function SupportWidget() {
+  const user = useStore((state) => state.user);
+  const [isShrunk, setIsShrunk] = useState(false);
+  const [showPopover, setShowPopover] = useState(false);
+
+  // Таймер: через 10 секунд сжимаем кнопку
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsShrunk(true);
+      setShowPopover(false); 
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Формируем ссылку в Telegram с предзаполненным текстом
+  const tgMessage = `Здравствуйте! Мой ID: ${user?.id || 'Неизвестен'}. У меня возникла проблема:`;
+  const tgLink = `https://t.me/bnbslow?text=${encodeURIComponent(tgMessage)}`;
+
+  const handleMainClick = () => {
+    if (isShrunk) {
+      // Если плашка сжата, сразу перекидываем в Telegram
+      window.open(tgLink, '_blank', 'noopener,noreferrer');
+    } else {
+      // Если большая круглая, открываем окошко с описанием
+      setShowPopover(!showPopover);
+    }
+  };
+
+  return (
+    <div 
+      className={`fixed z-[100] transition-all duration-700 ease-in-out ${
+        isShrunk ? 'right-0' : 'right-4 md:right-8'
+      } bottom-[calc(80px+env(safe-area-inset-bottom))] md:bottom-8`}
+    >
+      {/* --- МОДАЛЬНОЕ ОКОШКО --- */}
+      {showPopover && !isShrunk && (
+        <div className="absolute bottom-[calc(100%+16px)] right-0 w-[280px] sm:w-[320px] bg-admin-card border border-gray-800 rounded-3xl shadow-2xl p-5 sm:p-6 animate-in zoom-in-95 duration-200 origin-bottom-right">
+          <button 
+            onClick={() => setShowPopover(false)} 
+            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-gray-900 rounded-full text-gray-500 hover:text-white transition-colors"
+          >
+            <X size={16} />
+          </button>
+          <div className="w-12 h-12 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center mb-4 border border-blue-500/20">
+            <HelpCircle size={24} />
+          </div>
+          <h3 className="text-white font-bold text-lg sm:text-xl mb-2">Поддержка</h3>
+          <p className="text-gray-400 text-xs sm:text-sm mb-5 leading-relaxed">
+            Возникли трудности, нашли ошибку или есть предложения? Напишите нам в Telegram, и мы оперативно поможем!
+          </p>
+          <a 
+            href={tgLink} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            onClick={() => setShowPopover(false)} 
+            className="w-full bg-[#0077FF] hover:bg-[#0066CC] text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+          >
+            <Send size={16} /> Написать в Telegram
+          </a>
+        </div>
+      )}
+
+      {/* --- САМА КНОПКА / ПЛАШКА --- */}
+      <button 
+        onClick={handleMainClick}
+        className={`flex items-center justify-center shadow-2xl transition-all duration-500 ease-in-out group outline-none ${
+          isShrunk 
+            ? 'bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white rounded-l-2xl w-10 h-16 border border-r-0 border-gray-700 shadow-none' 
+            : 'bg-[#0077FF] text-white rounded-full w-14 h-14 sm:w-16 sm:h-16 active:scale-95 shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-1'
+        }`}
+      >
+        {isShrunk ? (
+          <ChevronLeft size={24} className="group-hover:-translate-x-1 transition-transform" />
+        ) : (
+          <MessageCircle size={28} className="sm:w-8 sm:h-8" />
+        )}
+      </button>
+    </div>
+  );
+}
+
 // --- НИЖНЕЕ МЕНЮ ДЛЯ ТЕЛЕФОНОВ (ОБЫЧНЫЙ ЮЗЕР) ---
 function BottomNav() {
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
@@ -252,18 +336,21 @@ function UserLayout() {
   }, [user?.id, fetchPartnerData, fetchSharedPosts]);
 
   return (
-    <div className="min-h-screen bg-admin-bg text-admin-text flex font-sans">
+    <div className="min-h-screen bg-admin-bg text-admin-text flex font-sans relative">
       <Sidebar />
       <main className="flex-1 w-full pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0 overflow-y-auto">
         <div className="max-w-5xl mx-auto w-full">
           <Outlet />
         </div>
       </main>
+      
+      {/* ⚡ ВНЕДРЕННЫЙ ВИДЖЕТ ПОДДЕРЖКИ */}
+      <SupportWidget />
+      
       <BottomNav />
     </div>
   );
 }
-
 // --- ГЛАВНЫЙ КОМПОНЕНТ ---
 function App() {
   const user = useStore((state) => state.user);
