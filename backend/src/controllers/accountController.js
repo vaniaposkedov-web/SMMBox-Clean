@@ -6,9 +6,7 @@ const KOMOD_TOKEN = process.env.KOMOD_TOKEN || 'f95a39aab8bab90765151d1f50d8e4b6
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 const { logEvent } = require('../utils/logger');
 
-// === ФУНКЦИЯ ПРОВЕРКИ ЛИМИТОВ И ПОДПИСКИ ===
-// === ФУНКЦИЯ ПРОВЕРКИ ЛИМИТОВ И ПОДПИСКИ ===
-// === ФУНКЦИЯ ПРОВЕРКИ ЛИМИТОВ И ПОДПИСКИ ===
+
 const getUserLimits = (user) => {
   const isExpired = user.proExpiresAt && new Date(user.proExpiresAt) < new Date();
   const plan = (user.isPro && !isExpired) ? user.proPlanType : 'FREE';
@@ -313,50 +311,44 @@ exports.syncVkKomod = async (req, res) => {
     }
     const allAccounts = Array.from(accountsMap.values());
 
-    // 2. Сбор метаданных (аватарки/имена)
+    // 2. Сбор метаданных (аватарки/имена) - ТЕПЕРЬ ПАРАЛЛЕЛЬНО
     const metaMap = {};
     const groupAvatarsMap = {}; 
 
-    for (const acc of allAccounts) {
-      try {
-        const detailRes = await axios.get(`${KOMOD_BASE_URL}/account/${acc.id}`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-        const data = detailRes.data?.data;
-        if (data && data.auth) {
-          const auth = typeof data.auth === 'string' ? JSON.parse(data.auth) : data.auth;
-          const apiUser = auth.apiUserData; 
-          if (apiUser) {
-            metaMap[String(acc.id)] = {
-              avatar: apiUser.photo_200 || apiUser.photo_max || apiUser.photo_100,
-              name: `${apiUser.first_name || ''} ${apiUser.last_name || ''}`.trim()
-            };
-          }
-        }
-      } catch (e) {}
+    await Promise.all(allAccounts.map(async (acc) => {
+      // Запрашиваем детали профиля и список групп одновременно для каждого аккаунта
+      const [detailRes, groupsRes] = await Promise.allSettled([
+        axios.get(`${KOMOD_BASE_URL}/account/${acc.id}`, { headers: { 'Access-Token': KOMOD_TOKEN } }),
+        axios.get(`${KOMOD_BASE_URL}/account/${acc.id}/api-groups`, { headers: { 'Access-Token': KOMOD_TOKEN } })
+      ]);
 
-      try {
-        const groupsRes = await axios.get(`${KOMOD_BASE_URL}/account/${acc.id}/api-groups`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+      if (detailRes.status === 'fulfilled' && detailRes.value.data?.data?.auth) {
+        const auth = typeof detailRes.value.data.data.auth === 'string' ? JSON.parse(detailRes.value.data.data.auth) : detailRes.value.data.data.auth;
+        const apiUser = auth.apiUserData;
+        if (apiUser) {
+          metaMap[String(acc.id)] = {
+            avatar: apiUser.photo_200 || apiUser.photo_max || apiUser.photo_100,
+            name: `${apiUser.first_name || ''} ${apiUser.last_name || ''}`.trim()
+          };
+        }
+      }
+
+      if (groupsRes.status === 'fulfilled') {
         let items = [];
-        const resData = groupsRes.data?.data;
-        const resGroups = groupsRes.data?.groups;
+        const resData = groupsRes.value.data?.data;
+        const resGroups = groupsRes.value.data?.groups;
 
-        if (Array.isArray(resData)) {
-            if (resData[0]?.items && Array.isArray(resData[0].items)) items = resData[0].items;
-            else items = resData;
-        } else if (resData?.items) {
-            items = resData.items;
-        } else if (resGroups?.items) {
-            items = resGroups.items;
-        } else if (Array.isArray(resGroups)) {
-            items = resGroups;
-        }
+        if (Array.isArray(resData)) items = (resData[0]?.items || resData);
+        else if (resData?.items) items = resData.items;
+        else if (resGroups?.items) items = resGroups.items;
 
         for (const g of items) {
           const gUid = String(g.id || g.group_id || g.uid);
           const gPhoto = extractKomodAvatar(g);
           if (gUid && gPhoto) groupAvatarsMap[gUid] = gPhoto;
         }
-      } catch (e) {}
-    }
+      }
+    }));
 
     // 3. Сохранение ПРОФИЛЕЙ (С проверкой на принадлежность)
     const validAccIds = allAccounts.map(a => String(a.id));
