@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
 import { 
   PlusSquare, Inbox, Settings as SettingsIcon, User, Users, Box, LogOut, 
-  MoreHorizontal, ChevronDown, ChevronUp, Layers, FileText, BarChart2, Droplet, PenTool 
+  MoreHorizontal, ChevronDown, ChevronUp, Layers, FileText, BarChart2, Droplet, PenTool, Bell 
 } from 'lucide-react';
 import { useStore } from './store'; 
 
@@ -44,10 +44,14 @@ function Sidebar() {
   
   const [isMoreOpen, setIsMoreOpen] = useState(false);
 
+  // ⚡ УМНАЯ ЛОГИКА УВЕДОМЛЕНИЙ
   const incomingRequests = useStore((state) => state.incomingRequests) || [];
-  const unreadNotifications = (useStore((state) => state.notifications) || []).filter(n => !n.isRead);
-  const unreadShared = (useStore((state) => state.sharedIncoming) || []).filter(p => !p.isRead);
-  const badgeCount = incomingRequests.length + unreadNotifications.length + unreadShared.length;
+  const unreadNotifications = (useStore((state) => state.notifications) || []).filter(n => !n.isRead && !n.text.includes('поделился с вами новой'));
+  const unreadShared = (useStore((state) => state.sharedIncoming) || []).filter(p => !p.isPublished);
+  
+  // Считаем бейджи для каждого раздела
+  const partnersBadgeCount = incomingRequests.length;
+  const notificationsBadgeCount = incomingRequests.length + unreadNotifications.length + unreadShared.length;
 
   const linkClass = ({isActive}) => 
     `flex items-center gap-3 p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`;
@@ -67,25 +71,35 @@ function Sidebar() {
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
         <NavLink to="/profile" className={linkClass}><User size={20} /> Профиль</NavLink>
         
-        <NavLink to="/partners" className={linkClass}>
-          <Users size={20} />
-          <span>Партнеры</span>
+        {/* ⚡ ВКЛАДКА ПАРТНЕРОВ С БЕЙДЖЕМ */}
+        <NavLink to="/partners" className={({isActive}) => `flex items-center justify-between p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Users size={20} />
+              {partnersBadgeCount > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse border-2 border-admin-card" />}
+            </div>
+            <span>Партнеры</span>
+          </div>
+          {partnersBadgeCount > 0 && (
+            <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{partnersBadgeCount}</span>
+          )}
         </NavLink>
 
         <NavLink to="/publish" className={linkClass}>
           <PlusSquare size={20} /> Создать пост
         </NavLink>
 
+        {/* ⚡ ИЗМЕНЕННАЯ ВКЛАДКА УВЕДОМЛЕНИЙ (КОЛОКОЛЬЧИК) */}
         <NavLink to="/requests" className={({isActive}) => `flex items-center justify-between p-3 rounded-xl transition-all font-medium ${isActive ? 'bg-admin-accent/10 text-admin-accent' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
           <div className="flex items-center gap-3">
             <div className="relative">
-              <Inbox size={20} />
-              {badgeCount > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse border-2 border-admin-card" />}
+              <Bell size={20} />
+              {notificationsBadgeCount > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse border-2 border-admin-card" />}
             </div>
-            <span>Заявки</span>
+            <span>Уведомления</span>
           </div>
-          {badgeCount > 0 && (
-            <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{badgeCount}</span>
+          {notificationsBadgeCount > 0 && (
+            <span className="bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-sm">{notificationsBadgeCount}</span>
           )}
         </NavLink>
 
@@ -113,8 +127,6 @@ function Sidebar() {
             </div>
           )}
         </div>
-
-        
       </nav>
 
       <div className="p-4 border-t border-gray-800 space-y-2">
@@ -126,14 +138,17 @@ function Sidebar() {
   );
 }
 
-// --- НИЖНЕЕ МЕНЮ ДЛЯ ТЕЛЕФОНОВ (ОБЫЧНЫЙ ЮЗЕР) ---
+/// --- НИЖНЕЕ МЕНЮ ДЛЯ ТЕЛЕФОНОВ (ОБЫЧНЫЙ ЮЗЕР) ---
 function BottomNav() {
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
+  // ⚡ УМНАЯ ЛОГИКА УВЕДОМЛЕНИЙ
   const incomingRequests = useStore((state) => state.incomingRequests) || [];
-  const unreadNotifications = (useStore((state) => state.notifications) || []).filter(n => !n.isRead);
-  const unreadShared = (useStore((state) => state.sharedIncoming) || []).filter(p => !p.isRead);
-  const badgeCount = incomingRequests.length + unreadNotifications.length + unreadShared.length;
+  const unreadNotifications = (useStore((state) => state.notifications) || []).filter(n => !n.isRead && !n.text.includes('поделился с вами новой'));
+  const unreadShared = (useStore((state) => state.sharedIncoming) || []).filter(p => !p.isPublished);
+
+  const partnersBadgeCount = incomingRequests.length;
+  const notificationsBadgeCount = incomingRequests.length + unreadNotifications.length + unreadShared.length;
 
   const linkClass = ({isActive}) => 
     `flex flex-col items-center flex-1 p-2 rounded-xl transition-colors ${isActive ? 'text-admin-accent' : 'text-gray-500 hover:text-gray-300'}`;
@@ -181,8 +196,12 @@ function BottomNav() {
           <User size={22} /><span className="text-[10px] mt-1 font-medium">Профиль</span>
         </NavLink>
         
+        {/* ⚡ ПАРТНЕРЫ С БЕЙДЖЕМ */}
         <NavLink to="/partners" className={linkClass} onClick={() => setIsMoreMenuOpen(false)}>
-          <div className="relative"><Users size={22} /></div>
+          <div className="relative">
+            <Users size={22} />
+            {partnersBadgeCount > 0 && <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-admin-card" />}
+          </div>
           <span className="text-[10px] mt-1 font-medium">Партнеры</span>
         </NavLink>
 
@@ -193,13 +212,15 @@ function BottomNav() {
            <span className="text-[10px] mt-1.5 font-bold text-gray-300">Пост</span>
         </NavLink>
 
+        {/* ⚡ УВЕДОМЛЕНИЯ С БЕЙДЖЕМ (ЗАМЕНИЛИ INBOX НА BELL) */}
         <NavLink to="/requests" className={linkClass} onClick={() => setIsMoreMenuOpen(false)}>
           <div className="relative">
-            <Inbox size={22} />
-            {badgeCount > 0 && <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-admin-card" />}
+            <Bell size={22} />
+            {notificationsBadgeCount > 0 && <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-admin-card animate-pulse" />}
           </div>
-          <span className="text-[10px] mt-1 font-medium">Заявки</span>
+          <span className="text-[10px] mt-1 font-medium">Уведомления</span>
         </NavLink>
+        
         <button onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)} className={`flex flex-col items-center flex-1 p-2 rounded-xl transition-colors ${isMoreMenuOpen ? 'text-admin-accent' : 'text-gray-500 hover:text-gray-300'}`}>
           <MoreHorizontal size={22} />
           <span className="text-[10px] mt-1 font-medium">Еще</span>
