@@ -1,6 +1,4 @@
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
-} from 'recharts';
+import { useEffect, useState } from 'react';
 import { 
   Users, Crown, MessageSquare, Link as LinkIcon, LogOut, 
   RefreshCw, Sun, Moon, Search, ShieldAlert, CheckCircle2, 
@@ -8,6 +6,9 @@ import {
   Mail, Phone, LayoutDashboard, LayoutTemplate, Send, Key, Loader2, DollarSign, Settings, TrendingUp, CreditCard
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+} from 'recharts';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
