@@ -721,6 +721,7 @@ exports.getSharedPosts = async (req, res) => {
     }
 };
 
+// === ОТКАЗАТЬСЯ ОТ ПОСТА ПАРТНЕРА (С УВЕДОМЛЕНИЕМ) ===
 exports.deleteSharedPost = async (req, res) => {
     try {
         const post = await prisma.sharedPost.findUnique({
@@ -729,17 +730,18 @@ exports.deleteSharedPost = async (req, res) => {
         });
         
         if (post) {
-            // Создаем уведомление для автора поста об отказе + сохраняем контент поста
+            // 🛡️ ЗАЩИТА ОТ ДУБЛЕЙ: Сначала удаляем пост
+            await prisma.sharedPost.delete({ where: { id: req.params.id } });
+            
+            // И только если удаление прошло успешно, создаем 1 уведомление
             await prisma.notification.create({
                 data: {
                     userId: post.senderId,
                     type: 'WARNING',
                     text: `Партнер ${post.receiver?.name || 'Без имени'} (Павильон ${post.receiver?.pavilion || '?'}) отказался от публикации вашего поста.`,
-                    // ⚡ ДОБАВЛЕНО: передаем metadata, чтобы можно было посмотреть, что за пост
                     metadata: JSON.stringify({ text: post.text, mediaUrls: post.mediaUrls })
                 }
             });
-            await prisma.sharedPost.delete({ where: { id: req.params.id } });
         }
         res.json({ success: true });
     } catch (error) {
@@ -866,26 +868,27 @@ exports.retryPost = async (req, res) => {
 };
 
 
-// === ОТМЕТИТЬ ПОСТ КАК ОПУБЛИКОВАННЫЙ И УВЕДОМИТЬ АВТОРА ===
+/// === ОТМЕТИТЬ ПОСТ КАК ОПУБЛИКОВАННЫЙ И УВЕДОМИТЬ АВТОРА ===
 exports.markSharedPostPublished = async (req, res) => {
     try {
         const { id } = req.params;
-        const userId = getUserId(req);
-
         const sharedPost = await prisma.sharedPost.findUnique({
             where: { id },
             include: { sender: true, receiver: { select: { name: true, pavilion: true } } }
         });
 
-        if (!sharedPost) return res.status(404).json({ success: false, error: 'Пост не найден' });
+        // 🛡️ ЗАЩИТА ОТ ДУБЛЕЙ: Проверяем, не опубликован ли он уже
+        if (!sharedPost || sharedPost.isPublished) {
+            return res.status(404).json({ success: false, error: 'Пост не найден или уже обработан' });
+        }
         
-        // Обновляем статус поста, чтобы он исчез из вкладки
+        // Обновляем статус
         await prisma.sharedPost.update({
             where: { id },
             data: { isPublished: true }
         });
 
-        // Отправляем уведомление автору поста
+        // Создаем 1 уведомление
         await prisma.notification.create({
             data: {
                 userId: sharedPost.senderId,

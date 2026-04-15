@@ -209,28 +209,39 @@ export default function Requests() {
            ) : (
              <div className="space-y-3">
                 {activeNotifications.map(note => (
-                  <div key={note.id} className="bg-admin-card border border-gray-800 p-4 sm:p-5 rounded-[1.5rem] flex gap-4 items-start shadow-lg relative pr-12">
+                  <div key={note.id} className="bg-admin-card border border-gray-800 p-4 sm:p-5 rounded-[1.5rem] flex gap-4 items-start shadow-lg relative pr-20">
+                      
                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${note.type === 'SUCCESS' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
                          {note.type === 'SUCCESS' ? <CheckCircle2 size={24}/> : <X size={24}/>}
                       </div>
+                      
                       <div className="min-w-0 flex-1">
                          <p className="text-white text-sm sm:text-base leading-snug font-medium">{note.text}</p>
                          <p className="text-xs text-gray-500 mt-2 font-bold uppercase tracking-wider">
                            {new Date(note.createdAt).toLocaleString('ru-RU', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}
                          </p>
-                         {/* ⚡ НОВАЯ КНОПКА ОТКРЫТИЯ ДЕТАЛЕЙ */}
+                      </div>
+                      
+                      {/* ⚡ ОБНОВЛЕНО: Блок кнопок в правом верхнем углу */}
+                      <div className="absolute top-4 right-4 flex items-center gap-2">
                          {note.metadata && (
                            <button 
                              onClick={() => setPreviewNotification(note)}
-                             className="mt-3 text-xs sm:text-sm text-blue-400 hover:text-blue-300 font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors bg-blue-500/10 hover:bg-blue-500/20 px-3 py-1.5 rounded-lg w-max active:scale-95"
+                             className="text-gray-400 hover:text-blue-400 bg-gray-900 w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 border border-gray-700"
+                             title="Детали поста"
                            >
-                             <FileText size={14} /> Детали поста
+                             <FileText size={14} />
                            </button>
                          )}
+                         <button 
+                           onClick={() => markNotificationAsRead(note.id)} 
+                           className="text-gray-500 hover:text-red-400 bg-gray-900 w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 border border-gray-700"
+                           title="Удалить уведомление"
+                         >
+                           <X size={14} />
+                         </button>
                       </div>
-                      <button onClick={() => markNotificationAsRead(note.id)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-8 h-8 rounded-full flex items-center justify-center transition-all active:scale-90 border border-gray-700">
-                         <X size={14} />
-                      </button>
+
                   </div>
                 ))}
              </div>
