@@ -119,12 +119,14 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         if (!targetGroup) throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и подключите стену.`);
     }
 
-    targetGroupId = targetGroup.id;
+targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
-    // ИСПРАВЛЕНИЕ ДЛЯ СЕТКИ: Отключаем прямое API. 
-    // Заставляем шлюз эмулировать публикацию через обычный браузер (web), 
-    // чтобы обойти принудительную карусель ВКонтакте.
-    form.append('via_api', '0');
+    
+    // ПРИНУДИТЕЛЬНЫЕ ХАКИ ДЛЯ ОТКЛЮЧЕНИЯ КАРУСЕЛИ:
+    form.append('via_api', '0');  // 1. Заставляем Kom-od использовать Web-бота вместо API ВК
+    form.append('is_grid', '1');  // 2. Недокументированный параметр (Сетка)
+    form.append('grid', '1');     // 3. Альтернативный недокументированный параметр
+    form.append('carousel', '0'); // 4. Принудительный запрет карусели
 
     // === ФИКС КОТОРЫЙ МЫ ДЕЛАЛИ (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) ===
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
