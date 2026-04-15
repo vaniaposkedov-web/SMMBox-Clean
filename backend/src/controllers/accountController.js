@@ -553,8 +553,12 @@ exports.saveVkGroupWithToken = async (req, res) => {
     if (isTaken && isTaken.userId !== String(userId)) return res.status(400).json({ error: `Сообщество привязано к другому пользователю!` });
 
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
-    const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
-    if (!isTaken && !currentUser.isPro && currentAccountsCount >= 10) return res.status(403).json({ error: 'Лимит 10 аккаунтов. Нужен PRO.' });
+    const vkCount = await prisma.account.count({ where: { userId: String(userId), provider: 'VK' } });
+    const limitVk = currentUser.isPro ? 20 : 15;
+
+    if (!isTaken && vkCount >= limitVk) {
+      return res.status(403).json({ error: `Лимит ВК (${limitVk} акк.) исчерпан. Пожалуйста, обновите тариф.` });
+    }
 
     const userProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'VK' } });
 
@@ -604,8 +608,12 @@ exports.saveTgAccounts = async (req, res) => {
     let tgProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'TELEGRAM' } });
     if (!tgProfile) tgProfile = await prisma.socialProfile.create({ data: { userId: String(userId), provider: 'TELEGRAM', providerAccountId: String(userId), name: 'Telegram Профиль' } });
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
-    const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
-    if (!currentUser.isPro && (currentAccountsCount + channels.length) > 10) return res.status(403).json({ error: `Лимит 10 аккаунтов.` });
+    const tgCount = await prisma.account.count({ where: { userId: String(userId), provider: 'TELEGRAM' } });
+    const limitTg = currentUser.isPro ? 8 : 5;
+
+    if ((tgCount + channels.length) > limitTg) {
+      return res.status(403).json({ error: `Лимит Telegram каналов: ${limitTg}. У вас уже ${tgCount}.` });
+    }
     for (const channel of channels) {
       const safeProviderId = String(channel.chatId);
       const isTaken = await prisma.account.findFirst({ where: { provider: 'TELEGRAM', providerId: safeProviderId } });
@@ -629,8 +637,12 @@ exports.saveVkGroups = async (req, res) => {
   try {
     if (!userId || !groups || groups.length === 0) return res.status(400).json({ error: 'Нет данных' });
     const currentUser = await prisma.user.findUnique({ where: { id: String(userId) } });
-    const currentAccountsCount = await prisma.account.count({ where: { userId: String(userId) } });
-    if (!currentUser.isPro && (currentAccountsCount + groups.length) > 10) return res.status(403).json({ error: `Лимит 10 аккаунтов.` });
+    const vkCount = await prisma.account.count({ where: { userId: String(userId), provider: 'VK' } });
+    const limitVk = currentUser.isPro ? 20 : 15;
+
+    if ((vkCount + groups.length) > limitVk) {
+      return res.status(403).json({ error: `Лимит аккаунтов ВК: ${limitVk}. У вас уже ${vkCount}.` });
+    }
     let vkProfile = await prisma.socialProfile.findFirst({ where: { userId: String(userId), provider: 'VK' } });
     const savedAccounts = await Promise.all(groups.map(async (group) => {
       const safeProviderId = String(group.id); 
@@ -684,37 +696,42 @@ exports.deleteAccount = async (req, res) => {
   const { id } = req.params;
   try {
     const account = await prisma.account.findUnique({ where: { id: id } });
+    if (!account) return res.status(404).json({ error: 'Аккаунт не найден' });
 
     // Если это аккаунт Kom-od (определяем по токену), нужно удалить его и со шлюза
-    if (account && account.provider === 'VK' && account.accessToken === KOMOD_TOKEN) {
+    if (account.provider === 'VK' && account.accessToken === KOMOD_TOKEN) {
       try {
-        // Запрашиваем список групп шлюза, чтобы найти внутренний ID (komod-id) для удаления
         const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
         const allGroups = grpRes.data?.data?.items || [];
-        
-        // Извлекаем чистый UID/ID из нашего providerId (wall_123 -> 123, group_456 -> 456)
         const rawId = account.providerId.replace('wall_', '').replace('group_', '');
-        
-        // Ищем группу в ответе шлюза
         const komodGroup = allGroups.find(g => String(g.uid || g.id || g.account_id) === rawId);
 
         if (komodGroup && komodGroup.id) {
-          // [DELETE] https://kom-od.ru/api/v1/group/<id>
           await axios.delete(`${KOMOD_BASE_URL}/group/${komodGroup.id}`, {
             headers: { 'Access-Token': KOMOD_TOKEN }
           });
         }
       } catch (apiError) {
         console.error('Не удалось удалить группу со шлюза Kom-od:', apiError.message);
-        // Не блокируем локальное удаление, если шлюз недоступен
       }
     }
 
-    // Удаляем из локальной базы
+    // 1. Очищаем связанные водяные знаки, чтобы избежать ошибки Prisma
+    try {
+      await prisma.watermark.deleteMany({ where: { accountId: id } });
+    } catch (e) { /* игнорируем, если нет водяных знаков */ }
+
+    // 2. Удаляем сам аккаунт
     await prisma.account.delete({ where: { id: id } }); 
     res.json({ success: true }); 
+
   } catch (error) { 
-    res.status(500).json({ error: 'Ошибка сервера' }); 
+    console.error('Ошибка при удалении аккаунта:', error);
+    // Обработка ошибки Prisma (если остались запланированные посты P2003)
+    if (error.code === 'P2003') {
+      return res.status(400).json({ error: 'Сначала удалите запланированные посты, привязанные к этому аккаунту.' });
+    }
+    res.status(500).json({ error: 'Ошибка сервера при удалении' }); 
   }
 };
 
@@ -1246,11 +1263,12 @@ exports.telegramWebhook = async (req, res) => {
 
         if (tgProfile) {
           const userWithPlan = await prisma.user.findUnique({ where: { id: tgProfile.userId } });
-          const currentAccountsCount = await prisma.account.count({ where: { userId: tgProfile.userId } });
+          const tgCount = await prisma.account.count({ where: { userId: tgProfile.userId, provider: 'TELEGRAM' } });
+          const limitTg = userWithPlan.isPro ? 8 : 5;
           const existingAccount = await prisma.account.findFirst({ where: { provider: 'TELEGRAM', providerId: chatId } });
 
-          if (!existingAccount && !userWithPlan.isPro && currentAccountsCount >= 10) {
-            console.log(`Лимит превышен для ${tgProfile.userId}. Канал ${chatTitle} не добавлен.`);
+          if (!existingAccount && tgCount >= limitTg) {
+            console.log(`Лимит ТГ (${limitTg}) превышен для ${tgProfile.userId}. Канал ${chatTitle} не добавлен.`);
             return; 
           }
 

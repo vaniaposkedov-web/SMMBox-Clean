@@ -595,9 +595,24 @@ export const useStore = create(
 
       removeAccount: async (accountId) => {
         try {
-          const res = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${get().token}` } });
-          if (res.ok) get().fetchAccounts(get().user.id);
-        } catch (error) {}
+          const baseUrl = import.meta.env.VITE_API_URL || '';
+          const res = await fetch(`${baseUrl}/api/accounts/${accountId}`, { 
+            method: 'DELETE', 
+            headers: { 'Authorization': `Bearer ${get().token}` } 
+          });
+          
+          const data = await res.json();
+          
+          if (res.ok && data.success) {
+            get().fetchAccounts(get().user.id);
+            return { success: true };
+          } else {
+            return { success: false, error: data.error || 'Ошибка при удалении аккаунта' };
+          }
+        } catch (error) { 
+          console.error('Сетевая ошибка при удалении:', error);
+          return { success: false, error: 'Ошибка сети при удалении' }; 
+        }
       },
 
       saveAccountDesign: async (accountId, signature, watermarkData) => {

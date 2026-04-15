@@ -352,26 +352,26 @@ export default function Profile() {
                </button>
             </div>
 
-            {/* Баннер PRO */}
-            <div className="lg:col-span-3 bg-gradient-to-r from-purple-900 to-indigo-900 border border-purple-500/30 rounded-2xl sm:rounded-3xl p-5 sm:p-8 shadow-xl relative overflow-hidden mt-2 flex flex-col sm:flex-row items-center justify-between gap-5 sm:gap-6">
-              <div className="absolute -right-10 -top-10 w-32 h-32 sm:w-40 sm:h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
-              <div className="relative z-10 text-center sm:text-left min-w-0">
-                <h3 className="text-lg sm:text-2xl font-extrabold text-white mb-2 flex items-center justify-center sm:justify-start gap-2">
-                  <Crown className={user?.isPro ? "text-yellow-400" : "text-purple-400"} size={24} /> 
-                  {user?.isPro ? 'У вас активна PRO подписка!' : 'Снимите все ограничения с PRO'}
-                </h3>
-                <p className="text-gray-300 text-xs sm:text-base max-w-2xl leading-relaxed">
-                  {user?.isPro 
-                    ? 'Вам доступны безлимитные аккаунты, автопостинг и все премиум функции платформы.' 
-                    : 'Подключите безлимитное количество аккаунтов ВКонтакте и Telegram. Забудьте об ограничениях и развивайте бизнес быстрее!'}
-                </p>
+            {/* Баннер Тарифов */}
+              <div className="lg:col-span-3 bg-gradient-to-r from-purple-900 to-indigo-900 border border-purple-500/30 rounded-2xl sm:rounded-3xl p-5 sm:p-8 shadow-xl relative overflow-hidden mt-2 flex flex-col sm:flex-row items-center justify-between gap-5 sm:gap-6">
+                <div className="absolute -right-10 -top-10 w-32 h-32 sm:w-40 sm:h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
+                <div className="relative z-10 text-center sm:text-left min-w-0">
+                  <h3 className="text-lg sm:text-2xl font-extrabold text-white mb-2 flex items-center justify-center sm:justify-start gap-2">
+                    <Crown className={user?.isPro ? "text-yellow-400" : "text-purple-400"} size={24} /> 
+                    {user?.isPro ? 'У вас активен PRO тариф!' : 'Расширьте лимиты с новыми тарифами'}
+                  </h3>
+                  <p className="text-gray-300 text-xs sm:text-base max-w-2xl leading-relaxed">
+                    {user?.isPro 
+                      ? 'Вам доступны увеличенные лимиты аккаунтов (20 ВК / 8 ТГ), автопостинг и все премиум функции платформы.' 
+                      : 'Не хватает лимитов? Подключите Базовый или Расширенный тариф и управляйте до 20 аккаунтами ВК и 8 каналами Telegram!'}
+                  </p>
+                </div>
+                {!user?.isPro && (
+                  <button onClick={handleOpenProModal} className="relative z-10 shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-sm sm:text-base font-extrabold transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] active:scale-95 w-full sm:w-auto min-h-[48px]">
+                    Выбрать тариф
+                  </button>
+                )}
               </div>
-              {!user?.isPro && (
-                <button onClick={handleOpenProModal} className="relative z-10 shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-sm sm:text-base font-extrabold transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] active:scale-95 w-full sm:w-auto min-h-[48px]">
-                  Подключить PRO
-                </button>
-              )}
-            </div>
             
           </div>
         )}
@@ -487,7 +487,7 @@ export default function Profile() {
 
       </div>
 
-      {/* === МОДАЛЬНОЕ ОКНО ОФОРМЛЕНИЯ PRO === */}
+      {/* === МОДАЛЬНОЕ ОКНО ОФОРМЛЕНИЯ ТАРИФА === */}
       {showProModal && (
         <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
           <div className="bg-[#1e2128] w-full max-w-[460px] border-t sm:border border-gray-800 rounded-t-[2rem] sm:rounded-3xl p-6 sm:p-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-8 shadow-2xl relative transition-transform">
@@ -501,29 +501,38 @@ export default function Profile() {
             </div>
             
             <div className="text-center">
-              <h3 className="text-3xl sm:text-4xl font-extrabold text-white mb-5 uppercase tracking-wide">ПРО</h3>
+              <h3 className="text-2xl sm:text-3xl font-extrabold text-white mb-5 uppercase tracking-wide">Тарифы</h3>
               
-              <div className="text-gray-300 text-base sm:text-lg mb-6 leading-relaxed space-y-3 sm:space-y-4">
-                <p>
-                  Стоимость безлимитной PRO-подписки составляет <span className="text-[#EAB308] font-bold block sm:inline mt-1 sm:mt-0">2000 ₽ в месяц</span>
-                </p>
-                <p className="text-gray-400 text-sm sm:text-base">
-                  Оплата производится прямым переводом на банковскую карту.
-                </p>
-                
-                <div className="bg-[#14171c] border border-gray-800/80 p-5 sm:p-6 rounded-2xl text-left mt-6 space-y-4 shadow-inner">
-                  <p className="text-gray-300 leading-relaxed text-sm sm:text-[15px]">
-                    Нажмите кнопку ниже, чтобы перейти в Telegram. Наш менеджер ответит вам в течение <span className="text-white font-bold">нескольких часов</span> и пришлет реквизиты. 
-                  </p>
-                  <p className="text-gray-300 leading-relaxed text-sm sm:text-[15px]">
-                    Подписка будет активирована <span className="text-[#10B981] font-bold">в течение суток</span> после оплаты!
-                  </p>
+              <div className="text-left mb-6 space-y-4">
+                {/* Базовый тариф */}
+                <div className="bg-[#14171c] border border-gray-800/80 p-4 sm:p-5 rounded-2xl shadow-inner">
+                  <h4 className="text-lg sm:text-xl font-bold text-white mb-2">Базовый — <span className="text-emerald-500">1000 ₽ / мес</span></h4>
+                  <ul className="text-gray-300 space-y-1.5 text-sm">
+                    <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>До 15 аккаунтов ВКонтакте</li>
+                    <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>До 5 каналов Telegram</li>
+                  </ul>
                 </div>
+
+                {/* ПРО тариф */}
+                <div className="bg-[#14171c] border border-[#EAB308]/30 p-4 sm:p-5 rounded-2xl shadow-inner relative overflow-hidden">
+                  <div className="absolute top-0 right-0 bg-gradient-to-l from-[#EAB308] to-[#F59E0B] text-black text-[10px] font-bold px-2 py-1 rounded-bl-xl uppercase">PRO</div>
+                  <h4 className="text-lg sm:text-xl font-bold text-white mb-2">Расширенный — <span className="text-[#EAB308]">1800 ₽ / мес</span></h4>
+                  <ul className="text-gray-300 space-y-1.5 text-sm">
+                    <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#EAB308] shrink-0"></span>До 20 аккаунтов ВКонтакте</li>
+                    <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#EAB308] shrink-0"></span>До 8 каналов Telegram</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="bg-[#14171c] border border-gray-800/80 p-4 rounded-2xl text-left mb-5 shadow-inner">
+                <p className="text-gray-300 leading-relaxed text-[13px] sm:text-sm">
+                  Оплата прямым переводом на карту. Нажмите кнопку ниже, чтобы получить реквизиты в Telegram. Подписка активируется <span className="text-[#10B981] font-bold">в течение суток</span>!
+                </p>
               </div>
             </div>
 
-            <button onClick={handleBuyPro} className="w-full mt-2 bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 sm:py-5 rounded-2xl font-bold transition-all flex justify-center items-center gap-2 shadow-[0_4px_20px_rgba(34,158,217,0.3)] active:scale-95 text-base sm:text-lg">
-              <Send size={22} className="shrink-0 -ml-1" /> Написать обращение
+            <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 sm:py-5 rounded-2xl font-bold transition-all flex justify-center items-center gap-2 shadow-[0_4px_20px_rgba(34,158,217,0.3)] active:scale-95 text-base sm:text-lg">
+              <Send size={22} className="shrink-0 -ml-1" /> Написать менеджеру
             </button>
           </div>
         </div>
