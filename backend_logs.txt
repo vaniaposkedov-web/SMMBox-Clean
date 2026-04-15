@@ -1,0 +1,25 @@
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "smmbox", schema "public" at "db:5432"
+
+The database is already in sync with the Prisma schema.
+
+Running generate... (Use --skip-generate to skip the generators)
+[2K[1A[2K[GRunning generate... - Prisma Client
+[2K[1A[2K[G✔ Generated Prisma Client (v6.19.2) to ./node_modules/@prisma/client in 892ms
+┌─────────────────────────────────────────────────────────┐
+│  Update available 6.19.2 -> 7.7.0                       │
+│                                                         │
+│  This is a major update - please follow the guide at    │
+│  https://pris.ly/d/major-version-upgrade                │
+│                                                         │
+│  Run the following to update                            │
+│    npm i --save-dev prisma@latest                       │
+│    npm i @prisma/client@latest                          │
+└─────────────────────────────────────────────────────────┘
+
+
+> backend@1.0.0 start
+> node src/index.js
+
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+Сервер SMMBOX запущен локально на порту 5000
