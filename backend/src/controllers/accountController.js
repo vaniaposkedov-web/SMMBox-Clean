@@ -1328,13 +1328,35 @@ exports.telegramWebhook = async (req, res) => {
               profileId: tgProfile.id
             }
           });
+
+          // ⚡ МОМЕНТАЛЬНОЕ ОБНОВЛЕНИЕ ФРОНТЕНДА ПРИ ДОБАВЛЕНИИ ⚡
+          if (req.app.get('io') && global.userSockets) {
+             const connectedSockets = global.userSockets.get(String(tgProfile.userId));
+             if (connectedSockets) {
+               connectedSockets.forEach(socketId => {
+                 req.app.get('io').to(socketId).emit('ACCOUNTS_UPDATED');
+               });
+             }
+          }
         }
       } 
       else if (newStatus === 'left' || newStatus === 'kicked') {
+        const chatAccount = await prisma.account.findFirst({ where: { provider: 'TELEGRAM', providerId: String(chat.id) } });
+
         await prisma.account.updateMany({
           where: { provider: 'TELEGRAM', providerId: String(chat.id) },
           data: { isValid: false, errorMsg: 'Бот удален из канала' }
         });
+
+        // ⚡ МОМЕНТАЛЬНОЕ ОБНОВЛЕНИЕ ПРИ УДАЛЕНИИ БОТА ИЗ КАНАЛА ⚡
+        if (chatAccount && req.app.get('io') && global.userSockets) {
+           const connectedSockets = global.userSockets.get(String(chatAccount.userId));
+           if (connectedSockets) {
+             connectedSockets.forEach(socketId => {
+               req.app.get('io').to(socketId).emit('ACCOUNTS_UPDATED');
+             });
+           }
+        }
       }
     }
   } catch (error) {
