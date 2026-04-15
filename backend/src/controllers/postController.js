@@ -121,7 +121,10 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
-    form.append('via_api', '1');
+    // ИСПРАВЛЕНИЕ ДЛЯ СЕТКИ: Отключаем прямое API. 
+    // Заставляем шлюз эмулировать публикацию через обычный браузер (web), 
+    // чтобы обойти принудительную карусель ВКонтакте.
+    form.append('via_api', '0');
 
     // === ФИКС КОТОРЫЙ МЫ ДЕЛАЛИ (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) ===
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
@@ -135,22 +138,18 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     if (text) media.push({ type: 'text', text: text });
 
     if (imageBuffers && imageBuffers.length > 0) {
+        const images = [];
         imageBuffers.forEach((buf, index) => {
             const fileName = `file_${index + 1}`;
-            
-            // Добавляем физический файл в форму отправки
+            images.push({ name: fileName });
             form.append(fileName, buf, { 
                 filename: `photo_${Date.now()}_${index}.jpg`, 
                 contentType: 'image/jpeg',
                 knownLength: buf.length 
             });
-            
-            // ИСПРАВЛЕНИЕ ДЛЯ СЕТКИ (КОЛЛАЖА) В ВК:
-            // Добавляем каждое фото как отдельный независимый блок 'photo'.
-            // Шлюз передаст их как классический список вложений, 
-            // и ВКонтакте автоматически выстроит из них красивую сетку вместо карусели.
-            media.push({ type: 'photo', images: [{ name: fileName }] });
         });
+        // Собираем все фото в единый блок, чтобы Web-бот сделал из них сетку
+        media.push({ type: 'photo', images: images });
     }
 
     form.append('media', JSON.stringify(media));
