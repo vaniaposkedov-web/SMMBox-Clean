@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+} from 'recharts';
 import { 
   Users, Crown, MessageSquare, Link as LinkIcon, LogOut, 
   RefreshCw, Sun, Moon, Search, ShieldAlert, CheckCircle2, 
@@ -254,6 +256,34 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {/* НОВЫЙ БЛОК: ГРАФИК ВЫРУЧКИ */}
+            <div className={`${theme.card} border rounded-2xl p-6`}>
+              <h2 className="text-lg font-bold mb-6 flex items-center gap-2"><TrendingUp className="text-blue-500"/> Динамика выручки (6 мес)</h2>
+              <div className="h-72 w-full">
+                {data?.stats?.revenue?.chart && data.stats.revenue.chart.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.stats.revenue.chart}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#374151" : "#E5E7EB"} vertical={false} />
+                      <XAxis dataKey="month" stroke="#9CA3AF" axisLine={false} tickLine={false} tickMargin={10} />
+                      <YAxis stroke="#9CA3AF" axisLine={false} tickLine={false} tickFormatter={(value) => `${value}₽`} />
+                      <Tooltip
+                        cursor={{ fill: isDark ? '#1F2937' : '#F3F4F6' }}
+                        contentStyle={{ 
+                          backgroundColor: isDark ? '#111318' : '#fff', 
+                          borderColor: isDark ? '#1F2937' : '#E5E7EB', 
+                          borderRadius: '12px' 
+                        }}
+                        formatter={(value) => [`${value} ₽`, 'Выручка']}
+                      />
+                      <Bar dataKey="total" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={40} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-500">Пока нет оплат для отображения графика</div>
+                )}
+              </div>
+            </div>
+
             <div className={`${theme.card} border rounded-2xl p-6`}>
               <h2 className="text-lg font-bold mb-4 flex items-center gap-2"><CreditCard className="text-green-500"/> Последние оплаты</h2>
               <table className="w-full text-sm text-left">
@@ -270,7 +300,7 @@ export default function AdminDashboard() {
                     <tr key={t.id} className={theme.rowHover}>
                       <td className="px-6 py-4 font-black text-green-500">+{t.amount} ₽</td>
                       <td className="px-6 py-4 font-bold">{t.user?.email || t.user?.name}</td>
-                      <td className="px-6 py-4"><span className="bg-gray-800 px-2 py-1 rounded text-xs font-bold">Оплата PRO</span></td>
+                      <td className="px-6 py-4"><span className="bg-gray-800 text-white px-2 py-1 rounded text-xs font-bold">Оплата PRO</span></td>
                       <td className="px-6 py-4 text-right text-xs text-gray-400">{new Date(t.createdAt).toLocaleString()}</td>
                     </tr>
                   ))}

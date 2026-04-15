@@ -17,6 +17,7 @@ exports.adminLogin = async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };
 
+// Находим функцию getDashboardData и заменяем её логику агрегации выручки
 exports.getDashboardData = async (req, res) => {
     try {
         const totalUsers = await prisma.user.count();
@@ -24,7 +25,6 @@ exports.getDashboardData = async (req, res) => {
         const totalAccounts = await prisma.account.count();
         const totalPosts = await prisma.post.count();
         
-        // --- ПОДРОБНАЯ ФИНАНСОВАЯ АНАЛИТИКА ---
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const startOfDay = new Date(now.setHours(0,0,0,0));
@@ -35,12 +35,28 @@ exports.getDashboardData = async (req, res) => {
             prisma.transaction.aggregate({ where: { createdAt: { gte: startOfDay } }, _sum: { amount: true } })
         ]);
 
+        // Агрегация по месяцам для графика
+        const chartDataRaw = await prisma.$queryRaw`
+            SELECT 
+                TO_CHAR("createdAt", 'Mon') as month,
+                SUM(amount) as total
+            FROM "Transaction"
+            WHERE "createdAt" > NOW() - INTERVAL '6 months'
+            GROUP BY month, DATE_TRUNC('month', "createdAt")
+            ORDER BY DATE_TRUNC('month', "createdAt") ASC
+        `;
+
+        // Убедимся, что total передается как число
+        const formattedChartData = chartDataRaw.map(item => ({
+            month: item.month,
+            total: Number(item.total || 0)
+        }));
+
         const recentUsers = await prisma.user.findMany({
             take: 5, orderBy: { createdAt: 'desc' },
             select: { id: true, name: true, email: true, phone: true, isPro: true, proExpiresAt: true, role: true, createdAt: true }
         });
 
-        // Достаем историю последних платежей
         const recentTransactions = await prisma.transaction.findMany({
             take: 15, orderBy: { createdAt: 'desc' },
             include: { user: { select: { email: true, name: true } } }
@@ -53,7 +69,8 @@ exports.getDashboardData = async (req, res) => {
                 revenue: {
                     total: totalRev._sum.amount || 0,
                     month: monthRev._sum.amount || 0,
-                    today: dayRev._sum.amount || 0
+                    today: dayRev._sum.amount || 0,
+                    chart: formattedChartData // <--- Новые данные
                 }
             }, 
             recentUsers,
