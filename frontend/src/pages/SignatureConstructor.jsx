@@ -60,6 +60,8 @@ export default function SignatureConstructor() {
         setSelectedAccount(null);
       }, 1500);
       fetchAccounts(user.id);
+    } else {
+      alert(result.error || 'Не удалось сохранить подпись.');
     }
   };
 
@@ -136,7 +138,13 @@ export default function SignatureConstructor() {
                     >
                       <div className="flex items-center gap-3 p-3">
                         <div className="relative shrink-0">
-                          <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700 object-cover" alt="" />
+                          {acc.avatarUrl ? (
+                            <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700 object-cover" alt="" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400">
+                              {acc.name?.substring(0, 2).toUpperCase()}
+                            </div>
+                          )}
                           <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-purple-500 rounded-full border border-gray-900"></div>
                         </div>
                         <div className="flex-1 min-w-0">
@@ -192,7 +200,13 @@ export default function SignatureConstructor() {
                       onClick={() => handleSelectAccount(acc)}
                       className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-800 transition-all text-left border border-transparent hover:border-gray-700"
                     >
-                      <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-800 object-cover" alt="" />
+                      {acc.avatarUrl ? (
+                        <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-800 object-cover shrink-0" alt="" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full border border-gray-800 bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400 shrink-0">
+                          {acc.name?.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold text-white truncate">{acc.name}</div>
                         <div className="text-[9px] text-gray-500 uppercase font-black">{acc.provider}</div>
@@ -218,7 +232,13 @@ export default function SignatureConstructor() {
           </button>
           <div className="h-5 w-px bg-gray-800 hidden sm:block" />
           <div className="flex items-center gap-2">
-             <img src={selectedAccount?.avatarUrl} className="w-6 h-6 rounded-full border border-gray-700" alt="" />
+             {selectedAccount?.avatarUrl ? (
+               <img src={selectedAccount.avatarUrl} className="w-6 h-6 rounded-full border border-gray-700 object-cover shrink-0" alt="" />
+             ) : (
+               <div className="w-6 h-6 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center text-[8px] font-bold text-gray-400 shrink-0">
+                 {selectedAccount?.name?.substring(0, 2).toUpperCase()}
+               </div>
+             )}
              <div className="flex flex-col">
                <h2 className="text-white font-bold text-[11px] leading-none">{selectedAccount?.name}</h2>
                <span className="text-[8px] text-purple-500 uppercase font-black tracking-widest mt-0.5">Редактор подписи</span>
@@ -246,8 +266,12 @@ export default function SignatureConstructor() {
             <div className="w-full max-w-sm bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-lg animate-in zoom-in-95 duration-300">
                <div className="p-4 space-y-3">
                  <div className="flex items-center gap-3 mb-2">
-                   <div className="w-10 h-10 rounded-full bg-gray-800 shrink-0 overflow-hidden">
-                     <img src={selectedAccount?.avatarUrl} className="w-full h-full object-cover" alt=""/>
+                   <div className="w-10 h-10 rounded-full bg-gray-800 shrink-0 border border-gray-700 flex items-center justify-center text-xs font-bold text-gray-400 overflow-hidden">
+                     {selectedAccount?.avatarUrl ? (
+                       <img src={selectedAccount.avatarUrl} className="w-full h-full object-cover" alt=""/>
+                     ) : (
+                       selectedAccount?.name?.substring(0, 2).toUpperCase()
+                     )}
                    </div>
                    <div>
                      <div className="text-sm font-bold text-white leading-tight">{selectedAccount?.name || 'Название группы'}</div>
