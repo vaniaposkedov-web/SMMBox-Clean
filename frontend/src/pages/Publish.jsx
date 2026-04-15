@@ -94,42 +94,46 @@ export default function Publish() {
 
   
   const [isSharing, setIsSharing] = useState(false);
-  const handleShareToPartners = async () => {
+ const handleShareToPartners = async () => {
     if (selectedPartners.length === 0) return;
     
     setIsSharing(true);
     setPartnerStatus('sending'); // Включаем статус загрузки
     
-    try {
-      const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
-      const res = await sharePostAction(text, webpBlobs, selectedPartners);
-      
-      if (res?.success) {
-        // ⚡ УЛУЧШЕНИЕ UX: Показываем статус успеха ПЕРЕД закрытием окна
-        setPartnerStatus('sent');
-        setIsSharing(false);
-        setToastMessage('Отправлено партнерам!');
-        
-        // Ждем 1.5 секунды, чтобы юзер увидел зеленую кнопку, и только потом закрываем
-        setTimeout(() => {
-          setShowPartnerModal(false);
-          setSelectedPartners([]);
+    // Даем React 50мс на отрисовку спиннера "Отправка..."
+    setTimeout(async () => {
+        try {
+          const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
+          // Как видишь, сюда передается только чистый text и чистые webpBlobs. Партнер получает исходники!
+          const res = await sharePostAction(text, webpBlobs, selectedPartners);
+          
+          if (res?.success) {
+            // ⚡ УЛУЧШЕНИЕ UX: Показываем статус успеха ПЕРЕД закрытием окна
+            setPartnerStatus('sent');
+            setIsSharing(false);
+            setToastMessage('Отправлено партнерам!');
+            
+            // Ждем 1.5 секунды, чтобы юзер увидел зеленую кнопку, и только потом закрываем
+            setTimeout(() => {
+              setShowPartnerModal(false);
+              setSelectedPartners([]);
+              setPartnerStatus('idle');
+              setTimeout(() => setToastMessage(null), 3000);
+            }, 1500);
+            
+          } else {
+            setIsSharing(false);
+            setPartnerStatus('idle');
+            setToastMessage('Ошибка при отправке: ' + (res?.error || ''));
+            setTimeout(() => setToastMessage(null), 3000);
+          }
+        } catch (error) {
+          setIsSharing(false);
           setPartnerStatus('idle');
+          setToastMessage('Ошибка соединения при отправке');
           setTimeout(() => setToastMessage(null), 3000);
-        }, 1500);
-        
-      } else {
-        setIsSharing(false);
-        setPartnerStatus('idle');
-        setToastMessage('Ошибка при отправке: ' + (res?.error || ''));
-        setTimeout(() => setToastMessage(null), 3000);
-      }
-    } catch (error) {
-      setIsSharing(false);
-      setPartnerStatus('idle');
-      setToastMessage('Ошибка соединения при отправке');
-      setTimeout(() => setToastMessage(null), 3000);
-    }
+        }
+    }, 50);
   };
   
 
@@ -424,58 +428,63 @@ const handlePublish = async () => {
     
     setIsPublishing(true);
 
-    try {
-        const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
-        const accountsData = selectedAccounts.map(id => {
-          const acc = accounts.find(a => a.id === id);
-          
-          const wmConfig = (acc?.watermark !== null && acc?.watermark !== undefined) 
-            ? acc.watermark 
-            : (applyWatermark ? (globalSettings?.watermark || watermarkSettings) : null);
-            
-          const sigText = (acc?.signature !== null && acc?.signature !== undefined) 
-            ? acc.signature 
-            : (applySignature ? (globalSettings?.signature || '') : null);
+    // Даем React 50мс на отрисовку спиннера перед тяжелой конвертацией фото, чтобы интерфейс не зависал
+    setTimeout(async () => {
+        try {
+            const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
+            const accountsData = selectedAccounts.map(id => {
+              const acc = accounts.find(a => a.id === id);
+              
+              const wmConfig = (acc?.watermark !== null && acc?.watermark !== undefined) 
+                ? acc.watermark 
+                : (applyWatermark ? (globalSettings?.watermark || watermarkSettings) : null);
+                
+              const sigText = (acc?.signature !== null && acc?.signature !== undefined) 
+                ? acc.signature 
+                : (applySignature ? (globalSettings?.signature || '') : null);
 
-          return {
-            accountId: id,
-            applyWatermark: !!wmConfig,
-            applySignature: !!sigText,
-            watermarkConfig: wmConfig,
-            signatureText: sigText
-          };
-        });
+              return {
+                accountId: id,
+                applyWatermark: !!wmConfig,
+                applySignature: !!sigText,
+                watermarkConfig: wmConfig,
+                signatureText: sigText
+              };
+            });
 
-        let publishAt = null;
-        if (publishMode === 'schedule') {
-            const baseDate = selectedCalendarDate || new Date().toLocaleDateString('en-CA'); 
-            const [year, month, day] = baseDate.split('-');
-            const [hours, minutes] = scheduleTime.split(':');
-            
-            const localDate = new Date();
-            localDate.setFullYear(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
-            localDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-            
-            publishAt = localDate.toISOString(); 
-        }
+            let publishAt = null;
+            if (publishMode === 'schedule') {
+                const baseDate = selectedCalendarDate || new Date().toLocaleDateString('en-CA'); 
+                const [year, month, day] = baseDate.split('-');
+                const [hours, minutes] = scheduleTime.split(':');
+                
+                const localDate = new Date();
+                localDate.setFullYear(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+                localDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+                
+                publishAt = localDate.toISOString(); 
+            }
 
-        const result = await createPostAction(text, webpBlobs, accountsData, publishAt);
-        if (result.success) {
+            const result = await createPostAction(text, webpBlobs, accountsData, publishAt);
+            if (result.success) {
+                setIsPublishing(false);
+                if (saveTempDraft) saveTempDraft(null); 
+                
+                // Мгновенно переключаем на экран успеха, не дожидаясь ответа сервера
+                setStep(4); 
+                
+                // Обновляем список постов в фоне
+                fetchScheduledPosts(); 
+            } else {
+                setIsPublishing(false);
+                setTimeout(() => alert(result.error || 'Ошибка сервера'), 50);
+            }
+        } catch (error) {
+            console.error("Ошибка при публикации:", error);
             setIsPublishing(false);
-            
-            if (saveTempDraft) saveTempDraft(null); 
-            
-            await fetchScheduledPosts(); 
-            setStep(4); 
-        } else {
-            setIsPublishing(false);
-            setTimeout(() => alert(result.error || 'Ошибка сервера'), 50);
+            setTimeout(() => alert('Произошла ошибка соединения с сервером.'), 50);
         }
-    } catch (error) {
-        console.error("Ошибка при публикации:", error);
-        setIsPublishing(false);
-        setTimeout(() => alert('Произошла ошибка соединения с сервером.'), 50);
-    }
+    }, 50);
   };
 
   const handleSendToPartners = async () => {

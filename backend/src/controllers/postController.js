@@ -135,17 +135,22 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     if (text) media.push({ type: 'text', text: text });
 
     if (imageBuffers && imageBuffers.length > 0) {
-        const images = [];
         imageBuffers.forEach((buf, index) => {
             const fileName = `file_${index + 1}`;
-            images.push({ name: fileName });
+            
+            // Добавляем физический файл в форму отправки
             form.append(fileName, buf, { 
                 filename: `photo_${Date.now()}_${index}.jpg`, 
                 contentType: 'image/jpeg',
                 knownLength: buf.length 
             });
+            
+            // ИСПРАВЛЕНИЕ ДЛЯ СЕТКИ (КОЛЛАЖА) В ВК:
+            // Добавляем каждое фото как отдельный независимый блок 'photo'.
+            // Шлюз передаст их как классический список вложений, 
+            // и ВКонтакте автоматически выстроит из них красивую сетку вместо карусели.
+            media.push({ type: 'photo', images: [{ name: fileName }] });
         });
-        media.push({ type: 'photo', images: images });
     }
 
     form.append('media', JSON.stringify(media));
