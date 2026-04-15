@@ -1560,6 +1560,30 @@ const handleSaveKomodGroups = async () => {
         </div>
       )}
 
+
+      {/* ЭКРАН ОЖИДАНИЯ TELEGRAM */}
+      {isWaitingForTg && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-[#121212]/90 backdrop-blur-sm"></div>
+           <div className="relative bg-[#1e1e1e] border border-gray-800 rounded-2xl p-8 shadow-2xl flex flex-col items-center max-w-sm w-full animate-in zoom-in-95 duration-200">
+              <div className="relative mb-6">
+                <Loader2 size={48} className="text-[#2AABEE] animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                   <Send size={14} className="text-[#2AABEE]" />
+                </div>
+              </div>
+              <h3 className="text-white font-bold text-xl text-center mb-2">Ожидание Telegram...</h3>
+              <p className="text-gray-400 text-sm text-center mb-6">Как только вы добавите бота в канал, он автоматически появится в списке.</p>
+              <button 
+                onClick={() => setIsWaitingForTg(false)}
+                className="text-gray-500 hover:text-white text-xs underline"
+              >
+                Отменить ожидание
+              </button>
+           </div>
+        </div>
+      )}
+
     </div>
   );
 }
