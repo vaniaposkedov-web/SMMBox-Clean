@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
 import { 
-  PlusSquare, Inbox, Settings as SettingsIcon, User, Users, Box, LogOut, 
+  Plus, Inbox, Settings as SettingsIcon, User, Users, Box, LogOut, 
   MoreHorizontal, ChevronDown, ChevronUp, Layers, FileText, BarChart2, Droplet, PenTool, Bell 
 } from 'lucide-react';
 import { useStore } from './store'; 
@@ -86,7 +86,7 @@ function Sidebar() {
         </NavLink>
 
         <NavLink to="/publish" className={linkClass}>
-          <PlusSquare size={20} /> Создать пост
+          <PlusSquare size={18} /> Создать пост
         </NavLink>
 
         {/* ⚡ ИЗМЕНЕННАЯ ВКЛАДКА УВЕДОМЛЕНИЙ (КОЛОКОЛЬЧИК) */}
@@ -162,9 +162,12 @@ function BottomNav() {
         <div className="md:hidden fixed inset-0 bg-black/60 z-[90] backdrop-blur-sm" onClick={() => setIsMoreMenuOpen(false)}>
           <div className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-2 right-2 bg-admin-card border border-gray-800 rounded-2xl p-4 shadow-2xl animate-in slide-in-from-bottom-4 duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="grid grid-cols-3 gap-3">
-              <NavLink to="/publish" onClick={() => setIsMoreMenuOpen(false)} className={popoverLinkClass}>
-                <PlusSquare size={22} className="mb-2" />
-                <span className="text-[10px] text-center leading-tight">Создать<br/>пост</span>
+              <NavLink to="/publish" onClick={() => setIsMoreMenuOpen(false)} className="relative flex flex-col items-center justify-center px-2 -mt-6">
+                <div className="w-14 h-14 bg-[#0077FF] rounded-full flex items-center justify-center text-white shadow-[0_4px_20px_rgba(0,119,255,0.4)] border-[4px] border-admin-card active:scale-95 transition-transform">
+                    {/* ⚡ КРАСИВЫЙ БОЛЬШОЙ ПЛЮС */}
+                    <Plus size={32} strokeWidth={3} />
+                </div>
+                <span className="text-[10px] mt-1.5 font-bold text-gray-300">Пост</span>
               </NavLink>
               <NavLink to="/accounts" onClick={() => setIsMoreMenuOpen(false)} className={popoverLinkClass}>
                 <Layers size={22} className="mb-2" />
