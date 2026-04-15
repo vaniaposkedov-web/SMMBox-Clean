@@ -594,6 +594,9 @@ export const useStore = create(
       },
 
       removeAccount: async (accountId) => {
+        // 1. ОПТИМИСТИЧНОЕ ОБНОВЛЕНИЕ: Мгновенно убираем аккаунт с экрана
+        set((state) => ({ accounts: state.accounts.filter(a => a.id !== accountId) }));
+
         try {
           const baseUrl = import.meta.env.VITE_API_URL || '';
           const res = await fetch(`${baseUrl}/api/accounts/${accountId}`, { 
@@ -604,13 +607,17 @@ export const useStore = create(
           const data = await res.json();
           
           if (res.ok && data.success) {
+            // 2. Фоново обновляем данные для синхронизации
             get().fetchAccounts(get().user.id);
             return { success: true };
           } else {
+            // Если ошибка, возвращаем данные обратно
+            get().fetchAccounts(get().user.id);
             return { success: false, error: data.error || 'Ошибка при удалении аккаунта' };
           }
         } catch (error) { 
           console.error('Сетевая ошибка при удалении:', error);
+          get().fetchAccounts(get().user.id);
           return { success: false, error: 'Ошибка сети при удалении' }; 
         }
       },

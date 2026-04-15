@@ -360,32 +360,24 @@ export default function AccountsManager() {
     };
   }, [user?.id, fetchAccounts, fetchProfiles]);
 
-  // === УМНОЕ ОБНОВЛЕНИЕ ПРИ ВОЗВРАТЕ ИЗ ТЕЛЕГРАМ ===
-  // Срабатывает, когда пользователь возвращается на вкладку сайта из приложения Telegram
+// === УМНОЕ ОБНОВЛЕНИЕ ПРИ ВОЗВРАТЕ ИЗ ТЕЛЕГРАМ ===
+  // ИСПРАВЛЕНИЕ: Убран спам запросами при каждом фокусе (вызывало зависания сайта).
+  // Теперь авто-обновление происходит только по WebSockets (блок кода выше).
   useEffect(() => {
     const handleVisibilityChange = () => {
+      // Оставляем только мягкое обновление при разблокировке телефона/возврате на вкладку, 
+      // но убираем агрессивный слушатель focus, который ломал Event Loop
       if (document.visibilityState === 'visible' && user?.id) {
         fetchAccounts(user.id);
-        fetchProfiles(user.id);
       }
     };
 
-    const handleFocus = () => {
-      if (user?.id) {
-        fetchAccounts(user.id);
-        fetchProfiles(user.id);
-      }
-    };
-
-    // Слушаем возвращение фокуса на вкладку или окно браузера
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
     };
-  }, [user?.id, fetchAccounts, fetchProfiles]);
+  }, [user?.id, fetchAccounts]);
 
   useEffect(() => {
     // Обязательно ждем загрузки данных пользователя, иначе запросы упадут
