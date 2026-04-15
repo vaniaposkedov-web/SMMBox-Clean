@@ -24,7 +24,6 @@ export default function AdminDashboard() {
   const [userDetails, setUserDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
-  // === ИСПРАВЛЕНИЕ: ДОБАВИЛИ ПЕРЕМЕННЫЕ ДЛЯ ПАВИЛЬОНА ===
   const [editPavilion, setEditPavilion] = useState('');
   const [isSavingPavilion, setIsSavingPavilion] = useState(false);
 
@@ -257,7 +256,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* НОВЫЙ БЛОК: ГРАФИК ВЫРУЧКИ */}
             <div className={`${theme.card} border rounded-2xl p-6`}>
               <h2 className="text-lg font-bold mb-6 flex items-center gap-2"><TrendingUp className="text-blue-500"/> Динамика выручки (6 мес)</h2>
               <div className="h-72 w-full">
