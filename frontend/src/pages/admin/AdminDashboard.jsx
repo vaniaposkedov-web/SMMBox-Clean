@@ -399,61 +399,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* === 4. ТАРИФЫ И ПОДПИСКИ === */}
-          {activeTab === 'plans' && (
-            <div className="space-y-8">
-              <div>
-                <h2 className="text-2xl font-bold mb-4">Настройка Тарифов (3 уровня)</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {plans.map(plan => (
-                    <div key={plan.id} className={`${theme.card} border rounded-2xl p-6 relative flex flex-col`}>
-                      <h3 className="text-xl font-bold text-white mb-2">{plan.name}</h3>
-                      <p className="text-3xl font-black text-blue-500 mb-4">{plan.price} ₽</p>
-                      <ul className="text-sm text-gray-400 space-y-2 mb-6 flex-1">
-                        <li>• Макс. аккаунтов: <span className="text-white font-bold">{plan.maxAccounts}</span></li>
-                        <li>• Постов в день: <span className="text-white font-bold">{plan.maxPostsPerDay}</span></li>
-                      </ul>
-                      <button className="w-full py-2 bg-gray-800 hover:bg-gray-700 rounded-xl font-bold text-sm transition-colors text-white">Изменить лимиты</button>
-                    </div>
-                  ))}
-                  <div className={`${theme.card} border border-dashed border-gray-600 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-500 hover:text-white hover:border-gray-500 transition-colors cursor-pointer min-h-[250px]`}>
-                    <Plus size={32} className="mb-2"/>
-                    <span className="font-bold">Добавить новый тариф</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className={`${theme.card} border rounded-2xl p-6`}>
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Search className="text-blue-500"/> Быстрая выдача подписки</h2>
-                <p className="text-sm text-gray-500 mb-4">Найдите пользователя по ID или Email, чтобы назначить, продлить или забрать подписку.</p>
-                <input 
-                  type="text" 
-                  value={planUserSearch} 
-                  onChange={(e) => setPlanUserSearch(e.target.value)} 
-                  placeholder="Введите ID или Email..." 
-                  className={`w-full max-w-md p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors mb-4`} 
-                />
-                
-                {planUserSearch && (
-                  <div className="border border-gray-800 rounded-xl overflow-hidden mt-4">
-                    {planSearchFilteredUsers.map(u => (
-                      <div key={u.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-black border-b border-gray-800 last:border-0 gap-4">
-                        <div>
-                          <div className="font-bold text-white">{u.email || 'Без Email'} <span className="text-gray-500 font-mono text-xs">({u.id})</span></div>
-                          <div className="text-xs mt-1">Текущий статус: {u.isPro ? <span className="text-yellow-500 font-bold">{u.proPlanType || 'PRO'}</span> : <span className="text-gray-500">FREE</span>}</div>
-                        </div>
-                        <div className="flex gap-2">
-                           {u.isPro && <button onClick={() => revokePro(u.id)} className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg text-xs font-bold transition-colors">Забрать</button>}
-                           <button onClick={() => setProModal({ isOpen: true, user: u })} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-colors">Выдать / Продлить</button>
-                        </div>
-                      </div>
-                    ))}
-                    {planSearchFilteredUsers.length === 0 && <div className="p-4 text-sm text-gray-500">Пользователь не найден.</div>}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+         
 
           {/* === 5-9 РАЗДЕЛЫ ОСТАЮТСЯ КАК БЫЛИ В ПРЕДЫДУЩЕМ КОДЕ === */}
           {/* Для экономии места в этом блоке они скрыты, но в твоем полном файле они остаются без изменений */}
