@@ -164,12 +164,12 @@ exports.updatePlan = async (req, res) => {
 exports.grantProStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        // Добавили planType: reqPlanType
         const { planId, planType: reqPlanType, months, days, customAmount } = req.body; 
 
         const targetUser = await prisma.user.findUnique({ where: { id } });
         if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
 
+        // Жесткая проверка на команду "Забрать"
         const isRevoke = Number(months) === 0 && Number(days) === 0 && !customAmount;
 
         if (isRevoke) {
@@ -181,7 +181,6 @@ exports.grantProStatus = async (req, res) => {
         }
 
         let finalAmount = Number(customAmount) || 0;
-        // Бэкенд берет тариф с фронта, если есть, иначе старый
         let planType = reqPlanType || targetUser.proPlanType || 'PRO'; 
         let planPrice = 0;
 
@@ -193,9 +192,19 @@ exports.grantProStatus = async (req, res) => {
             }
         }
 
+        // Защита базы данных: английские типы транзакций и красивые русские названия
+        let txType = 'SUB_PRO';
         if (planPrice === 0) {
-            if (planType.toLowerCase().includes('базов')) planPrice = 1000;
-            else if (planType.toLowerCase().includes('расширен')) planPrice = 1800;
+            if (planType.toLowerCase().includes('базов') || planType === 'BASIC') {
+                planPrice = 1000;
+                txType = 'SUB_BASIC';
+                planType = 'Базовый';
+            }
+            else if (planType.toLowerCase().includes('расширен') || planType === 'PRO') {
+                planPrice = 1800;
+                txType = 'SUB_PRO';
+                planType = 'Расширенный';
+            }
         }
 
         if (!customAmount && customAmount !== 0) {
@@ -203,8 +212,9 @@ exports.grantProStatus = async (req, res) => {
             finalAmount = calculatedAmount > 0 ? calculatedAmount : 0;
         }
 
+        // Если подписка активна — плюсуем, иначе считаем от сегодня
         let baseDate = new Date();
-        if (targetUser.isPro && targetUser.proExpiresAt) {
+        if (targetUser.isPro && targetUser.proExpiresAt && new Date(targetUser.proExpiresAt) > baseDate) {
             baseDate = new Date(targetUser.proExpiresAt);
         }
 
@@ -230,14 +240,18 @@ exports.grantProStatus = async (req, res) => {
             }
         });
 
+        // Создаем транзакцию с безопасным типом
         if (finalAmount > 0) {
             await prisma.transaction.create({
-                data: { userId: id, amount: finalAmount, type: `SUB_${planType.toUpperCase()}` }
+                data: { userId: id, amount: finalAmount, type: txType }
             });
         }
 
         res.json({ success: true, isPro: true, proExpiresAt: expiresAt });
-    } catch (error) { res.status(500).json({ error: 'Ошибка при выдаче PRO' }); }
+    } catch (error) { 
+        console.error("GRANT PRO ERROR:", error);
+        res.status(500).json({ error: 'Ошибка при выдаче PRO' }); 
+    }
 };
 
 exports.getAiSettings = async (req, res) => {
