@@ -17,7 +17,6 @@ exports.adminLogin = async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };
 
-// Находим функцию getDashboardData и заменяем её логику агрегации выручки
 exports.getDashboardData = async (req, res) => {
     try {
         const totalUsers = await prisma.user.count();
@@ -35,7 +34,7 @@ exports.getDashboardData = async (req, res) => {
             prisma.transaction.aggregate({ where: { createdAt: { gte: startOfDay } }, _sum: { amount: true } })
         ]);
 
-        // Агрегация по месяцам для графика
+        // Агрегация выручки по месяцам для графиков
         const chartDataRaw = await prisma.$queryRaw`
             SELECT 
                 TO_CHAR("createdAt", 'Mon') as month,
@@ -46,20 +45,19 @@ exports.getDashboardData = async (req, res) => {
             ORDER BY DATE_TRUNC('month', "createdAt") ASC
         `;
 
-        // Убедимся, что total передается как число
         const formattedChartData = chartDataRaw.map(item => ({
             month: item.month,
             total: Number(item.total || 0)
         }));
 
         const recentUsers = await prisma.user.findMany({
-            take: 5, orderBy: { createdAt: 'desc' },
+            take: 10, orderBy: { createdAt: 'desc' },
             select: { id: true, name: true, email: true, phone: true, isPro: true, proExpiresAt: true, role: true, createdAt: true }
         });
 
         const recentTransactions = await prisma.transaction.findMany({
-            take: 15, orderBy: { createdAt: 'desc' },
-            include: { user: { select: { email: true, name: true } } }
+            take: 20, orderBy: { createdAt: 'desc' },
+            include: { user: { select: { id: true, email: true, name: true } } }
         });
 
         res.json({ 
@@ -70,20 +68,23 @@ exports.getDashboardData = async (req, res) => {
                     total: totalRev._sum.amount || 0,
                     month: monthRev._sum.amount || 0,
                     today: dayRev._sum.amount || 0,
-                    chart: formattedChartData // <--- Новые данные
+                    chart: formattedChartData
                 }
             }, 
             recentUsers,
             recentTransactions
         });
-    } catch (error) { res.status(500).json({ error: 'Ошибка загрузки данных' }); }
+    } catch (error) { 
+        console.error(error);
+        res.status(500).json({ error: 'Ошибка загрузки данных дашборда' }); 
+    }
 };
 
 exports.getAllUsers = async (req, res) => {
     try {
         const users = await prisma.user.findMany({
             orderBy: { createdAt: 'desc' },
-            select: { id: true, name: true, email: true, phone: true, isPro: true, proExpiresAt: true, role: true, createdAt: true }
+            select: { id: true, name: true, email: true, phone: true, isPro: true, proExpiresAt: true, proPlanType: true, role: true, createdAt: true }
         });
         res.json({ success: true, users });
     } catch (error) { res.status(500).json({ error: 'Ошибка загрузки пользователей' }); }
@@ -95,7 +96,7 @@ exports.getUserDetails = async (req, res) => {
             where: { id: req.params.id },
             include: {
                 accounts: { select: { id: true, provider: true, name: true, isValid: true, createdAt: true } },
-                transactions: { orderBy: { createdAt: 'desc' } }, // Подтягиваем историю платежей
+                transactions: { orderBy: { createdAt: 'desc' } },
                 globalWatermark: true
             }
         });
@@ -108,55 +109,115 @@ exports.getUserDetails = async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Ошибка сервера при загрузке досье' }); }
 };
 
-// === ВЫДАЧА PRO НА ЛЮБОЕ КОЛИЧЕСТВО МЕСЯЦЕВ ===
+exports.updateUserAdmin = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { pavilion } = req.body;
+        const updatedUser = await prisma.user.update({
+            where: { id },
+            data: { pavilion }
+        });
+        res.json({ success: true, user: updatedUser });
+    } catch (error) { res.status(500).json({ error: 'Ошибка обновления пользователя' }); }
+};
+
+// === УПРАВЛЕНИЕ ТАРИФАМИ (ДЛЯ РАЗДЕЛА 4) ===
+exports.getPlans = async (req, res) => {
+    try {
+        const plans = await prisma.subscriptionPlan.findMany({ orderBy: { price: 'asc' } });
+        res.json({ success: true, plans });
+    } catch (error) { res.status(500).json({ error: 'Ошибка загрузки тарифов' }); }
+};
+
+exports.createPlan = async (req, res) => {
+    try {
+        const { name, maxAccounts, maxPostsPerDay, price } = req.body;
+        const plan = await prisma.subscriptionPlan.create({
+            data: { name, maxAccounts: Number(maxAccounts), maxPostsPerDay: Number(maxPostsPerDay), price: Number(price) }
+        });
+        res.json({ success: true, plan });
+    } catch (error) { res.status(500).json({ error: 'Ошибка создания тарифа' }); }
+};
+
+exports.updatePlan = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, maxAccounts, maxPostsPerDay, price } = req.body;
+        const plan = await prisma.subscriptionPlan.update({
+            where: { id },
+            data: { name, maxAccounts: Number(maxAccounts), maxPostsPerDay: Number(maxPostsPerDay), price: Number(price) }
+        });
+        res.json({ success: true, plan });
+    } catch (error) { res.status(500).json({ error: 'Ошибка обновления тарифа' }); }
+};
+
+// === ВЫДАЧА PRO С УЧЕТОМ ФИНАНСОВ (СВЯЗКА РАЗДЕЛОВ 1 И 4) ===
 exports.grantProStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { months, amount } = req.body; 
+        const { planId, months, customAmount } = req.body; 
 
         const targetUser = await prisma.user.findUnique({ where: { id } });
         if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
 
         if (Number(months) === 0) {
-            await prisma.user.update({ where: { id }, data: { isPro: false, proExpiresAt: null } });
+            await prisma.user.update({ 
+                where: { id }, 
+                data: { isPro: false, proExpiresAt: null, planId: null, proPlanType: 'FREE' } 
+            });
             return res.json({ success: true, isPro: false });
+        }
+
+        let finalAmount = Number(customAmount) || 0;
+        let planType = 'PRO';
+
+        if (planId) {
+            const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
+            if (plan) {
+                planType = plan.name;
+                if (!customAmount && customAmount !== 0) {
+                    finalAmount = plan.price * Number(months); 
+                }
+            }
         }
 
         const expiresAt = new Date();
         expiresAt.setMonth(expiresAt.getMonth() + Number(months));
 
-        await prisma.user.update({
-            where: { id },
-            data: { isPro: true, proExpiresAt: expiresAt }
-        });
-
-        res.json({ success: true, isPro: true, proExpiresAt: expiresAt });
-    } catch (error) { res.status(500).json({ error: 'Ошибка при выдаче PRO' }); }
-};
-
-exports.updateUserAdmin = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { pavilion } = req.body;
-        
         const updatedUser = await prisma.user.update({
             where: { id },
-            data: { pavilion }
+            data: { 
+                isPro: true, 
+                proExpiresAt: expiresAt,
+                planId: planId || null,
+                proPlanType: planType
+            }
         });
 
-        res.json({ success: true, user: updatedUser });
-    } catch (error) {
-        res.status(500).json({ error: 'Ошибка обновления пользователя' });
+        if (finalAmount > 0) {
+            await prisma.transaction.create({
+                data: {
+                    userId: id,
+                    amount: finalAmount,
+                    type: `SUB_${planType.toUpperCase()}`
+                }
+            });
+        }
+
+        res.json({ success: true, isPro: true, proExpiresAt: expiresAt });
+    } catch (error) { 
+        console.error(error);
+        res.status(500).json({ error: 'Ошибка при выдаче PRO' }); 
     }
 };
-// === НАСТРОЙКИ НЕЙРОСЕТИ ===
+
+// === НАСТРОЙКИ НЕЙРОСЕТИ (РАЗДЕЛ 5) ===
 exports.getAiSettings = async (req, res) => {
     try {
         let settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } });
         if (!settings) {
-            // Создаем стандартный промпт, если его еще нет
             settings = await prisma.systemSettings.create({
-                data: { id: 'global', aiPrompt: "Ты — профессиональный SMM-копирайтер для продавцов из торговых центров..." }
+                data: { id: 'global', aiPrompt: "Ты — профессиональный SMM-копирайтер..." }
             });
         }
         res.json({ success: true, aiPrompt: settings.aiPrompt });
