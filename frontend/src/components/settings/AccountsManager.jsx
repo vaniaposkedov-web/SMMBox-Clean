@@ -36,6 +36,7 @@ export default function AccountsManager() {
   const profiles = useStore((state) => state.profiles) || [];
   const fetchAccounts = useStore((state) => state.fetchAccounts);
   const fetchProfiles = useStore((state) => state.fetchProfiles);
+  const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
   
   const verifyAccountsStatus = useStore((state) => state.verifyAccountsStatus);
   const saveVkGroupWithToken = useStore((state) => state.saveVkGroupWithToken);
@@ -96,16 +97,20 @@ export default function AccountsManager() {
   };
 
 // Динамический расчет лимитов для интерфейса
+  // Динамический расчет лимитов для интерфейса
   const isExpired = user?.proExpiresAt && new Date(user.proExpiresAt) < new Date();
   const isPaid = user?.isPro && !isExpired;
-  const planType = isPaid ? user?.proPlanType : 'FREE';
+  // ВАЖНО: сразу переводим в верхний регистр, чтобы .includes() сработал
+  const planType = isPaid ? user?.proPlanType?.toUpperCase() : 'FREE'; 
+
   const isAdvanced = planType?.includes('РАСШИРЕН') || planType === 'PRO';
   const isBasic = planType?.includes('БАЗОВ') || planType === 'BASIC';
 
+  // ВАЖНО: используем наши булевы флаги, а не старую проверку на 'PRO'
   const limits = {
-    vk: planType === 'PRO' ? 20 : (planType === 'BASIC' ? 15 : 6),
-    tg: planType === 'PRO' ? 8 : (planType === 'BASIC' ? 5 : 4),
-    total: planType === 'PRO' ? 28 : (planType === 'BASIC' ? 20 : 10)
+    vk: isAdvanced ? 20 : (isBasic ? 15 : 6),
+    tg: isAdvanced ? 8 : (isBasic ? 5 : 4),
+    total: isAdvanced ? 28 : (isBasic ? 20 : 10)
   };
 
   const vkCount = connectedVk.length;
@@ -359,8 +364,11 @@ const handleSaveKomodGroups = async () => {
 
 
  // --- WEB SOCKETS: АВТО-ОБНОВЛЕНИЕ ДАННЫХ БЕЗ НАГРУЗКИ ---
-  useEffect(() => {
+ useEffect(() => {
     if (!user?.id) return;
+
+    // Тихо обновляем данные пользователя, чтобы тариф мгновенно применился без F5
+    if (fetchCurrentUser) fetchCurrentUser();
 
     // Первичная загрузка
     fetchAccounts(user.id);
