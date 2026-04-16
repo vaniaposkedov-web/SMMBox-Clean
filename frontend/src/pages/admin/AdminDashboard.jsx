@@ -83,13 +83,20 @@ const [proModal, setProModal] = useState({ isOpen: false, user: null });
   useEffect(() => { fetchDashboardData(); }, []);
 
 const submitProGrant = async (isRevoke = false) => {
+    // ЗАЩИТА ОТ БАГА REACT: если isRevoke это объект события (клик), приравниваем к false
+    const revokeFlag = typeof isRevoke === 'boolean' ? isRevoke : false;
+    
+    // Обязуем выбрать тариф, если его нет и это не удаление
+    if (!revokeFlag && !selectedPlanType && !proModal.user?.isPro) {
+      return alert('Пожалуйста, выберите тариф!');
+    }
+
     setIsSubmittingPro(true);
     const token = localStorage.getItem('adminToken');
     
-    // Если нажата кнопка "Забрать", жестко шлем нули
-    const payload = isRevoke 
+    const payload = revokeFlag 
       ? { planType: selectedPlanType, months: 0, days: 0, customAmount: null }
-      : { planType: selectedPlanType, months: Number(proMonths), days: Number(proDays), customAmount: proCustomAmount ? Number(proCustomAmount) : null };
+      : { planType: selectedPlanType || undefined, months: Number(proMonths), days: Number(proDays), customAmount: proCustomAmount ? Number(proCustomAmount) : null };
 
     try {
       const res = await fetch(`/api/admin/users/${proModal.user.id}/grant-pro`, {
@@ -660,7 +667,8 @@ const submitProGrant = async (isRevoke = false) => {
               )}
               <div>
                 <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Выберите Тариф</label>
-                <select value={selectedPlanType} onChange={e => setSelectedPlanType(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors appearance-none`}>
+                <select value={selectedPlanType} onChange={e => setSelectedPlanType(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`}>
+                  <option value="">-- Выберите тариф --</option>
                   <option value="Базовый">Базовый (1000₽)</option>
                   <option value="Расширенный">Расширенный (1800₽)</option>
                 </select>
@@ -694,15 +702,6 @@ const submitProGrant = async (isRevoke = false) => {
                 disabled={isSubmittingPro} 
                 className="w-2/3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center"
               >
-                {isSubmittingPro ? <Loader2 className="animate-spin" size={20} /> : 'Сохранить'}
-              </button>
-            </div>
-            
-            <div className="flex gap-3">
-              <button onClick={() => { setProMonths(0); setProDays(0); submitProGrant(); }} disabled={isSubmittingPro} className="w-1/3 bg-red-600/10 text-red-500 hover:bg-red-600/20 border border-red-500/20 font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center">
-                Забрать
-              </button>
-              <button onClick={submitProGrant} disabled={isSubmittingPro} className="w-2/3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center">
                 {isSubmittingPro ? <Loader2 className="animate-spin" size={20} /> : 'Сохранить'}
               </button>
             </div>
