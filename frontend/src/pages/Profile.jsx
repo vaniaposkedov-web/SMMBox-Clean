@@ -11,6 +11,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 export default function Profile() {
   const navigate = useNavigate();
   const user = useStore((state) => state.user);
+  console.log("ТЕКУЩИЙ ЮЗЕР В ПРОФИЛЕ:", user);
   const logout = useStore((state) => state.logout);
   const updateUser = useStore((state) => state.updateUser);
   const requestEmailLink = useStore((state) => state.requestEmailLink);
