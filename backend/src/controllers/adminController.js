@@ -169,7 +169,6 @@ exports.grantProStatus = async (req, res) => {
         const targetUser = await prisma.user.findUnique({ where: { id } });
         if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
 
-        // Жесткая проверка на команду "Забрать"
         const isRevoke = Number(months) === 0 && Number(days) === 0 && !customAmount;
 
         if (isRevoke) {
@@ -192,19 +191,17 @@ exports.grantProStatus = async (req, res) => {
             }
         }
 
-        // Защита базы данных: английские типы транзакций и красивые русские названия
+        // ЗАЩИТА: Распределяем русские названия для фронта и англ. типы для базы данных
         let txType = 'SUB_PRO';
-        if (planPrice === 0) {
-            if (planType.toLowerCase().includes('базов') || planType === 'BASIC') {
-                planPrice = 1000;
-                txType = 'SUB_BASIC';
-                planType = 'Базовый';
-            }
-            else if (planType.toLowerCase().includes('расширен') || planType === 'PRO') {
-                planPrice = 1800;
-                txType = 'SUB_PRO';
-                planType = 'Расширенный';
-            }
+        if (planType.toLowerCase().includes('базов') || planType === 'BASIC') {
+            planPrice = 1000;
+            txType = 'SUB_BASIC';
+            planType = 'Базовый';
+        }
+        else if (planType.toLowerCase().includes('расширен') || planType === 'PRO') {
+            planPrice = 1800;
+            txType = 'SUB_PRO';
+            planType = 'Расширенный';
         }
 
         if (!customAmount && customAmount !== 0) {
@@ -212,7 +209,6 @@ exports.grantProStatus = async (req, res) => {
             finalAmount = calculatedAmount > 0 ? calculatedAmount : 0;
         }
 
-        // Если подписка активна — плюсуем, иначе считаем от сегодня
         let baseDate = new Date();
         if (targetUser.isPro && targetUser.proExpiresAt && new Date(targetUser.proExpiresAt) > baseDate) {
             baseDate = new Date(targetUser.proExpiresAt);
@@ -240,9 +236,9 @@ exports.grantProStatus = async (req, res) => {
             }
         });
 
-        // Создаем транзакцию с безопасным типом
         if (finalAmount > 0) {
             await prisma.transaction.create({
+                // ИСПОЛЬЗУЕМ БЕЗОПАСНЫЙ txType ВМЕСТО toUpperCase()
                 data: { userId: id, amount: finalAmount, type: txType }
             });
         }
@@ -250,7 +246,7 @@ exports.grantProStatus = async (req, res) => {
         res.json({ success: true, isPro: true, proExpiresAt: expiresAt });
     } catch (error) { 
         console.error("GRANT PRO ERROR:", error);
-        res.status(500).json({ error: 'Ошибка при выдаче PRO' }); 
+        res.status(500).json({ error: 'Ошибка при выдаче PRO: ' + error.message }); 
     }
 };
 
