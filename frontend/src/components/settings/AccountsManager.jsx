@@ -1447,13 +1447,28 @@ const handleSaveKomodGroups = async () => {
               {selectableGroups.map((group, index) => {
                 const uniqueId = extractId(group) || `idx-${index}`;
                 
-                // === НОВАЯ ПРОВЕРКА: ПОДКЛЮЧЕН ЛИ АККАУНТ? ===
-                // Смотрим, заканчивается ли providerId в базе на уникальный ID этой группы
-                const isAlreadyConnected = connectedVk.some(acc => String(acc.providerId).endsWith(`_${uniqueId}`));
+                // === СУПЕР-НАДЕЖНАЯ ПРОВЕРКА ПОДКЛЮЧЕНИЯ ===
+                let isAlreadyConnected = false;
+
+                if (group.is_profile_dummy) {
+                  // 1. Для личной страницы ищем аккаунт 'wall_', привязанный к текущему профилю
+                  isAlreadyConnected = connectedVk.some(acc =>
+                    acc.providerId.startsWith('wall_') && acc.profileId === komodModal.profileId
+                  );
+                } else {
+                  // 2. Для групп ищем совпадение либо по цифровому ID, либо по доменному имени (ссылке)
+                  const screenName = group.screen_name || group.domain;
+                  const vkId = group.uid || group.group_id || group.id;
+
+                  isAlreadyConnected = connectedVk.some(acc => {
+                    const pId = String(acc.providerId).replace('group_', '');
+                    return pId === String(vkId) || (screenName && pId === String(screenName));
+                  });
+                }
 
                 const isSelected = komodSelected.includes(uniqueId);
                 
-                // Умная логика блокировки (добавили isAlreadyConnected)
+                // Умная логика блокировки
                 const isVkModalLimitReached = komodSelected.length >= (limits.vk - vkCount);
                 const isLocked = (!isSelected && isVkModalLimitReached) || isAlreadyConnected;
                 
