@@ -9,23 +9,17 @@ import {
   Users, Check, ChevronDown
 } from 'lucide-react';
 
-// === СВЕРХ-УМНЫЙ ПАРСЕР КАРТИНОК (АДАПТИРОВАН ПОД WEBP И НОВЫЕ ФОРМАТЫ СЕРВЕРА) ===
+// === СВЕРХ-УМНЫЙ ПАРСЕР КАРТИНОК (АДАПТИРОВАН ПОД КАРУСЕЛИ И СЛОМАННЫЙ JSON) ===
 const getImageUrl = (url) => {
   if (!url) return '';
   if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
   
   let finalUrl = url;
-  
-  // 1. Если в базе записано только имя файла
   if (!finalUrl.includes('/')) {
     finalUrl = `/api/uploads/posts/${finalUrl}`;
-  } 
-  // 2. Если путь есть, но нет спасительного /api/
-  else if (finalUrl.includes('uploads/') && !finalUrl.includes('/api/')) {
+  } else if (finalUrl.includes('uploads/') && !finalUrl.includes('/api/')) {
     finalUrl = `/api/${finalUrl.substring(finalUrl.indexOf('uploads/'))}`;
-  } 
-  // 3. Защита от отсутствия слэша
-  else if (!finalUrl.startsWith('/')) {
+  } else if (!finalUrl.startsWith('/')) {
     finalUrl = `/${finalUrl}`;
   }
   
@@ -35,33 +29,36 @@ const getImageUrl = (url) => {
 
 const parseMediaUrls = (mediaStr) => {
   if (!mediaStr) return [];
-  
-  let parsed;
-  if (Array.isArray(mediaStr)) {
-    parsed = mediaStr;
-  } else {
-    try {
-      parsed = JSON.parse(mediaStr);
-      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
-    } catch (e) {
-      if (typeof mediaStr === 'string') {
-        parsed = mediaStr.split(',').map(s => s.trim().replace(/^[\[\]"']+|[\[\]"']+$/g, '')).filter(Boolean);
-      } else {
-        parsed = [];
+  let parsed = [];
+
+  try {
+    if (Array.isArray(mediaStr)) {
+      parsed = mediaStr;
+    } else if (typeof mediaStr === 'string') {
+      let cleanStr = mediaStr.trim();
+      // Лечим формат Postgres массивов: {url1, url2} -> [url1, url2]
+      if (cleanStr.startsWith('{') && cleanStr.endsWith('}')) {
+        cleanStr = `[${cleanStr.slice(1, -1)}]`;
       }
+      parsed = JSON.parse(cleanStr);
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+    }
+  } catch (e) {
+    // ЖЕСТКИЙ FALLBACK: Если JSON сломан, ищем любые ссылки и имена файлов через регулярку
+    if (typeof mediaStr === 'string') {
+      const matches = mediaStr.match(/(?:https?:\/\/|\/api\/uploads\/|[\w-]+\.(?:jpg|jpeg|png|webp|gif))[^\s"'\}\],]+/gi);
+      if (matches) parsed = matches;
     }
   }
-  
-  if (!Array.isArray(parsed)) {
-    parsed = parsed ? [parsed] : [];
-  }
-  
-  // Вытаскиваем URL, даже если сервер теперь присылает объекты вместо строк
+
+  if (!Array.isArray(parsed)) parsed = parsed ? [parsed] : [];
+
+  // Достаем URL, даже если пришла карусель (массив объектов)
   return parsed.map(item => {
     if (typeof item === 'object' && item !== null) {
-      return item.url || item.file || item.path || '';
+      return item.url || item.file || item.path || item.src || '';
     }
-    return String(item);
+    return String(item).trim();
   }).filter(Boolean);
 };
 
@@ -80,7 +77,6 @@ const urlToFile = async (url, filename) => {
   try {
     const res = await fetch(getImageUrl(url));
     const blob = await res.blob();
-    // Адаптация под формат Publish.jsx (WebP)
     const mimeType = blob.type || 'image/webp';
     let finalFilename = filename;
     if (mimeType.includes('webp') && finalFilename.endsWith('.jpg')) {
@@ -100,7 +96,9 @@ export default function PostsHistory() {
   const [activeTab, setActiveTab] = useState('published');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // === СТЕЙТ ПАГИНАЦИИ (ОГРАНИЧЕНИЕ ЗАГРУЗКИ) ===
+  // === СТЕЙТЫ ЗАГРУЗКИ И ПАГИНАЦИИ ===
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [visibleCount, setVisibleCount] = useState(8);
   
   const [selectedPost, setSelectedPost] = useState(null); 
@@ -125,10 +123,20 @@ export default function PostsHistory() {
   }, [selectedPost, fsImageIndex, showPartnerModal]);
 
   useEffect(() => {
-    fetchPostsHistory();
+    // Имитация первичной загрузки, чтобы дать стору время подтянуть данные
+    setIsInitialLoading(true);
+    
+    // Если fetchPostsHistory возвращает промис, ждем его. Иначе страхуемся таймаутом.
+    const fetchData = async () => {
+      try {
+        await fetchPostsHistory();
+      } finally {
+        setTimeout(() => setIsInitialLoading(false), 800); // Небольшая задержка для плавности UI
+      }
+    };
+    fetchData();
   }, [fetchPostsHistory]);
 
-  // Сброс счетчика при смене таба или поиске
   useEffect(() => {
     setVisibleCount(8);
   }, [activeTab, searchQuery]);
@@ -149,10 +157,18 @@ export default function PostsHistory() {
     return base;
   }, [postsHistory, activeTab, searchQuery]);
 
-  // Срез постов для мгновенной загрузки
   const visiblePosts = useMemo(() => {
     return filteredPosts.slice(0, visibleCount);
   }, [filteredPosts, visibleCount]);
+
+  const handleLoadMore = () => {
+    setIsLoadingMore(true);
+    // Имитируем подгрузку для визуала
+    setTimeout(() => {
+      setVisibleCount(prev => prev + 10);
+      setIsLoadingMore(false);
+    }, 600);
+  };
 
   const currentMediaList = useMemo(() => parseMediaUrls(selectedPost?.mediaUrls), [selectedPost]);
 
@@ -174,7 +190,7 @@ export default function PostsHistory() {
     try {
       const response = await fetch(getImageUrl(imgUrl));
       const blob = await response.blob();
-      const ext = blob.type.includes('webp') ? 'webp' : 'jpg'; // Поддержка webp
+      const ext = blob.type.includes('webp') ? 'webp' : 'jpg';
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
@@ -195,7 +211,7 @@ export default function PostsHistory() {
 
     try {
       const reconstructedPhotos = await Promise.all(currentMediaList.map(async (url, index) => {
-        const file = await urlToFile(url, `duplicate_${index}.webp`); // Поддержка webp
+        const file = await urlToFile(url, `duplicate_${index}.webp`);
         return file ? {
           id: `dup_${Math.random().toString(36).substr(2, 9)}`,
           url: getImageUrl(url),
@@ -230,7 +246,7 @@ export default function PostsHistory() {
     setPartnerStatus('sending');
     
     try {
-      const blobs = await Promise.all(currentMediaList.map(url => urlToFile(url, 'share.webp'))); // Поддержка webp
+      const blobs = await Promise.all(currentMediaList.map(url => urlToFile(url, 'share.webp')));
       const validBlobs = blobs.filter(b => b !== null);
       
       const res = await sharePostAction(selectedPost.text, validBlobs, selectedPartners);
@@ -269,7 +285,7 @@ export default function PostsHistory() {
   };
 
   return (
-    <div className="w-full space-y-6 sm:space-y-8 font-sans pb-24 md:pb-12 pt-4 sm:pt-8">
+    <div className="w-full space-y-6 sm:space-y-8 font-sans pb-24 md:pb-12 pt-4 sm:pt-8 relative min-h-screen">
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 bg-admin-card border border-gray-800 p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl">
         <div>
@@ -308,14 +324,22 @@ export default function PostsHistory() {
         ))}
       </div>
 
-      {filteredPosts.length === 0 ? (
-        <div className="bg-admin-card border border-gray-800 border-dashed p-10 rounded-[2.5rem] text-center flex flex-col items-center">
+      {isInitialLoading ? (
+        <div className="bg-admin-card border border-gray-800 p-16 rounded-[2.5rem] flex flex-col items-center justify-center min-h-[300px] animate-in fade-in duration-500">
+          <Loader2 className="w-12 h-12 text-[#0077FF] animate-spin mb-6" />
+          <div className="w-48 h-1.5 bg-gray-900 rounded-full overflow-hidden mb-4 shadow-inner">
+             <div className="h-full bg-gradient-to-r from-[#0077FF] to-purple-500 animate-pulse w-full"></div>
+          </div>
+          <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Синхронизация архива...</p>
+        </div>
+      ) : filteredPosts.length === 0 ? (
+        <div className="bg-admin-card border border-gray-800 border-dashed p-10 rounded-[2.5rem] text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
           <LayoutPanelLeft className="text-gray-700 mb-4" size={48} />
           <p className="text-gray-500 font-bold">В этой категории пока пусто</p>
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 animate-in fade-in duration-500">
             {visiblePosts.map(post => {
               const mediaArr = parseMediaUrls(post.mediaUrls);
               const firstImage = mediaArr.length > 0 ? getImageUrl(mediaArr[0]) : null;
@@ -329,7 +353,7 @@ export default function PostsHistory() {
                   <div className="flex gap-4 sm:gap-5 mb-4 sm:mb-5">
                     <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-[1.2rem] bg-gray-900 border border-gray-800 shrink-0 flex items-center justify-center overflow-hidden relative">
                        {firstImage ? (
-                         <img src={firstImage} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} alt="prev" />
+                         <img src={firstImage} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} alt="prev" />
                        ) : null}
                        <ImageIcon className={`text-gray-700 w-8 h-8 absolute ${firstImage ? 'hidden' : 'block'}`} />
                     </div>
@@ -355,21 +379,27 @@ export default function PostsHistory() {
             })}
           </div>
 
-          {/* === КНОПКА ЗАГРУЗИТЬ ЕЩЕ === */}
           {filteredPosts.length > visibleCount && (
             <div className="flex justify-center mt-6 sm:mt-8 mb-4">
               <button 
-                onClick={() => setVisibleCount(prev => prev + 10)}
-                className="flex items-center gap-2 px-6 py-3.5 bg-gray-900 border border-gray-700 hover:border-[#0077FF] hover:bg-gray-800 hover:text-white text-gray-400 rounded-2xl font-bold transition-all active:scale-95 shadow-lg group"
+                onClick={handleLoadMore}
+                disabled={isLoadingMore}
+                className="flex items-center gap-2 px-8 py-4 bg-gray-900 border border-gray-700 hover:border-[#0077FF] hover:bg-gray-800 hover:text-white text-gray-400 rounded-2xl font-bold transition-all active:scale-95 shadow-lg group disabled:opacity-70 disabled:hover:border-gray-700 disabled:hover:bg-gray-900 disabled:hover:text-gray-400"
               >
-                <span>Посмотреть еще</span>
-                <ChevronDown size={18} className="group-hover:translate-y-0.5 transition-transform" />
+                {isLoadingMore ? (
+                  <Loader2 size={18} className="animate-spin text-[#0077FF]" />
+                ) : (
+                  <ChevronDown size={18} className="group-hover:translate-y-0.5 transition-transform" />
+                )}
+                <span>{isLoadingMore ? 'Загрузка...' : 'Посмотреть еще'}</span>
               </button>
             </div>
           )}
         </>
       )}
 
+      {/* ОСТАЛЬНАЯ ЧАСТЬ КОДА (МОДАЛКИ selectedPost, fsImageIndex, showPartnerModal) ОСТАЕТСЯ БЕЗ ИЗМЕНЕНИЙ И ВСТАВЛЯЕТСЯ НИЖЕ */}
+      
       {selectedPost && (
         <div className="fixed inset-0 z-[100] flex flex-col sm:items-center sm:justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl animate-in fade-in duration-200">
           
