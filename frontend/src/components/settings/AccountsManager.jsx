@@ -129,6 +129,7 @@ export default function AccountsManager() {
   const [newlyAddedProfileId, setNewlyAddedProfileId] = useState(null);
   const [addedGroupsCount, setAddedGroupsCount] = useState(0);
   const [isWaitingForTg, setIsWaitingForTg] = useState(false); // Для Telegram
+  const [tgCountBeforeWait, setTgCountBeforeWait] = useState(0);
   const processingHash = useRef(null);
 
   
@@ -345,6 +346,14 @@ const handleSaveKomodGroups = async () => {
     setIsSyncingVk(false);
     setVkConnectStatus(addedCount > 0 ? 'groups_success' : 'idle');
   };
+
+
+  useEffect(() => {
+    // Если включен режим ожидания и количество каналов стало больше, чем до ухода
+    if (isWaitingForTg && tgCount > tgCountBeforeWait) {
+      setIsWaitingForTg(false);
+    }
+  }, [tgCount, isWaitingForTg, tgCountBeforeWait]);
 
 
  // --- WEB SOCKETS: АВТО-ОБНОВЛЕНИЕ ДАННЫХ БЕЗ НАГРУЗКИ ---
@@ -1395,6 +1404,7 @@ const handleSaveKomodGroups = async () => {
                     rel="noopener noreferrer"
                     onClick={() => {
                       setShowTgHelperModal(false);
+                      setTgCountBeforeWait(tgCount);
                       setIsWaitingForTg(true); // Включаем режим ожидания
                     }}
                       className="w-full py-3.5 rounded-xl font-bold text-white transition-all flex justify-center items-center gap-3 bg-[#0088CC] hover:bg-[#0077B3] shadow-lg shadow-[#0088CC]/20 active:scale-95 text-base mt-3"
