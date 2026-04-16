@@ -299,13 +299,9 @@ export default function Profile() {
                 <LayoutDashboard size={12} className="shrink-0" /> <span className="truncate">Павильон: {user.pavilion}</span>
               </span>
             )}
-            {isSubscriptionActive ? (
+            {isSubscriptionActive && (
               <span className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-3 py-1 rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1.5">
-                <Crown size={12} className="shrink-0" /> Тариф: {user.proPlanType === 'BASIC' ? 'Базовый' : 'PRO'} (до {new Date(user.proExpiresAt).toLocaleDateString('ru-RU')})
-              </span>
-            ) : (
-              <span className="bg-gray-500/10 text-gray-400 border border-gray-500/20 px-3 py-1 rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1.5">
-                <Crown size={12} className="shrink-0" /> Тариф: Бесплатный
+                <Crown size={12} className="shrink-0" /> Тариф: {user.proPlanType?.toUpperCase().includes('БАЗОВ') || user.proPlanType === 'BASIC' ? 'Базовый' : 'Расширенный'} (осталось {Math.max(0, Math.ceil((new Date(user.proExpiresAt) - new Date()) / (1000 * 60 * 60 * 24)))} дн.)
               </span>
             )}
           </div>
