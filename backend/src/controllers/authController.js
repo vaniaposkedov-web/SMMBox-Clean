@@ -127,18 +127,17 @@ exports.login = async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Ошибка сервера при входе' }); }
 };
 
-// Вспомогательная функция для генерации 8-значного ID
 async function generateUniqueId() {
   let newId;
   let isUnique = false;
   while (!isUnique) {
-    newId = String(Math.floor(10000000 + Math.random() * 90000000));
+    // Меняем на 11-значное число
+    newId = String(Math.floor(10000000000 + Math.random() * 90000000000));
     const duplicate = await prisma.user.findUnique({ where: { id: newId } });
     if (!duplicate) isUnique = true;
   }
   return newId;
 }
-
 exports.telegramAuth = async (req, res) => {
   try {
     const { id, first_name, last_name, username, photo_url } = req.body;
