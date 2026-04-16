@@ -34,7 +34,6 @@ exports.getDashboardData = async (req, res) => {
             prisma.transaction.aggregate({ where: { createdAt: { gte: startOfDay } }, _sum: { amount: true } })
         ]);
 
-        // Агрегация выручки по месяцам для графиков
         const chartDataRaw = await prisma.$queryRaw`
             SELECT 
                 TO_CHAR("createdAt", 'Mon') as month,
@@ -90,23 +89,38 @@ exports.getAllUsers = async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Ошибка загрузки пользователей' }); }
 };
 
+// === ОБНОВЛЕННОЕ ПОЛНОЕ ДОСЬЕ ПОЛЬЗОВАТЕЛЯ ===
 exports.getUserDetails = async (req, res) => {
     try {
         const user = await prisma.user.findUnique({
             where: { id: req.params.id },
             include: {
                 accounts: { select: { id: true, provider: true, name: true, isValid: true, createdAt: true } },
-                transactions: { orderBy: { createdAt: 'desc' } },
+                transactions: { orderBy: { createdAt: 'desc' }, take: 15 },
+                sentRequests: { include: { receiver: { select: { id: true, email: true, isPro: true } } } },
+                receivedRequests: { include: { sender: { select: { id: true, email: true, isPro: true } } } },
                 globalWatermark: true
             }
         });
         
         if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+        
+        // Достаем историю последних постов (через аккаунты юзера)
+        const recentPosts = await prisma.post.findMany({
+            where: { account: { userId: req.params.id } },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: { id: true, text: true, status: true, createdAt: true, account: { select: { name: true, provider: true } } }
+        });
+
         const postsCount = await prisma.post.count({ where: { account: { userId: req.params.id } } });
         const { password, ...safeUser } = user;
 
-        res.json({ success: true, user: safeUser, postsCount });
-    } catch (error) { res.status(500).json({ error: 'Ошибка сервера при загрузке досье' }); }
+        res.json({ success: true, user: safeUser, postsCount, recentPosts });
+    } catch (error) { 
+        console.error('Ошибка в getUserDetails:', error);
+        res.status(500).json({ error: 'Ошибка сервера при загрузке досье' }); 
+    }
 };
 
 exports.updateUserAdmin = async (req, res) => {
@@ -121,7 +135,6 @@ exports.updateUserAdmin = async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Ошибка обновления пользователя' }); }
 };
 
-// === УПРАВЛЕНИЕ ТАРИФАМИ (ДЛЯ РАЗДЕЛА 4) ===
 exports.getPlans = async (req, res) => {
     try {
         const plans = await prisma.subscriptionPlan.findMany({ orderBy: { price: 'asc' } });
@@ -151,7 +164,6 @@ exports.updatePlan = async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Ошибка обновления тарифа' }); }
 };
 
-// === ВЫДАЧА PRO С УЧЕТОМ ФИНАНСОВ (СВЯЗКА РАЗДЕЛОВ 1 И 4) ===
 exports.grantProStatus = async (req, res) => {
     try {
         const { id } = req.params;
@@ -196,22 +208,14 @@ exports.grantProStatus = async (req, res) => {
 
         if (finalAmount > 0) {
             await prisma.transaction.create({
-                data: {
-                    userId: id,
-                    amount: finalAmount,
-                    type: `SUB_${planType.toUpperCase()}`
-                }
+                data: { userId: id, amount: finalAmount, type: `SUB_${planType.toUpperCase()}` }
             });
         }
 
         res.json({ success: true, isPro: true, proExpiresAt: expiresAt });
-    } catch (error) { 
-        console.error(error);
-        res.status(500).json({ error: 'Ошибка при выдаче PRO' }); 
-    }
+    } catch (error) { res.status(500).json({ error: 'Ошибка при выдаче PRO' }); }
 };
 
-// === НАСТРОЙКИ НЕЙРОСЕТИ (РАЗДЕЛ 5) ===
 exports.getAiSettings = async (req, res) => {
     try {
         let settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } });
