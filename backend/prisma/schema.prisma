@@ -168,6 +168,9 @@ model Post {
   accountId   String   
   account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+  @@index([accountId])
+  @@index([status, publishAt])
+  @@index([createdAt])
 }
 
 model Partnership {
@@ -208,6 +211,10 @@ model SharedPost {
 
   sender      User     @relation("SentSharedPosts", fields: [senderId], references: [id], onDelete: Cascade)
   receiver    User     @relation("ReceivedSharedPosts", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
 }
 
 // === ФИНАНСЫ И ПЛАТЕЖИ ===
