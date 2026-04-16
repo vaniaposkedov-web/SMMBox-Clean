@@ -13,6 +13,22 @@ import CustomTelegramButton from '../../components/CustomTelegramButton';
 import CustomVkButton from '../../components/CustomVkButton';
 import { io } from 'socket.io-client';
 
+// Вставьте этот блок после импорта socket.io-client
+const getImageUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
+  let finalUrl = url;
+  if (finalUrl.includes('/api/uploads/')) {
+    finalUrl = finalUrl.replace('/api/uploads/', '/uploads/');
+  } else if (!finalUrl.includes('uploads/')) {
+    finalUrl = `/uploads/posts/${finalUrl}`;
+  }
+  if (!finalUrl.startsWith('/')) finalUrl = `/${finalUrl}`;
+  let baseUrl = import.meta.env.VITE_API_URL || '';
+  baseUrl = baseUrl.replace(/\/api\/?$/, '');
+  return `${baseUrl}${finalUrl}`;
+};
+
 export default function AccountsManager() {
   const navigate = useNavigate();
   const user = useStore((state) => state.user);
