@@ -492,7 +492,6 @@ export default function AdminDashboard() {
                  <button onClick={()=>setDossierTab('accounts')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors shrink-0 ${dossierTab==='accounts' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>Соцсети ({userDetails.user.accounts?.length || 0})</button>
                  <button onClick={()=>setDossierTab('posts')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors shrink-0 ${dossierTab==='posts' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>Посты ({userDetails.postsCount})</button>
                  <button onClick={()=>setDossierTab('finances')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors shrink-0 ${dossierTab==='finances' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>Оплаты ({userDetails.user.transactions?.length || 0})</button>
-                 <button onClick={()=>setDossierTab('partners')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors shrink-0 ${dossierTab==='partners' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>Партнеры/Рефералы</button>
               </div>
             </div>
 

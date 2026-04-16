@@ -89,7 +89,6 @@ exports.getAllUsers = async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Ошибка загрузки пользователей' }); }
 };
 
-// === ОБНОВЛЕННОЕ ПОЛНОЕ ДОСЬЕ ПОЛЬЗОВАТЕЛЯ ===
 exports.getUserDetails = async (req, res) => {
     try {
         const user = await prisma.user.findUnique({
@@ -97,16 +96,13 @@ exports.getUserDetails = async (req, res) => {
             include: {
                 accounts: { select: { id: true, provider: true, name: true, isValid: true, createdAt: true } },
                 transactions: { orderBy: { createdAt: 'desc' }, take: 15 },
-                sentRequests: { include: { receiver: { select: { id: true, email: true, isPro: true } } } },
-                // КАК ДОЛЖНО БЫТЬ:
-                receivedRequests: { include: { requester: { select: { id: true, email: true, isPro: true } } } },
                 globalWatermark: true
             }
         });
         
         if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
         
-        // Достаем историю последних постов (через аккаунты юзера)
+        // Достаем историю последних постов
         const recentPosts = await prisma.post.findMany({
             where: { account: { userId: req.params.id } },
             orderBy: { createdAt: 'desc' },
