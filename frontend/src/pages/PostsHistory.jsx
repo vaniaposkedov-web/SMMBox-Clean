@@ -9,57 +9,53 @@ import {
   Users, Check, ChevronDown
 } from 'lucide-react';
 
-// === СВЕРХ-УМНЫЙ ПАРСЕР КАРТИНОК (АДАПТИРОВАН ПОД КАРУСЕЛИ И СЛОМАННЫЙ JSON) ===
+// === ЖЕЛЕЗОБЕТОННЫЙ ПАРСЕР КАРТИНОК ===
 const getImageUrl = (url) => {
   if (!url) return '';
   if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
   
   let finalUrl = url;
-  if (!finalUrl.includes('/')) {
-    finalUrl = `/api/uploads/posts/${finalUrl}`;
-  } else if (finalUrl.includes('uploads/') && !finalUrl.includes('/api/')) {
-    finalUrl = `/api/${finalUrl.substring(finalUrl.indexOf('uploads/'))}`;
-  } else if (!finalUrl.startsWith('/')) {
-    finalUrl = `/${finalUrl}`;
-  }
+  // Убираем лишние слэши в начале, если они есть
+  if (finalUrl.startsWith('/')) finalUrl = finalUrl.substring(1);
   
+  // Бекенд отдает "uploads/posts/...", фронт обычно проксирует через "/api/"
+  if (finalUrl.includes('uploads/') && !finalUrl.startsWith('api/')) {
+    finalUrl = `api/${finalUrl}`;
+  } else if (!finalUrl.includes('uploads/')) {
+    // Резервный случай, если пришло только имя файла
+    finalUrl = `api/uploads/posts/${finalUrl}`;
+  }
+
   const baseUrl = import.meta.env.VITE_API_URL || '';
-  return `${baseUrl}${finalUrl}`;
+  // Гарантируем правильную склейку
+  return `${baseUrl.replace(/\/$/, '')}/${finalUrl}`;
 };
 
 const parseMediaUrls = (mediaStr) => {
-  if (!mediaStr) return [];
-  let parsed = [];
-
+  if (!mediaStr || mediaStr === '[]' || mediaStr === '""') return [];
+  
   try {
-    if (Array.isArray(mediaStr)) {
-      parsed = mediaStr;
-    } else if (typeof mediaStr === 'string') {
-      let cleanStr = mediaStr.trim();
-      // Лечим формат Postgres массивов: {url1, url2} -> [url1, url2]
-      if (cleanStr.startsWith('{') && cleanStr.endsWith('}')) {
-        cleanStr = `[${cleanStr.slice(1, -1)}]`;
+    // 1. Пытаемся распарсить как JSON
+    let parsed = typeof mediaStr === 'string' ? JSON.parse(mediaStr) : mediaStr;
+    // 2. Иногда база возвращает двойной JSON
+    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+    
+    if (!Array.isArray(parsed)) parsed = parsed ? [parsed] : [];
+
+    return parsed.map(item => {
+      if (typeof item === 'object' && item !== null) {
+        return item.url || item.file || item.path || item.src || '';
       }
-      parsed = JSON.parse(cleanStr);
-      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
-    }
+      return String(item).trim();
+    }).filter(Boolean);
   } catch (e) {
-    // ЖЕСТКИЙ FALLBACK: Если JSON сломан, ищем любые ссылки и имена файлов через регулярку
+    // 3. ФОЛЛБЕК: Если JSON битый, выдираем пути регулярным выражением
     if (typeof mediaStr === 'string') {
-      const matches = mediaStr.match(/(?:https?:\/\/|\/api\/uploads\/|[\w-]+\.(?:jpg|jpeg|png|webp|gif))[^\s"'\}\],]+/gi);
-      if (matches) parsed = matches;
+      const matches = mediaStr.match(/(?:\/uploads\/posts\/|http)[a-zA-Z0-9_.-]+(?:jpg|jpeg|png|webp|gif)/gi);
+      return matches || [];
     }
+    return [];
   }
-
-  if (!Array.isArray(parsed)) parsed = parsed ? [parsed] : [];
-
-  // Достаем URL, даже если пришла карусель (массив объектов)
-  return parsed.map(item => {
-    if (typeof item === 'object' && item !== null) {
-      return item.url || item.file || item.path || item.src || '';
-    }
-    return String(item).trim();
-  }).filter(Boolean);
 };
 
 const urlToFile = async (url, filename) => {
@@ -97,8 +93,8 @@ export default function PostsHistory() {
   const [searchQuery, setSearchQuery] = useState('');
   
   // === СТЕЙТЫ ЗАГРУЗКИ И ПАГИНАЦИИ ===
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isFetchingData, setIsFetchingData] = useState(true); // Для первичной загрузки 1000 постов
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // Для кнопки "Посмотреть еще"
   const [visibleCount, setVisibleCount] = useState(8);
   
   const [selectedPost, setSelectedPost] = useState(null); 
@@ -123,24 +119,19 @@ export default function PostsHistory() {
   }, [selectedPost, fsImageIndex, showPartnerModal]);
 
   useEffect(() => {
-    // Имитация первичной загрузки, чтобы дать стору время подтянуть данные
-    setIsInitialLoading(true);
-    
-    // Если fetchPostsHistory возвращает промис, ждем его. Иначе страхуемся таймаутом.
-    const fetchData = async () => {
-      try {
-        await fetchPostsHistory();
-      } finally {
-        setTimeout(() => setIsInitialLoading(false), 800); // Небольшая задержка для плавности UI
-      }
-    };
-    fetchData();
+    setIsFetchingData(true);
+    // Делаем запрос к бекенду и ждем его завершения
+    fetchPostsHistory().finally(() => {
+      setIsFetchingData(false);
+    });
   }, [fetchPostsHistory]);
 
+  // Сброс лимита при смене вкладки или поиске
   useEffect(() => {
     setVisibleCount(8);
   }, [activeTab, searchQuery]);
 
+  // Фильтруем все посты (работает быстро, т.к. React не рендерит их в DOM)
   const filteredPosts = useMemo(() => {
     let base = postsHistory || [];
     if (activeTab === 'published') base = base.filter(p => p.status === 'PUBLISHED');
@@ -157,17 +148,18 @@ export default function PostsHistory() {
     return base;
   }, [postsHistory, activeTab, searchQuery]);
 
+  // Берем только нужную часть для отображения
   const visiblePosts = useMemo(() => {
     return filteredPosts.slice(0, visibleCount);
   }, [filteredPosts, visibleCount]);
 
   const handleLoadMore = () => {
     setIsLoadingMore(true);
-    // Имитируем подгрузку для визуала
+    // Имитация процесса загрузки (для плавности интерфейса)
     setTimeout(() => {
       setVisibleCount(prev => prev + 10);
       setIsLoadingMore(false);
-    }, 600);
+    }, 800);
   };
 
   const currentMediaList = useMemo(() => parseMediaUrls(selectedPost?.mediaUrls), [selectedPost]);
@@ -324,13 +316,17 @@ export default function PostsHistory() {
         ))}
       </div>
 
-      {isInitialLoading ? (
-        <div className="bg-admin-card border border-gray-800 p-16 rounded-[2.5rem] flex flex-col items-center justify-center min-h-[300px] animate-in fade-in duration-500">
-          <Loader2 className="w-12 h-12 text-[#0077FF] animate-spin mb-6" />
-          <div className="w-48 h-1.5 bg-gray-900 rounded-full overflow-hidden mb-4 shadow-inner">
-             <div className="h-full bg-gradient-to-r from-[#0077FF] to-purple-500 animate-pulse w-full"></div>
+      {isFetchingData ? (
+        // ПРОГРЕСС-БАР ПЕРВИЧНОЙ ЗАГРУЗКИ
+        <div className="bg-admin-card border border-gray-800 p-16 rounded-[2.5rem] flex flex-col items-center justify-center min-h-[300px] animate-in fade-in duration-500 shadow-lg">
+          <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6">
+            <LayoutPanelLeft className="text-[#0077FF] animate-pulse" size={32} />
           </div>
-          <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Синхронизация архива...</p>
+          <h3 className="text-white font-bold text-lg mb-4">Синхронизация архива</h3>
+          <div className="w-full max-w-[240px] bg-gray-900 rounded-full h-2.5 overflow-hidden shadow-inner border border-gray-800">
+             <div className="bg-gradient-to-r from-[#0077FF] to-purple-500 h-full rounded-full w-1/2 animate-[pulse_1s_ease-in-out_infinite] origin-left scale-x-[2]"></div>
+          </div>
+          <p className="text-gray-500 text-xs mt-4 font-medium">Получаем данные с сервера...</p>
         </div>
       ) : filteredPosts.length === 0 ? (
         <div className="bg-admin-card border border-gray-800 border-dashed p-10 rounded-[2.5rem] text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
@@ -384,22 +380,29 @@ export default function PostsHistory() {
               <button 
                 onClick={handleLoadMore}
                 disabled={isLoadingMore}
-                className="flex items-center gap-2 px-8 py-4 bg-gray-900 border border-gray-700 hover:border-[#0077FF] hover:bg-gray-800 hover:text-white text-gray-400 rounded-2xl font-bold transition-all active:scale-95 shadow-lg group disabled:opacity-70 disabled:hover:border-gray-700 disabled:hover:bg-gray-900 disabled:hover:text-gray-400"
+                className="flex flex-col items-center gap-3 px-8 py-4 bg-gray-900 border border-gray-700 hover:border-[#0077FF] text-gray-400 hover:text-white rounded-2xl font-bold transition-all active:scale-95 shadow-lg group disabled:opacity-80 disabled:pointer-events-none w-full sm:w-auto min-w-[220px]"
               >
                 {isLoadingMore ? (
-                  <Loader2 size={18} className="animate-spin text-[#0077FF]" />
+                  <div className="w-full">
+                     <div className="flex justify-between items-center text-xs mb-2">
+                       <span className="text-[#0077FF]">Загрузка постов...</span>
+                     </div>
+                     <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                       <div className="bg-[#0077FF] h-full rounded-full animate-[pulse_1s_ease-in-out_infinite] w-full origin-left scale-x-[2]"></div>
+                     </div>
+                  </div>
                 ) : (
-                  <ChevronDown size={18} className="group-hover:translate-y-0.5 transition-transform" />
+                  <div className="flex items-center gap-2">
+                    <ChevronDown size={18} className="group-hover:translate-y-0.5 transition-transform" />
+                    <span>Посмотреть еще</span>
+                  </div>
                 )}
-                <span>{isLoadingMore ? 'Загрузка...' : 'Посмотреть еще'}</span>
               </button>
             </div>
           )}
         </>
       )}
 
-      {/* ОСТАЛЬНАЯ ЧАСТЬ КОДА (МОДАЛКИ selectedPost, fsImageIndex, showPartnerModal) ОСТАЕТСЯ БЕЗ ИЗМЕНЕНИЙ И ВСТАВЛЯЕТСЯ НИЖЕ */}
-      
       {selectedPost && (
         <div className="fixed inset-0 z-[100] flex flex-col sm:items-center sm:justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl animate-in fade-in duration-200">
           
