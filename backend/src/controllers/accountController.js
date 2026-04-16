@@ -1,6 +1,6 @@
 const axios = require('axios'); 
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../utils/prisma'); // Подключаем единый инстанс
+// В начало файла accountController.js
 // В начало файла accountController.js
 const KOMOD_TOKEN = process.env.KOMOD_TOKEN;
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
