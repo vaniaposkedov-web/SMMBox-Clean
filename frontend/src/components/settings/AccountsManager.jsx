@@ -1083,7 +1083,7 @@ const handleSaveKomodGroups = async () => {
       <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors ${isLimitReached ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/10' : 'bg-gray-900 border-gray-800'}`}>
         <div>
           <p className="text-white font-bold text-base flex items-center gap-2">
-            {!isPaid ? 'Бесплатный тариф' : (planType === 'PRO' ? 'Тариф PRO' : 'Тариф Базовый')} 
+            {!isPaid ? '' : (planType === 'PRO' ? 'Тариф PRO' : 'Тариф Базовый')} 
             {isLimitReached && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest">Лимит исчерпан</span>}
           </p>
           
