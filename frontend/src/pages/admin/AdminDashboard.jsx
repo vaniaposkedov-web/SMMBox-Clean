@@ -32,6 +32,7 @@ export default function AdminDashboard() {
   const [proModal, setProModal] = useState({ isOpen: false, user: null });
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [proMonths, setProMonths] = useState(1);
+  const [proDays, setProDays] = useState(0);
   const [proCustomAmount, setProCustomAmount] = useState('');
   const [isSubmittingPro, setIsSubmittingPro] = useState(false);
 
@@ -88,11 +89,13 @@ export default function AdminDashboard() {
       const res = await fetch(`/api/admin/users/${proModal.user.id}/grant-pro`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ planId: selectedPlanId, months: Number(proMonths), customAmount: proCustomAmount ? Number(proCustomAmount) : null })
+        body: JSON.stringify({ planId: selectedPlanId, months: Number(proMonths), days: Number(proDays), customAmount: proCustomAmount ? Number(proCustomAmount) : null })
       });
       const result = await res.json();
       if (result?.success) {
         setProModal({ isOpen: false, user: null });
+        setProMonths(1);
+        setProDays(0);
         fetchDashboardData(); 
         if (isModalOpen && userDetails && userDetails.user.id === proModal.user.id) openUserDetails(proModal.user.id);
       } else alert(result.error);
@@ -401,18 +404,79 @@ export default function AdminDashboard() {
 
          
 
-          {/* === 5-9 РАЗДЕЛЫ ОСТАЮТСЯ КАК БЫЛИ В ПРЕДЫДУЩЕМ КОДЕ === */}
-          {/* Для экономии места в этом блоке они скрыты, но в твоем полном файле они остаются без изменений */}
-          {activeTab === 'prompts' && (
-            <div className={`${theme.card} border rounded-2xl p-6 max-w-4xl`}>
-               <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><Settings className="text-purple-500"/> Системный Промпт (Генерация текста)</h2>
-               <p className={`text-sm ${theme.muted} mb-6`}>Настройка инструкций, которые подгружаются в работу нейросети Gemini для всех пользователей.</p>
-               <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} className={`w-full h-[400px] p-4 rounded-xl border ${theme.border} ${theme.inputBg} resize-none font-mono text-sm leading-relaxed outline-none focus:border-purple-500`} placeholder="Введите базовый промпт..." />
-               <button onClick={saveAiPrompt} disabled={isSavingAi} className="mt-6 bg-purple-600 hover:bg-purple-500 text-white px-8 py-3 rounded-xl font-bold transition-colors flex items-center gap-2">
-                 {isSavingAi ? <Loader2 className="animate-spin" size={18}/> : <Save size={18} />} Сохранить конфигурацию
-               </button>
+          {/* === 4. ТАРИФЫ / ПОДПИСКИ === */}
+          {activeTab === 'plans' && (
+            <div className="space-y-6">
+              {/* Карточки тарифов */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {plans.map(plan => (
+                  <div key={plan.id} className={`${theme.card} border rounded-2xl p-6 relative overflow-hidden`}>
+                    <Package className={`absolute right-[-20px] bottom-[-20px] ${isDark ? 'text-gray-800' : 'text-gray-100'}`} size={120} />
+                    <h3 className="text-xl font-black mb-2 relative z-10">{plan.name}</h3>
+                    <p className="text-3xl font-bold text-blue-500 relative z-10 mb-4">{plan.price} ₽ <span className="text-sm text-gray-500 font-normal">/ мес</span></p>
+                    <ul className="space-y-2 text-sm text-gray-400 relative z-10">
+                      <li className="flex items-center gap-2">• Аккаунтов: {plan.maxAccounts}</li>
+                      <li className="flex items-center gap-2">• Постов в день: {plan.maxPostsPerDay}</li>
+                    </ul>
+                  </div>
+                ))}
+              </div>
+
+              {/* Управление подписками */}
+              <div className={`${theme.card} border rounded-2xl p-6`}>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold flex items-center gap-2"><Crown className="text-yellow-500"/> Управление подписками</h2>
+                    <p className="text-sm text-gray-500 mt-1">Продление и выдача тарифов клиентам</p>
+                  </div>
+                  <div className="relative w-full sm:w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                    <input type="text" value={planUserSearch} onChange={(e) => setPlanUserSearch(e.target.value)} placeholder="Поиск (Email, ID)..." className={`w-full pl-10 pr-4 py-2 ${theme.inputBg} border rounded-xl outline-none focus:border-blue-500 text-sm`} />
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className={`${theme.tableHeader} uppercase text-xs font-bold ${theme.muted}`}>
+                      <tr>
+                        <th className="px-6 py-4">Клиент</th>
+                        <th className="px-6 py-4">Текущий тариф</th>
+                        <th className="px-6 py-4 text-right">Действие</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`divide-y ${theme.border}`}>
+                      {(planUserSearch ? planSearchFilteredUsers : allUsers).slice(0, 50).map(u => (
+                        <tr key={u.id} className={theme.rowHover}>
+                          <td className="px-6 py-4">
+                            <div className="font-bold">{u.email || u.name}</div>
+                            <div className="font-mono text-xs text-gray-500">{u.id}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            {u.isPro ? (
+                              <div className="flex flex-col">
+                                <span className="text-yellow-500 font-bold bg-yellow-500/10 px-2 py-1 rounded w-max text-xs">{u.proPlanType || 'PRO'}</span>
+                                <span className="text-xs text-gray-500 mt-1">До {new Date(u.proExpiresAt).toLocaleDateString()} ({Math.ceil((new Date(u.proExpiresAt) - new Date()) / (1000 * 60 * 60 * 24))} дн.)</span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-500 font-bold bg-gray-800 px-2 py-1 rounded w-max text-xs">FREE</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button onClick={() => setProModal({ isOpen: true, user: u })} className="px-4 py-2 bg-blue-600/20 text-blue-500 hover:bg-blue-600/40 font-bold rounded-lg text-xs transition-colors">Выдать / Продлить</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
+
+          {/* === 5-9 РАЗДЕЛЫ ОСТАЮТСЯ КАК БЫЛИ В ПРЕДЫДУЩЕМ КОДЕ === */}
+          {/* Для экономии места в этом блоке они скрыты, но в твоем полном файле они остаются без изменений */}
+          
+          
           {activeTab === 'maintenance' && (<div className={`${theme.card} border border-orange-500/30 rounded-2xl p-8 max-w-3xl`}><h2>Технические работы (UI Готов)</h2></div>)}
           {activeTab === 'backend-db' && (<div className={`${theme.card} border rounded-2xl p-10 text-center`}><h2>Прямой доступ к БД (UI Готов)</h2></div>)}
           {activeTab === 'errors' && (<div className={`${theme.card} border border-red-500/20 rounded-2xl p-6`}><h2>Логи и ошибки (UI Готов)</h2></div>)}
@@ -580,6 +644,14 @@ export default function AdminDashboard() {
             <p className="text-xs text-gray-500 mb-6 truncate">Клиент: {proModal.user.email || proModal.user.id}</p>
             
             <div className="space-y-4 mb-6">
+              {proModal.user?.isPro && (
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl mb-4">
+                  <p className="text-xs text-yellow-500 font-bold uppercase mb-1">Текущая подписка активна</p>
+                  <p className="text-sm text-gray-300">Тариф: {proModal.user.proPlanType}</p>
+                  <p className="text-sm text-gray-300">Действует до: {new Date(proModal.user.proExpiresAt).toLocaleDateString()}</p>
+                  <p className="text-xs text-gray-500 mt-2">Новое время будет прибавлено к этой дате.</p>
+                </div>
+              )}
               <div>
                 <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Выберите Тариф</label>
                 <select value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors appearance-none`}>
@@ -587,9 +659,15 @@ export default function AdminDashboard() {
                   {plans.map(p => <option key={p.id} value={p.id}>{p.name} ({p.price}₽)</option>)}
                 </select>
               </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Кол-во месяцев</label>
-                <input type="number" min="1" value={proMonths} onChange={e => setProMonths(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`} />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Месяцы</label>
+                  <input type="number" min="0" value={proMonths} onChange={e => setProMonths(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`} />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Дни</label>
+                  <input type="number" min="0" value={proDays} onChange={e => setProDays(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`} />
+                </div>
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Сумма оплаты (Кастомная)</label>

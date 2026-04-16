@@ -164,12 +164,12 @@ exports.updatePlan = async (req, res) => {
 exports.grantProStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { planId, months, customAmount } = req.body; 
+        const { planId, months, days, customAmount } = req.body; 
 
         const targetUser = await prisma.user.findUnique({ where: { id } });
         if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
 
-        if (Number(months) === 0) {
+        if (Number(months) === 0 && Number(days) === 0) {
             await prisma.user.update({ 
                 where: { id }, 
                 data: { isPro: false, proExpiresAt: null, planId: null, proPlanType: 'FREE' } 
@@ -185,13 +185,21 @@ exports.grantProStatus = async (req, res) => {
             if (plan) {
                 planType = plan.name;
                 if (!customAmount && customAmount !== 0) {
-                    finalAmount = plan.price * Number(months); 
+                    // Высчитываем сумму (месяцы + остаток по дням)
+                    finalAmount = (plan.price * Number(months || 0)) + Math.floor((plan.price / 30) * Number(days || 0)); 
                 }
             }
         }
 
-        const expiresAt = new Date();
-        expiresAt.setMonth(expiresAt.getMonth() + Number(months));
+        // Если подписка активна — плюсуем дни к ней, если нет — считаем от сегодня
+        let baseDate = new Date();
+        if (targetUser.isPro && targetUser.proExpiresAt && new Date(targetUser.proExpiresAt) > baseDate) {
+            baseDate = new Date(targetUser.proExpiresAt);
+        }
+
+        const expiresAt = new Date(baseDate);
+        if (months) expiresAt.setMonth(expiresAt.getMonth() + Number(months));
+        if (days) expiresAt.setDate(expiresAt.getDate() + Number(days));
 
         const updatedUser = await prisma.user.update({
             where: { id },
