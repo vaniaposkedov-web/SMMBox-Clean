@@ -1476,6 +1476,9 @@ const handleSaveKomodGroups = async () => {
                 const groupName = extractName(group) || 'Без названия';
                 const avatar = getValidAvatar(extractAvatar(group), groupName);
 
+                console.log('=== ПОДКЛЮЧЕННЫЕ АККАУНТЫ (connectedVk) ===', connectedVk);
+                console.log('=== ГРУППЫ В МОДАЛКЕ (selectableGroups) ===', selectableGroups);
+
                 return (
                   <div 
                     key={uniqueId} 
