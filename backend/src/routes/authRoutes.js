@@ -22,7 +22,7 @@ router.post('/verify-link-email', authController.verifyLinkEmail);
 
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password/:token', authController.resetPassword);
-router.get('/me', auth, authController.getMe);
+router.get('/me', authMiddleware, authController.getMe);
 
 // Используем upload.single('avatar') чтобы multer ловил файл с именем avatar
 router.put('/profile', authMiddleware, upload.single('avatar'), authController.updateProfile);
