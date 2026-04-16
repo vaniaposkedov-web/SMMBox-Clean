@@ -471,6 +471,53 @@ export default function Requests() {
           </div>
         </div>
       )}
+
+{fsImageIndex !== null && currentMediaList.length > 0 && (
+        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-black animate-in fade-in duration-200">
+          <button onClick={() => setFsImageIndex(null)} className="absolute top-8 right-8 w-14 h-14 bg-gray-900/80 text-white rounded-full flex items-center justify-center transition-all z-[1010] active:scale-90">
+            <X size={24} />
+          </button>
+          
+          <button 
+            onClick={handlePrevPhoto} 
+            disabled={fsImageIndex === 0} 
+            className="absolute left-6 p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[1010] active:scale-75"
+          >
+            <ChevronLeft size={48} />
+          </button>
+          
+          <button 
+            onClick={handleNextPhoto} 
+            disabled={fsImageIndex === currentMediaList.length - 1} 
+            className="absolute right-6 p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[1010] active:scale-75"
+          >
+            <ChevronRight size={48} />
+          </button>
+
+          <div className="w-full h-full flex items-center justify-center p-12 select-none">
+            <img 
+              key={fsImageIndex} 
+              src={getImageUrl(currentMediaList[fsImageIndex])} 
+              className="max-w-full max-h-[85vh] object-contain rounded-3xl shadow-[0_0_80px_rgba(0,119,255,0.15)] animate-in zoom-in-95 duration-300" 
+              onError={(e) => { e.target.style.display='none'; }}
+              alt="fullscreen"
+            />
+          </div>
+
+          <div className="absolute bottom-12 flex flex-col items-center gap-6 z-[1010]">
+             <div className="px-6 py-2 bg-gray-900/90 border border-gray-800 rounded-full text-white font-black text-[10px] tracking-[0.3em] uppercase">
+                {fsImageIndex + 1} / {currentMediaList.length}
+             </div>
+             <button 
+                onClick={() => handleDownload(currentMediaList[fsImageIndex])} 
+                className="flex items-center gap-4 px-10 py-5 bg-white text-black rounded-[2rem] font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-2xl"
+              >
+               <Download size={20} /> Скачать
+             </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
