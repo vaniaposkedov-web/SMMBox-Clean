@@ -29,8 +29,8 @@ export default function AdminDashboard() {
   const [editPavilion, setEditPavilion] = useState('');
   const [isSavingPavilion, setIsSavingPavilion] = useState(false);
 
-  const [proModal, setProModal] = useState({ isOpen: false, user: null });
-  const [selectedPlanId, setSelectedPlanId] = useState('');
+const [proModal, setProModal] = useState({ isOpen: false, user: null });
+  const [selectedPlanType, setSelectedPlanType] = useState('Базовый');
   const [proMonths, setProMonths] = useState(1);
   const [proDays, setProDays] = useState(0);
   const [proCustomAmount, setProCustomAmount] = useState('');
@@ -82,14 +82,20 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchDashboardData(); }, []);
 
-  const submitProGrant = async () => {
+const submitProGrant = async (isRevoke = false) => {
     setIsSubmittingPro(true);
     const token = localStorage.getItem('adminToken');
+    
+    // Если нажата кнопка "Забрать", жестко шлем нули
+    const payload = isRevoke 
+      ? { planType: selectedPlanType, months: 0, days: 0, customAmount: null }
+      : { planType: selectedPlanType, months: Number(proMonths), days: Number(proDays), customAmount: proCustomAmount ? Number(proCustomAmount) : null };
+
     try {
       const res = await fetch(`/api/admin/users/${proModal.user.id}/grant-pro`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ planId: selectedPlanId, months: Number(proMonths), days: Number(proDays), customAmount: proCustomAmount ? Number(proCustomAmount) : null })
+        body: JSON.stringify(payload)
       });
       const result = await res.json();
       if (result?.success) {
@@ -649,14 +655,14 @@ export default function AdminDashboard() {
                   <p className="text-xs text-yellow-500 font-bold uppercase mb-1">Текущая подписка активна</p>
                   <p className="text-sm text-gray-300">Тариф: {proModal.user.proPlanType}</p>
                   <p className="text-sm text-gray-300">Действует до: {new Date(proModal.user.proExpiresAt).toLocaleDateString()}</p>
-                  <p className="text-xs text-gray-500 mt-2">Новое время будет прибавлено к этой дате.</p>
+                  <p className="text-xs text-gray-500 mt-2">Новое время будет прибавлено к текущей дате.</p>
                 </div>
               )}
               <div>
                 <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Выберите Тариф</label>
-                <select value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors appearance-none`}>
-                  <option value="">-- Выберите тариф --</option>
-                  {plans.map(p => <option key={p.id} value={p.id}>{p.name} ({p.price}₽)</option>)}
+                <select value={selectedPlanType} onChange={e => setSelectedPlanType(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors appearance-none`}>
+                  <option value="Базовый">Базовый (1000₽)</option>
+                  <option value="Расширенный">Расширенный (1800₽)</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -673,6 +679,23 @@ export default function AdminDashboard() {
                 <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Сумма оплаты (Кастомная)</label>
                 <input type="number" value={proCustomAmount} onChange={e => setProCustomAmount(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`} placeholder="Оставьте пустым для авто-расчета" />
               </div>
+            </div>
+            
+            <div className="flex gap-3">
+              <button 
+                onClick={() => submitProGrant(true)} 
+                disabled={isSubmittingPro} 
+                className="w-1/3 bg-red-600/10 text-red-500 hover:bg-red-600/20 border border-red-500/20 font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center"
+              >
+                Забрать
+              </button>
+              <button 
+                onClick={() => submitProGrant(false)} 
+                disabled={isSubmittingPro} 
+                className="w-2/3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center"
+              >
+                {isSubmittingPro ? <Loader2 className="animate-spin" size={20} /> : 'Сохранить'}
+              </button>
             </div>
             
             <div className="flex gap-3">
