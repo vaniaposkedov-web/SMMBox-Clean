@@ -1446,11 +1446,16 @@ const handleSaveKomodGroups = async () => {
             <div className="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-2">
               {selectableGroups.map((group, index) => {
                 const uniqueId = extractId(group) || `idx-${index}`;
+                
+                // === НОВАЯ ПРОВЕРКА: ПОДКЛЮЧЕН ЛИ АККАУНТ? ===
+                // Смотрим, заканчивается ли providerId в базе на уникальный ID этой группы
+                const isAlreadyConnected = connectedVk.some(acc => String(acc.providerId).endsWith(`_${uniqueId}`));
+
                 const isSelected = komodSelected.includes(uniqueId);
                 
-                // Умная логика блокировки: если карточка не выбрана, а лимит достигнут - блокируем её
+                // Умная логика блокировки (добавили isAlreadyConnected)
                 const isVkModalLimitReached = komodSelected.length >= (limits.vk - vkCount);
-                const isLocked = !isSelected && isVkModalLimitReached;
+                const isLocked = (!isSelected && isVkModalLimitReached) || isAlreadyConnected;
                 
                 const isPersonal = group.is_profile_dummy;
                 const groupName = extractName(group) || 'Без названия';
@@ -1460,21 +1465,30 @@ const handleSaveKomodGroups = async () => {
                   <div 
                     key={uniqueId} 
                     onClick={() => {
-                      if (isLocked) return; // Если заблокировано - клик не работает
+                      if (isLocked) return; // Блокируем клик, если лимит или уже подключен
                       setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId]);
                     }}
                     className={`relative flex items-center gap-4 p-3 rounded-2xl transition-all border overflow-hidden ${
+                      isAlreadyConnected ? 'bg-gray-900 border-gray-800 opacity-60 grayscale cursor-not-allowed' :
                       isSelected ? 'bg-[#0077FF]/10 border-[#0077FF] cursor-pointer' : 
                       isLocked ? 'bg-gray-900 border-red-500/20 opacity-50 cursor-not-allowed' : 
                       'bg-gray-900 border-gray-800 hover:bg-gray-800 cursor-pointer'
                     }`}
                   >
-                    {/* Плашка блокировки с крестиком */}
-                    {isLocked && (
+                    {/* ПЛАШКА 1: Для уже подключенных */}
+                    {isAlreadyConnected && (
+                      <div className="absolute inset-0 bg-black/40 z-10 flex items-center justify-center backdrop-blur-[2px]">
+                         <span className="text-xs font-bold text-gray-300 bg-gray-900/90 px-3 py-1.5 rounded-lg border border-gray-700 uppercase tracking-wider shadow-lg">Подключен</span>
+                      </div>
+                    )}
+
+                    {/* ПЛАШКА 2: С крестиком (для лимитов, показываем только если НЕ подключен) */}
+                    {isLocked && !isAlreadyConnected && (
                       <div className="absolute inset-0 bg-red-950/20 z-10 flex items-center justify-center backdrop-blur-[1px]">
                          <X size={40} className="text-red-500/50" strokeWidth={3} />
                       </div>
                     )}
+
                     <img 
                       src={avatar} 
                       onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, groupName); }} 
@@ -1487,14 +1501,13 @@ const handleSaveKomodGroups = async () => {
                       {isPersonal && <span className="text-[10px] text-gray-400 font-bold uppercase mt-0.5 block tracking-wide">Личная страница</span>}
                     </div>
 
-                    <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border ${isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'}`}>
-                      {isSelected && <Check size={14} className="text-white" />}
+                    <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 border ${isAlreadyConnected ? 'border-gray-600 bg-gray-800' : isSelected ? 'bg-[#0077FF] border-[#0077FF]' : 'border-gray-600'}`}>
+                      {isAlreadyConnected ? <Check size={14} className="text-gray-500" /> : isSelected && <Check size={14} className="text-white" />}
                     </div>
                   </div>
                 );
               })}
             </div>
-
             <div className="p-5 border-t border-gray-800 bg-[#0d0f13] shrink-0">
               <button 
                 onClick={handleSaveKomodGroups}
