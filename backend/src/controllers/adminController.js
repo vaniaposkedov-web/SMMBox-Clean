@@ -164,12 +164,12 @@ exports.updatePlan = async (req, res) => {
 exports.grantProStatus = async (req, res) => {
     try {
         const { id } = req.params;
-        const { planId, months, days, customAmount } = req.body; 
+        // Добавили planType: reqPlanType
+        const { planId, planType: reqPlanType, months, days, customAmount } = req.body; 
 
         const targetUser = await prisma.user.findUnique({ where: { id } });
         if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
 
-        // Если передали 0 и 0 — это жесткая команда "Забрать подписку"
         const isRevoke = Number(months) === 0 && Number(days) === 0 && !customAmount;
 
         if (isRevoke) {
@@ -181,7 +181,8 @@ exports.grantProStatus = async (req, res) => {
         }
 
         let finalAmount = Number(customAmount) || 0;
-        let planType = targetUser.proPlanType || 'PRO';
+        // Бэкенд берет тариф с фронта, если есть, иначе старый
+        let planType = reqPlanType || targetUser.proPlanType || 'PRO'; 
         let planPrice = 0;
 
         if (planId) {
@@ -192,19 +193,16 @@ exports.grantProStatus = async (req, res) => {
             }
         }
 
-        // Вшитые расценки, если в базе вдруг 0 или нет цены
         if (planPrice === 0) {
             if (planType.toLowerCase().includes('базов')) planPrice = 1000;
             else if (planType.toLowerCase().includes('расширен')) planPrice = 1800;
         }
 
         if (!customAmount && customAmount !== 0) {
-            // Расчет стоимости. Если ввели минус (сокращение), сумма в статистику не идет (чтобы не было отрицательной выручки)
             const calculatedAmount = (planPrice * Number(months || 0)) + Math.floor((planPrice / 30) * Number(days || 0)); 
             finalAmount = calculatedAmount > 0 ? calculatedAmount : 0;
         }
 
-        // Базовая дата: от сегодня, либо от окончания текущей подписки (если она активна)
         let baseDate = new Date();
         if (targetUser.isPro && targetUser.proExpiresAt) {
             baseDate = new Date(targetUser.proExpiresAt);
@@ -214,7 +212,6 @@ exports.grantProStatus = async (req, res) => {
         if (months) expiresAt.setMonth(expiresAt.getMonth() + Number(months));
         if (days) expiresAt.setDate(expiresAt.getDate() + Number(days));
 
-        // Если из-за вычитания дней дата стала в прошлом — аннулируем подписку
         if (expiresAt <= new Date()) {
              await prisma.user.update({ 
                 where: { id }, 
@@ -233,7 +230,6 @@ exports.grantProStatus = async (req, res) => {
             }
         });
 
-        // Создаем лог финансов только если реально "накапали" деньги
         if (finalAmount > 0) {
             await prisma.transaction.create({
                 data: { userId: id, amount: finalAmount, type: `SUB_${planType.toUpperCase()}` }
