@@ -25,6 +25,8 @@ export default function Profile() {
 
   const fileInputRef = useRef(null);
 
+  const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
+
   const PRO_MANAGER_TG = 'bnbslow'; 
   const [showProModal, setShowProModal] = useState(false);
   const [selectedPlanModal, setSelectedPlanModal] = useState('PRO'); // 'BASIC' или 'PRO'
@@ -53,6 +55,12 @@ export default function Profile() {
       fetchScheduledPosts();
     }
   }, [user?.id, fetchAccounts, fetchScheduledPosts]);
+
+
+  useEffect(() => {
+    // При каждом заходе в Профиль или при F5 — обновляем данные пользователя
+    fetchCurrentUser();
+  }, []);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);

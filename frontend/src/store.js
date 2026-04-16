@@ -209,6 +209,27 @@ export const useStore = create(
         } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
       },
 
+      fetchCurrentUser: async () => {
+        try {
+          const token = localStorage.getItem('token') || get().token;
+          if (!token || token === 'null') return;
+
+          const res = await fetch('/api/auth/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.user) {
+              // Тихо обновляем пользователя в стейте (Zustand сам перезапишет localStorage)
+              set({ user: { ...get().user, ...data.user } });
+            }
+          }
+        } catch (error) {
+          console.error("Ошибка обновления данных юзера:", error);
+        }
+      },
+
       login: async (email, password) => {
         try {
           const res = await fetch('/api/auth/login', {
