@@ -99,6 +99,8 @@ export default function AccountsManager() {
   const isExpired = user?.proExpiresAt && new Date(user.proExpiresAt) < new Date();
   const isPaid = user?.isPro && !isExpired;
   const planType = isPaid ? user?.proPlanType : 'FREE';
+  const isAdvanced = planType?.includes('РАСШИРЕН') || planType === 'PRO';
+  const isBasic = planType?.includes('БАЗОВ') || planType === 'BASIC';
 
   const limits = {
     vk: planType === 'PRO' ? 20 : (planType === 'BASIC' ? 15 : 6),
@@ -1083,7 +1085,7 @@ const handleSaveKomodGroups = async () => {
       <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors ${isLimitReached ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/10' : 'bg-gray-900 border-gray-800'}`}>
         <div>
           <p className="text-white font-bold text-base flex items-center gap-2">
-            {!isPaid ? '' : (planType === 'PRO' ? 'Тариф PRO' : 'Тариф Базовый')} 
+            {!isPaid ? '' : (isAdvanced ? 'Тариф Расширенный' : 'Тариф Базовый')} 
             {isLimitReached && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest">Лимит исчерпан</span>}
           </p>
           
@@ -1098,9 +1100,9 @@ const handleSaveKomodGroups = async () => {
           </div>
         </div>
         
-        {planType !== 'PRO' && (
+        {!isAdvanced && (
           <button onClick={() => navigate('/profile?tab=subscription')} className="w-full sm:w-auto text-sm bg-purple-600 hover:bg-purple-500 text-white px-6 py-3.5 sm:py-3 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 whitespace-nowrap min-h-[48px]">
-            {!isPaid ? 'Снять лимиты (от 1000₽)' : 'Улучшить до PRO (1800₽)'}
+            {!isPaid ? 'Снять лимиты (от 1000₽)' : 'Улучшить до Расширенного (1800₽)'}
           </button>
         )}
       </div>

@@ -169,7 +169,10 @@ exports.grantProStatus = async (req, res) => {
         const targetUser = await prisma.user.findUnique({ where: { id } });
         if (!targetUser) return res.status(404).json({ error: 'Пользователь не найден' });
 
-        if (Number(months) === 0 && Number(days) === 0) {
+        // Если передали 0 и 0 — это жесткая команда "Забрать подписку"
+        const isRevoke = Number(months) === 0 && Number(days) === 0 && !customAmount;
+
+        if (isRevoke) {
             await prisma.user.update({ 
                 where: { id }, 
                 data: { isPro: false, proExpiresAt: null, planId: null, proPlanType: 'FREE' } 
@@ -178,22 +181,32 @@ exports.grantProStatus = async (req, res) => {
         }
 
         let finalAmount = Number(customAmount) || 0;
-        let planType = 'PRO';
+        let planType = targetUser.proPlanType || 'PRO';
+        let planPrice = 0;
 
         if (planId) {
             const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
             if (plan) {
                 planType = plan.name;
-                if (!customAmount && customAmount !== 0) {
-                    // Высчитываем сумму (месяцы + остаток по дням)
-                    finalAmount = (plan.price * Number(months || 0)) + Math.floor((plan.price / 30) * Number(days || 0)); 
-                }
+                planPrice = plan.price;
             }
         }
 
-        // Если подписка активна — плюсуем дни к ней, если нет — считаем от сегодня
+        // Вшитые расценки, если в базе вдруг 0 или нет цены
+        if (planPrice === 0) {
+            if (planType.toLowerCase().includes('базов')) planPrice = 1000;
+            else if (planType.toLowerCase().includes('расширен')) planPrice = 1800;
+        }
+
+        if (!customAmount && customAmount !== 0) {
+            // Расчет стоимости. Если ввели минус (сокращение), сумма в статистику не идет (чтобы не было отрицательной выручки)
+            const calculatedAmount = (planPrice * Number(months || 0)) + Math.floor((planPrice / 30) * Number(days || 0)); 
+            finalAmount = calculatedAmount > 0 ? calculatedAmount : 0;
+        }
+
+        // Базовая дата: от сегодня, либо от окончания текущей подписки (если она активна)
         let baseDate = new Date();
-        if (targetUser.isPro && targetUser.proExpiresAt && new Date(targetUser.proExpiresAt) > baseDate) {
+        if (targetUser.isPro && targetUser.proExpiresAt) {
             baseDate = new Date(targetUser.proExpiresAt);
         }
 
@@ -201,16 +214,26 @@ exports.grantProStatus = async (req, res) => {
         if (months) expiresAt.setMonth(expiresAt.getMonth() + Number(months));
         if (days) expiresAt.setDate(expiresAt.getDate() + Number(days));
 
+        // Если из-за вычитания дней дата стала в прошлом — аннулируем подписку
+        if (expiresAt <= new Date()) {
+             await prisma.user.update({ 
+                where: { id }, 
+                data: { isPro: false, proExpiresAt: null, planId: null, proPlanType: 'FREE' } 
+            });
+            return res.json({ success: true, isPro: false });
+        }
+
         const updatedUser = await prisma.user.update({
             where: { id },
             data: { 
                 isPro: true, 
                 proExpiresAt: expiresAt,
-                planId: planId || null,
+                planId: planId || targetUser.planId,
                 proPlanType: planType
             }
         });
 
+        // Создаем лог финансов только если реально "накапали" деньги
         if (finalAmount > 0) {
             await prisma.transaction.create({
                 data: { userId: id, amount: finalAmount, type: `SUB_${planType.toUpperCase()}` }

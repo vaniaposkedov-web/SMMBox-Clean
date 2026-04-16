@@ -661,12 +661,12 @@ export default function AdminDashboard() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Месяцы</label>
-                  <input type="number" min="0" value={proMonths} onChange={e => setProMonths(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`} />
+                  <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Месяцы (+/-)</label>
+                  <input type="number" value={proMonths} onChange={e => setProMonths(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`} placeholder="Можно с минусом" />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Дни</label>
-                  <input type="number" min="0" value={proDays} onChange={e => setProDays(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`} />
+                  <label className="text-xs font-bold text-gray-500 mb-2 block uppercase">Дни (+/-)</label>
+                  <input type="number" value={proDays} onChange={e => setProDays(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`} placeholder="Можно с минусом" />
                 </div>
               </div>
               <div>
@@ -674,9 +674,15 @@ export default function AdminDashboard() {
                 <input type="number" value={proCustomAmount} onChange={e => setProCustomAmount(e.target.value)} className={`w-full p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors`} placeholder="Оставьте пустым для авто-расчета" />
               </div>
             </div>
-            <button onClick={submitProGrant} disabled={isSubmittingPro} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center">
-              {isSubmittingPro ? <Loader2 className="animate-spin" size={20} /> : 'Выдать / Обновить'}
-            </button>
+            
+            <div className="flex gap-3">
+              <button onClick={() => { setProMonths(0); setProDays(0); submitProGrant(); }} disabled={isSubmittingPro} className="w-1/3 bg-red-600/10 text-red-500 hover:bg-red-600/20 border border-red-500/20 font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center">
+                Забрать
+              </button>
+              <button onClick={submitProGrant} disabled={isSubmittingPro} className="w-2/3 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center">
+                {isSubmittingPro ? <Loader2 className="animate-spin" size={20} /> : 'Сохранить'}
+              </button>
+            </div>
           </div>
         </div>
       )}

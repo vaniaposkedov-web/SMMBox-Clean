@@ -365,27 +365,31 @@ export default function Profile() {
                </button>
             </div>
 
-            {/* Баннер Тарифов */}
-              <div className="lg:col-span-3 bg-gradient-to-r from-purple-900 to-indigo-900 border border-purple-500/30 rounded-2xl sm:rounded-3xl p-5 sm:p-8 shadow-xl relative overflow-hidden mt-2 flex flex-col sm:flex-row items-center justify-between gap-5 sm:gap-6">
-                <div className="absolute -right-10 -top-10 w-32 h-32 sm:w-40 sm:h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
-                <div className="relative z-10 text-center sm:text-left min-w-0">
-                  <h3 className="text-lg sm:text-2xl font-extrabold text-white mb-2 flex items-center justify-center sm:justify-start gap-2">
-                    <Crown className={user?.isPro ? "text-yellow-400" : "text-purple-400"} size={24} /> 
-                    {user?.isPro ? 'У вас активен PRO тариф!' : 'Расширьте лимиты с новыми тарифами'}
-                  </h3>
-                  <p className="text-gray-300 text-xs sm:text-base max-w-2xl leading-relaxed">
-                    {user?.isPro 
-                      ? 'Вам доступны увеличенные лимиты аккаунтов (20 ВК / 8 ТГ), автопостинг и все премиум функции платформы.' 
-                      : 'Не хватает лимитов? Подключите Базовый или Расширенный тариф и управляйте до 20 аккаунтами ВК и 8 каналами Telegram!'}
+            {/* === БЛОК СТАТУСА ПОДПИСКИ === */}
+            {user?.isPro ? (
+              <div className="bg-gradient-to-r from-[#EAB308]/20 to-[#EAB308]/5 border border-[#EAB308]/30 p-5 sm:p-6 rounded-2xl mb-6 shadow-lg shadow-[#EAB308]/5 relative overflow-hidden">
+                <Crown className="absolute right-[-20px] bottom-[-20px] text-[#EAB308]/10" size={120} />
+                <div className="relative z-10">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Crown className="text-[#EAB308]" size={28} />
+                    <h3 className="text-xl sm:text-2xl font-black text-[#EAB308] uppercase">{user.proPlanType || 'PRO'} Подписка</h3>
+                  </div>
+                  <p className="text-sm text-[#EAB308]/80 font-mono mt-1">
+                    Активна до: <span className="font-bold text-white text-base">{user.proExpiresAt ? new Date(user.proExpiresAt).toLocaleDateString() : 'Бессрочно'}</span>
                   </p>
                 </div>
-                {!user?.isPro && (
-                  <button onClick={handleOpenProModal} className="relative z-10 shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-sm sm:text-base font-extrabold transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] active:scale-95 w-full sm:w-auto min-h-[48px]">
-                    Выбрать тариф
-                  </button>
-                )}
               </div>
-            
+            ) : (
+              <div className="bg-[#14171c] border border-gray-800/80 p-5 rounded-2xl mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <span className="text-gray-400 font-bold block mb-1 text-sm uppercase">Текущий тариф</span>
+                  <span className="text-white text-lg font-black uppercase">Бесплатный (Free)</span>
+                </div>
+                <button onClick={() => setShowProModal(true)} className="bg-[#229ED9] hover:bg-[#1C87BA] text-white px-6 py-2.5 rounded-xl font-bold transition-colors">
+                  Улучшить тариф
+                </button>
+              </div>
+            )}
           </div>
         )}
 
