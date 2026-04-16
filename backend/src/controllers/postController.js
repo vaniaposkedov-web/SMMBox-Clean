@@ -99,6 +99,9 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             addForm.append('title', `Авто-добавленная группа ${cleanId}`);
             addForm.append('account_id', cleanId);
         }
+        
+        // Включаем сетку сразу при регистрации новой группы
+        addForm.append('post_images_as_grid', '1');
 
         try {
             const addRes = await axios.post(`${KOMOD_BASE_URL}/group`, addForm, {
@@ -122,11 +125,26 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
     
+    // === АВТО-ОБНОВЛЕНИЕ ГРУППЫ ДЛЯ ВКЛЮЧЕНИЯ СЕТКИ ===
+    try {
+        const updateGrpForm = new FormData();
+        updateGrpForm.append('post_images_as_grid', '1');
+        await axios.post(`${KOMOD_BASE_URL}/group/${targetGroupId}`, updateGrpForm, {
+            headers: { ...updateGrpForm.getHeaders(), 'Access-Token': token },
+            validateStatus: () => true
+        });
+    } catch (e) {
+        console.log("Не удалось обновить параметр группы");
+    }
+
     // ПРИНУДИТЕЛЬНЫЕ ХАКИ ДЛЯ ОТКЛЮЧЕНИЯ КАРУСЕЛИ:
-    form.append('via_api', '0');  // 1. Заставляем Kom-od использовать Web-бота вместо API ВК
-    form.append('is_grid', '1');  // 2. Недокументированный параметр (Сетка)
-    form.append('grid', '1');     // 3. Альтернативный недокументированный параметр
-    form.append('carousel', '0'); // 4. Принудительный запрет карусели
+    form.append('via_api', '0');
+    form.append('post_images_as_grid', '1'); // Передаем и в сам пост на всякий случай
+    form.append('is_grid', '1');
+    form.append('grid', '1');
+    form.append('carousel', '0');
+
+    // === ФИКС КОТОРЫЙ МЫ ДЕЛАЛИ (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) ===
 
     // === ФИКС КОТОРЫЙ МЫ ДЕЛАЛИ (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) ===
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
@@ -823,11 +841,12 @@ exports.getPostsHistory = async (req, res) => {
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
         // 1. Берем обычные посты (VK / Telegram)
+        // 1. Берем обычные посты (VK / Telegram)
         const posts = await prisma.post.findMany({
             where: { account: { userId: userId } },
             include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
             orderBy: [{ createdAt: 'desc' }],
-            take: 500 
+            take: 30 // Уменьшено с 500 для моментальной загрузки БД
         });
 
         // 2. Берем посты, отправленные партнерам
@@ -835,7 +854,7 @@ exports.getPostsHistory = async (req, res) => {
             where: { senderId: userId },
             include: { receiver: { select: { name: true, avatarUrl: true, pavilion: true } } },
             orderBy: [{ createdAt: 'desc' }],
-            take: 500
+            take: 30 // Уменьшено с 500 для моментальной загрузки БД
         });
 
         // 3. Форматируем отправленные партнерам под единый стандарт истории
