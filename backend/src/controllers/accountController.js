@@ -472,7 +472,15 @@ exports.syncVkKomod = async (req, res) => {
       });
     }
 
-    
+    // 6. Очистка
+    const existingVkAccounts = await prisma.account.findMany({ where: { userId, provider: 'VK' } });
+    for (const acc of existingVkAccounts) {
+      if (acc.providerId.startsWith('group_') || acc.providerId.startsWith('wall_')) {
+        if (!validGroupProviderIds.includes(acc.providerId)) {
+          await prisma.account.delete({ where: { id: acc.id } });
+        }
+      }
+    }
 
     res.json({ success: true, count: validGroupProviderIds.length });
   } catch (error) {
