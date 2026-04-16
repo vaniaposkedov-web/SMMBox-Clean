@@ -6,17 +6,17 @@ import {
   Calendar, Image as ImageIcon, Send, Trash2, 
   X, Share2, LayoutPanelLeft, ChevronRight, Download, 
   RefreshCw, Loader2, Maximize2, ChevronLeft, PlusCircle, ChevronUp,
-  Users, Check
+  Users, Check, ChevronDown
 } from 'lucide-react';
 
-// === СВЕРХ-УМНЫЙ ПАРСЕР КАРТИНОК (ФИКС 404 ОШИБОК) ===
+// === СВЕРХ-УМНЫЙ ПАРСЕР КАРТИНОК (АДАПТИРОВАН ПОД WEBP И НОВЫЕ ФОРМАТЫ СЕРВЕРА) ===
 const getImageUrl = (url) => {
   if (!url) return '';
-  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
   
   let finalUrl = url;
   
-  // 1. Если в базе записано только имя файла (например, history_123.jpg)
+  // 1. Если в базе записано только имя файла
   if (!finalUrl.includes('/')) {
     finalUrl = `/api/uploads/posts/${finalUrl}`;
   } 
@@ -35,11 +35,34 @@ const getImageUrl = (url) => {
 
 const parseMediaUrls = (mediaStr) => {
   if (!mediaStr) return [];
-  try {
-    let parsed = JSON.parse(mediaStr);
-    if (typeof parsed === 'string') parsed = JSON.parse(parsed);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) { return []; }
+  
+  let parsed;
+  if (Array.isArray(mediaStr)) {
+    parsed = mediaStr;
+  } else {
+    try {
+      parsed = JSON.parse(mediaStr);
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+    } catch (e) {
+      if (typeof mediaStr === 'string') {
+        parsed = mediaStr.split(',').map(s => s.trim().replace(/^[\[\]"']+|[\[\]"']+$/g, '')).filter(Boolean);
+      } else {
+        parsed = [];
+      }
+    }
+  }
+  
+  if (!Array.isArray(parsed)) {
+    parsed = parsed ? [parsed] : [];
+  }
+  
+  // Вытаскиваем URL, даже если сервер теперь присылает объекты вместо строк
+  return parsed.map(item => {
+    if (typeof item === 'object' && item !== null) {
+      return item.url || item.file || item.path || '';
+    }
+    return String(item);
+  }).filter(Boolean);
 };
 
 const urlToFile = async (url, filename) => {
@@ -57,7 +80,13 @@ const urlToFile = async (url, filename) => {
   try {
     const res = await fetch(getImageUrl(url));
     const blob = await res.blob();
-    return new File([blob], filename, { type: blob.type || 'image/jpeg' });
+    // Адаптация под формат Publish.jsx (WebP)
+    const mimeType = blob.type || 'image/webp';
+    let finalFilename = filename;
+    if (mimeType.includes('webp') && finalFilename.endsWith('.jpg')) {
+      finalFilename = finalFilename.replace('.jpg', '.webp');
+    }
+    return new File([blob], finalFilename, { type: mimeType });
   } catch (e) { return null; }
 };
 
@@ -70,6 +99,9 @@ export default function PostsHistory() {
   
   const [activeTab, setActiveTab] = useState('published');
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // === СТЕЙТ ПАГИНАЦИИ (ОГРАНИЧЕНИЕ ЗАГРУЗКИ) ===
+  const [visibleCount, setVisibleCount] = useState(8);
   
   const [selectedPost, setSelectedPost] = useState(null); 
   const [fsImageIndex, setFsImageIndex] = useState(null); 
@@ -96,6 +128,11 @@ export default function PostsHistory() {
     fetchPostsHistory();
   }, [fetchPostsHistory]);
 
+  // Сброс счетчика при смене таба или поиске
+  useEffect(() => {
+    setVisibleCount(8);
+  }, [activeTab, searchQuery]);
+
   const filteredPosts = useMemo(() => {
     let base = postsHistory || [];
     if (activeTab === 'published') base = base.filter(p => p.status === 'PUBLISHED');
@@ -111,6 +148,11 @@ export default function PostsHistory() {
     }
     return base;
   }, [postsHistory, activeTab, searchQuery]);
+
+  // Срез постов для мгновенной загрузки
+  const visiblePosts = useMemo(() => {
+    return filteredPosts.slice(0, visibleCount);
+  }, [filteredPosts, visibleCount]);
 
   const currentMediaList = useMemo(() => parseMediaUrls(selectedPost?.mediaUrls), [selectedPost]);
 
@@ -132,10 +174,11 @@ export default function PostsHistory() {
     try {
       const response = await fetch(getImageUrl(imgUrl));
       const blob = await response.blob();
+      const ext = blob.type.includes('webp') ? 'webp' : 'jpg'; // Поддержка webp
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = `smmdeck_${Date.now()}.jpg`;
+      link.download = `smmdeck_${Date.now()}.${ext}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -152,7 +195,7 @@ export default function PostsHistory() {
 
     try {
       const reconstructedPhotos = await Promise.all(currentMediaList.map(async (url, index) => {
-        const file = await urlToFile(url, `duplicate_${index}.jpg`);
+        const file = await urlToFile(url, `duplicate_${index}.webp`); // Поддержка webp
         return file ? {
           id: `dup_${Math.random().toString(36).substr(2, 9)}`,
           url: getImageUrl(url),
@@ -187,7 +230,7 @@ export default function PostsHistory() {
     setPartnerStatus('sending');
     
     try {
-      const blobs = await Promise.all(currentMediaList.map(url => urlToFile(url, 'share.jpg')));
+      const blobs = await Promise.all(currentMediaList.map(url => urlToFile(url, 'share.webp'))); // Поддержка webp
       const validBlobs = blobs.filter(b => b !== null);
       
       const res = await sharePostAction(selectedPost.text, validBlobs, selectedPartners);
@@ -271,45 +314,60 @@ export default function PostsHistory() {
           <p className="text-gray-500 font-bold">В этой категории пока пусто</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {filteredPosts.map(post => {
-            const mediaArr = parseMediaUrls(post.mediaUrls);
-            const firstImage = mediaArr.length > 0 ? getImageUrl(mediaArr[0]) : null;
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {visiblePosts.map(post => {
+              const mediaArr = parseMediaUrls(post.mediaUrls);
+              const firstImage = mediaArr.length > 0 ? getImageUrl(mediaArr[0]) : null;
 
-            return (
-              <div 
-                key={post.id} 
-                onClick={() => setSelectedPost(post)}
-                className="bg-admin-card border border-gray-800 rounded-[1.5rem] sm:rounded-[2rem] p-5 sm:p-6 hover:border-gray-600 transition-all cursor-pointer group shadow-lg flex flex-col h-full active:scale-[0.98]"
-              >
-                <div className="flex gap-4 sm:gap-5 mb-4 sm:mb-5">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-[1.2rem] bg-gray-900 border border-gray-800 shrink-0 flex items-center justify-center overflow-hidden relative">
-                     {firstImage ? (
-                       <img src={firstImage} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} alt="prev" />
-                     ) : null}
-                     <ImageIcon className={`text-gray-700 w-8 h-8 absolute ${firstImage ? 'hidden' : 'block'}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-gray-800 overflow-hidden border border-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
-                        {post.account?.avatarUrl ? <img src={getImageUrl(post.account?.avatarUrl)} className="w-full h-full object-cover"/> : post.account?.name?.substring(0,2).toUpperCase()}
-                      </div>
-                      <span className="text-[10px] sm:text-xs font-black text-gray-500 truncate uppercase tracking-widest">{post.account?.name}</span>
+              return (
+                <div 
+                  key={post.id} 
+                  onClick={() => setSelectedPost(post)}
+                  className="bg-admin-card border border-gray-800 rounded-[1.5rem] sm:rounded-[2rem] p-5 sm:p-6 hover:border-gray-600 transition-all cursor-pointer group shadow-lg flex flex-col h-full active:scale-[0.98]"
+                >
+                  <div className="flex gap-4 sm:gap-5 mb-4 sm:mb-5">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-[1.2rem] bg-gray-900 border border-gray-800 shrink-0 flex items-center justify-center overflow-hidden relative">
+                       {firstImage ? (
+                         <img src={firstImage} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} alt="prev" />
+                       ) : null}
+                       <ImageIcon className={`text-gray-700 w-8 h-8 absolute ${firstImage ? 'hidden' : 'block'}`} />
                     </div>
-                    <p className="text-white text-sm sm:text-base line-clamp-2 font-bold leading-relaxed">{post.text || 'Без текста'}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+                        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-gray-800 overflow-hidden border border-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
+                          {post.account?.avatarUrl ? <img src={getImageUrl(post.account?.avatarUrl)} className="w-full h-full object-cover"/> : post.account?.name?.substring(0,2).toUpperCase()}
+                        </div>
+                        <span className="text-[10px] sm:text-xs font-black text-gray-500 truncate uppercase tracking-widest">{post.account?.name}</span>
+                      </div>
+                      <p className="text-white text-sm sm:text-base line-clamp-2 font-bold leading-relaxed">{post.text || 'Без текста'}</p>
+                    </div>
+                  </div>
+                  <div className="mt-auto pt-4 sm:pt-5 border-t border-gray-800 flex items-center justify-between">
+                    <span className="text-[10px] sm:text-[11px] font-black text-gray-500 flex items-center gap-1.5 sm:gap-2 bg-gray-900 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl border border-gray-800">
+                      <Calendar size={12} className="text-[#0077FF] sm:w-3.5 sm:h-3.5"/>
+                      {new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <ChevronRight className="text-gray-700 group-hover:text-[#0077FF] transition-all group-hover:translate-x-1" size={20}/>
                   </div>
                 </div>
-                <div className="mt-auto pt-4 sm:pt-5 border-t border-gray-800 flex items-center justify-between">
-                  <span className="text-[10px] sm:text-[11px] font-black text-gray-500 flex items-center gap-1.5 sm:gap-2 bg-gray-900 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl border border-gray-800">
-                    <Calendar size={12} className="text-[#0077FF] sm:w-3.5 sm:h-3.5"/>
-                    {new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <ChevronRight className="text-gray-700 group-hover:text-[#0077FF] transition-all group-hover:translate-x-1" size={20}/>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+
+          {/* === КНОПКА ЗАГРУЗИТЬ ЕЩЕ === */}
+          {filteredPosts.length > visibleCount && (
+            <div className="flex justify-center mt-6 sm:mt-8 mb-4">
+              <button 
+                onClick={() => setVisibleCount(prev => prev + 10)}
+                className="flex items-center gap-2 px-6 py-3.5 bg-gray-900 border border-gray-700 hover:border-[#0077FF] hover:bg-gray-800 hover:text-white text-gray-400 rounded-2xl font-bold transition-all active:scale-95 shadow-lg group"
+              >
+                <span>Посмотреть еще</span>
+                <ChevronDown size={18} className="group-hover:translate-y-0.5 transition-transform" />
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {selectedPost && (
