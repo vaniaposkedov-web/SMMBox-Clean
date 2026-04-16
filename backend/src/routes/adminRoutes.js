@@ -18,4 +18,13 @@ router.put('/users/:id', adminAuth, adminController.updateUserAdmin);
 router.get('/settings/ai', adminAuth, adminController.getAiSettings);
 router.post('/settings/ai', adminAuth, adminController.updateAiSettings);
 
+// === РОУТЫ PRO И ПАВИЛЬОНА ===
+router.post('/users/:id/grant-pro', adminAuth, adminController.grantProStatus);
+router.put('/users/:id', adminAuth, adminController.updateUserAdmin);
+
+// === РОУТЫ ТАРИФОВ (НОВОЕ) ===
+router.get('/plans', adminAuth, adminController.getPlans);
+router.post('/plans', adminAuth, adminController.createPlan);
+router.put('/plans/:id', adminAuth, adminController.updatePlan);
+
 module.exports = router;
