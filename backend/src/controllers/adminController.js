@@ -98,7 +98,8 @@ exports.getUserDetails = async (req, res) => {
                 accounts: { select: { id: true, provider: true, name: true, isValid: true, createdAt: true } },
                 transactions: { orderBy: { createdAt: 'desc' }, take: 15 },
                 sentRequests: { include: { receiver: { select: { id: true, email: true, isPro: true } } } },
-                receivedRequests: { include: { sender: { select: { id: true, email: true, isPro: true } } } },
+                // КАК ДОЛЖНО БЫТЬ:
+                receivedRequests: { include: { requester: { select: { id: true, email: true, isPro: true } } } },
                 globalWatermark: true
             }
         });
