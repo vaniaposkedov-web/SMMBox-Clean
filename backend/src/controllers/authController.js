@@ -475,3 +475,22 @@ exports.completeOnboarding = async (req, res) => {
     res.status(500).json({ error: 'Ошибка сервера при завершении Onboarding' });
   }
 };
+
+exports.getMe = async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'Не авторизован' });
+
+    const user = await prisma.user.findUnique({ 
+        where: { id: String(userId) }
+    });
+
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+    
+    // Удаляем пароль из ответа для безопасности
+    const { password, ...safeUser } = user;
+    res.json({ success: true, user: safeUser });
+  } catch (error) {
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+};
