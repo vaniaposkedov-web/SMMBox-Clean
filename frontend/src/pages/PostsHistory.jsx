@@ -9,28 +9,28 @@ import {
   Users, Check, ChevronDown
 } from 'lucide-react';
 
-// === ЖЕЛЕЗОБЕТОННЫЙ ПАРСЕР КАРТИНОК (Адаптирован под пути из postController.js) ===
+// === СВЕРХ-УМНЫЙ ПАРСЕР КАРТИНОК (ФИКС 404 ОШИБОК) ===
 const getImageUrl = (url) => {
   if (!url) return '';
-  // Если это уже полный URL или Base64
   if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
   
   let finalUrl = url;
   
-  // Если путь начинается с /uploads/ (как возвращает saveImageToFile в контроллере)
-  if (finalUrl.startsWith('/uploads/')) {
-    // Обычно статика проксируется через /api/ или висит на корне бэкенда
-    finalUrl = `/api${finalUrl}`; 
-  } 
-  // Если в базе только имя файла
-  else if (!finalUrl.includes('/')) {
-    finalUrl = `/api/uploads/posts/${finalUrl}`;
+  // ВАЖНО: Убираем /api/ из пути, так как сервер отдает статику из корня /uploads/
+  if (finalUrl.includes('/api/uploads/')) {
+    finalUrl = finalUrl.replace('/api/uploads/', '/uploads/');
+  } else if (!finalUrl.includes('uploads/')) {
+    finalUrl = `/uploads/posts/${finalUrl}`;
   }
-  // Защита от двойных слэшей
-  finalUrl = finalUrl.replace(/\/+/g, '/');
-  if (!finalUrl.startsWith('/')) finalUrl = '/' + finalUrl;
   
-  const baseUrl = import.meta.env.VITE_API_URL || '';
+  if (!finalUrl.startsWith('/')) {
+    finalUrl = `/${finalUrl}`;
+  }
+  
+  let baseUrl = import.meta.env.VITE_API_URL || '';
+  // Отрезаем /api с конца базового URL, чтобы путь к картинке был правильным (https://sadovodps24.ru/uploads/...)
+  baseUrl = baseUrl.replace(/\/api\/?$/, '');
+  
   return `${baseUrl}${finalUrl}`;
 };
 
@@ -100,6 +100,7 @@ export default function PostsHistory() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [visibleCount, setVisibleCount] = useState(12); // Загружаем по 12 постов
   
+  
   const [selectedPost, setSelectedPost] = useState(null); 
   const [fsImageIndex, setFsImageIndex] = useState(null); 
   
@@ -142,19 +143,23 @@ export default function PostsHistory() {
     if (activeTab === 'errors') base = base.filter(p => p.status === 'FAILED');
 
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      base = base.filter(p => 
-        (p.text && p.text.toLowerCase().includes(q)) || 
-        (p.account?.name && p.account.name.toLowerCase().includes(q))
-      );
-    }
-    return base;
-  }, [postsHistory, activeTab, searchQuery]);
+        const q = searchQuery.toLowerCase();
+        base = base.filter(p => 
+          (p.text && p.text.toLowerCase().includes(q)) || 
+          (p.account?.name && p.account.name.toLowerCase().includes(q))
+        );
+      }
+      return base;
+    }, [postsHistory, activeTab, searchQuery]);
 
-  // Список постов для текущего отображения
+  // === СРЕЗАЕМ ЛИШНИЕ ПОСТЫ ЧТОБЫ БРАУЗЕР НЕ ЗАВИСАЛ ===
   const visiblePosts = useMemo(() => {
     return filteredPosts.slice(0, visibleCount);
   }, [filteredPosts, visibleCount]);
+
+  const currentMediaList = useMemo(() => parseMediaUrls(selectedPost?.mediaUrls), [selectedPost]);
+
+
 
   const handleLoadMore = () => {
     setIsLoadingMore(true);
@@ -164,7 +169,7 @@ export default function PostsHistory() {
     }, 600);
   };
 
-  const currentMediaList = useMemo(() => parseMediaUrls(selectedPost?.mediaUrls), [selectedPost]);
+  
 
   const handleNextPhoto = useCallback((e) => {
     e?.stopPropagation();
@@ -352,6 +357,7 @@ export default function PostsHistory() {
                        {firstImage ? (
                          <img 
                           src={firstImage} 
+                          loading="lazy" /* 🟢 ИСПРАВЛЕНИЕ: Добавляем ленивую загрузку */
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
                           onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} 
                           alt="preview" 
