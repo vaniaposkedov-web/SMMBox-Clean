@@ -9,26 +9,29 @@ import {
   Users, Check, ChevronDown
 } from 'lucide-react';
 
-// === ЖЕЛЕЗОБЕТОННЫЙ ПАРСЕР КАРТИНОК ===
+// === ЖЕЛЕЗОБЕТОННЫЙ ПАРСЕР КАРТИНОК (Адаптирован под пути из postController.js) ===
 const getImageUrl = (url) => {
   if (!url) return '';
+  // Если это уже полный URL или Base64
   if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
   
   let finalUrl = url;
-  // Убираем лишние слэши в начале, если они есть
-  if (finalUrl.startsWith('/')) finalUrl = finalUrl.substring(1);
   
-  // Бекенд отдает "uploads/posts/...", фронт обычно проксирует через "/api/"
-  if (finalUrl.includes('uploads/') && !finalUrl.startsWith('api/')) {
-    finalUrl = `api/${finalUrl}`;
-  } else if (!finalUrl.includes('uploads/')) {
-    // Резервный случай, если пришло только имя файла
-    finalUrl = `api/uploads/posts/${finalUrl}`;
+  // Если путь начинается с /uploads/ (как возвращает saveImageToFile в контроллере)
+  if (finalUrl.startsWith('/uploads/')) {
+    // Обычно статика проксируется через /api/ или висит на корне бэкенда
+    finalUrl = `/api${finalUrl}`; 
+  } 
+  // Если в базе только имя файла
+  else if (!finalUrl.includes('/')) {
+    finalUrl = `/api/uploads/posts/${finalUrl}`;
   }
-
+  // Защита от двойных слэшей
+  finalUrl = finalUrl.replace(/\/+/g, '/');
+  if (!finalUrl.startsWith('/')) finalUrl = '/' + finalUrl;
+  
   const baseUrl = import.meta.env.VITE_API_URL || '';
-  // Гарантируем правильную склейку
-  return `${baseUrl.replace(/\/$/, '')}/${finalUrl}`;
+  return `${baseUrl}${finalUrl}`;
 };
 
 const parseMediaUrls = (mediaStr) => {
@@ -37,11 +40,12 @@ const parseMediaUrls = (mediaStr) => {
   try {
     // 1. Пытаемся распарсить как JSON
     let parsed = typeof mediaStr === 'string' ? JSON.parse(mediaStr) : mediaStr;
-    // 2. Иногда база возвращает двойной JSON
+    // 2. Иногда база возвращает JSON внутри строки (двойная сериализация)
     if (typeof parsed === 'string') parsed = JSON.parse(parsed);
     
     if (!Array.isArray(parsed)) parsed = parsed ? [parsed] : [];
 
+    // Извлекаем URL, даже если сервер прислал массив объектов (карусель)
     return parsed.map(item => {
       if (typeof item === 'object' && item !== null) {
         return item.url || item.file || item.path || item.src || '';
@@ -49,9 +53,9 @@ const parseMediaUrls = (mediaStr) => {
       return String(item).trim();
     }).filter(Boolean);
   } catch (e) {
-    // 3. ФОЛЛБЕК: Если JSON битый, выдираем пути регулярным выражением
+    // 3. FALLBACK: Если JSON битый (например, Postgres-массив {url1,url2}), выдираем пути регуляркой
     if (typeof mediaStr === 'string') {
-      const matches = mediaStr.match(/(?:\/uploads\/posts\/|http)[a-zA-Z0-9_.-]+(?:jpg|jpeg|png|webp|gif)/gi);
+      const matches = mediaStr.match(/(\/uploads\/posts\/|http)[^,}\s"']+/gi);
       return matches || [];
     }
     return [];
@@ -73,11 +77,10 @@ const urlToFile = async (url, filename) => {
   try {
     const res = await fetch(getImageUrl(url));
     const blob = await res.blob();
+    // Определяем расширение по MIME-типу (webp/jpg)
     const mimeType = blob.type || 'image/webp';
     let finalFilename = filename;
-    if (mimeType.includes('webp') && finalFilename.endsWith('.jpg')) {
-      finalFilename = finalFilename.replace('.jpg', '.webp');
-    }
+    if (mimeType.includes('webp')) finalFilename = finalFilename.replace('.jpg', '.webp');
     return new File([blob], finalFilename, { type: mimeType });
   } catch (e) { return null; }
 };
@@ -92,10 +95,10 @@ export default function PostsHistory() {
   const [activeTab, setActiveTab] = useState('published');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // === СТЕЙТЫ ЗАГРУЗКИ И ПАГИНАЦИИ ===
-  const [isFetchingData, setIsFetchingData] = useState(true); // Для первичной загрузки 1000 постов
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // Для кнопки "Посмотреть еще"
-  const [visibleCount, setVisibleCount] = useState(8);
+  // === ПАГИНАЦИЯ И ЗАГРУЗКА ===
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(12); // Загружаем по 12 постов
   
   const [selectedPost, setSelectedPost] = useState(null); 
   const [fsImageIndex, setFsImageIndex] = useState(null); 
@@ -119,19 +122,19 @@ export default function PostsHistory() {
   }, [selectedPost, fsImageIndex, showPartnerModal]);
 
   useEffect(() => {
-    setIsFetchingData(true);
-    // Делаем запрос к бекенду и ждем его завершения
-    fetchPostsHistory().finally(() => {
-      setIsFetchingData(false);
-    });
+    const loadData = async () => {
+      setIsInitialLoading(true);
+      await fetchPostsHistory();
+      setIsInitialLoading(false);
+    };
+    loadData();
   }, [fetchPostsHistory]);
 
-  // Сброс лимита при смене вкладки или поиске
+  // Сброс пагинации при смене таба или поиске
   useEffect(() => {
-    setVisibleCount(8);
+    setVisibleCount(12);
   }, [activeTab, searchQuery]);
 
-  // Фильтруем все посты (работает быстро, т.к. React не рендерит их в DOM)
   const filteredPosts = useMemo(() => {
     let base = postsHistory || [];
     if (activeTab === 'published') base = base.filter(p => p.status === 'PUBLISHED');
@@ -148,18 +151,17 @@ export default function PostsHistory() {
     return base;
   }, [postsHistory, activeTab, searchQuery]);
 
-  // Берем только нужную часть для отображения
+  // Список постов для текущего отображения
   const visiblePosts = useMemo(() => {
     return filteredPosts.slice(0, visibleCount);
   }, [filteredPosts, visibleCount]);
 
   const handleLoadMore = () => {
     setIsLoadingMore(true);
-    // Имитация процесса загрузки (для плавности интерфейса)
     setTimeout(() => {
-      setVisibleCount(prev => prev + 10);
+      setVisibleCount(prev => prev + 12);
       setIsLoadingMore(false);
-    }, 800);
+    }, 600);
   };
 
   const currentMediaList = useMemo(() => parseMediaUrls(selectedPost?.mediaUrls), [selectedPost]);
@@ -279,6 +281,7 @@ export default function PostsHistory() {
   return (
     <div className="w-full space-y-6 sm:space-y-8 font-sans pb-24 md:pb-12 pt-4 sm:pt-8 relative min-h-screen">
       
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 bg-admin-card border border-gray-800 p-6 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] shadow-2xl">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-white flex items-center gap-3 sm:gap-4 tracking-tighter">
@@ -299,6 +302,7 @@ export default function PostsHistory() {
         </div>
       </div>
 
+      {/* TABS */}
       <div className="grid grid-cols-3 gap-2 sm:gap-3 bg-gray-900/50 p-1.5 sm:p-2 rounded-[1.5rem] sm:rounded-[1.8rem] border border-gray-800">
         {[
           { id: 'published', label: 'Отправлено', icon: CheckCircle2, color: 'text-emerald-400' },
@@ -316,17 +320,14 @@ export default function PostsHistory() {
         ))}
       </div>
 
-      {isFetchingData ? (
-        // ПРОГРЕСС-БАР ПЕРВИЧНОЙ ЗАГРУЗКИ
-        <div className="bg-admin-card border border-gray-800 p-16 rounded-[2.5rem] flex flex-col items-center justify-center min-h-[300px] animate-in fade-in duration-500 shadow-lg">
-          <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6">
-            <LayoutPanelLeft className="text-[#0077FF] animate-pulse" size={32} />
+      {/* CONTENT AREA */}
+      {isInitialLoading ? (
+        <div className="bg-admin-card border border-gray-800 p-16 rounded-[2.5rem] flex flex-col items-center justify-center min-h-[300px]">
+          <Loader2 className="w-12 h-12 text-[#0077FF] animate-spin mb-4" />
+          <div className="w-48 h-1.5 bg-gray-900 rounded-full overflow-hidden mb-4">
+             <div className="h-full bg-gradient-to-r from-[#0077FF] to-purple-500 animate-pulse w-full"></div>
           </div>
-          <h3 className="text-white font-bold text-lg mb-4">Синхронизация архива</h3>
-          <div className="w-full max-w-[240px] bg-gray-900 rounded-full h-2.5 overflow-hidden shadow-inner border border-gray-800">
-             <div className="bg-gradient-to-r from-[#0077FF] to-purple-500 h-full rounded-full w-1/2 animate-[pulse_1s_ease-in-out_infinite] origin-left scale-x-[2]"></div>
-          </div>
-          <p className="text-gray-500 text-xs mt-4 font-medium">Получаем данные с сервера...</p>
+          <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px]">Загрузка архива...</p>
         </div>
       ) : filteredPosts.length === 0 ? (
         <div className="bg-admin-card border border-gray-800 border-dashed p-10 rounded-[2.5rem] text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
@@ -349,9 +350,16 @@ export default function PostsHistory() {
                   <div className="flex gap-4 sm:gap-5 mb-4 sm:mb-5">
                     <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-[1.2rem] bg-gray-900 border border-gray-800 shrink-0 flex items-center justify-center overflow-hidden relative">
                        {firstImage ? (
-                         <img src={firstImage} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} alt="prev" />
+                         <img 
+                          src={firstImage} 
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                          onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} 
+                          alt="preview" 
+                        />
                        ) : null}
-                       <ImageIcon className={`text-gray-700 w-8 h-8 absolute ${firstImage ? 'hidden' : 'block'}`} />
+                       <div className={`w-full h-full items-center justify-center bg-gray-900 ${firstImage ? 'hidden' : 'flex'}`}>
+                          <ImageIcon className="text-gray-700 w-8 h-8" />
+                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
@@ -364,8 +372,8 @@ export default function PostsHistory() {
                     </div>
                   </div>
                   <div className="mt-auto pt-4 sm:pt-5 border-t border-gray-800 flex items-center justify-between">
-                    <span className="text-[10px] sm:text-[11px] font-black text-gray-500 flex items-center gap-1.5 sm:gap-2 bg-gray-900 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl border border-gray-800">
-                      <Calendar size={12} className="text-[#0077FF] sm:w-3.5 sm:h-3.5"/>
+                    <span className="text-[10px] sm:text-[11px] font-black text-gray-500 flex items-center gap-1.5 sm:gap-2 bg-gray-900 px-2.5 sm:px-3 py-1.5 rounded-xl border border-gray-800">
+                      <Calendar size={12} className="text-[#0077FF]"/>
                       {new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <ChevronRight className="text-gray-700 group-hover:text-[#0077FF] transition-all group-hover:translate-x-1" size={20}/>
@@ -375,76 +383,62 @@ export default function PostsHistory() {
             })}
           </div>
 
+          {/* LOAD MORE BUTTON */}
           {filteredPosts.length > visibleCount && (
-            <div className="flex justify-center mt-6 sm:mt-8 mb-4">
+            <div className="flex justify-center mt-8 mb-4">
               <button 
                 onClick={handleLoadMore}
                 disabled={isLoadingMore}
-                className="flex flex-col items-center gap-3 px-8 py-4 bg-gray-900 border border-gray-700 hover:border-[#0077FF] text-gray-400 hover:text-white rounded-2xl font-bold transition-all active:scale-95 shadow-lg group disabled:opacity-80 disabled:pointer-events-none w-full sm:w-auto min-w-[220px]"
+                className="flex items-center gap-2 px-8 py-4 bg-gray-900 border border-gray-700 hover:border-[#0077FF] hover:bg-gray-800 hover:text-white text-gray-400 rounded-2xl font-bold transition-all active:scale-95 shadow-xl group disabled:opacity-50"
               >
-                {isLoadingMore ? (
-                  <div className="w-full">
-                     <div className="flex justify-between items-center text-xs mb-2">
-                       <span className="text-[#0077FF]">Загрузка постов...</span>
-                     </div>
-                     <div className="w-full bg-gray-800 rounded-full h-1.5 overflow-hidden">
-                       <div className="bg-[#0077FF] h-full rounded-full animate-[pulse_1s_ease-in-out_infinite] w-full origin-left scale-x-[2]"></div>
-                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <ChevronDown size={18} className="group-hover:translate-y-0.5 transition-transform" />
-                    <span>Посмотреть еще</span>
-                  </div>
-                )}
+                {isLoadingMore ? <Loader2 className="animate-spin text-[#0077FF]" size={18} /> : <ChevronDown size={18} className="group-hover:translate-y-0.5 transition-transform" />}
+                <span>{isLoadingMore ? 'Загрузка...' : 'Посмотреть еще'}</span>
               </button>
             </div>
           )}
         </>
       )}
 
+      {/* DETAIL MODAL */}
       {selectedPost && (
         <div className="fixed inset-0 z-[100] flex flex-col sm:items-center sm:justify-center bg-black/95 sm:bg-black/80 sm:backdrop-blur-xl animate-in fade-in duration-200">
           
           {isPreparing && (
-            <div className="absolute inset-0 z-[160] bg-black/80 backdrop-blur-2xl flex flex-col items-center justify-center sm:rounded-[2.5rem]">
-               <Loader2 className="animate-spin text-[#0077FF] mb-4 sm:mb-6" size={48} />
-               <p className="text-white font-black text-xl sm:text-2xl tracking-tighter uppercase text-center px-4">Подготовка файлов...</p>
+            <div className="absolute inset-0 z-[160] bg-black/80 backdrop-blur-2xl flex flex-col items-center justify-center">
+               <Loader2 className="animate-spin text-[#0077FF] mb-6" size={48} />
+               <p className="text-white font-black text-xl tracking-tighter uppercase">Подготовка файлов...</p>
             </div>
           )}
 
-          <div className="bg-[#0f1115] w-full h-full sm:h-auto sm:max-h-[90dvh] md:max-w-[500px] sm:rounded-[2rem] shadow-2xl flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200 overflow-hidden">
+          <div className="bg-[#0f1115] w-full h-full sm:h-auto sm:max-h-[90dvh] md:max-w-[500px] sm:rounded-[2.5rem] shadow-2xl flex flex-col relative border-0 sm:border border-gray-800/50 animate-in zoom-in-95 duration-200 overflow-hidden">
             
-            <div className="flex items-center justify-between px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-4 shrink-0 z-10 border-b border-gray-800/50">
+            <div className="flex items-center justify-between px-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-4 shrink-0 border-b border-gray-800/50">
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-white font-bold text-xl sm:text-2xl tracking-tight leading-none truncate">
-                    {selectedPost.account?.name || 'Аккаунт удален'}
+                  <h2 className="text-white font-bold text-xl tracking-tight truncate">
+                    {selectedPost.account?.name || 'Аккаунт'}
                   </h2>
-                  <p className="text-blue-400 text-xs mt-1 font-black uppercase tracking-widest">
+                  <p className="text-blue-400 text-[10px] mt-1 font-black uppercase tracking-[0.2em]">
                     {selectedPost.account?.provider === 'partner' ? 'Обмен с партнером' : 'Публикация в сеть'}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 ml-4">
-                  <button 
-                    onClick={() => { setSelectedPost(null); setShowRetryMenu(false); }} 
-                    className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white bg-gray-800/60 hover:bg-gray-700 rounded-full transition-all active:scale-90 shrink-0"
-                  >
-                      <X size={20} />
-                  </button>
-                </div>
+                <button 
+                  onClick={() => { setSelectedPost(null); setShowRetryMenu(false); }} 
+                  className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white bg-gray-800/60 hover:bg-gray-700 rounded-full transition-all active:scale-90"
+                >
+                    <X size={20} />
+                </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-6 bg-[#0f1115]">
+            <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-6 bg-[#0f1115]">
               {currentMediaList.length > 0 && (
-                <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 mb-4 -mx-1 px-1">
+                <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-4 mb-4 -mx-1 px-1">
                    {currentMediaList.map((img, i) => (
                       <div 
                         key={i} 
                         onClick={() => setFsImageIndex(i)}
-                        className="relative w-[100px] h-[100px] sm:w-[120px] sm:h-[120px] rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer group"
+                        className="relative w-[110px] h-[110px] rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer group"
                       >
-                        <img src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
-                        <ImageIcon className="text-gray-700 w-8 h-8 hidden absolute" />
+                        <img src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <Maximize2 className="text-white" size={20} />
                         </div>
@@ -453,49 +447,46 @@ export default function PostsHistory() {
                 </div>
               )}
 
-              <div className="bg-[#181a20] rounded-[1.5rem] p-4 sm:p-5 border border-gray-800/60">
+              <div className="bg-[#181a20] rounded-[2rem] p-5 border border-gray-800/60">
                  <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-700 shrink-0 text-xs font-bold text-gray-400">
                        {selectedPost.account?.avatarUrl ? <img src={getImageUrl(selectedPost.account.avatarUrl)} className="w-full h-full object-cover"/> : selectedPost.account?.name?.substring(0,2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                       <p className="text-white font-medium text-sm sm:text-base truncate">{selectedPost.account?.name || 'Аккаунт удален'}</p>
-                       <p className="text-gray-500 text-xs truncate">
+                       <p className="text-white font-bold text-sm truncate">{selectedPost.account?.name}</p>
+                       <p className="text-gray-500 text-[10px] font-bold uppercase tracking-wider">
                          {new Date(selectedPost.publishAt || selectedPost.createdAt).toLocaleString('ru-RU', {day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'})}
                        </p>
                     </div>
                  </div>
-                 <p className="text-gray-300 text-sm sm:text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                 <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap break-words">
                    {selectedPost.text || <span className="italic text-gray-600">Текст отсутствует</span>}
                  </p>
               </div>
             </div>
 
-            <div className="p-4 sm:p-5 border-t border-gray-800/50 bg-[#0f1115] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-5 shrink-0 flex flex-col gap-3 relative z-20">
+            <div className="p-6 border-t border-gray-800/50 bg-[#0f1115] pb-[max(1.5rem,env(safe-area-inset-bottom))] shrink-0 flex flex-col gap-3">
                <div className="flex gap-3">
-                 <button onClick={() => handleDelete(selectedPost.id)} className="flex-1 bg-[#181a20] hover:bg-red-500/10 border border-gray-800 hover:border-red-500/30 text-gray-400 hover:text-red-400 py-3 sm:py-3.5 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2">
-                   <Trash2 size={18} />
-                   <span className="hidden sm:inline">Удалить</span>
+                 <button onClick={() => handleDelete(selectedPost.id)} className="flex-1 bg-[#181a20] hover:bg-red-500/10 border border-gray-800 hover:border-red-500/30 text-gray-500 hover:text-red-500 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2">
+                   <Trash2 size={16} /> Удалить
                  </button>
-                 <button onClick={() => setShowPartnerModal(true)} className="flex-[2] bg-[#181a20] hover:bg-purple-500/10 border border-gray-800 hover:border-purple-500/30 text-purple-400 py-3 sm:py-3.5 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2">
-                   <Share2 size={18} />
-                   Отправить партнеру
+                 <button onClick={() => setShowPartnerModal(true)} className="flex-[2] bg-[#181a20] hover:bg-purple-500/10 border border-gray-800 hover:border-purple-500/30 text-purple-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2">
+                   <Share2 size={16} /> Партнеру
                  </button>
                </div>
                
                <div className="w-full relative">
-                 <button onClick={() => setShowRetryMenu(!showRetryMenu)} className="w-full bg-[#0077FF] hover:bg-[#0066CC] text-white py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-[0_0_20px_rgba(0,119,255,0.2)] flex justify-center items-center gap-2">
-                   <RefreshCw size={18} />
-                   Повторить пост
-                   <ChevronUp size={16} className={`transition-transform ${showRetryMenu ? 'rotate-180' : ''}`} />
+                 <button onClick={() => setShowRetryMenu(!showRetryMenu)} className="w-full bg-[#0077FF] hover:bg-[#0066CC] text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all active:scale-95 shadow-[0_10px_30px_rgba(0,119,255,0.2)] flex justify-center items-center gap-2">
+                   <RefreshCw size={16} /> Повторить пост
+                   <ChevronUp size={16} className={`transition-transform duration-300 ${showRetryMenu ? 'rotate-180' : ''}`} />
                  </button>
                  {showRetryMenu && (
-                   <div className="absolute bottom-[calc(100%+0.75rem)] right-0 w-full bg-[#181a20] border border-gray-700 rounded-2xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-bottom-2 duration-200">
-                     <button onClick={() => handleDuplicatePost('now')} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm text-white hover:bg-gray-700 font-bold transition-all rounded-xl mb-1">
-                       <Send size={16} className="text-blue-400"/> Прямо сейчас
+                   <div className="absolute bottom-[calc(100%+0.75rem)] left-0 right-0 bg-[#181a20] border border-gray-700 rounded-3xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-bottom-2 duration-200">
+                     <button onClick={() => handleDuplicatePost('now')} className="w-full flex items-center justify-center gap-2 px-4 py-4 text-[10px] uppercase tracking-widest text-white hover:bg-gray-800 font-black transition-all rounded-2xl mb-1">
+                       <Send size={14} className="text-[#0077FF]"/> Сейчас
                      </button>
-                     <button onClick={() => handleDuplicatePost('schedule')} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm text-white hover:bg-gray-700 font-bold transition-all rounded-xl border-t border-gray-700">
-                       <Clock size={16} className="text-purple-400"/> В очередь
+                     <button onClick={() => handleDuplicatePost('schedule')} className="w-full flex items-center justify-center gap-2 px-4 py-4 text-[10px] uppercase tracking-widest text-white hover:bg-gray-800 font-black transition-all rounded-2xl border-t border-gray-700/50">
+                       <Clock size={14} className="text-purple-400"/> В очередь
                      </button>
                    </div>
                  )}
@@ -505,38 +496,43 @@ export default function PostsHistory() {
         </div>
       )}
 
+      {/* PARTNER MODAL */}
       {showPartnerModal && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowPartnerModal(false)}></div>
-          <div className="relative w-full max-w-md bg-[#111318] border border-gray-800 rounded-2xl shadow-2xl flex flex-col z-10 overflow-hidden">
-            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/50">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Users size={18} className="text-purple-500" /> Выберите партнеров
+          <div className="relative w-full max-w-md bg-[#111318] border border-gray-800 rounded-[2.5rem] shadow-2xl flex flex-col z-10 overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-800 bg-gray-900/50">
+              <h3 className="text-lg font-black text-white flex items-center gap-3 uppercase tracking-tighter">
+                <Users size={20} className="text-purple-500" /> Выберите партнеров
               </h3>
-              <button onClick={() => setShowPartnerModal(false)} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-xl transition-colors">
-                <X size={18} />
+              <button onClick={() => setShowPartnerModal(false)} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-full">
+                <X size={20} />
               </button>
             </div>
-            <div className="p-4 sm:p-5 max-h-[50vh] overflow-y-auto custom-scrollbar">
+            <div className="p-4 max-h-[40vh] overflow-y-auto custom-scrollbar">
               {myPartners.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-10 text-gray-500">
                   <Users size={40} className="mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">У вас пока нет добавленных партнеров.</p>
+                  <p className="text-xs font-bold">Партнеры не найдены</p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {myPartners.map(partner => (
-                    <div key={partner.id} onClick={() => togglePartner(partner.id)} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${selectedPartners.includes(partner.id) ? 'bg-purple-500/10 border-purple-500/30' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}>
-                      <div className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors ${selectedPartners.includes(partner.id) ? 'bg-purple-500 border-purple-500' : 'border-gray-600'}`}>
+                    <div 
+                      key={partner.id} 
+                      onClick={() => togglePartner(partner.id)} 
+                      className={`flex items-center gap-3 p-4 rounded-2xl cursor-pointer border transition-all ${selectedPartners.includes(partner.id) ? 'bg-purple-500/10 border-purple-500/50' : 'bg-gray-900 border-gray-800 hover:border-gray-700'}`}
+                    >
+                      <div className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-all ${selectedPartners.includes(partner.id) ? 'bg-purple-500 border-purple-500' : 'border-gray-700'}`}>
                         {selectedPartners.includes(partner.id) && <Check size={14} className="text-white" />}
                       </div>
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-full bg-gray-800 shrink-0 overflow-hidden border border-gray-700 flex justify-center items-center text-xs font-bold text-gray-400">
+                        <div className="w-10 h-10 rounded-xl bg-gray-800 shrink-0 overflow-hidden border border-gray-700 flex justify-center items-center text-xs font-bold text-gray-400">
                           {partner.avatarUrl ? <img src={getImageUrl(partner.avatarUrl)} className="w-full h-full object-cover"/> : partner.name?.substring(0,2).toUpperCase()}
                         </div>
                         <div className="truncate">
                           <p className="text-sm font-bold text-white truncate">{partner.name}</p>
-                          <p className="text-[10px] text-gray-400 truncate">{partner.pavilion}</p>
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{partner.pavilion}</p>
                         </div>
                       </div>
                     </div>
@@ -544,50 +540,73 @@ export default function PostsHistory() {
                 </div>
               )}
             </div>
-            <div className="p-4 border-t border-gray-800 bg-gray-900/50 flex gap-3">
-              <button onClick={() => setShowPartnerModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-all text-sm">
+            <div className="p-6 border-t border-gray-800 bg-gray-900/50 flex gap-3">
+              <button onClick={() => setShowPartnerModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all">
                 Отмена
               </button>
-              <button onClick={handleShareToPartners} disabled={isSharing || selectedPartners.length === 0 || partnerStatus === 'sent'} className={`flex-[2] py-3 rounded-xl font-bold transition-all flex justify-center items-center gap-2 text-sm active:scale-95 shadow-lg text-white disabled:opacity-50 ${partnerStatus === 'sent' ? 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/20' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20'}`}>
-                <div className="flex items-center justify-center gap-2 pointer-events-none">
-                  {isSharing && <Loader2 size={18} className="animate-spin" />}
-                  {!isSharing && partnerStatus === 'sent' && <CheckCircle2 size={18} />}
-                  {!isSharing && partnerStatus !== 'sent' && <Send size={18} />}
-                  <span>{isSharing ? 'Отправка...' : partnerStatus === 'sent' ? 'Отправлено!' : `Отправить (${selectedPartners.length})`}</span>
-                </div>
+              <button 
+                onClick={handleShareToPartners} 
+                disabled={isSharing || selectedPartners.length === 0 || partnerStatus === 'sent'} 
+                className={`flex-[2] py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex justify-center items-center gap-2 shadow-lg text-white ${partnerStatus === 'sent' ? 'bg-emerald-500 shadow-emerald-500/20' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20 disabled:opacity-50'}`}
+              >
+                {isSharing ? <Loader2 size={18} className="animate-spin" /> : partnerStatus === 'sent' ? <CheckCircle2 size={18} /> : <Send size={18} />}
+                <span>{isSharing ? 'Отправка...' : partnerStatus === 'sent' ? 'Готово!' : `Отправить (${selectedPartners.length})`}</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* TOAST NOTIFICATION */}
       {toastMessage && (
-        <div className="fixed top-4 sm:top-6 left-1/2 -translate-x-1/2 z-[400] bg-emerald-500/95 backdrop-blur-md text-white px-4 py-3 sm:px-6 sm:py-3.5 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.3)] flex items-center justify-center gap-2 sm:gap-3 animate-in slide-in-from-top-4 fade-in duration-300 font-bold border border-emerald-400/50 w-[90vw] max-w-sm sm:max-w-md text-sm sm:text-base text-center leading-snug">
-          <CheckCircle2 size={20} className="shrink-0" />
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[400] bg-emerald-500/95 backdrop-blur-md text-white px-8 py-4 rounded-3xl shadow-2xl flex items-center justify-center gap-3 animate-in slide-in-from-top-4 duration-300 font-black text-xs uppercase tracking-widest border border-emerald-400/50">
+          <CheckCircle2 size={18} />
           <span>{toastMessage}</span>
         </div>
       )}
 
+      {/* FULLSCREEN IMAGE VIEWER */}
       {fsImageIndex !== null && (
         <div className="fixed inset-0 z-[500] flex flex-col items-center justify-center bg-black animate-in fade-in duration-200">
-          <button onClick={() => setFsImageIndex(null)} className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 sm:right-8 w-12 h-12 sm:w-14 sm:h-14 bg-gray-900/80 text-white rounded-full flex items-center justify-center transition-all z-[510] active:scale-90">
-            <X size={24} className="sm:w-8 sm:h-8" />
+          <button onClick={() => setFsImageIndex(null)} className="absolute top-8 right-8 w-14 h-14 bg-gray-900/80 text-white rounded-full flex items-center justify-center transition-all z-[510] active:scale-90">
+            <X size={24} />
           </button>
-          <button onClick={handlePrevPhoto} disabled={fsImageIndex === 0} className="absolute left-2 sm:left-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[510] active:scale-75">
-            <ChevronLeft size={40} className="sm:w-16 sm:h-16" />
+          
+          <button 
+            onClick={handlePrevPhoto} 
+            disabled={fsImageIndex === 0} 
+            className="absolute left-6 p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[510] active:scale-75"
+          >
+            <ChevronLeft size={48} />
           </button>
-          <button onClick={handleNextPhoto} disabled={fsImageIndex === currentMediaList.length - 1} className="absolute right-2 sm:right-6 p-4 sm:p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[510] active:scale-75">
-            <ChevronRight size={40} className="sm:w-16 sm:h-16" />
+          
+          <button 
+            onClick={handleNextPhoto} 
+            disabled={fsImageIndex === currentMediaList.length - 1} 
+            className="absolute right-6 p-6 text-white hover:text-[#0077FF] disabled:opacity-5 transition-all z-[510] active:scale-75"
+          >
+            <ChevronRight size={48} />
           </button>
-          <div className="w-full h-full flex items-center justify-center p-4 sm:p-12 select-none">
-            <img key={fsImageIndex} src={getImageUrl(currentMediaList[fsImageIndex])} className="max-w-full max-h-[85vh] object-contain rounded-xl sm:rounded-2xl shadow-[0_0_80px_rgba(0,119,255,0.15)] animate-in zoom-in-95 duration-300" onError={(e) => { e.target.style.display='none'; }}/>
+
+          <div className="w-full h-full flex items-center justify-center p-12 select-none">
+            <img 
+              key={fsImageIndex} 
+              src={getImageUrl(currentMediaList[fsImageIndex])} 
+              className="max-w-full max-h-[85vh] object-contain rounded-3xl shadow-[0_0_80px_rgba(0,119,255,0.15)] animate-in zoom-in-95 duration-300" 
+              onError={(e) => { e.target.style.display='none'; }}
+              alt="fullscreen"
+            />
           </div>
-          <div className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-4 sm:gap-6 z-[510]">
-             <div className="px-4 sm:px-6 py-1.5 sm:py-2 bg-gray-900/90 border border-gray-800 rounded-full text-white font-black text-[10px] sm:text-xs tracking-[0.3em] uppercase">
+
+          <div className="absolute bottom-12 flex flex-col items-center gap-6 z-[510]">
+             <div className="px-6 py-2 bg-gray-900/90 border border-gray-800 rounded-full text-white font-black text-[10px] tracking-[0.3em] uppercase">
                 {fsImageIndex + 1} / {currentMediaList.length}
              </div>
-             <button onClick={() => handleDownload(currentMediaList[fsImageIndex])} className="flex items-center gap-3 sm:gap-4 px-6 sm:px-10 py-3.5 sm:py-5 bg-white text-black rounded-xl sm:rounded-[2rem] font-black text-xs sm:text-sm uppercase tracking-widest transition-all active:scale-95 shadow-2xl">
-               <Download size={20} className="sm:w-6 sm:h-6" /> Сохранить
+             <button 
+                onClick={() => handleDownload(currentMediaList[fsImageIndex])} 
+                className="flex items-center gap-4 px-10 py-5 bg-white text-black rounded-[2rem] font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-2xl"
+              >
+               <Download size={20} /> Скачать
              </button>
           </div>
         </div>
