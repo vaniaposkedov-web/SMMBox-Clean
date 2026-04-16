@@ -610,11 +610,12 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-gray-400 mb-3 uppercase">Кто пригласил (Аплайн)</h3>
-                    {userDetails.user.receivedRequests?.map(req => (
-                      <div key={req.id} className="p-3 bg-gray-900 border border-gray-800 rounded-lg mb-2 text-sm">
-                        <span className="text-white">{req.sender.email || req.sender.id}</span>
-                      </div>
-                    ))}
+                    // КАК ДОЛЖНО БЫТЬ:
+                        {userDetails.user.receivedRequests?.map(req => (
+                          <div key={req.id} className="p-3 bg-gray-900 border border-gray-800 rounded-lg mb-2 text-sm">
+                            <span className="text-white">{req.requester.email || req.requester.id}</span>
+                          </div>
+                        ))}
                     {!userDetails.user.receivedRequests?.length && <p className="text-xs text-gray-600">Зарегистрировался сам</p>}
                   </div>
                 </div>
