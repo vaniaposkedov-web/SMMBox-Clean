@@ -1447,22 +1447,44 @@ const handleSaveKomodGroups = async () => {
               {selectableGroups.map((group, index) => {
                 const uniqueId = extractId(group) || `idx-${index}`;
                 
-                // === СУПЕР-НАДЕЖНАЯ ПРОВЕРКА ПОДКЛЮЧЕНИЯ ===
+                // === БРОНЕБОЙНАЯ ПРОВЕРКА ПОДКЛЮЧЕНИЯ ===
+                const isPersonal = group.is_profile_dummy;
+                const groupName = extractName(group) || 'Без названия';
+                
                 let isAlreadyConnected = false;
 
-                if (group.is_profile_dummy) {
-                  // 1. Для личной страницы ищем аккаунт 'wall_', привязанный к текущему профилю
+                if (isPersonal) {
+                  // Для личной страницы ищем префикс wall_ или точное совпадение имени
                   isAlreadyConnected = connectedVk.some(acc =>
-                    acc.providerId.startsWith('wall_') && acc.profileId === komodModal.profileId
+                    acc.providerId.startsWith('wall_') || acc.name === groupName
                   );
                 } else {
-                  // 2. Для групп ищем совпадение либо по цифровому ID, либо по доменному имени (ссылке)
+                  // 1. Достаем только голые цифры из ID модалки
+                  const cleanVkId = String(group.uid || group.group_id || group.id || '').replace(/\D/g, '');
+                  
+                  // 2. Достаем хвостик ссылки
                   const screenName = group.screen_name || group.domain;
-                  const vkId = group.uid || group.group_id || group.id;
+                  let urlPart = null;
+                  if (group.url) {
+                     urlPart = group.url.split('/').pop().replace(/^(club|public|event)/, '');
+                  }
 
                   isAlreadyConnected = connectedVk.some(acc => {
-                    const pId = String(acc.providerId).replace('group_', '');
-                    return pId === String(vkId) || (screenName && pId === String(screenName));
+                    const rawProviderId = String(acc.providerId).replace('group_', '');
+                    // Чистые цифры из ID базы данных (игнорируем минусы)
+                    const cleanAccId = rawProviderId.replace(/\D/g, ''); 
+
+                    // Проверяем все возможные комбинации:
+                    // А. Совпадение по цифрам (самое надежное)
+                    if (cleanVkId && cleanVkId.length > 3 && cleanAccId === cleanVkId) return true;
+                    // Б. Совпадение по буквенному ID (screen_name)
+                    if (screenName && rawProviderId === String(screenName)) return true;
+                    // В. Совпадение по ссылке
+                    if (urlPart && rawProviderId === urlPart) return true;
+                    // Г. Последний шанс: точное совпадение названия
+                    if (acc.name === groupName && groupName !== 'Без названия') return true;
+
+                    return false;
                   });
                 }
 
@@ -1470,43 +1492,39 @@ const handleSaveKomodGroups = async () => {
                 
                 // Умная логика блокировки
                 const isVkModalLimitReached = komodSelected.length >= (limits.vk - vkCount);
-                const isLocked = (!isSelected && isVkModalLimitReached) || isAlreadyConnected;
+                // Карточка блокируется, если УЖЕ подключена ИЛИ если исчерпан лимит
+                const isLocked = isAlreadyConnected || (!isSelected && isVkModalLimitReached);
                 
-                const isPersonal = group.is_profile_dummy;
-                const groupName = extractName(group) || 'Без названия';
                 const avatar = getValidAvatar(extractAvatar(group), groupName);
-
-                console.log('=== ПОДКЛЮЧЕННЫЕ АККАУНТЫ (connectedVk) ===', connectedVk);
-                console.log('=== ГРУППЫ В МОДАЛКЕ (selectableGroups) ===', selectableGroups);
 
                 return (
                   <div 
                     key={uniqueId} 
                     onClick={() => {
-                      if (isLocked) return; // Блокируем клик, если лимит или уже подключен
+                      if (isLocked) return; // Если заблокировано - клик не работает
                       setKomodSelected(prev => isSelected ? prev.filter(id => id !== uniqueId) : [...prev, uniqueId]);
                     }}
                     className={`relative flex items-center gap-4 p-3 rounded-2xl transition-all border overflow-hidden ${
-                      isAlreadyConnected ? 'bg-gray-900 border-gray-800 opacity-60 grayscale cursor-not-allowed' :
+                      isAlreadyConnected ? 'bg-gray-900 border-gray-800 opacity-50 grayscale cursor-not-allowed' :
                       isSelected ? 'bg-[#0077FF]/10 border-[#0077FF] cursor-pointer' : 
                       isLocked ? 'bg-gray-900 border-red-500/20 opacity-50 cursor-not-allowed' : 
                       'bg-gray-900 border-gray-800 hover:bg-gray-800 cursor-pointer'
                     }`}
                   >
-                    {/* ПЛАШКА 1: Для уже подключенных */}
+                    {/* ПЛАШКА: ПОДКЛЮЧЕН */}
                     {isAlreadyConnected && (
-                      <div className="absolute inset-0 bg-black/40 z-10 flex items-center justify-center backdrop-blur-[2px]">
-                         <span className="text-xs font-bold text-gray-300 bg-gray-900/90 px-3 py-1.5 rounded-lg border border-gray-700 uppercase tracking-wider shadow-lg">Подключен</span>
+                      <div className="absolute inset-0 bg-black/60 z-10 flex items-center justify-center backdrop-blur-[2px]">
+                         <span className="text-xs font-bold text-gray-300 bg-gray-900/90 px-3 py-1.5 rounded-lg border border-gray-700 uppercase tracking-widest shadow-lg">Подключен</span>
                       </div>
                     )}
 
-                    {/* ПЛАШКА 2: С крестиком (для лимитов, показываем только если НЕ подключен) */}
+                    {/* ПЛАШКА: ЛИМИТ (с крестиком) */}
                     {isLocked && !isAlreadyConnected && (
                       <div className="absolute inset-0 bg-red-950/20 z-10 flex items-center justify-center backdrop-blur-[1px]">
                          <X size={40} className="text-red-500/50" strokeWidth={3} />
                       </div>
                     )}
-
+                    
                     <img 
                       src={avatar} 
                       onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, groupName); }} 
