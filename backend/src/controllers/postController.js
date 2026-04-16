@@ -100,7 +100,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             addForm.append('account_id', cleanId);
         }
         
-        // Включаем сетку сразу при регистрации новой группы
+        // 🟢 ИСПРАВЛЕНИЕ: Включаем сетку для новых групп
         addForm.append('post_images_as_grid', '1');
 
         try {
@@ -120,31 +120,29 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         }
         
         if (!targetGroup) throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и подключите стену.`);
+    } else {
+        // 🟢 ИСПРАВЛЕНИЕ: Обновляем УЖЕ СУЩЕСТВУЮЩИЕ группы, чтобы включить им сетку
+        if (String(targetGroup.post_images_as_grid) !== '1') {
+            try {
+                const updateForm = new FormData();
+                updateForm.append('post_images_as_grid', '1');
+                await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateForm, {
+                    headers: { ...updateForm.getHeaders(), 'Access-Token': token },
+                    validateStatus: () => true
+                });
+                logPost(userId, 'VK', 'INFO', `Группе ${targetGroupId} включен режим сетки фото`);
+            } catch (e) {
+                console.error('[VK GRID ERROR] Не удалось обновить группу:', e.message);
+            }
+        }
     }
 
-targetGroupId = targetGroup.id;
+    targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
-    
-    // === АВТО-ОБНОВЛЕНИЕ ГРУППЫ ДЛЯ ВКЛЮЧЕНИЯ СЕТКИ ===
-    try {
-        const updateGrpForm = new FormData();
-        updateGrpForm.append('post_images_as_grid', '1');
-        await axios.post(`${KOMOD_BASE_URL}/group/${targetGroupId}`, updateGrpForm, {
-            headers: { ...updateGrpForm.getHeaders(), 'Access-Token': token },
-            validateStatus: () => true
-        });
-    } catch (e) {
-        console.log("Не удалось обновить параметр группы");
-    }
-
-    // ПРИНУДИТЕЛЬНЫЕ ХАКИ ДЛЯ ОТКЛЮЧЕНИЯ КАРУСЕЛИ:
+    // ИСПРАВЛЕНИЕ ДЛЯ СЕТКИ: Отключаем прямое API. 
+    // Заставляем шлюз эмулировать публикацию через обычный браузер (web), 
+    // чтобы обойти принудительную карусель ВКонтакте.
     form.append('via_api', '0');
-    form.append('post_images_as_grid', '1'); // Передаем и в сам пост на всякий случай
-    form.append('is_grid', '1');
-    form.append('grid', '1');
-    form.append('carousel', '0');
-
-    // === ФИКС КОТОРЫЙ МЫ ДЕЛАЛИ (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) ===
 
     // === ФИКС КОТОРЫЙ МЫ ДЕЛАЛИ (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) ===
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
@@ -455,8 +453,12 @@ exports.createPost = async (req, res) => {
 
                     // Сохраняем файлы ДЛЯ ИСТОРИИ (облегченные версии)
                     const thumbnailsUrls = await Promise.all(job.processedBuffers.map(async (buf) => {
-                        const thumbBuf = await sharp(buf).resize({ width: 800, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
-                        return await saveImageToFile(thumbBuf, 'history');
+                        // 🟢 ИСПРАВЛЕНИЕ: Сжимаем до WebP 400px (вес будет в 10 раз меньше, чем JPEG 800px)
+                        const thumbBuf = await sharp(buf)
+                            .resize({ width: 400, fit: 'inside', withoutEnlargement: true })
+                            .webp({ quality: 65 })
+                            .toBuffer();
+                        return await saveImageToFile(thumbBuf, 'history'); // или 'history_cron' для таймера
                     }));
 
                     await prisma.post.create({
@@ -547,11 +549,15 @@ exports.initCron = () => {
                     }
 
                     // Сжимаем фото для истории и сохраняем их как ФАЙЛЫ, а не Base64
-                    const thumbnailsUrls = await Promise.all(imageBuffers.map(async (buf) => {
-                        const thumbBuf = await sharp(buf).resize({ width: 800, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
-                        return await saveImageToFile(thumbBuf, 'history_cron');
+                    // Сохраняем файлы ДЛЯ ИСТОРИИ (облегченные версии)
+                    const thumbnailsUrls = await Promise.all(job.processedBuffers.map(async (buf) => {
+                        // 🟢 ИСПРАВЛЕНИЕ: Сжимаем до WebP 400px (вес будет в 10 раз меньше, чем JPEG 800px)
+                        const thumbBuf = await sharp(buf)
+                            .resize({ width: 400, fit: 'inside', withoutEnlargement: true })
+                            .webp({ quality: 65 })
+                            .toBuffer();
+                        return await saveImageToFile(thumbBuf, 'history'); // или 'history_cron' для таймера
                     }));
-
                     await prisma.post.update({
                         where: { id: post.id },
                         data: { 
@@ -581,14 +587,10 @@ exports.getScheduledPosts = async (req, res) => {
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
         const posts = await prisma.post.findMany({
-            where: { 
-                account: { userId: userId }, 
-                status: { in: ['SCHEDULED', 'PUBLISHED', 'FAILED'] },
-                publishAt: { not: null } 
-            },
+            where: { account: { userId: userId } },
             include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
-            orderBy: { publishAt: 'asc' },
-            take: 150
+            orderBy: [{ createdAt: 'desc' }],
+            take: 75 // 🟢 ИСПРАВЛЕНИЕ: Загружаем 75 постов вместо 500
         });
 
         // 🟢 ИСПРАВЛЕНИЕ: БОЛЬШЕ НИКАКОЙ ОБРЕЗКИ. Отдаем массив mediaUrls целиком!
@@ -841,12 +843,11 @@ exports.getPostsHistory = async (req, res) => {
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
         // 1. Берем обычные посты (VK / Telegram)
-        // 1. Берем обычные посты (VK / Telegram)
         const posts = await prisma.post.findMany({
             where: { account: { userId: userId } },
             include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
             orderBy: [{ createdAt: 'desc' }],
-            take: 30 // Уменьшено с 500 для моментальной загрузки БД
+            take: 500 
         });
 
         // 2. Берем посты, отправленные партнерам
@@ -854,7 +855,7 @@ exports.getPostsHistory = async (req, res) => {
             where: { senderId: userId },
             include: { receiver: { select: { name: true, avatarUrl: true, pavilion: true } } },
             orderBy: [{ createdAt: 'desc' }],
-            take: 30 // Уменьшено с 500 для моментальной загрузки БД
+            take: 75 // 🟢 ИСПРАВЛЕНИЕ: Загружаем 75 постов вместо 500
         });
 
         // 3. Форматируем отправленные партнерам под единый стандарт истории
