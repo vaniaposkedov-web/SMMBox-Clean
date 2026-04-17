@@ -1151,12 +1151,24 @@ const handleSaveKomodGroups = async () => {
         </div>
 
         <button
-          onClick={() => selectedNetwork === 'VK' ? handleConnectVkOAuth() : setShowTgHelperModal(true)}
-          className={`relative z-10 w-full py-4 rounded-xl font-bold text-white transition-all text-sm active:scale-95 ${
-            selectedNetwork === 'VK' ? 'bg-[#0077FF] shadow-lg shadow-[#0077FF]/20' : 'bg-[#2AABEE] shadow-lg shadow-[#2AABEE]/20'
+          onClick={() => {
+            if (!isLimitReached) {
+              selectedNetwork === 'VK' ? handleConnectVkOAuth() : setShowTgHelperModal(true);
+            }
+          }}
+          disabled={isLimitReached}
+          className={`relative z-10 w-full py-4 rounded-xl font-bold transition-all text-sm ${
+            isLimitReached 
+              ? 'bg-gray-800/80 text-gray-500 cursor-not-allowed border border-gray-700/50' 
+              : selectedNetwork === 'VK' 
+                ? 'bg-[#0077FF] text-white shadow-lg shadow-[#0077FF]/20 active:scale-95' 
+                : 'bg-[#2AABEE] text-white shadow-lg shadow-[#2AABEE]/20 active:scale-95'
           }`}
         >
-          Авторизовать {selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}
+          {isLimitReached 
+            ? `Лимит ${selectedNetwork === 'VK' ? 'ВК' : 'Telegram'} исчерпан` 
+            : `Авторизовать ${selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}`
+          }
         </button>
       </div>
      
