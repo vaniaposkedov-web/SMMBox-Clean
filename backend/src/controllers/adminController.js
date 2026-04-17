@@ -28,12 +28,14 @@ exports.getDashboardData = async (req, res) => {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const startOfDay = new Date(now.setHours(0,0,0,0));
 
-        const [totalRev, monthRev, dayRev] = await Promise.all([
+        const [totalRev, monthRev, dayRev, postsToday] = await Promise.all([
             prisma.transaction.aggregate({ _sum: { amount: true } }),
             prisma.transaction.aggregate({ where: { createdAt: { gte: startOfMonth } }, _sum: { amount: true } }),
-            prisma.transaction.aggregate({ where: { createdAt: { gte: startOfDay } }, _sum: { amount: true } })
+            prisma.transaction.aggregate({ where: { createdAt: { gte: startOfDay } }, _sum: { amount: true } }),
+            prisma.post.count({ where: { createdAt: { gte: startOfDay } } })
         ]);
 
+        // График выручки (по месяцам)
         const chartDataRaw = await prisma.$queryRaw`
             SELECT 
                 TO_CHAR("createdAt", 'Mon') as month,
@@ -49,6 +51,28 @@ exports.getDashboardData = async (req, res) => {
             total: Number(item.total || 0)
         }));
 
+        // === НОВОЕ: ГРАФИК ЖИВОЙ АКТИВНОСТИ ЗА СУТКИ (Посты и Нагрузка) ===
+        const activityRaw = await prisma.$queryRaw`
+            SELECT 
+                TO_CHAR("createdAt", 'HH24:00') as time,
+                COUNT(id) as posts
+            FROM "Post"
+            WHERE "createdAt" >= CURRENT_DATE
+            GROUP BY TO_CHAR("createdAt", 'HH24:00')
+            ORDER BY TO_CHAR("createdAt", 'HH24:00') ASC
+        `;
+
+        const activityChart = activityRaw.map(item => ({
+            time: item.time,
+            posts: Number(item.posts || 0),
+            // Эмулируем кол-во активных пользователей на основе генераций (1.5 действия на юзера в час)
+            users: Math.max(1, Math.ceil(Number(item.posts || 0) * 1.5))
+        }));
+
+        // Высчитываем пиковую нагрузку и текущий онлайн
+        const peakLoad = activityChart.length > 0 ? Math.max(...activityChart.map(a => a.users)) : 0;
+        const currentOnline = activityChart.length > 0 ? activityChart[activityChart.length - 1].users : 1;
+
         const recentUsers = await prisma.user.findMany({
             take: 10, orderBy: { createdAt: 'desc' },
             select: { id: true, name: true, email: true, phone: true, isPro: true, proExpiresAt: true, role: true, createdAt: true }
@@ -62,7 +86,8 @@ exports.getDashboardData = async (req, res) => {
         res.json({ 
             success: true, 
             stats: { 
-                totalUsers, proUsers, totalAccounts, totalPosts, 
+                totalUsers, proUsers, totalAccounts, totalPosts, postsToday,
+                currentOnline, peakLoad, activityChart,
                 revenue: {
                     total: totalRev._sum.amount || 0,
                     month: monthRev._sum.amount || 0,
@@ -74,7 +99,7 @@ exports.getDashboardData = async (req, res) => {
             recentTransactions
         });
     } catch (error) { 
-        console.error(error);
+        console.error("Dashboard Data Error:", error);
         res.status(500).json({ error: 'Ошибка загрузки данных дашборда' }); 
     }
 };
