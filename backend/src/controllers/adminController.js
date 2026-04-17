@@ -273,3 +273,29 @@ exports.updateAiSettings = async (req, res) => {
         res.json({ success: true });
     } catch (error) { res.status(500).json({ error: 'Ошибка сохранения настроек ИИ' }); }
 };
+
+exports.getAiLogs = async (req, res) => {
+    try {
+        const { page = 1, search = '' } = req.query;
+        const take = 20;
+        const skip = (Number(page) - 1) * take;
+
+        // Если есть поиск, ищем по ID пользователя
+        const where = search ? { userId: { contains: search, mode: 'insensitive' } } : {};
+
+        const logs = await prisma.aiLog.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take,
+            skip,
+            include: { user: { select: { email: true } } }
+        });
+
+        const total = await prisma.aiLog.count({ where });
+
+        res.json({ success: true, logs, hasMore: skip + take < total });
+    } catch (error) { 
+        console.error("AI LOGS ERROR:", error);
+        res.status(500).json({ error: 'Ошибка загрузки логов ИИ' }); 
+    }
+};

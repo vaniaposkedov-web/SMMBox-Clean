@@ -40,6 +40,38 @@ const [proModal, setProModal] = useState({ isOpen: false, user: null });
   const [isSavingAi, setIsSavingAi] = useState(false);
   const [promptHistory, setPromptHistory] = useState(() => JSON.parse(localStorage.getItem('adminPromptHistory') || '[]'));
 
+  const [aiLogs, setAiLogs] = useState([]);
+  const [aiLogsPage, setAiLogsPage] = useState(1);
+  const [hasMoreLogs, setHasMoreLogs] = useState(false);
+  const [aiLogSearch, setAiLogSearch] = useState('');
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  const loadAiLogs = async (pageNum = 1, search = aiLogSearch, append = false) => {
+    setIsLoadingLogs(true);
+    const token = localStorage.getItem('adminToken');
+    try {
+      const res = await fetch(`/api/admin/settings/ai/logs?page=${pageNum}&search=${search}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const result = await res.json();
+      if (result?.success) {
+        if (append) setAiLogs(prev => [...prev, ...result.logs]);
+        else setAiLogs(result.logs);
+        
+        setHasMoreLogs(result.hasMore);
+        setAiLogsPage(pageNum);
+      }
+    } catch (e) {}
+    setIsLoadingLogs(false);
+  };
+
+  const handleLogSearch = () => loadAiLogs(1, aiLogSearch, false);
+
+  // Автозагрузка логов при переходе на вкладку
+  useEffect(() => {
+    if (activeTab === 'prompts') loadAiLogs(1, '', false);
+  }, [activeTab]);
+
   const [isDark, setIsDark] = useState(() => localStorage.getItem('adminTheme') !== 'light');
 
   const mockActivityData = [
@@ -565,6 +597,79 @@ const submitProGrant = async (isRevoke = false) => {
                       <p className="text-sm text-gray-500 italic p-4 bg-gray-900/30 rounded-xl border border-gray-800 border-dashed text-center">История пуста. Сохраните промпт, чтобы он появился здесь.</p>
                     )}
                   </div>
+                </div>
+              </div>
+
+              {/* ИСТОРИЯ ГЕНЕРАЦИЙ КЛИЕНТОВ */}
+              <div className="mt-10 pt-8 border-t border-gray-800">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold flex items-center gap-2"><Activity className="text-purple-500" /> Детальная история генераций</h3>
+                    <p className="text-sm text-gray-500 mt-1">Логи запросов пользователей к нейросети в реальном времени</p>
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <input 
+                      type="text" 
+                      value={aiLogSearch} 
+                      onChange={(e) => setAiLogSearch(e.target.value)} 
+                      onKeyDown={(e) => e.key === 'Enter' && handleLogSearch()}
+                      placeholder="Поиск по ID клиента..." 
+                      className={`w-full sm:w-64 p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-purple-500 outline-none text-sm transition-colors`} 
+                    />
+                    <button onClick={handleLogSearch} className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition-colors shadow-lg shadow-purple-500/20 active:scale-95">
+                      Найти
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {aiLogs.map(log => (
+                    <div key={log.id} className="bg-gray-900/40 border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-4 transition-all hover:bg-gray-900/60 shadow-sm">
+                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-800/50 pb-4 gap-2">
+                          <div className="flex gap-3 items-center">
+                            <span className="bg-blue-600/20 border border-blue-500/30 text-blue-400 font-mono text-xs px-3 py-1.5 rounded-lg font-bold">ID: {log.userId}</span>
+                            <span className="text-sm font-bold text-gray-300">{log.user?.email || 'Пользователь удален'}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest bg-gray-800 px-3 py-1.5 rounded-lg">
+                            {new Date(log.createdAt).toLocaleString('ru-RU')}
+                          </span>
+                       </div>
+                       
+                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-1">
+                          <div className="space-y-2 flex flex-col">
+                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><Settings size={12}/> Запрос к ИИ (С промптом)</span>
+                            <div className="bg-black/60 border border-gray-800 p-4 rounded-xl text-sm text-gray-300 h-48 overflow-y-auto custom-scrollbar whitespace-pre-wrap font-mono leading-relaxed flex-1">
+                              {log.prompt}
+                            </div>
+                          </div>
+                          <div className="space-y-2 flex flex-col">
+                            <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-1.5"><Sparkles size={12}/> Итоговый ответ нейросети</span>
+                            <div className="bg-purple-500/5 border border-purple-500/20 p-4 rounded-xl text-sm text-gray-200 h-48 overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed flex-1 shadow-inner">
+                              {log.result}
+                            </div>
+                          </div>
+                       </div>
+                    </div>
+                  ))}
+                  
+                  {aiLogs.length === 0 && !isLoadingLogs && (
+                    <div className="text-center py-12 text-gray-500 bg-gray-900/20 rounded-3xl border border-gray-800 border-dashed">
+                      <Search size={40} className="mx-auto mb-4 opacity-20" />
+                      <p className="font-medium text-lg">Записей не найдено</p>
+                      <p className="text-sm mt-1">Здесь будут отображаться логи генераций постов.</p>
+                    </div>
+                  )}
+
+                  {hasMoreLogs && (
+                    <button 
+                      onClick={() => loadAiLogs(aiLogsPage + 1, aiLogSearch, true)} 
+                      disabled={isLoadingLogs}
+                      className="w-full mt-4 py-4 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-all flex justify-center items-center gap-2 active:scale-95"
+                    >
+                      {isLoadingLogs ? <Loader2 size={18} className="animate-spin" /> : <ChevronDown size={18} />}
+                      Загрузить еще 20 записей
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

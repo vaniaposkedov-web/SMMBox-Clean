@@ -57,6 +57,7 @@ model User {
   proExpiresAt             DateTime?
   transactions             Transaction[] 
   systemLogs               SystemLog[]
+  aiLogs        AiLog[]
 }
 
 model SocialProfile {
@@ -245,4 +246,13 @@ model SystemLog {
   createdAt DateTime @default(now())
 
   user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AiLog {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prompt       String   @db.Text
+  result       String   @db.Text
+  createdAt    DateTime @default(now())
 }
