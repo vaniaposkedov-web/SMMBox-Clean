@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
 import { 
   Plus, Inbox, Settings as SettingsIcon, User, Users, Box, LogOut, 
   MoreHorizontal, ChevronDown, ChevronUp, Layers, FileText, BarChart2, 
@@ -63,17 +63,11 @@ function Sidebar() {
 
   return (
     <aside className="hidden md:flex flex-col w-64 bg-admin-card border-r border-gray-800 h-screen sticky top-0">
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-800/50 mb-2">
-        <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-[#0077FF] via-indigo-600 to-[#0077FF] shadow-[0_0_15px_rgba(0,119,255,0.3)] overflow-hidden shrink-0 group">
-          <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-          <span className="text-white font-black text-xl italic tracking-tighter drop-shadow-sm select-none">S</span>
+      <div className="p-6 flex items-center gap-3 border-b border-gray-800">
+        <div className="w-8 h-8 bg-admin-accent rounded-lg flex items-center justify-center text-white">
+          <Box size={20} />
         </div>
-        <div className="flex flex-col">
-          <span className="text-lg font-black tracking-wider text-white uppercase leading-none">
-            SADOVOD<span className="text-[#0077FF]">SP</span>
-          </span>
-          <span className="text-[9px] text-gray-500 font-bold tracking-[0.2em] uppercase mt-1">Workspace</span>
-        </div>
+        <span className="text-xl font-bold tracking-wide">SMM<span className="text-admin-accent">DECK</span></span>
       </div>
       
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
@@ -318,29 +312,13 @@ function BottomNav() {
   );
 }
 
-// Словарь красивых названий страниц
-const getPageTitle = (pathname) => {
-  const titles = {
-    '/profile': 'Мой профиль',
-    '/publish': 'Создание публикации',
-    '/posts': 'История публикаций',
-    '/requests': 'Запросы и уведомления',
-    '/partners': 'Партнерская сеть',
-    '/accounts': 'Менеджер аккаунтов',
-    '/watermark': 'Конструктор логотипов',
-    '/signatures': 'Управление подписями',
-    '/settings': 'Настройки системы',
-    '/analytics': 'Аналитика',
-  };
-  return titles[pathname] || 'Панель управления';
-};
+
 
 // --- КАРКАС ОБЫЧНОГО ПОЛЬЗОВАТЕЛЯ ---
 function UserLayout() {
   const user = useStore((state) => state.user);
   const fetchPartnerData = useStore((state) => state.fetchPartnerData);
   const fetchSharedPosts = useStore((state) => state.fetchSharedPosts);
-  const location = useLocation(); // ⚡ Добавили отслеживание пути
 
   useEffect(() => {
     if (user?.id) {
@@ -360,18 +338,12 @@ function UserLayout() {
     <div className="min-h-screen bg-admin-bg text-admin-text flex font-sans relative">
       <Sidebar />
       <main className="flex-1 w-full pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0 overflow-y-auto">
-        
-        {/* ⚡ НОВЫЙ ДИНАМИЧЕСКИЙ ЗАГОЛОВОК */}
-        <header className="px-4 md:px-8 py-5 border-b border-gray-800/50 bg-admin-bg/90 backdrop-blur-md sticky top-0 z-10 flex items-center shadow-sm">
-          <h1 className="text-xl md:text-2xl font-black text-white uppercase tracking-tight">
-            {getPageTitle(location.pathname)}
-          </h1>
-        </header>
-
-        <div className="max-w-5xl mx-auto w-full p-4 md:p-8">
+        <div className="max-w-5xl mx-auto w-full">
           <Outlet />
         </div>
       </main>
+      
+    
       
       <BottomNav />
     </div>
