@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { 
   Users, Crown, MessageSquare, LogOut, Sun, Search, ShieldAlert, 
   Activity, Eye, X, Loader2, Settings, TrendingUp, CreditCard,
-  BarChart3, Database, Wrench, AlertTriangle, Network, Package, Plus, Save, User as UserIcon
+  BarChart3, Database, Wrench, AlertTriangle, Network, Package, Plus, Save, User as UserIcon,
+  Sparkles, ChevronDown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
