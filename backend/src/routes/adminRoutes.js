@@ -22,5 +22,6 @@ router.post('/users/:id/grant-pro', adminAuth, adminController.grantProStatus);
 // === РОУТЫ НАСТРОЕК НЕЙРОСЕТИ ===
 router.get('/settings/ai', adminAuth, adminController.getAiSettings);
 router.post('/settings/ai', adminAuth, adminController.updateAiSettings);
+router.get('/settings/ai/logs', adminAuth, adminController.getAiLogs);
 
 module.exports = router;
