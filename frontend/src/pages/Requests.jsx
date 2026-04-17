@@ -73,6 +73,7 @@ export default function Requests() {
   }, [notifications]);
 
   const incomingPosts = useMemo(() => sharedIncoming.filter(post => !post.isPublished), [sharedIncoming]);
+  const isSubscriptionActive = user?.isPro && (!user?.proExpiresAt || new Date(user.proExpiresAt) > new Date());
 
   const [previewPost, setPreviewPost] = useState(null);
   const [previewNotification, setPreviewNotification] = useState(null);
@@ -387,10 +388,22 @@ export default function Requests() {
                  Отказаться
                </button>
                <div className="flex-[2] relative">
-                 <button onClick={() => setShowRetryMenu(!showRetryMenu)} className="w-full bg-[#10B981] hover:bg-[#059669] text-white py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-[0_0_20px_rgba(16,185,129,0.2)] flex justify-center items-center gap-2">
-                   Запостить <ChevronUp size={16} className={`transition-transform ${showRetryMenu ? 'rotate-180' : ''}`} />
+                 <button 
+                   onClick={() => setShowRetryMenu(!showRetryMenu)} 
+                   disabled={!isSubscriptionActive}
+                   className={`w-full py-3.5 sm:py-4 rounded-xl font-bold text-sm transition-all flex justify-center items-center gap-2 ${
+                     isSubscriptionActive 
+                       ? 'bg-[#10B981] hover:bg-[#059669] text-white active:scale-95 shadow-[0_0_20px_rgba(16,185,129,0.2)]' 
+                       : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                   }`}
+                 >
+                   {isSubscriptionActive ? (
+                     <>Запостить <ChevronUp size={16} className={`transition-transform ${showRetryMenu ? 'rotate-180' : ''}`} /></>
+                   ) : (
+                     'Оформите подписку'
+                   )}
                  </button>
-                 {showRetryMenu && (
+                 {showRetryMenu && isSubscriptionActive && (
                    <div className="absolute bottom-[calc(100%+0.75rem)] right-0 w-full bg-[#181a20] border border-gray-700 rounded-2xl shadow-2xl p-1.5 z-50 animate-in slide-in-from-bottom-2 duration-200">
                      <button onClick={() => handleUsePost('now')} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 text-sm text-white hover:bg-gray-700 font-bold transition-all rounded-xl mb-1">
                        <Send size={16} className="text-blue-400"/> Запостить сейчас
