@@ -49,6 +49,8 @@ const [proModal, setProModal] = useState({ isOpen: false, user: null });
   const [aiLogSearch, setAiLogSearch] = useState('');
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState(null);
+  const [isMaintenance, setIsMaintenance] = useState(false);
+  const [maintenanceMsg, setMaintenanceMsg] = useState('Сайт находится на техническом обслуживании. Ожидайте окончания работ.');
 
   const loadAiLogs = async (pageNum = 1, search = aiLogSearch, append = false) => {
     setIsLoadingLogs(true);
@@ -115,6 +117,13 @@ const [proModal, setProModal] = useState({ isOpen: false, user: null });
 
     } catch (e) { console.error('Ошибка загрузки данных:', e); }
     setLoading(false);
+
+    try {
+        const sysRes = await fetch('/api/system/status');
+        const sysData = await sysRes.json();
+        setIsMaintenance(sysData.isMaintenance);
+        if (sysData.message) setMaintenanceMsg(sysData.message);
+      } catch (e) {}
   };
 
   useEffect(() => { fetchDashboardData(); }, []);
@@ -768,7 +777,61 @@ const submitProGrant = async (isRevoke = false) => {
           )}
           
           
-          {activeTab === 'maintenance' && (<div className={`${theme.card} border border-orange-500/30 rounded-2xl p-8 max-w-3xl`}><h2>Технические работы (UI Готов)</h2></div>)}
+       {activeTab === 'maintenance' && (
+            <div className={`${theme.card} border ${isMaintenance ? 'border-red-500/50' : 'border-gray-800'} rounded-2xl p-6 md:p-8 animate-in fade-in max-w-3xl mx-auto shadow-2xl`}>
+               <div className="flex items-center gap-4 mb-8">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center shrink-0 ${isMaintenance ? 'bg-red-500/20 text-red-500' : 'bg-gray-800 text-gray-500'}`}>
+                     <Wrench size={32} />
+                  </div>
+                  <div>
+                     <h2 className="text-2xl font-black uppercase tracking-wide">Технические работы</h2>
+                     <p className="text-sm text-gray-500 mt-1">Полная блокировка доступа к сайту для клиентов</p>
+                  </div>
+               </div>
+               
+               <div className="space-y-6">
+                  <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl relative overflow-hidden">
+                     {isMaintenance && <div className="absolute inset-0 bg-red-500/5 pointer-events-none"></div>}
+                     <label className="text-xs font-bold text-gray-500 uppercase mb-3 block flex items-center gap-2">
+                       <AlertTriangle size={14} className={isMaintenance ? 'text-red-500' : ''}/> 
+                       Текст заглушки для пользователей
+                     </label>
+                     <textarea 
+                        value={maintenanceMsg}
+                        onChange={(e) => setMaintenanceMsg(e.target.value)}
+                        className={`w-full bg-black border ${isMaintenance ? 'border-red-500/50 text-red-100' : 'border-gray-800 text-white'} rounded-xl p-4 outline-none focus:border-red-500 transition-colors resize-none h-32 text-sm leading-relaxed`}
+                        placeholder="Введите причину остановки..."
+                        disabled={isMaintenance}
+                     />
+                     <p className="text-[11px] text-gray-500 mt-3 font-medium">Этот текст увидят все клиенты. Во время активных тех. работ изменить текст нельзя.</p>
+                  </div>
+
+                  <button 
+                     onClick={async () => {
+                        const newState = !isMaintenance;
+                        if (newState && !window.confirm('ВНИМАНИЕ! Сайт будет полностью заблокирован для всех пользователей (кроме админов). Продолжить?')) return;
+                        
+                        const token = localStorage.getItem('adminToken');
+                        try {
+                            const res = await fetch('/api/admin/settings/maintenance', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                body: JSON.stringify({ isMaintenance: newState, maintenanceMessage: maintenanceMsg })
+                            });
+                            if (res.ok) setIsMaintenance(newState);
+                        } catch (e) { alert('Ошибка соединения'); }
+                     }}
+                     className={`w-full py-5 rounded-2xl font-black text-lg transition-all flex justify-center items-center gap-3 shadow-xl active:scale-95 uppercase tracking-wider ${
+                        isMaintenance 
+                        ? 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700 shadow-gray-900/50' 
+                        : 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20'
+                     }`}
+                  >
+                     {isMaintenance ? <><Sun size={24}/> Запустить сайт</> : <><AlertTriangle size={24}/> Остановить сайт</>}
+                  </button>
+               </div>
+            </div>
+          )}
           {activeTab === 'backend-db' && (<div className={`${theme.card} border rounded-2xl p-10 text-center`}><h2>Прямой доступ к БД (UI Готов)</h2></div>)}
           {activeTab === 'errors' && (<div className={`${theme.card} border border-red-500/20 rounded-2xl p-6`}><h2>Логи и ошибки (UI Готов)</h2></div>)}
           {activeTab === 'partner-api' && (<div className={`${theme.card} border rounded-2xl p-6 max-w-3xl`}><h2>API для партнеров (UI Готов)</h2></div>)}

@@ -234,6 +234,9 @@ model SystemSettings {
   id        String   @id @default("global") // Всегда одна запись
   aiPrompt  String   @db.Text               // Тот самый промпт для нейросети
   updatedAt DateTime @updatedAt
+  // === НОВЫЕ ПОЛЯ ДЛЯ ТЕХ. РАБОТ ===
+  isMaintenance      Boolean  @default(false)
+  maintenanceMessage String?  @db.Text
 }
 
 model SystemLog {
