@@ -195,10 +195,9 @@ export default function Profile() {
     setShowProModal(false);
   };
 
-  const isSubscriptionActive = user?.isPro && (!user?.proExpiresAt || new Date(user.proExpiresAt) > new Date());
+  
 
-  // Добавь этот блок кода:
-  const handleSupportClick = () => {
+ const handleSupportClick = () => {
     const message = `Здравствуйте! Мой ID: ${user?.id || 'Неизвестен'}. У меня возникла проблема:`;
     const tgLink = `https://t.me/${PRO_MANAGER_TG}?text=${encodeURIComponent(message)}`;
     window.open(tgLink, '_blank', 'noopener,noreferrer');
@@ -209,6 +208,12 @@ export default function Profile() {
     if (user?.vkId) return 'ВКонтакте';
     return 'Почта';
   };
+
+  // --- ЛОГИКА ТИПА ТАРИФА ---
+  const isSubscriptionActive = user?.isPro && (!user?.proExpiresAt || new Date(user.proExpiresAt) > new Date());
+  const planType = isSubscriptionActive ? user?.proPlanType?.toUpperCase() : 'FREE';
+  const isAdvanced = planType?.includes('РАСШИРЕН') || planType === 'PRO';
+  const isBasic = planType?.includes('БАЗОВ') || planType === 'BASIC';
 
   return (
     <div className="w-full pt-6 lg:pt-10 pb-[calc(100px+env(safe-area-inset-bottom))] md:pb-12 px-4 md:px-8 font-sans">
@@ -375,18 +380,20 @@ export default function Profile() {
               <div className="absolute -right-10 -top-10 w-32 h-32 sm:w-40 sm:h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
               <div className="relative z-10 text-center sm:text-left min-w-0">
                 <h3 className="text-lg sm:text-2xl font-extrabold text-white mb-2 flex items-center justify-center sm:justify-start gap-2">
-                  <Crown className={user?.isPro ? "text-yellow-400" : "text-purple-400"} size={24} /> 
-                  {user?.isPro ? 'У вас активен PRO тариф!' : 'Расширьте лимиты с новыми тарифами'}
+                  <Crown className={isSubscriptionActive ? "text-yellow-400" : "text-purple-400"} size={24} /> 
+                  {isAdvanced ? 'У вас активен Расширенный тариф!' : isBasic ? 'У вас активен Базовый тариф!' : 'Расширьте лимиты с новыми тарифами'}
                 </h3>
                 <p className="text-gray-300 text-xs sm:text-base max-w-2xl leading-relaxed">
-                  {user?.isPro 
-                    ? 'Вам доступны увеличенные лимиты аккаунтов (20 ВК / 8 ТГ), автопостинг и все премиум функции платформы.' 
+                  {isAdvanced 
+                    ? 'Вам доступны максимальные лимиты (20 ВК / 8 ТГ), автопостинг и все премиум функции платформы.' 
+                    : isBasic
+                    ? 'Вам доступны лимиты (15 ВК / 5 ТГ). Хотите больше? Подключите Расширенный тариф (20 ВК / 8 ТГ) и снимите все ограничения!'
                     : 'Не хватает лимитов? Подключите Базовый или Расширенный тариф и управляйте до 20 аккаунтами ВК и 8 каналами Telegram!'}
                 </p>
               </div>
-              {!user?.isPro && (
+              {!isAdvanced && (
                 <button onClick={handleOpenProModal} className="relative z-10 shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-sm sm:text-base font-extrabold transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] active:scale-95 w-full sm:w-auto min-h-[48px]">
-                  Выбрать тариф
+                  {isBasic ? 'Улучшить тариф' : 'Выбрать тариф'}
                 </button>
               )}
             </div>

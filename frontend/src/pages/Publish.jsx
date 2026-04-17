@@ -176,27 +176,46 @@ export default function Publish() {
     });
   }, []);
 
+  // --- ЛОГИКА ЛИМИТОВ И БЛОКИРОВКИ ---
+  const limitsData = useMemo(() => {
+    const isExpired = user?.proExpiresAt && new Date(user.proExpiresAt) < new Date();
+    const isPaid = user?.isPro && !isExpired;
+    const planType = isPaid ? user?.proPlanType?.toUpperCase() : 'FREE';
+    const isAdvanced = planType?.includes('РАСШИРЕН') || planType === 'PRO';
+    const isBasic = planType?.includes('БАЗОВ') || planType === 'BASIC';
 
-  
+    return {
+      vk: isAdvanced ? 20 : (isBasic ? 15 : 6),
+      tg: isAdvanced ? 8 : (isBasic ? 5 : 4)
+    };
+  }, [user]);
+
+  const accountsWithLimits = useMemo(() => {
+    const vkAccounts = accounts.filter(a => (a.provider || '').toUpperCase() === 'VK' || (a.provider || '').toUpperCase() === 'VKONTAKTE');
+    const tgAccounts = accounts.filter(a => (a.provider || '').toUpperCase() === 'TELEGRAM');
+
+    const processedVk = vkAccounts.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limitsData.vk }));
+    const processedTg = tgAccounts.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limitsData.tg }));
+
+    return [...processedVk, ...processedTg];
+  }, [accounts, limitsData]);
 
   const groupedAccounts = useMemo(() => {
-    const filtered = accounts.filter(acc => {
-      // Жесткая защита от null и undefined
+    const filtered = accountsWithLimits.filter(acc => {
       const name = acc?.name || '';
       const prov = acc?.provider || '';
       const query = searchQuery?.toLowerCase() || '';
-      
       return name.toLowerCase().includes(query) || prov.toLowerCase().includes(query);
     });
     
     return filtered.reduce((acc, curr) => {
-      // Приводим провайдер к ВЕРХНЕМУ регистру (VK, TELEGRAM), чтобы не плодить дубликаты
       const prov = (curr.provider || 'unknown').toUpperCase();
-      if (!acc[prov]) acc[prov] = [];
-      acc[prov].push(curr);
+      const normalizedProv = prov === 'VKONTAKTE' ? 'VK' : prov;
+      if (!acc[normalizedProv]) acc[normalizedProv] = [];
+      acc[normalizedProv].push(curr);
       return acc;
     }, {});
-  }, [searchQuery, accounts]);
+  }, [searchQuery, accountsWithLimits]);
 
   useEffect(() => {
     if (user?.id) {
@@ -238,11 +257,12 @@ export default function Publish() {
     setSelectedAccounts(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
   };
 
-  const toggleAllAccounts = () => {
-    if (selectedAccounts.length === accounts.length && accounts.length > 0) {
+const toggleAllAccounts = () => {
+    const availableAccounts = accountsWithLimits.filter(a => !a.isOverLimit).map(a => a.id);
+    if (selectedAccounts.length === availableAccounts.length && availableAccounts.length > 0) {
       setSelectedAccounts([]); 
     } else {
-      setSelectedAccounts(accounts.map(a => a.id)); 
+      setSelectedAccounts(availableAccounts); 
     }
   };
 
@@ -968,16 +988,32 @@ const handlePublish = async () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                         {providerAccounts.map(acc => {
                           const isSelected = selectedAccounts.includes(acc.id);
+                          const isOverLimit = acc.isOverLimit;
                           const avatarSrc = acc.avatarUrl || acc.photo_url || acc.avatar;
-                          const iconColor = provider === 'vk' ? 'text-blue-500' : 'text-sky-400';
+                          const iconColor = provider.toLowerCase() === 'vk' ? 'text-blue-500' : 'text-sky-400';
                           
                           return (
                             <div 
                               key={acc.id} 
-                              onClick={() => toggleAccount(acc.id)} 
-                              className={`flex flex-col rounded-xl border transition-all overflow-hidden cursor-pointer active:scale-95 ${isSelected ? (publishMode === 'schedule' ? 'bg-purple-500/10 border-purple-500/50 shadow-sm' : 'bg-blue-500/10 border-blue-500/50 shadow-sm') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700 hover:bg-gray-800/50'}`}
+                              onClick={() => {
+                                if (isOverLimit) {
+                                  setToastMessage('Лимит исчерпан. Продлите подписку!');
+                                  setTimeout(() => setToastMessage(null), 3000);
+                                  return;
+                                }
+                                toggleAccount(acc.id);
+                              }} 
+                              className={`flex flex-col rounded-xl border transition-all overflow-hidden cursor-pointer active:scale-95 relative ${
+                                isOverLimit ? 'opacity-50 grayscale border-red-500/30 hover:border-red-500/50' : 
+                                isSelected ? (publishMode === 'schedule' ? 'bg-purple-500/10 border-purple-500/50 shadow-sm' : 'bg-blue-500/10 border-blue-500/50 shadow-sm') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700 hover:bg-gray-800/50'
+                              }`}
                             >
-                              <div className="flex items-center gap-2.5 p-2.5 w-full text-left min-h-[48px]">
+                              {isOverLimit && (
+                                <div className="absolute top-0 left-0 w-full bg-red-600/90 text-white text-[8px] font-bold py-0.5 text-center tracking-widest uppercase z-10">
+                                  Лимит исчерпан
+                                </div>
+                              )}
+                              <div className={`flex items-center gap-2.5 p-2.5 w-full text-left min-h-[48px] ${isOverLimit ? 'pt-4' : ''}`}>
                                 <div className="relative w-8 h-8 rounded-lg shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
                                   {avatarSrc ? <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-lg" /> : <span className="text-[10px] sm:text-xs">{acc.name.substring(0, 2).toUpperCase()}</span>}
                                   <div className={`absolute -bottom-1 -right-1 w-4 h-4 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
