@@ -24,5 +24,6 @@ router.get('/settings/ai', adminAuth, adminController.getAiSettings);
 router.post('/settings/ai', adminAuth, adminController.updateAiSettings);
 router.get('/settings/ai/logs', adminAuth, adminController.getAiLogs);
 router.post('/settings/maintenance', adminAuth, adminController.updateMaintenance);
+router.get('/db/export', adminAuth, adminController.exportDatabase);
 
 module.exports = router;
