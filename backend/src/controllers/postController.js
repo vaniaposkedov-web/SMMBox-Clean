@@ -144,6 +144,10 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     // чтобы обойти принудительную карусель ВКонтакте.
     form.append('via_api', '0');
 
+    // === НОВЫЙ ФИКС ОТ РАЗРАБОТЧИКА KOMOD ===
+    // Принудительно передаем значение 1, чтобы все посты выходили сеткой
+    form.append('post_images_as_grid', '1');
+
     // === ФИКС КОТОРЫЙ МЫ ДЕЛАЛИ (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) ===
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
