@@ -122,15 +122,24 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         if (!targetGroup) throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и подключите стену.`);
     } else {
         // 🟢 ИСПРАВЛЕНИЕ: Обновляем УЖЕ СУЩЕСТВУЮЩИЕ группы, чтобы включить им сетку
+        // 🟢 ИСПРАВЛЕНИЕ: Обновляем УЖЕ СУЩЕСТВУЮЩИЕ группы (используем метод PUT)
         if (String(targetGroup.post_images_as_grid) !== '1') {
             try {
-                const updateForm = new FormData();
-                updateForm.append('post_images_as_grid', '1');
-                await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateForm, {
-                    headers: { ...updateForm.getHeaders(), 'Access-Token': token },
+                const updateData = new URLSearchParams();
+                updateData.append('post_images_as_grid', '1');
+                
+                await axios({
+                    method: 'PUT',
+                    url: `${KOMOD_BASE_URL}/group/${targetGroup.id}`,
+                    data: updateData.toString(),
+                    headers: {
+                        'Access-Token': token,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
                     validateStatus: () => true
                 });
-                logPost(userId, 'VK', 'INFO', `Группе ${targetGroupId} включен режим сетки фото`);
+                
+                logPost(userId, 'VK', 'INFO', `Группе ${targetGroup.id} отправлен запрос на включение сетки фото`);
             } catch (e) {
                 console.error('[VK GRID ERROR] Не удалось обновить группу:', e.message);
             }
