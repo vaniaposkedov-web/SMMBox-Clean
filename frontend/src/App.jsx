@@ -369,6 +369,7 @@ function UserLayout() {
     </div>
   );
 }
+
 // --- ГЛАВНЫЙ КОМПОНЕНТ ---
 function App() {
   const user = useStore((state) => state.user);
