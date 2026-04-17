@@ -38,6 +38,7 @@ const [proModal, setProModal] = useState({ isOpen: false, user: null });
 
   const [aiPrompt, setAiPrompt] = useState('');
   const [isSavingAi, setIsSavingAi] = useState(false);
+  const [promptHistory, setPromptHistory] = useState(() => JSON.parse(localStorage.getItem('adminPromptHistory') || '[]'));
 
   const [isDark, setIsDark] = useState(() => localStorage.getItem('adminTheme') !== 'light');
 
@@ -130,6 +131,25 @@ const submitProGrant = async (isRevoke = false) => {
     } catch (e) {}
   };
 
+  const exportPrompt = () => {
+    const element = document.createElement("a");
+    const file = new Blob([aiPrompt], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = "ai_prompt.txt";
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  const importPrompt = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => setAiPrompt(event.target.result);
+    reader.readAsText(file);
+    e.target.value = null; // сброс инпута
+  };
+
   const saveAiPrompt = async () => {
     setIsSavingAi(true);
     const token = localStorage.getItem('adminToken');
@@ -139,7 +159,15 @@ const submitProGrant = async (isRevoke = false) => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ aiPrompt })
       });
-      if (res.ok) alert('Промпт ИИ сохранен!');
+      if (res.ok) {
+        alert('Промпт ИИ сохранен!');
+        // Обновляем историю: добавляем текущий, убираем дубли, оставляем последние 10
+        setPromptHistory(prev => {
+          const newHist = [aiPrompt, ...prev.filter(p => p !== aiPrompt)].slice(0, 10);
+          localStorage.setItem('adminPromptHistory', JSON.stringify(newHist));
+          return newHist;
+        });
+      }
     } catch (e) {}
     setIsSavingAi(false);
   };
@@ -486,8 +514,61 @@ const submitProGrant = async (isRevoke = false) => {
             </div>
           )}
 
-          {/* === 5-9 РАЗДЕЛЫ ОСТАЮТСЯ КАК БЫЛИ В ПРЕДЫДУЩЕМ КОДЕ === */}
-          {/* Для экономии места в этом блоке они скрыты, но в твоем полном файле они остаются без изменений */}
+          {activeTab === 'prompts' && (
+            <div className={`${theme.card} border rounded-2xl p-6`}>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <div>
+                  <h2 className="text-xl font-bold flex items-center gap-2"><Settings className="text-blue-500"/> Настройка Промпта ИИ</h2>
+                  <p className="text-sm text-gray-500 mt-1">Основная инструкция для нейросети при улучшении текста</p>
+                </div>
+                <div className="flex gap-2">
+                  <input type="file" accept=".txt" id="import-prompt" className="hidden" onChange={importPrompt} />
+                  <button onClick={() => document.getElementById('import-prompt').click()} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-bold transition-colors">
+                    Загрузить .txt
+                  </button>
+                  <button onClick={exportPrompt} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-bold transition-colors">
+                    Скачать .txt
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-4">
+                  <textarea
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    className={`w-full h-64 p-4 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-blue-500 outline-none transition-colors resize-none leading-relaxed`}
+                    placeholder="Введите системный промпт для ИИ..."
+                  />
+                  <button
+                    onClick={saveAiPrompt}
+                    disabled={isSavingAi}
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl transition-colors flex justify-center items-center gap-2"
+                  >
+                    {isSavingAi ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />} Сохранить промпт
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="font-bold text-sm text-gray-400 uppercase tracking-wider">История промптов</h3>
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                    {promptHistory.map((histPrompt, idx) => (
+                      <div 
+                        key={idx} 
+                        onClick={() => setAiPrompt(histPrompt)} 
+                        className={`p-3 rounded-xl border cursor-pointer transition-colors text-sm ${aiPrompt === histPrompt ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-sm' : 'bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-800'}`}
+                      >
+                        <p className="line-clamp-3 leading-snug">{histPrompt}</p>
+                      </div>
+                    ))}
+                    {promptHistory.length === 0 && (
+                      <p className="text-sm text-gray-500 italic p-4 bg-gray-900/30 rounded-xl border border-gray-800 border-dashed text-center">История пуста. Сохраните промпт, чтобы он появился здесь.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           
           
           {activeTab === 'maintenance' && (<div className={`${theme.card} border border-orange-500/30 rounded-2xl p-8 max-w-3xl`}><h2>Технические работы (UI Готов)</h2></div>)}
@@ -707,6 +788,9 @@ const submitProGrant = async (isRevoke = false) => {
             </div>
           </div>
         </div>
+
+
+
       )}
     </div>
   );
