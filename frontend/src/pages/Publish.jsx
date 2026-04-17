@@ -447,7 +447,7 @@ const handlePublish = async () => {
         return setTimeout(() => alert('Укажите время публикации!'), 10);
       }
       
-      // === ПРОВЕРКА: МИНИМУМ 2 ЧАСА ОТ ТЕКУЩЕГО ВРЕМЕНИ ===
+      // === ПРОВЕРКА: МИНИМУМ 5 МИНУТ ОТ ТЕКУЩЕГО ВРЕМЕНИ ===
       const baseDate = selectedCalendarDate || new Date().toLocaleDateString('en-CA'); 
       const [year, month, day] = baseDate.split('-');
       const [hours, minutes] = scheduleTime.split(':');
@@ -457,10 +457,10 @@ const handlePublish = async () => {
       selectedDateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
 
       const minAllowedTime = new Date();
-      minAllowedTime.setHours(minAllowedTime.getHours() + 2); // Сдвигаем текущее время на 2 часа вперед
+      minAllowedTime.setMinutes(minAllowedTime.getMinutes() + 5); // Сдвигаем текущее время на 5 минут вперед
 
       if (selectedDateTime < minAllowedTime) {
-        return setTimeout(() => alert('Запланировать пост можно минимум на 2 часа вперед от текущего времени!'), 10);
+        return setTimeout(() => alert('Запланировать пост можно минимум на 5 минут вперед от текущего времени!'), 10);
       }
     }
     
@@ -572,11 +572,12 @@ const handlePublish = async () => {
       const localDate = new Date(year, month - 1, day, hours, minutes);
       
       // === ПРОВЕРКА ВРЕМЕНИ ПРИ РЕДАКТИРОВАНИИ ===
+      // === ПРОВЕРКА ВРЕМЕНИ ПРИ РЕДАКТИРОВАНИИ ===
       const minAllowedTime = new Date();
-      minAllowedTime.setHours(minAllowedTime.getHours() + 2);
+      minAllowedTime.setMinutes(minAllowedTime.getMinutes() + 5); // Сдвигаем текущее время на 5 минут вперед
       if (localDate < minAllowedTime) {
          setIsUpdatingPost(false);
-         return alert('Запланировать пост можно минимум на 2 часа вперед от текущего времени!');
+         return alert('Запланировать пост можно минимум на 5 минут вперед от текущего времени!');
       }
 
       const newIsoDate = localDate.toISOString();
