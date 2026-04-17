@@ -12,11 +12,7 @@ services:
       POSTGRES_DB: smmbox
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/logs:/app/logs
-    ports:
-      - "5432:5432"
 
-  
   backend:
     build: ./backend
     container_name: smmbox_backend
@@ -38,6 +34,9 @@ services:
       - KIE_API_KEY=${KIE_API_KEY}
     depends_on:
       - db
+    volumes:
+      - ./backend/logs:/app/logs         # Теперь логи пишутся куда надо
+      - ./backend/uploads:/app/uploads
 
   
   frontend:
