@@ -10,11 +10,26 @@ import {
 } from 'lucide-react';
 
 // === Утилиты для картинок ===
+// === Утилиты для картинок ===
 const getImageUrl = (url) => {
   if (!url) return '';
-  if (url.startsWith('http') || url.startsWith('data:')) return url;
-  const baseUrl = import.meta.env.VITE_API_URL || '';
-  return `${baseUrl}${url}`;
+  if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
+  
+  let finalUrl = url;
+  
+  // Защита от дублей и неправильных путей
+  if (finalUrl.includes('/api/uploads/')) {
+    finalUrl = finalUrl.replace('/api/uploads/', '/uploads/');
+  } else if (!finalUrl.includes('uploads/')) {
+    finalUrl = `/uploads/posts/${finalUrl}`;
+  }
+  
+  if (!finalUrl.startsWith('/')) {
+    finalUrl = `/${finalUrl}`;
+  }
+  
+  let baseUrl = import.meta.env.VITE_API_URL || '';
+  return `${baseUrl}${finalUrl}`;
 };
 
 // Бронебойный парсер для mediaUrls (защита от двойного JSON.stringify)
