@@ -35,18 +35,34 @@ exports.getDashboardData = async (req, res) => {
             prisma.post.count({ where: { createdAt: { gte: startOfDay } } })
         ]);
 
-        // График выручки (по месяцам)
+        // 1. График выручки (теперь ПО ДНЯМ за последние 30 дней)
         const chartDataRaw = await prisma.$queryRaw`
             SELECT 
-                TO_CHAR("createdAt", 'Mon') as month,
+                TO_CHAR("createdAt", 'DD.MM') as date,
+                SUM(amount) as total
+            FROM "Transaction"
+            WHERE "createdAt" > NOW() - INTERVAL '30 days'
+            GROUP BY date, DATE_TRUNC('day', "createdAt")
+            ORDER BY DATE_TRUNC('day', "createdAt") ASC
+        `;
+
+        const formattedChartData = chartDataRaw.map(item => ({
+            date: item.date,
+            total: Number(item.total || 0)
+        }));
+
+        // 2. История выручки (по месяцам за последние полгода для выпадающего списка)
+        const historyDataRaw = await prisma.$queryRaw`
+            SELECT 
+                TO_CHAR("createdAt", 'MM.YYYY') as month,
                 SUM(amount) as total
             FROM "Transaction"
             WHERE "createdAt" > NOW() - INTERVAL '6 months'
             GROUP BY month, DATE_TRUNC('month', "createdAt")
-            ORDER BY DATE_TRUNC('month', "createdAt") ASC
+            ORDER BY DATE_TRUNC('month', "createdAt") DESC
         `;
 
-        const formattedChartData = chartDataRaw.map(item => ({
+        const formattedHistoryData = historyDataRaw.map(item => ({
             month: item.month,
             total: Number(item.total || 0)
         }));
@@ -92,7 +108,8 @@ exports.getDashboardData = async (req, res) => {
                     total: totalRev._sum.amount || 0,
                     month: monthRev._sum.amount || 0,
                     today: dayRev._sum.amount || 0,
-                    chart: formattedChartData
+                    chart: formattedChartData,
+                    history: formattedHistoryData
                 }
             }, 
             recentUsers,

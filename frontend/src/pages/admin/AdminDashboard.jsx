@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area // <--- ДОБАВИТЬ СЮДА
 } from 'recharts';
 
 export default function AdminDashboard() {
@@ -21,6 +22,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('users-db'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [planUserSearch, setPlanUserSearch] = useState('');
+  const [showRevHistory, setShowRevHistory] = useState(false);
   
   // === СОСТОЯНИЕ ДОСЬЕ ===
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -330,10 +332,34 @@ const submitProGrant = async (isRevoke = false) => {
                   <p className="text-4xl font-black text-white">{data?.stats?.revenue?.today || 0} ₽</p>
                   <TrendingUp className="absolute right-[-10px] bottom-[-10px] text-green-500/20" size={100}/>
                 </div>
-                <div className="bg-gradient-to-br from-blue-900 to-blue-950 border border-blue-500/30 rounded-2xl p-6 relative overflow-hidden">
-                  <h3 className="text-blue-400 text-xs font-bold uppercase mb-2">Выручка в этом месяце</h3>
-                  <p className="text-4xl font-black text-white">{data?.stats?.revenue?.month || 0} ₽</p>
-                  <CreditCard className="absolute right-[-10px] bottom-[-10px] text-blue-500/20" size={100}/>
+                <div className="bg-gradient-to-br from-blue-900 to-blue-950 border border-blue-500/30 rounded-2xl p-6 relative overflow-visible">
+                  <div className="flex items-center gap-2 mb-2 relative z-20">
+                    <button 
+                      onClick={() => setShowRevHistory(!showRevHistory)} 
+                      className="text-blue-400 hover:text-blue-300 text-xs font-bold uppercase flex items-center gap-1.5 transition-colors active:scale-95"
+                    >
+                      Выручка в этом месяце <ChevronDown size={14} className={`transition-transform ${showRevHistory ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {/* Выпадающее окно с историей по месяцам */}
+                    {showRevHistory && (
+                      <div className="absolute top-full left-0 mt-2 w-48 bg-[#181a20] border border-gray-700 rounded-xl shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2">
+                         <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-2 border-b border-gray-800 pb-2">История за полгода</h4>
+                         <div className="space-y-2">
+                           {data?.stats?.revenue?.history?.map((item, idx) => (
+                             <div key={idx} className="flex justify-between items-center text-sm">
+                               <span className="text-gray-400 font-medium">{item.month}</span>
+                               <span className="text-white font-bold text-xs bg-blue-500/10 px-2 py-0.5 rounded">{item.total} ₽</span>
+                             </div>
+                           ))}
+                           {!data?.stats?.revenue?.history?.length && <p className="text-xs text-gray-500 text-center py-2">Нет данных</p>}
+                         </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <p className="text-4xl font-black text-white relative z-10">{data?.stats?.revenue?.month || 0} ₽</p>
+                  <CreditCard className="absolute right-[-10px] bottom-[-10px] text-blue-500/20 z-0 pointer-events-none" size={100}/>
                 </div>
                 <div className={`${theme.card} border rounded-2xl p-6`}>
                   <h3 className={`${theme.muted} text-xs font-bold uppercase mb-2`}>Всего заработано</h3>
@@ -342,17 +368,28 @@ const submitProGrant = async (isRevoke = false) => {
               </div>
 
               <div className={`${theme.card} border rounded-2xl p-6`}>
-                <h2 className="text-lg font-bold mb-6 flex items-center gap-2"><TrendingUp className="text-blue-500"/> Динамика дохода (Месяцы)</h2>
+                <h2 className="text-lg font-bold mb-6 flex items-center gap-2"><TrendingUp className="text-blue-500"/> Динамика дохода (За последние 30 дней)</h2>
                 <div className="h-72 w-full">
                   {data?.stats?.revenue?.chart && data.stats.revenue.chart.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={data.stats.revenue.chart}>
+                      <AreaChart data={data.stats.revenue.chart}>
+                        <defs>
+                          <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4}/>
+                            <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#374151" : "#E5E7EB"} vertical={false} />
-                        <XAxis dataKey="month" stroke="#9CA3AF" axisLine={false} tickLine={false} tickMargin={10} />
-                        <YAxis stroke="#9CA3AF" axisLine={false} tickLine={false} tickFormatter={(value) => `${value}₽`} />
-                        <Tooltip cursor={{ fill: isDark ? '#1F2937' : '#F3F4F6' }} contentStyle={{ backgroundColor: isDark ? '#111318' : '#fff', borderColor: isDark ? '#1F2937' : '#E5E7EB', borderRadius: '12px' }} formatter={(value) => [`${value} ₽`, 'Выручка']} />
-                        <Bar dataKey="total" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={40} />
-                      </BarChart>
+                        <XAxis dataKey="date" stroke="#9CA3AF" axisLine={false} tickLine={false} tickMargin={10} style={{ fontSize: '11px', fontWeight: 'bold' }} />
+                        <YAxis stroke="#9CA3AF" axisLine={false} tickLine={false} tickFormatter={(value) => `${value}₽`} style={{ fontSize: '11px', fontWeight: 'bold' }} />
+                        <Tooltip 
+                           cursor={{ stroke: isDark ? '#374151' : '#D1D5DB', strokeWidth: 1, strokeDasharray: '5 5' }}
+                           contentStyle={{ backgroundColor: isDark ? '#111318' : '#fff', borderColor: isDark ? '#1F2937' : '#E5E7EB', borderRadius: '12px', padding: '12px' }} 
+                           labelStyle={{ color: isDark ? '#9CA3AF' : '#6B7280', fontWeight: 'bold', marginBottom: '8px' }}
+                           formatter={(value) => [`${value} ₽`, 'Заработано']} 
+                        />
+                        <Area type="monotone" dataKey="total" stroke="#3B82F6" strokeWidth={4} fillOpacity={1} fill="url(#colorRevenue)" activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }} />
+                      </AreaChart>
                     </ResponsiveContainer>
                   ) : (
                     <div className="h-full flex items-center justify-center text-gray-500 font-mono text-sm">НЕТ ДАННЫХ ДЛЯ ГРАФИКА</div>
