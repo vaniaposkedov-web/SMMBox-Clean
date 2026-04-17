@@ -84,7 +84,7 @@ function Sidebar() {
         <div className="w-8 h-8 bg-admin-accent rounded-lg flex items-center justify-center text-white">
           <Box size={20} />
         </div>
-        <span className="text-xl font-bold tracking-wide">SMM<span className="text-admin-accent">DECK</span></span>
+        <span className="text-xl font-bold tracking-wide">SADOVOD<span className="text-admin-accent">SP</span></span>
       </div>
       
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
@@ -354,7 +354,7 @@ function UserLayout() {
 
   // ⚡ МЕНЯЕМ ТОЛЬКО НАЗВАНИЕ ВКЛАДКИ В БРАУЗЕРЕ ⚡
   useEffect(() => {
-    document.title = `SMMBOX | ${getPageTitle(location.pathname)}`;
+    document.title = `SADOVODSP | ${getPageTitle(location.pathname)}`;
   }, [location.pathname]);
 
   return (
