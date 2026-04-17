@@ -863,7 +863,58 @@ const submitProGrant = async (isRevoke = false) => {
                </div>
             </div>
           )}
-          {activeTab === 'backend-db' && (<div className={`${theme.card} border rounded-2xl p-10 text-center`}><h2>Прямой доступ к БД (UI Готов)</h2></div>)}
+          {activeTab === 'backend-db' && (
+  <div className="space-y-6 animate-in fade-in">
+    <div className={`${theme.card} border rounded-2xl p-8`}>
+      <div className="flex items-center gap-4 mb-6">
+        <div className="w-12 h-12 bg-blue-600/10 text-blue-500 rounded-xl flex items-center justify-center">
+          <Database size={24} />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold">Управление базой данных</h2>
+          <p className="text-sm text-gray-500">Экспорт данных и мониторинг состояния системы</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-6 bg-gray-900/40 border border-gray-800 rounded-2xl">
+          <h3 className="font-bold mb-2">Полный бэкап</h3>
+          <p className="text-xs text-gray-500 mb-6">Выгрузить все таблицы (юзеры, посты, логи, транзакции) в формате JSON.</p>
+          
+          <button 
+            onClick={async () => {
+              const token = localStorage.getItem('adminToken');
+              try {
+                const response = await fetch('/api/admin/db/export', {
+                  headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `SMM_DECK_DB_${new Date().toLocaleDateString()}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+              } catch (e) { alert('Ошибка при скачивании'); }
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all active:scale-95"
+          >
+            <Download size={18} /> Скачать JSON бэкап
+          </button>
+        </div>
+
+        <div className="p-6 bg-gray-900/40 border border-gray-800 rounded-2xl opacity-50">
+          <h3 className="font-bold mb-2">Очистка логов</h3>
+          <p className="text-xs text-gray-500 mb-6">Удалить старые логи ИИ и системные ошибки (старше 30 дней).</p>
+          <button disabled className="px-6 py-3 bg-gray-800 text-gray-500 rounded-xl font-bold cursor-not-allowed">
+            В разработке
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
           {activeTab === 'errors' && (<div className={`${theme.card} border border-red-500/20 rounded-2xl p-6`}><h2>Логи и ошибки (UI Готов)</h2></div>)}
           {activeTab === 'partner-api' && (<div className={`${theme.card} border rounded-2xl p-6 max-w-3xl`}><h2>API для партнеров (UI Готов)</h2></div>)}
         </div>

@@ -374,3 +374,28 @@ exports.updateMaintenance = async (req, res) => {
         res.status(500).json({ error: 'Ошибка сохранения тех. работ' }); 
     }
 };
+
+exports.exportDatabase = async (req, res) => {
+    try {
+        // Собираем данные из всех основных таблиц
+        const backup = {
+            users: await prisma.user.findMany({ include: { accounts: true } }),
+            posts: await prisma.post.findMany(),
+            transactions: await prisma.transaction.findMany(),
+            plans: await prisma.subscriptionPlan.findMany(),
+            partnerships: await prisma.partnership.findMany(),
+            sharedPosts: await prisma.sharedPost.findMany(),
+            settings: await prisma.systemSettings.findMany(),
+            aiLogs: await prisma.aiLog.findMany(),
+            exportedAt: new Date().toISOString()
+        };
+
+        // Отправляем как JSON файл
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', 'attachment; filename=database_dump.json');
+        res.send(JSON.stringify(backup, null, 2));
+    } catch (error) {
+        console.error("Export Error:", error);
+        res.status(500).json({ error: 'Ошибка при экспорте базы данных' });
+    }
+};
