@@ -1182,15 +1182,31 @@ const handleSaveKomodGroups = async () => {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            {[...connectedVk, ...connectedTg].map(acc => {
+            {[
+              // Высчитываем, какие аккаунты вышли за лимит
+              ...connectedVk.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limits.vk })),
+              ...connectedTg.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limits.tg }))
+            ].map(acc => {
               const isVk = acc.provider === 'VK';
               const isPersonal = isVk && acc.providerId.startsWith('wall_');
-              // Для ВК подстраховка на случай отсутствия имени
               const accountName = acc.name || acc.title || (isVk ? 'ВК' : 'ТГ');
               const avatar = getValidAvatar(acc.avatarUrl || extractAvatar(acc), accountName);
 
               return (
-                <div key={acc.id} className="flex flex-col p-2 bg-[#0d0f13] border border-gray-800 rounded-xl hover:border-gray-700 transition-colors relative group">
+                <div 
+                  key={acc.id} 
+                  className={`flex flex-col p-2 bg-[#0d0f13] border rounded-xl relative group transition-all ${
+                    acc.isOverLimit ? 'border-red-500/30 opacity-50 grayscale' : 'border-gray-800 hover:border-gray-700'
+                  }`}
+                >
+                  
+                  {/* ПЛАШКА: Продлите подписку */}
+                  {acc.isOverLimit && (
+                    <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[8px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap z-10 shadow-lg">
+                      Продлите подписку
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2.5 min-w-0">
                     
                     <div className="relative shrink-0">
@@ -1220,9 +1236,10 @@ const handleSaveKomodGroups = async () => {
                       )}
                     </div>
 
+                    {/* Удаление доступно ВСЕГДА, z-20 чтобы кнопка была поверх блокировки */}
                     <button 
                       onClick={() => removeAccount(acc.id)} 
-                      className="text-gray-600 hover:text-rose-500 transition-all p-1"
+                      className="text-gray-600 hover:text-rose-500 transition-all p-1 relative z-20"
                     >
                       <X size={14} />
                     </button>
@@ -1233,6 +1250,8 @@ const handleSaveKomodGroups = async () => {
           </div>
         )}
       </div>
+
+{/* Дальше идут модалки, их не трогаем */}
 
 
 
