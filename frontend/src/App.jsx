@@ -31,6 +31,23 @@ import Auth from './pages/Auth';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 
+// === СЛОВАРЬ НАЗВАНИЙ ВКЛАДОК ===
+const getPageTitle = (pathname) => {
+  const titles = {
+    '/profile': 'Мой профиль',
+    '/publish': 'Создание публикации',
+    '/posts': 'История публикаций',
+    '/requests': 'Запросы и уведомления',
+    '/partners': 'Партнерская сеть',
+    '/accounts': 'Менеджер аккаунтов',
+    '/watermark': 'Конструктор логотипов',
+    '/signatures': 'Управление подписями',
+    '/settings': 'Настройки системы',
+    '/analytics': 'Аналитика',
+  };
+  return titles[pathname] || 'Панель управления';
+};
+
 // --- ВРЕМЕННЫЕ ЗАГЛУШКИ ДЛЯ НОВЫХ РАЗДЕЛОВ ---
 const DummyPage = ({ title }) => (
   <div className="p-8 text-center text-gray-400">
@@ -319,6 +336,7 @@ function UserLayout() {
   const user = useStore((state) => state.user);
   const fetchPartnerData = useStore((state) => state.fetchPartnerData);
   const fetchSharedPosts = useStore((state) => state.fetchSharedPosts);
+  const location = useLocation();
 
   useEffect(() => {
     if (user?.id) {
@@ -333,7 +351,8 @@ function UserLayout() {
       return () => clearInterval(interval);
     }
   }, [user?.id, fetchPartnerData, fetchSharedPosts]);
-  // ⚡ МЕНЯЕМ НАЗВАНИЕ ВКЛАДКИ В БРАУЗЕРЕ ⚡
+
+  // ⚡ МЕНЯЕМ ТОЛЬКО НАЗВАНИЕ ВКЛАДКИ В БРАУЗЕРЕ ⚡
   useEffect(() => {
     document.title = `SMMBOX | ${getPageTitle(location.pathname)}`;
   }, [location.pathname]);
@@ -342,13 +361,10 @@ function UserLayout() {
     <div className="min-h-screen bg-admin-bg text-admin-text flex font-sans relative">
       <Sidebar />
       <main className="flex-1 w-full pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0 overflow-y-auto">
-        <div className="max-w-5xl mx-auto w-full">
+        <div className="max-w-5xl mx-auto w-full p-4 md:p-8">
           <Outlet />
         </div>
       </main>
-      
-    
-      
       <BottomNav />
     </div>
   );
