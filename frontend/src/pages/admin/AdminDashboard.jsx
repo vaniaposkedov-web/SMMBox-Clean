@@ -3,7 +3,7 @@ import {
   Users, Crown, MessageSquare, LogOut, Sun, Search, ShieldAlert, 
   Activity, Eye, X, Loader2, Settings, TrendingUp, CreditCard,
   BarChart3, Database, Wrench, AlertTriangle, Network, Package, Plus, Save, User as UserIcon,
-  Sparkles, ChevronDown
+  Sparkles, ChevronDown, Download
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
