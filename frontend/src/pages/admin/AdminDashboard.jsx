@@ -393,38 +393,63 @@ const submitProGrant = async (isRevoke = false) => {
 
           {/* === 2. СТАТИСТИКА ЮЗЕРОВ === */}
           {activeTab === 'users-stats' && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold mb-4">Живая статистика и нагрузка</h2>
+            <div className="space-y-6 animate-in fade-in">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold">Живая статистика и нагрузка</h2>
+                <span className="bg-green-500/10 text-green-500 border border-green-500/20 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Данные в реальном времени
+                </span>
+              </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className={`${theme.card} border rounded-2xl p-6`}>
-                  <h3 className={`${theme.muted} text-xs uppercase font-bold mb-2`}>Общий онлайн сейчас</h3>
-                  <p className="text-4xl font-black text-green-500 animate-pulse">24</p>
-                  <p className="text-xs text-gray-500 mt-2">Активных соединений</p>
+                <div className={`${theme.card} border rounded-2xl p-6 relative overflow-hidden`}>
+                  <h3 className={`${theme.muted} text-xs uppercase font-bold mb-2`}>Примерный онлайн сейчас</h3>
+                  <p className="text-4xl font-black text-green-500 animate-pulse">{data?.stats?.currentOnline || 0}</p>
+                  <p className="text-xs text-gray-500 mt-2">Активных пользователей за последний час</p>
+                  <Activity className="absolute right-[-10px] bottom-[-10px] text-green-500/10" size={80}/>
                 </div>
-                <div className={`${theme.card} border rounded-2xl p-6`}>
+                
+                <div className={`${theme.card} border rounded-2xl p-6 relative overflow-hidden`}>
                   <h3 className={`${theme.muted} text-xs uppercase font-bold mb-2`}>Пиковая нагрузка (Сегодня)</h3>
-                  <p className="text-4xl font-black text-blue-500">142</p>
-                  <p className="text-xs text-gray-500 mt-2">Пользователей одновременно</p>
+                  <p className="text-4xl font-black text-blue-500">{data?.stats?.peakLoad || 0}</p>
+                  <p className="text-xs text-gray-500 mt-2">Максимум пользователей одновременно</p>
+                  <TrendingUp className="absolute right-[-10px] bottom-[-10px] text-blue-500/10" size={80}/>
                 </div>
-                <div className={`${theme.card} border rounded-2xl p-6`}>
-                  <h3 className={`${theme.muted} text-xs uppercase font-bold mb-2`}>Сгенерировано постов (Месяц)</h3>
-                  <p className="text-4xl font-black text-purple-500">{data?.stats?.totalPosts || 0}</p>
+                
+                <div className={`${theme.card} border rounded-2xl p-6 relative overflow-hidden`}>
+                  <h3 className={`${theme.muted} text-xs uppercase font-bold mb-2`}>Сгенерировано постов (Сегодня)</h3>
+                  <div className="flex items-end gap-3">
+                    <p className="text-4xl font-black text-purple-500">{data?.stats?.postsToday || 0}</p>
+                    <span className="text-sm font-bold text-gray-500 mb-1">/ {data?.stats?.totalPosts || 0} за всё время</span>
+                  </div>
                   <p className="text-xs text-gray-500 mt-2">Нейросетью и вручную</p>
+                  <MessageSquare className="absolute right-[-10px] bottom-[-10px] text-purple-500/10" size={80}/>
                 </div>
               </div>
+
               <div className={`${theme.card} border rounded-2xl p-6`}>
                  <h2 className="text-lg font-bold mb-6 flex items-center gap-2"><Activity className="text-blue-500"/> График активности (Сутки)</h2>
                  <div className="h-72 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={mockActivityData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#374151" : "#E5E7EB"} vertical={false} />
-                        <XAxis dataKey="time" stroke="#9CA3AF" axisLine={false} tickLine={false} />
-                        <YAxis stroke="#9CA3AF" axisLine={false} tickLine={false} />
-                        <Tooltip contentStyle={{ backgroundColor: isDark ? '#111318' : '#fff', borderColor: isDark ? '#1F2937' : '#E5E7EB', borderRadius: '12px' }} />
-                        <Line type="monotone" dataKey="users" stroke="#3B82F6" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} name="Пользователи" />
-                        <Line type="monotone" dataKey="posts" stroke="#8B5CF6" strokeWidth={3} dot={{ r: 4 }} name="Посты" />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    {data?.stats?.activityChart && data.stats.activityChart.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={data.stats.activityChart}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#374151" : "#E5E7EB"} vertical={false} />
+                          <XAxis dataKey="time" stroke="#9CA3AF" axisLine={false} tickLine={false} />
+                          <YAxis stroke="#9CA3AF" axisLine={false} tickLine={false} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: isDark ? '#111318' : '#fff', borderColor: isDark ? '#1F2937' : '#E5E7EB', borderRadius: '12px' }} 
+                            itemStyle={{ fontWeight: 'bold' }}
+                          />
+                          <Line type="monotone" dataKey="users" stroke="#3B82F6" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} name="Пользователи (оценка)" />
+                          <Line type="monotone" dataKey="posts" stroke="#8B5CF6" strokeWidth={3} dot={{ r: 4 }} name="Создано постов" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-gray-500 font-mono text-sm flex-col gap-2">
+                        <Activity size={32} className="opacity-20"/>
+                        СЕГОДНЯ АКТИВНОСТИ ПОКА НЕТ
+                      </div>
+                    )}
                  </div>
               </div>
             </div>
