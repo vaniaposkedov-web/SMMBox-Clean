@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { 
   Plus, Inbox, Settings as SettingsIcon, User, Users, Box, LogOut, 
   MoreHorizontal, ChevronDown, ChevronUp, Layers, FileText, BarChart2, 
