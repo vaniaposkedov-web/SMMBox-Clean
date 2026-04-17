@@ -46,6 +46,7 @@ const [proModal, setProModal] = useState({ isOpen: false, user: null });
   const [hasMoreLogs, setHasMoreLogs] = useState(false);
   const [aiLogSearch, setAiLogSearch] = useState('');
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState(null);
 
   const loadAiLogs = async (pageNum = 1, search = aiLogSearch, append = false) => {
     setIsLoadingLogs(true);
@@ -582,32 +583,48 @@ const submitProGrant = async (isRevoke = false) => {
                   </button>
                 </div>
 
-                <div className="space-y-4">
+                {/* ⚡ ОБНОВЛЕННАЯ ИСТОРИЯ ПРОМПТОВ */}
+                <div className="space-y-3">
                   <h3 className="font-bold text-sm text-gray-400 uppercase tracking-wider">История промптов</h3>
-                  <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
                     {promptHistory.map((histPrompt, idx) => (
                       <div 
                         key={idx} 
                         onClick={() => setAiPrompt(histPrompt)} 
-                        className={`p-3 rounded-xl border cursor-pointer transition-colors text-sm ${aiPrompt === histPrompt ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-sm' : 'bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-800'}`}
+                        className={`p-2.5 rounded-xl border cursor-pointer transition-colors text-sm flex items-center justify-between gap-2 ${aiPrompt === histPrompt ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-sm' : 'bg-gray-900/50 border-gray-800 text-gray-400 hover:bg-gray-800'}`}
                       >
-                        <p className="line-clamp-3 leading-snug">{histPrompt}</p>
+                        <div className="flex-1 min-w-0">
+                           <p className="text-[10px] font-bold mb-0.5 text-gray-500 uppercase">Версия {promptHistory.length - idx}</p>
+                           <p className="truncate text-xs">{histPrompt}</p>
+                        </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const element = document.createElement("a");
+                            const file = new Blob([histPrompt], {type: 'text/plain'});
+                            element.href = URL.createObjectURL(file);
+                            element.download = `ai_prompt_v${promptHistory.length - idx}.txt`;
+                            document.body.appendChild(element);
+                            element.click();
+                            document.body.removeChild(element);
+                          }}
+                          className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition-colors shrink-0"
+                          title="Скачать .txt"
+                        >
+                          <Download size={14} />
+                        </button>
                       </div>
                     ))}
                     {promptHistory.length === 0 && (
-                      <p className="text-sm text-gray-500 italic p-4 bg-gray-900/30 rounded-xl border border-gray-800 border-dashed text-center">История пуста. Сохраните промпт, чтобы он появился здесь.</p>
+                      <p className="text-sm text-gray-500 italic p-4 bg-gray-900/30 rounded-xl border border-gray-800 border-dashed text-center">История пуста.</p>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* ИСТОРИЯ ГЕНЕРАЦИЙ КЛИЕНТОВ */}
-              <div className="mt-10 pt-8 border-t border-gray-800">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                  <div>
-                    <h3 className="text-xl font-bold flex items-center gap-2"><Activity className="text-purple-500" /> Детальная история генераций</h3>
-                    <p className="text-sm text-gray-500 mt-1">Логи запросов пользователей к нейросети в реальном времени</p>
-                  </div>
+              {/* ⚡ ОБНОВЛЕННЫЕ КОМПАКТНЫЕ ЛОГИ ИИ */}
+              <div className="mt-8 pt-6 border-t border-gray-800">
+                <div className="flex flex-col sm:flex-row justify-end mb-4 gap-4">
                   <div className="flex gap-2 w-full sm:w-auto">
                     <input 
                       type="text" 
@@ -615,49 +632,61 @@ const submitProGrant = async (isRevoke = false) => {
                       onChange={(e) => setAiLogSearch(e.target.value)} 
                       onKeyDown={(e) => e.key === 'Enter' && handleLogSearch()}
                       placeholder="Поиск по ID клиента..." 
-                      className={`w-full sm:w-64 p-3 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-purple-500 outline-none text-sm transition-colors`} 
+                      className={`w-full sm:w-64 p-2.5 rounded-xl border ${theme.border} ${theme.inputBg} focus:border-purple-500 outline-none text-sm transition-colors`} 
                     />
-                    <button onClick={handleLogSearch} className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition-colors shadow-lg shadow-purple-500/20 active:scale-95">
+                    <button onClick={handleLogSearch} className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-bold transition-colors shadow-lg shadow-purple-500/20 active:scale-95">
                       Найти
                     </button>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  {aiLogs.map(log => (
-                    <div key={log.id} className="bg-gray-900/40 border border-gray-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-4 transition-all hover:bg-gray-900/60 shadow-sm">
-                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-800/50 pb-4 gap-2">
-                          <div className="flex gap-3 items-center">
-                            <span className="bg-blue-600/20 border border-blue-500/30 text-blue-400 font-mono text-xs px-3 py-1.5 rounded-lg font-bold">ID: {log.userId}</span>
-                            <span className="text-sm font-bold text-gray-300">{log.user?.email || 'Пользователь удален'}</span>
-                          </div>
-                          <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest bg-gray-800 px-3 py-1.5 rounded-lg">
-                            {new Date(log.createdAt).toLocaleString('ru-RU')}
-                          </span>
-                       </div>
-                       
-                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-1">
-                          <div className="space-y-2 flex flex-col">
-                            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><Settings size={12}/> Запрос к ИИ (С промптом)</span>
-                            <div className="bg-black/60 border border-gray-800 p-4 rounded-xl text-sm text-gray-300 h-48 overflow-y-auto custom-scrollbar whitespace-pre-wrap font-mono leading-relaxed flex-1">
-                              {log.prompt}
+                <div className="space-y-2">
+                  {aiLogs.map(log => {
+                    const isExpanded = expandedLogId === log.id;
+                    return (
+                      <div key={log.id} className="bg-gray-900/40 border border-gray-800 rounded-xl p-3 sm:p-4 flex flex-col transition-all hover:bg-gray-900/60 shadow-sm">
+                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <div className="flex flex-wrap gap-2 items-center">
+                              <span className="bg-blue-600/20 border border-blue-500/30 text-blue-400 font-mono text-[10px] sm:text-xs px-2 py-1 rounded-md font-bold">ID: {log.userId}</span>
+                              <span className="text-xs sm:text-sm font-bold text-gray-300">{log.user?.email || 'Удален'}</span>
+                              <span className="text-[10px] text-gray-500 font-medium bg-gray-800 px-2 py-1 rounded-md">
+                                {new Date(log.createdAt).toLocaleString('ru-RU')}
+                              </span>
                             </div>
-                          </div>
-                          <div className="space-y-2 flex flex-col">
-                            <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-1.5"><Sparkles size={12}/> Итоговый ответ нейросети</span>
-                            <div className="bg-purple-500/5 border border-purple-500/20 p-4 rounded-xl text-sm text-gray-200 h-48 overflow-y-auto custom-scrollbar whitespace-pre-wrap leading-relaxed flex-1 shadow-inner">
-                              {log.result}
-                            </div>
-                          </div>
-                       </div>
-                    </div>
-                  ))}
+
+                            <button
+                              onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                              className={`text-[11px] sm:text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shrink-0 ${isExpanded ? 'bg-gray-800 text-gray-400' : 'bg-purple-500/10 text-purple-400 hover:bg-purple-500/20'}`}
+                            >
+                              {isExpanded ? 'Скрыть детали' : 'Показать логи'}
+                              <ChevronDown size={14} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                         </div>
+                         
+                         {isExpanded && (
+                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 mt-3 border-t border-gray-800/50 animate-in fade-in slide-in-from-top-2">
+                              <div className="space-y-2 flex flex-col">
+                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5"><Settings size={12}/> Запрос к ИИ (С промптом)</span>
+                                <div className="bg-black/60 border border-gray-800 p-3.5 rounded-xl text-xs sm:text-sm text-gray-300 h-48 overflow-y-auto custom-scrollbar whitespace-pre-wrap font-mono flex-1 leading-relaxed">
+                                  {log.prompt}
+                                </div>
+                              </div>
+                              <div className="space-y-2 flex flex-col">
+                                <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center gap-1.5"><Sparkles size={12}/> Итоговый ответ</span>
+                                <div className="bg-purple-500/5 border border-purple-500/20 p-3.5 rounded-xl text-xs sm:text-sm text-gray-200 h-48 overflow-y-auto custom-scrollbar whitespace-pre-wrap flex-1 shadow-inner leading-relaxed">
+                                  {log.result}
+                                </div>
+                              </div>
+                           </div>
+                         )}
+                      </div>
+                    );
+                  })}
                   
                   {aiLogs.length === 0 && !isLoadingLogs && (
-                    <div className="text-center py-12 text-gray-500 bg-gray-900/20 rounded-3xl border border-gray-800 border-dashed">
-                      <Search size={40} className="mx-auto mb-4 opacity-20" />
-                      <p className="font-medium text-lg">Записей не найдено</p>
-                      <p className="text-sm mt-1">Здесь будут отображаться логи генераций постов.</p>
+                    <div className="text-center py-8 text-gray-500 bg-gray-900/20 rounded-2xl border border-gray-800 border-dashed">
+                      <Search size={32} className="mx-auto mb-3 opacity-20" />
+                      <p className="font-medium text-sm">Записей не найдено</p>
                     </div>
                   )}
 
@@ -665,10 +694,10 @@ const submitProGrant = async (isRevoke = false) => {
                     <button 
                       onClick={() => loadAiLogs(aiLogsPage + 1, aiLogSearch, true)} 
                       disabled={isLoadingLogs}
-                      className="w-full mt-4 py-4 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-all flex justify-center items-center gap-2 active:scale-95"
+                      className="w-full mt-2 py-3.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-all flex justify-center items-center gap-2 active:scale-95 text-sm"
                     >
-                      {isLoadingLogs ? <Loader2 size={18} className="animate-spin" /> : <ChevronDown size={18} />}
-                      Загрузить еще 20 записей
+                      {isLoadingLogs ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
+                      Загрузить еще
                     </button>
                   )}
                 </div>
