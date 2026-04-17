@@ -1126,10 +1126,26 @@ const handlePublish = async () => {
           <div className="relative w-full max-w-md bg-[#111318] border border-gray-800 rounded-2xl shadow-2xl flex flex-col z-10 overflow-hidden">
             
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/50">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Users size={18} className="text-purple-500" /> Выберите партнеров
-              </h3>
-              <button onClick={() => setShowPartnerModal(false)} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-xl transition-colors">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Users size={18} className="text-purple-500" /> Выберите партнеров
+                </h3>
+                {myPartners.length > 0 && (
+                  <button 
+                    onClick={() => {
+                      if (selectedPartners.length === myPartners.length) {
+                        setSelectedPartners([]);
+                      } else {
+                        setSelectedPartners(myPartners.map(p => p.id));
+                      }
+                    }}
+                    className="text-[10px] sm:text-xs font-bold px-2.5 py-1.5 rounded-lg text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors w-max"
+                  >
+                    {selectedPartners.length === myPartners.length ? 'Снять выделение' : 'Выбрать всех'}
+                  </button>
+                )}
+              </div>
+              <button onClick={() => setShowPartnerModal(false)} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-xl transition-colors self-start sm:self-center shrink-0">
                 <X size={18} />
               </button>
             </div>
