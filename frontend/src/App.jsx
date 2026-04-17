@@ -333,6 +333,10 @@ function UserLayout() {
       return () => clearInterval(interval);
     }
   }, [user?.id, fetchPartnerData, fetchSharedPosts]);
+  // ⚡ МЕНЯЕМ НАЗВАНИЕ ВКЛАДКИ В БРАУЗЕРЕ ⚡
+  useEffect(() => {
+    document.title = `SMMBOX | ${getPageTitle(location.pathname)}`;
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-admin-bg text-admin-text flex font-sans relative">
