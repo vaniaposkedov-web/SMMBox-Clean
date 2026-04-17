@@ -9,6 +9,7 @@ import { useStore } from './store';
 
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import MaintenanceGuard from './components/MaintenanceGuard';
 
 // --- СТРАНИЦЫ ДЛЯ АВТОРИЗОВАННЫХ ---
 import Publish from './pages/Publish';
@@ -366,15 +367,18 @@ function App() {
   if (!user || !token) {
     return (
       <BrowserRouter>
-        <Routes>
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password/:token" element={<ResetPassword />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/boss-login" element={<AdminLogin />} />
-          <Route path="/system-core-dashboard" element={<AdminDashboard />} />
-          <Route path="*" element={<Navigate to="/auth" replace />} />
-        </Routes>
+        {/* Обернули в MaintenanceGuard ЗДЕСЬ */}
+        <MaintenanceGuard>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/boss-login" element={<AdminLogin />} />
+            <Route path="/system-core-dashboard" element={<AdminDashboard />} />
+            <Route path="*" element={<Navigate to="/auth" replace />} />
+          </Routes>
+        </MaintenanceGuard>
       </BrowserRouter>
     );
   }
@@ -382,32 +386,35 @@ function App() {
   // === ВЕТКИ 2 И 3: АВТОРИЗОВАН ===
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/onboarding" element={<Onboarding />} />
+      {/* И обернули в MaintenanceGuard ЗДЕСЬ */}
+      <MaintenanceGuard>
+        <Routes>
+          <Route path="/onboarding" element={<Onboarding />} />
 
-        <Route element={<UserLayout />}>
-          <Route path="/" element={<Navigate to="/profile" replace />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/publish" element={<Publish />} />
-          <Route path="/requests" element={<Requests />} />
-          <Route path="/partners" element={<PartnersManager />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          
-          {/* === НАШИ НОВЫЕ РОУТЫ ИЗ ВКЛАДКИ "ЕЩЕ" === */}
-          <Route path="/accounts" element={<AccountsManager />} />
-          <Route path="/watermark" element={<WatermarkConstructor />} />
-          <Route path="/posts" element={<PostsHistory />} />
-          <Route path="/analytics" element={<DummyPage title="Аналитика" />} />
-          <Route path="/signatures" element={<SignatureConstructor />} />
-        </Route>
+          <Route element={<UserLayout />}>
+            <Route path="/" element={<Navigate to="/profile" replace />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/publish" element={<Publish />} />
+            <Route path="/requests" element={<Requests />} />
+            <Route path="/partners" element={<PartnersManager />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            
+            {/* === НАШИ НОВЫЕ РОУТЫ ИЗ ВКЛАДКИ "ЕЩЕ" === */}
+            <Route path="/accounts" element={<AccountsManager />} />
+            <Route path="/watermark" element={<WatermarkConstructor />} />
+            <Route path="/posts" element={<PostsHistory />} />
+            <Route path="/analytics" element={<DummyPage title="Аналитика" />} />
+            <Route path="/signatures" element={<SignatureConstructor />} />
+          </Route>
 
-        <Route path="/reset-password/:token" element={<ResetPassword />} />
-        <Route path="/boss-login" element={<AdminLogin />} />
-        <Route path="/system-core-dashboard" element={<AdminDashboard />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route path="/boss-login" element={<AdminLogin />} />
+          <Route path="/system-core-dashboard" element={<AdminDashboard />} />
 
-        <Route path="*" element={<Navigate to="/profile" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/profile" replace />} />
+        </Routes>
+      </MaintenanceGuard>
     </BrowserRouter>
   );
 }

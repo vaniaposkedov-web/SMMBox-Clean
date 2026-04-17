@@ -111,3 +111,18 @@ if (process.env.VERCEL) {
       console.log(`Сервер SMMBOX запущен локально на порту ${PORT}`);
   });
 }
+
+// ПУБЛИЧНАЯ ПРОВЕРКА НА ТЕХ. РАБОТЫ
+app.get('/api/system/status', async (req, res) => {
+    try {
+        const { PrismaClient } = require('@prisma/client');
+        const prisma = new PrismaClient();
+        const settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } });
+        res.json({ 
+            isMaintenance: settings?.isMaintenance || false, 
+            message: settings?.maintenanceMessage || 'Сайт находится на техническом обслуживании. Мы скоро вернемся!' 
+        });
+    } catch (e) {
+        res.json({ isMaintenance: false });
+    }
+});

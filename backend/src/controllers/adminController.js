@@ -341,3 +341,16 @@ exports.getAiLogs = async (req, res) => {
         res.status(500).json({ error: 'Ошибка загрузки логов ИИ' }); 
     }
 };
+exports.updateMaintenance = async (req, res) => {
+    try {
+        const { isMaintenance, maintenanceMessage } = req.body;
+        // Мы используем update, так как запись 'global' у тебя уже создана и работает
+        await prisma.systemSettings.update({
+            where: { id: 'global' },
+            data: { isMaintenance, maintenanceMessage }
+        });
+        res.json({ success: true });
+    } catch (error) { 
+        res.status(500).json({ error: 'Ошибка сохранения тех. работ' }); 
+    }
+};

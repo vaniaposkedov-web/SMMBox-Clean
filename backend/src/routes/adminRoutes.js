@@ -23,5 +23,6 @@ router.post('/users/:id/grant-pro', adminAuth, adminController.grantProStatus);
 router.get('/settings/ai', adminAuth, adminController.getAiSettings);
 router.post('/settings/ai', adminAuth, adminController.updateAiSettings);
 router.get('/settings/ai/logs', adminAuth, adminController.getAiLogs);
+router.post('/settings/maintenance', adminAuth, adminController.updateMaintenance);
 
 module.exports = router;
