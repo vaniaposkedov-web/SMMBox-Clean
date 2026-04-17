@@ -3,7 +3,7 @@ import {
   Users, Crown, MessageSquare, LogOut, Sun, Search, ShieldAlert, 
   Activity, Eye, X, Loader2, Settings, TrendingUp, CreditCard,
   BarChart3, Database, Wrench, AlertTriangle, Network, Package, Plus, Save, User as UserIcon,
-  Sparkles, ChevronDown, Download
+  Sparkles, ChevronDown, Download, Bell
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -806,29 +806,60 @@ const submitProGrant = async (isRevoke = false) => {
                      <p className="text-[11px] text-gray-500 mt-3 font-medium">Этот текст увидят все клиенты. Во время активных тех. работ изменить текст нельзя.</p>
                   </div>
 
-                  <button 
-                     onClick={async () => {
-                        const newState = !isMaintenance;
-                        if (newState && !window.confirm('ВНИМАНИЕ! Сайт будет полностью заблокирован для всех пользователей (кроме админов). Продолжить?')) return;
-                        
-                        const token = localStorage.getItem('adminToken');
-                        try {
-                            const res = await fetch('/api/admin/settings/maintenance', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                                body: JSON.stringify({ isMaintenance: newState, maintenanceMessage: maintenanceMsg })
-                            });
-                            if (res.ok) setIsMaintenance(newState);
-                        } catch (e) { alert('Ошибка соединения'); }
-                     }}
-                     className={`w-full py-5 rounded-2xl font-black text-lg transition-all flex justify-center items-center gap-3 shadow-xl active:scale-95 uppercase tracking-wider ${
-                        isMaintenance 
-                        ? 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700 shadow-gray-900/50' 
-                        : 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20'
-                     }`}
-                  >
-                     {isMaintenance ? <><Sun size={24}/> Запустить сайт</> : <><AlertTriangle size={24}/> Остановить сайт</>}
-                  </button>
+                  <div className="flex flex-col gap-4">
+                     {/* 1. КНОПКА ПРЕДУПРЕЖДЕНИЯ (Показываем, только если сайт еще работает) */}
+                     {!isMaintenance && (
+                         <button 
+                            onClick={async () => {
+                               const token = localStorage.getItem('adminToken');
+                               try {
+                                   const res = await fetch('/api/admin/settings/maintenance', {
+                                       method: 'POST',
+                                       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                       body: JSON.stringify({ 
+                                           isMaintenance: false, 
+                                           maintenanceMessage: maintenanceMsg, 
+                                           isWarning: true // <-- Говорим бэкенду, что это просто предупреждение
+                                       })
+                                   });
+                                   if (res.ok) alert('Предупреждение успешно отправлено всем онлайн-пользователям!');
+                               } catch (e) { alert('Ошибка соединения'); }
+                            }}
+                            className="w-full py-4 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 rounded-2xl font-bold transition-all flex justify-center items-center gap-2 active:scale-95"
+                         >
+                            <Bell size={20} /> Отправить предупреждение (за 10 минут)
+                         </button>
+                     )}
+
+                     {/* 2. ОСНОВНАЯ КНОПКА ОСТАНОВКИ / ЗАПУСКА */}
+                     <button 
+                        onClick={async () => {
+                           const newState = !isMaintenance;
+                           if (newState && !window.confirm('ВНИМАНИЕ! Сайт будет полностью заблокирован для всех пользователей (кроме админов). Продолжить?')) return;
+                           
+                           const token = localStorage.getItem('adminToken');
+                           try {
+                               const res = await fetch('/api/admin/settings/maintenance', {
+                                   method: 'POST',
+                                   headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                   body: JSON.stringify({ 
+                                       isMaintenance: newState, 
+                                       maintenanceMessage: maintenanceMsg, 
+                                       isWarning: false // <-- Говорим бэкенду, что это ЖЕСТКАЯ остановка
+                                   })
+                               });
+                               if (res.ok) setIsMaintenance(newState);
+                           } catch (e) { alert('Ошибка соединения'); }
+                        }}
+                        className={`w-full py-5 rounded-2xl font-black text-lg transition-all flex justify-center items-center gap-3 shadow-xl active:scale-95 uppercase tracking-wider ${
+                           isMaintenance 
+                           ? 'bg-gray-800 hover:bg-gray-700 text-white border border-gray-700 shadow-gray-900/50' 
+                           : 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/20'
+                        }`}
+                     >
+                        {isMaintenance ? <><Sun size={24}/> Запустить сайт</> : <><AlertTriangle size={24}/> Остановить сайт СЕЙЧАС</>}
+                     </button>
+                  </div>
                </div>
             </div>
           )}

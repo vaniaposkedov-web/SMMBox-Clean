@@ -341,14 +341,34 @@ exports.getAiLogs = async (req, res) => {
         res.status(500).json({ error: 'Ошибка загрузки логов ИИ' }); 
     }
 };
+// backend/src/controllers/adminController.js
+
 exports.updateMaintenance = async (req, res) => {
     try {
-        const { isMaintenance, maintenanceMessage } = req.body;
-        // Мы используем update, так как запись 'global' у тебя уже создана и работает
+        const { isMaintenance, maintenanceMessage, isWarning } = req.body;
+        
         await prisma.systemSettings.update({
             where: { id: 'global' },
             data: { isMaintenance, maintenanceMessage }
         });
+
+        // Получаем объект io из app
+        const io = req.app.get('io');
+
+        if (isWarning) {
+            // Отправляем только предупреждение (плашку)
+            io.emit('system_warning', { 
+                message: "Внимание! Технические работы начнутся через 10 минут.",
+                fullMessage: maintenanceMessage 
+            });
+        } else {
+            // Отправляем сигнал на немедленную блокировку
+            io.emit('maintenance_update', { 
+                isMaintenance, 
+                message: maintenanceMessage 
+            });
+        }
+
         res.json({ success: true });
     } catch (error) { 
         res.status(500).json({ error: 'Ошибка сохранения тех. работ' }); 
