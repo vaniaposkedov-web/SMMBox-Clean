@@ -11,7 +11,7 @@ read -p "Введите описание коммита (по умолчанию
 COMMIT_MSG=${COMMIT_MSG:-"Автоматическое обновление"}
 
 git add .
-git commit -m "$COMMIT_MSG"
+git commit -m "$COMMIT_MSG" || true
 git push origin main
 echo "✅ Код успешно отправлен на GitHub!"
 
