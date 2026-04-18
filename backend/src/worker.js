@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const fs = require('fs');
 const prisma = new PrismaClient();
 const sharp = require('sharp');
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ИМПОРТИРУЕМ твои функции из postController. 
 // ВАЖНО: Тебе нужно зайти в postController.js и убедиться, что ты экспортируешь эти функции (напиши exports.applyWatermark = applyWatermark и т.д.)
@@ -45,8 +46,10 @@ const worker = new Worker('posts', async (job) => {
         if (providerType === 'telegram') {
             const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
             await sendToTelegram(botToken, account.providerId, finalText, processedBuffers);
+            await sleep(2000); // 🟢 АНТИ-СПАМ: Задержка 2 секунды после отправки в ТГ
         } else if (providerType === 'vk') {
             await sendToKomodVK(account.accessToken, account.providerId, finalText, processedBuffers, null, account.userId);
+            await sleep(1000); // 🟢 АНТИ-СПАМ: Задержка 1 секунда для ВК
         }
 
         // 6. Сохраняем миниатюры для истории
@@ -79,7 +82,7 @@ const worker = new Worker('posts', async (job) => {
     }
 }, { 
     connection, 
-    concurrency: 3 // ВАЖНО: Воркер будет обрабатывать максимум 3 поста одновременно, чтобы не убить процессор
+    concurrency: 2 // ВАЖНО: Воркер будет обрабатывать максимум 3 поста одновременно, чтобы не убить процессор
 });
 
 module.exports = worker;
