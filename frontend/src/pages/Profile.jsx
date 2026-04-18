@@ -252,7 +252,7 @@ export default function Profile() {
         
         {/* ⚡ ПЛАШКА "САДОВОД SP" */}
         <div className="absolute top-0 left-0 bg-gradient-to-r from-emerald-500 to-green-500 text-white text-[10px] sm:text-xs font-black px-4 py-1.5 rounded-br-2xl shadow-lg shadow-green-500/20 uppercase tracking-widest z-20">
-          SADOVODSP
+          SADOVODPS
         </div>
 
         {/* ⚡ КНОПКА ПОДДЕРЖКИ (Справа сверху) */}
