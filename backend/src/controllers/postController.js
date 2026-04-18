@@ -107,27 +107,26 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         if (!targetGroup) throw new Error(`Стена еще не активирована!`);
     }
 
-    if (targetGroup && targetGroup.id) {
+    // 🔥 МАССИРОВАННЫЙ БРУТФОРС КОМОДА (Пробиваем баг API Алексея)
+    if (targetGroup && String(targetGroup.post_images_as_grid) !== '1') {
+        const url = `${KOMOD_BASE_URL}/group/${targetGroup.id}`;
         try {
-            const updateParams = new URLSearchParams();
-            updateParams.append('post_images_as_grid', '1');
-            updateParams.append('title', targetGroup.title || targetGroup.name || 'Группа');
-            updateParams.append('account_id', targetGroup.account_id || cleanId);
-            if (isWall || String(targetGroup.is_profile) === '1') updateParams.append('is_profile', '1');
-            if (targetGroup.url) updateParams.append('url', targetGroup.url);
-
-            // 🔥 ХАК ДЛЯ KOM-OD: Передаем параметр сетки ПРЯМО В URL, чтобы обойти баг сохранения на сервере Алексея
-            const upRes = await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}?post_images_as_grid=1`, updateParams.toString(), {
-                headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
-                validateStatus: () => true
-            });
+            logPost(userId, 'VK', 'INFO', `Пробуем обновить сетку для ${targetGroup.id} всеми способами...`);
             
-            logPost(userId, 'VK', 'INFO', `СЕТКА: Запрос отправлен для ${targetGroup.id}. Ответ шлюза: HTTP ${upRes.status}`);
+            // 1. Отправляем как чистый JSON (Число)
+            await axios.post(url, { post_images_as_grid: 1 }, { headers: { 'Access-Token': token }, validateStatus: () => true });
+            // 2. Отправляем как чистый JSON (Строка)
+            await axios.post(url, { post_images_as_grid: "1" }, { headers: { 'Access-Token': token }, validateStatus: () => true });
+            // 3. Отправляем через URL-форму (как было)
+            const p = new URLSearchParams(); p.append('post_images_as_grid', '1');
+            await axios.post(url, p.toString(), { headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' }, validateStatus: () => true });
+            // 4. Отправляем через PUT (на случай, если он перепутал методы в документации)
+            await axios.put(url, { post_images_as_grid: 1 }, { headers: { 'Access-Token': token }, validateStatus: () => true });
 
+            // Финальная проверка
             const verifyRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
             const verifyGroup = (verifyRes.data?.data?.items || []).find(g => String(g.id) === String(targetGroup.id));
             logPost(userId, 'VK', 'INFO', `ПРОВЕРКА KOM-OD: Настройка сетки (post_images_as_grid) = ${verifyGroup?.post_images_as_grid}`);
-            
         } catch (e) {
             logPost(userId, 'VK', 'ERROR', `Ошибка обновления группы: ${e.message}`);
         }
@@ -136,16 +135,14 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
     
-    // 🔥 КРИТИЧНО ДЛЯ СЕТКИ: 0 заставляет шлюз делать эмуляцию веб-версии, иначе сетка в ВК не соберется!
-    form.append('via_api', '0'); 
-    form.append('post_images_as_grid', '1');
+    // 🔥 ВОЗВРАЩАЕМ ВАЖНЫЕ НАСТРОЙКИ ДЛЯ САМОГО ПОСТА
+    form.append('via_api', '0'); // ВАЖНО: 0 - эмуляция веб-версии (именно она собирает сетку!)
+    form.append('post_images_as_grid', '1'); // Принудительно дублируем в пост
 
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
     const formattedDate = tzString.substring(0, 16).replace('T', ' ');
     form.append('publish_at', formattedDate);
-    
-    logPost(userId, 'VK', 'INFO', `Установлено время: ${formattedDate}`);
     
     const media = [];
     if (text) media.push({ type: 'text', text: text });
