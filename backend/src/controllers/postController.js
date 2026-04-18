@@ -337,8 +337,21 @@ exports.createPost = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        // БЫСТРЫЙ ШАГ 1: Берем ПУТИ к файлам, которые загрузил multer (они уже на диске)
-        const filePaths = req.files ? req.files.map(f => f.path) : [];
+        // БЫСТРЫЙ ШАГ 1: Надежно сохраняем файлы в постоянный volume
+        const safeFilePaths = [];
+        if (req.files && req.files.length > 0) {
+            // Создаем папку для очереди, если её нет
+            const tempDir = path.join(__dirname, '../../uploads/temp_queue');
+            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+            for (const file of req.files) {
+                const ext = path.extname(file.originalname) || '.jpg';
+                const safePath = path.join(tempDir, `task_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`);
+                // Физически копируем файл в надежное место
+                await fs.promises.copyFile(file.path, safePath);
+                safeFilePaths.push(safePath);
+            }
+        }
 
         // БЫСТРЫЙ ШАГ 2: Создаем записи в базе данных
         for (const accData of accounts) {
@@ -364,7 +377,7 @@ exports.createPost = async (req, res) => {
                     postId: post.id,
                     accountId: account.id,
                     text: text || '',
-                    filePaths: filePaths,
+                    filePaths: safeFilePaths,
                     watermarkConfig: accData.applyWatermark ? (accData.watermarkConfig || account.watermark) : null,
                     signatureText: accData.applySignature ? (accData.signatureText !== undefined ? accData.signatureText : account.signature) : null
                 }, {
@@ -458,6 +471,26 @@ exports.initCron = () => {
         } catch (e) {
             console.error('[CRON FATAL ERROR]', e);
         }
+    });
+
+    // === АВТО-ОЧИСТКА ВРЕМЕННЫХ ФАЙЛОВ ===
+    // Каждую ночь в 3:00 удаляем отработанные фото из очереди старше 1 дня
+    cron.schedule('0 3 * * *', async () => {
+        try {
+            const tempDir = path.join(__dirname, '../../uploads/temp_queue');
+            if (fs.existsSync(tempDir)) {
+                const files = await fs.promises.readdir(tempDir);
+                const now = Date.now();
+                for (const file of files) {
+                    const filePath = path.join(tempDir, file);
+                    const stats = await fs.promises.stat(filePath);
+                    // Если файлу больше 24 часов - удаляем
+                    if (now - stats.mtimeMs > 24 * 60 * 60 * 1000) { 
+                        await fs.promises.unlink(filePath).catch(()=>({}));
+                    }
+                }
+            }
+        } catch (e) { console.error('[CRON] Ошибка очистки темп-файлов', e); }
     });
 };
 
