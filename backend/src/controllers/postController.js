@@ -76,7 +76,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         publishAt: publishAtDate 
     });
 
-    // 1. Получаем список групп из шлюза
     const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
     const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
 
@@ -87,9 +86,8 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         (g.url && String(g.url).includes(cleanId))
     );
 
-    // 2. АВТО-РЕГИСТРАЦИЯ
     if (!targetGroup) {
-        logPost(userId, 'VK', 'INFO', `Цель ${providerId} не найдена в шлюзе. Пробуем авто-регистрацию...`);
+        logPost(userId, 'VK', 'INFO', `Цель ${providerId} не найдена. Пробуем авто-регистрацию...`);
         const addForm = new FormData();
         if (isWall) {
             addForm.append('account_id', cleanId);
@@ -99,8 +97,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             addForm.append('title', `Авто-добавленная группа ${cleanId}`);
             addForm.append('account_id', cleanId);
         }
-        
-        // 🟢 ИСПРАВЛЕНИЕ: Включаем сетку для новых групп
         addForm.append('post_images_as_grid', '1');
 
         try {
@@ -113,51 +109,49 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                 const newGrpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
                 const newGroups = newGrpRes.data?.data?.items || newGrpRes.data?.data || [];
                 targetGroup = newGroups.find(g => String(g.uid) === cleanId || String(g.account_id) === cleanId);
-                logPost(userId, 'VK', 'SUCCESS', `Авто-регистрация ${providerId} прошла успешно`);
             }
-        } catch (addError) {
-            logPost(userId, 'VK', 'ERROR', `Ошибка авто-регистрации ${providerId}`, addError.message);
-        }
+        } catch (addError) {}
         
         if (!targetGroup) throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и подключите стену.`);
     } else {
-        // 🟢 ИСПРАВЛЕНИЕ: Обновляем УЖЕ СУЩЕСТВУЮЩИЕ группы, чтобы включить им сетку
-        // 🟢 ИСПРАВЛЕНИЕ: Обновляем УЖЕ СУЩЕСТВУЮЩИЕ группы (используем метод PUT)
-        if (String(targetGroup.post_images_as_grid) !== '1') {
-            try {
-                const updateData = new URLSearchParams();
-                updateData.append('post_images_as_grid', '1');
-                
-                await axios({
-                    method: 'POST',
-                    url: `${KOMOD_BASE_URL}/group/${targetGroup.id}`,
-                    data: updateData.toString(),
-                    headers: {
-                        'Access-Token': token,
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    validateStatus: () => true
-                });
-                
-                logPost(userId, 'VK', 'INFO', `Группе ${targetGroup.id} отправлен запрос POST на включение сетки фото`);
-            } catch (e) {
-                console.error('[VK GRID ERROR] Не удалось обновить группу:', e.message);
+        // 🔥 ФИКС: ЖЕЛЕЗОБЕТОННОЕ ОБНОВЛЕНИЕ ГРУППЫ С ПОЛНЫМ НАБОРОМ ПОЛЕЙ
+        try {
+            const updateData = new URLSearchParams();
+            updateData.append('post_images_as_grid', '1');
+            updateData.append('title', targetGroup.title || targetGroup.name || 'Без названия');
+            if (targetGroup.url) updateData.append('url', targetGroup.url);
+            updateData.append('account_id', targetGroup.account_id || cleanId);
+            if (isWall || String(targetGroup.is_profile) === '1') {
+                updateData.append('is_profile', '1');
             }
+            
+            const updateRes = await axios({
+                method: 'POST',
+                url: `${KOMOD_BASE_URL}/group/${targetGroup.id}`,
+                data: updateData.toString(),
+                headers: {
+                    'Access-Token': token,
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                validateStatus: () => true
+            });
+            
+            if (updateRes.data && updateRes.data.success !== false) {
+                logPost(userId, 'VK', 'INFO', `Группе ${targetGroup.id} включена сетка фото (HTTP 200)`);
+            } else {
+                logPost(userId, 'VK', 'ERROR', `Komod отклонил обновление группы ${targetGroup.id}`, updateRes.data);
+            }
+        } catch (e) {
+            console.error('[VK GRID ERROR]', e.message);
         }
     }
 
     targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
-    // ИСПРАВЛЕНИЕ ДЛЯ СЕТКИ: Отключаем прямое API. 
-    // Заставляем шлюз эмулировать публикацию через обычный браузер (web), 
-    // чтобы обойти принудительную карусель ВКонтакте.
-    form.append('via_api', '0');
+    
+    // 🔥 ФИКС СЕТКИ: Мы полностью удалили старый костыль `via_api = 0` и `post_images_as_grid = 1` из тела поста!
+    // Теперь шлюз Kom-od будет использовать официальный алгоритм разработчика.
 
-    // === НОВЫЙ ФИКС ОТ РАЗРАБОТЧИКА KOMOD ===
-    // Принудительно передаем значение 1, чтобы все посты выходили сеткой
-    form.append('post_images_as_grid', '1');
-
-    // === ФИКС КОТОРЫЙ МЫ ДЕЛАЛИ (ОСТАЛСЯ БЕЗ ИЗМЕНЕНИЙ) ===
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
     const formattedDate = tzString.substring(0, 16).replace('T', ' ');
@@ -179,7 +173,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                 knownLength: buf.length 
             });
         });
-        // Собираем все фото в единый блок, чтобы Web-бот сделал из них сетку
         media.push({ type: 'photo', images: images });
     }
 
@@ -235,7 +228,6 @@ async function applyWatermark(imageBuffer, wmConfig) {
         const marginValue = wmConfig.margin !== undefined ? wmConfig.margin : 5;
         const opacity = (wmConfig.opacity !== undefined ? wmConfig.opacity : 80) / 100;
         
-        // 🟢 ИСПРАВЛЕНИЕ: Все расчеты ведем СТРОГО от ШИРИНЫ кадра
         const padX = Math.floor(width * (marginValue / 100));
         const padY = Math.floor(width * (marginValue / 100));
 
@@ -248,14 +240,12 @@ async function applyWatermark(imageBuffer, wmConfig) {
             const bgColor = wmConfig.bgColor || '#000000';
             const hasBg = wmConfig.hasBackground !== false;
             
-            // Базовый размер шрифта: 100% на ползунке = 20% от ШИРИНЫ картинки
             const fontSize = Math.max(12, Math.floor(width * (sizeValue / 100) * 0.20)); 
             
             const bgPaddingVal = wmConfig.bgPadding !== undefined ? wmConfig.bgPadding : 10;
             const innerPadV = Math.floor(fontSize * (bgPaddingVal / 25));
             const innerPadH = Math.floor(fontSize * (bgPaddingVal / 12));
             
-            // Расчет габаритов SVG
             const textWidth = Math.floor(fontSize * 0.60 * text.length);
             const svgWidth = textWidth + (innerPadH * 2);
             const svgHeight = fontSize + (innerPadV * 2);
@@ -281,7 +271,6 @@ async function applyWatermark(imageBuffer, wmConfig) {
         } else if (wmConfig.type === 'image' && wmConfig.image) {
             const base64Data = wmConfig.image.includes(',') ? wmConfig.image.split(',')[1] : wmConfig.image;
             
-            // Для логотипа: 100% на ползунке = 35% от ШИРИНЫ фото
             const targetWidth = Math.max(20, Math.floor(width * (sizeValue / 100) * 0.35));
             
             overlayBuffer = await sharp(Buffer.from(base64Data, 'base64'))
@@ -300,6 +289,14 @@ async function applyWatermark(imageBuffer, wmConfig) {
         }
 
         overlayMeta = await sharp(overlayBuffer).metadata();
+
+        // 🔥 ГЛАВНЫЙ ФИКС ВОДЯНЫХ ЗНАКОВ: Сжимаем знак, если он оказался больше самой фотографии
+        if (overlayMeta.width > width || overlayMeta.height > height) {
+            overlayBuffer = await sharp(overlayBuffer)
+                .resize({ width: width, height: height, fit: 'inside' })
+                .toBuffer();
+            overlayMeta = await sharp(overlayBuffer).metadata();
+        }
 
         // Расчет координат наложения
         let left = padX;
