@@ -114,33 +114,21 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         
         if (!targetGroup) throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и подключите стену.`);
     } else {
-        // 🔥 ФИКС: ЖЕЛЕЗОБЕТОННОЕ ОБНОВЛЕНИЕ ГРУППЫ С ПОЛНЫМ НАБОРОМ ПОЛЕЙ
+        // 🔥 ФИКС 1: Используем FormData для обновления группы (надежнее для PHP бэкенда Kom-od)
         try {
-            const updateData = new URLSearchParams();
-            updateData.append('post_images_as_grid', '1');
-            updateData.append('title', targetGroup.title || targetGroup.name || 'Без названия');
-            if (targetGroup.url) updateData.append('url', targetGroup.url);
-            updateData.append('account_id', targetGroup.account_id || cleanId);
+            const updateForm = new FormData();
+            updateForm.append('post_images_as_grid', '1');
+            updateForm.append('title', targetGroup.title || targetGroup.name || 'Без названия');
+            if (targetGroup.url) updateForm.append('url', targetGroup.url);
+            updateForm.append('account_id', targetGroup.account_id || cleanId);
             if (isWall || String(targetGroup.is_profile) === '1') {
-                updateData.append('is_profile', '1');
+                updateForm.append('is_profile', '1');
             }
             
-            const updateRes = await axios({
-                method: 'POST',
-                url: `${KOMOD_BASE_URL}/group/${targetGroup.id}`,
-                data: updateData.toString(),
-                headers: {
-                    'Access-Token': token,
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
+            await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateForm, {
+                headers: { ...updateForm.getHeaders(), 'Access-Token': token },
                 validateStatus: () => true
             });
-            
-            if (updateRes.data && updateRes.data.success !== false) {
-                logPost(userId, 'VK', 'INFO', `Группе ${targetGroup.id} включена сетка фото (HTTP 200)`);
-            } else {
-                logPost(userId, 'VK', 'ERROR', `Komod отклонил обновление группы ${targetGroup.id}`, updateRes.data);
-            }
         } catch (e) {
             console.error('[VK GRID ERROR]', e.message);
         }
@@ -149,8 +137,11 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
     
-    // 🔥 ФИКС СЕТКИ: Мы полностью удалили старый костыль `via_api = 0` и `post_images_as_grid = 1` из тела поста!
-    // Теперь шлюз Kom-od будет использовать официальный алгоритм разработчика.
+    // 🔥 ФИКС 2: ВОЗВРАЩАЕМ via_api=0! Без этого ВК не даст сделать сетку.
+    form.append('via_api', '0');
+    
+    // 🔥 ФИКС 3: Дублируем параметр сетки прямо в пост (для железной гарантии)
+    form.append('post_images_as_grid', '1');
 
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
