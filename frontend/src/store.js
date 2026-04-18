@@ -577,7 +577,8 @@ export const useStore = create(
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ url, title, profileId, avatarUrl })
+            // ДОБАВЛЕН ПАРАМЕТР post_images_as_grid: 1
+            body: JSON.stringify({ url, title, profileId, avatarUrl, post_images_as_grid: 1 }) 
           });
           return await res.json();
         } catch (error) {
