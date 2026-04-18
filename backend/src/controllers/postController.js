@@ -70,11 +70,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     const cleanId = providerId.replace('wall_', '').replace('group_', '');
     const isWall = providerId.startsWith('wall_');
 
-    logPost(userId, 'VK', 'START', `Начинаем отправку. Провайдер: ${providerId}`, { 
-        hasText: !!text, 
-        imagesCount: imageBuffers.length,
-        publishAt: publishAtDate 
-    });
+    logPost(userId, 'VK', 'START', `Начинаем отправку. Провайдер: ${providerId}`);
 
     const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
     const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
@@ -87,61 +83,56 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     );
 
     if (!targetGroup) {
-        logPost(userId, 'VK', 'INFO', `Цель ${providerId} не найдена. Пробуем авто-регистрацию...`);
-        const addForm = new FormData();
+        logPost(userId, 'VK', 'INFO', `Группа не найдена. Авто-регистрация...`);
+        const addParams = new URLSearchParams();
         if (isWall) {
-            addForm.append('account_id', cleanId);
-            addForm.append('is_profile', '1');
+            addParams.append('account_id', cleanId);
+            addParams.append('is_profile', '1');
         } else {
-            addForm.append('url', `https://vk.com/club${cleanId}`);
-            addForm.append('title', `Авто-добавленная группа ${cleanId}`);
-            addForm.append('account_id', cleanId);
+            addParams.append('url', `https://vk.com/club${cleanId}`);
+            addParams.append('title', `Группа ${cleanId}`);
+            addParams.append('account_id', cleanId);
         }
-        addForm.append('post_images_as_grid', '1');
+        addParams.append('post_images_as_grid', '1');
 
-        try {
-            const addRes = await axios.post(`${KOMOD_BASE_URL}/group`, addForm, {
-                headers: { ...addForm.getHeaders(), 'Access-Token': token },
-                validateStatus: () => true
-            });
+        await axios.post(`${KOMOD_BASE_URL}/group`, addParams.toString(), {
+            headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
+            validateStatus: () => true
+        });
 
-            if (addRes.data && addRes.data.success !== false) {
-                const newGrpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
-                const newGroups = newGrpRes.data?.data?.items || newGrpRes.data?.data || [];
-                targetGroup = newGroups.find(g => String(g.uid) === cleanId || String(g.account_id) === cleanId);
-            }
-        } catch (addError) {}
+        const newGrpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
+        const newGroups = newGrpRes.data?.data?.items || newGrpRes.data?.data || [];
+        targetGroup = newGroups.find(g => String(g.uid) === cleanId || String(g.account_id) === cleanId);
         
-        if (!targetGroup) throw new Error(`Стена еще не активирована! Зайдите на kom-od.ru и подключите стену.`);
-    } else {
-        // 🔥 ФИКС 1: Используем FormData для обновления группы (надежнее для PHP бэкенда Kom-od)
-        try {
-            const updateForm = new FormData();
-            updateForm.append('post_images_as_grid', '1');
-            updateForm.append('title', targetGroup.title || targetGroup.name || 'Без названия');
-            if (targetGroup.url) updateForm.append('url', targetGroup.url);
-            updateForm.append('account_id', targetGroup.account_id || cleanId);
-            if (isWall || String(targetGroup.is_profile) === '1') {
-                updateForm.append('is_profile', '1');
-            }
-            
-            await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateForm, {
-                headers: { ...updateForm.getHeaders(), 'Access-Token': token },
-                validateStatus: () => true
-            });
-        } catch (e) {
-            console.error('[VK GRID ERROR]', e.message);
-        }
+        if (!targetGroup) throw new Error(`Стена еще не активирована!`);
+    }
+
+    // 🔥 ЖЕЛЕЗОБЕТОННОЕ ОБНОВЛЕНИЕ СЕТКИ ПЕРЕД КАЖДЫМ ПОСТОМ
+    try {
+        const updateParams = new URLSearchParams();
+        updateParams.append('post_images_as_grid', '1');
+        updateParams.append('title', targetGroup.title || targetGroup.name || 'Группа');
+        updateParams.append('account_id', targetGroup.account_id || cleanId);
+        if (isWall || String(targetGroup.is_profile) === '1') updateParams.append('is_profile', '1');
+        if (targetGroup.url) updateParams.append('url', targetGroup.url);
+
+        const upRes = await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateParams.toString(), {
+            headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
+            validateStatus: () => true
+        });
+
+        // Теперь мы 100% увидим ответ от шлюза в логах!
+        logPost(userId, 'VK', 'INFO', `СЕТКА: Запрос отправлен для ${targetGroup.id}. Ответ шлюза: HTTP ${upRes.status}`, upRes.data);
+    } catch (e) {
+        logPost(userId, 'VK', 'ERROR', `Ошибка обновления сетки: ${e.message}`);
     }
 
     targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
     
-    // 🔥 ФИКС 2: ВОЗВРАЩАЕМ via_api=0! Без этого ВК не даст сделать сетку.
-    form.append('via_api', '0');
-    
-    // 🔥 ФИКС 3: Дублируем параметр сетки прямо в пост (для железной гарантии)
-    form.append('post_images_as_grid', '1');
+    // 🔥 ДВА КРИТИЧНЫХ ПАРАМЕТРА ДЛЯ СЕТКИ
+    form.append('via_api', '0'); // Заставляем шлюз использовать браузер, а не чистое API ВК
+    form.append('post_images_as_grid', '1'); // Дублируем параметр прямо в пост на всякий случай
 
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
