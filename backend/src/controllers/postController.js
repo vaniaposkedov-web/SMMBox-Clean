@@ -139,7 +139,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                     validateStatus: () => true
                 });
                 
-                logPost(userId, 'VK', 'INFO', `Группе ${targetGroup.id} отправлен запрос на включение сетки фото`);
+                logPost(userId, 'VK', 'INFO', `Группе ${targetGroup.id} отправлен запрос POST на включение сетки фото`);
             } catch (e) {
                 console.error('[VK GRID ERROR] Не удалось обновить группу:', e.message);
             }
