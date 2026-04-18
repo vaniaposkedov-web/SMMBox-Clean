@@ -7,6 +7,6 @@ const connection = {
 };
 
 // Создаем саму очередь с названием 'posts'
-const postQueue = new Queue('posts', { connection });
+const postQueue = new Queue('posts_v2', { connection });
 
 module.exports = { postQueue, connection };
