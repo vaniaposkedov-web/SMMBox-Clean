@@ -253,6 +253,7 @@ exports.addVkKomodGroup = async (req, res) => {
     params.append('title', title || 'Без названия');
     params.append('account_id', profile.providerAccountId);
     params.append('random_account', '0'); 
+    params.append('post_images_as_grid', '1');
 
     try {
       await axios.post(`${KOMOD_BASE_URL}/group`, params, {
@@ -1185,6 +1186,7 @@ exports.addVkKomodProfile = async (req, res) => {
     const params = new URLSearchParams();
     params.append('account_id', profile.providerAccountId);
     params.append('is_profile', '1');
+    params.append('post_images_as_grid', '1');
 
     try {
       await axios.post(`${KOMOD_BASE_URL}/group`, params, {
