@@ -365,7 +365,7 @@ exports.createPost = async (req, res) => {
                 data: {
                     accountId: account.id,
                     text: text || '',
-                    mediaUrls: JSON.stringify(filePaths), // Временно сохраняем пути к сырым файлам
+                    mediaUrls: JSON.stringify(safeFilePaths), // Временно сохраняем пути к сырым файлам
                     publishAt: parsedPublishAt,
                     status: isScheduled ? 'SCHEDULED' : 'PROCESSING' // PROCESSING означает "В обработке"
                 }
