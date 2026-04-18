@@ -1495,11 +1495,11 @@ const handleSaveKomodGroups = async () => {
                 let isAlreadyConnected = false;
 
                 if (isPersonal) {
-                  // Для личной страницы ищем префикс wall_ или точное совпадение имени
-                  isAlreadyConnected = connectedVk.some(acc =>
-                    acc.providerId.startsWith('wall_') || acc.name === groupName
-                  );
-                } else {
+  // ИСПРАВЛЕНИЕ: Ищем стену (wall_), которая привязана СТРОГО к текущему авторизованному профилю
+                    isAlreadyConnected = connectedVk.some(acc =>
+                      acc.profileId === komodModal.profileId && acc.providerId.startsWith('wall_')
+                    );
+                  } else {
                   // 1. Достаем только голые цифры из ID модалки
                   const cleanVkId = String(group.uid || group.group_id || group.id || '').replace(/\D/g, '');
                   
