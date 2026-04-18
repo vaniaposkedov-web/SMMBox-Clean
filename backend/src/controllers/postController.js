@@ -61,7 +61,7 @@ async function saveImageToFile(buffer, prefix = 'img') {
     return `/uploads/posts/${fileName}`;
 }
 
-// === ЛОГИКА ОТПРАВКИ KOM-OD (ВК) С АВТО-РЕГИСТРАЦИЕЙ ПРОФИЛЕЙ ===
+// === ЛОГИКА ОТПРАВКИ KOM-OD (ВК) ===
 async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null, userId = 'CRON') {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
@@ -107,7 +107,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         if (!targetGroup) throw new Error(`Стена еще не активирована!`);
     }
 
-    // 🔥 ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ СЕТКИ С ПРОВЕРКОЙ РЕЗУЛЬТАТА
     if (targetGroup && targetGroup.id) {
         try {
             const updateParams = new URLSearchParams();
@@ -117,14 +116,14 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             if (isWall || String(targetGroup.is_profile) === '1') updateParams.append('is_profile', '1');
             if (targetGroup.url) updateParams.append('url', targetGroup.url);
 
-            const upRes = await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateParams.toString(), {
+            // 🔥 ХАК ДЛЯ KOM-OD: Передаем параметр сетки ПРЯМО В URL, чтобы обойти баг сохранения на сервере Алексея
+            const upRes = await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}?post_images_as_grid=1`, updateParams.toString(), {
                 headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
                 validateStatus: () => true
             });
             
             logPost(userId, 'VK', 'INFO', `СЕТКА: Запрос отправлен для ${targetGroup.id}. Ответ шлюза: HTTP ${upRes.status}`);
 
-            // Проверяем, применилась ли сетка
             const verifyRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
             const verifyGroup = (verifyRes.data?.data?.items || []).find(g => String(g.id) === String(targetGroup.id));
             logPost(userId, 'VK', 'INFO', `ПРОВЕРКА KOM-OD: Настройка сетки (post_images_as_grid) = ${verifyGroup?.post_images_as_grid}`);
@@ -137,9 +136,9 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
     
-    // 🔥 ФИКС: Обязательные параметры для ВК-сетки
-    form.append('via_api', '1'); 
-    form.append('post_images_as_grid', '1'); 
+    // 🔥 КРИТИЧНО ДЛЯ СЕТКИ: 0 заставляет шлюз делать эмуляцию веб-версии, иначе сетка в ВК не соберется!
+    form.append('via_api', '0'); 
+    form.append('post_images_as_grid', '1');
 
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
