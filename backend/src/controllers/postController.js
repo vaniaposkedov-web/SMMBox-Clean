@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const { logPost } = require('../utils/log_post');
 const fs = require('fs');
 const path = require('path');
+const { postQueue } = require('../queue'); // Добавь эту строчку
 
 // === ЛОГИКА ОТПРАВКИ В TELEGRAM ===В общем
 async function sendToTelegram(token, chatId, text, imageBuffers) {
@@ -312,31 +313,23 @@ async function applyWatermark(imageBuffer, wmConfig) {
     }
 }
 
-// Полный исправленный метод создания поста с поддержкой FormData и файлов на диске
-// В методе exports.createPost
 exports.createPost = async (req, res) => {
     try {
-        // Достаем данные с учетом того, что прислали FormData
         const { text, accountsData, publishAt } = req.body;
         
-        // Парсим аккаунты из строки
         let accounts = [];
         if (accountsData) {
             accounts = typeof accountsData === 'string' ? JSON.parse(accountsData) : accountsData;
-        } else if (req.body.accounts) {
-            accounts = typeof req.body.accounts === 'string' ? JSON.parse(req.body.accounts) : req.body.accounts;
         }
         
         let parsedPublishAt = null;
         let isScheduled = false;
 
-        // Более надежная проверка даты
         if (publishAt && publishAt !== 'null' && String(publishAt).trim() !== "") {
             const tempDate = new Date(publishAt);
             if (!isNaN(tempDate.getTime())) {
                 parsedPublishAt = tempDate;
                 isScheduled = true;
-                console.log(`[DEBUG] Пост определен как ОТЛОЖЕННЫЙ на: ${parsedPublishAt}`);
             }
         }
         
@@ -344,42 +337,10 @@ exports.createPost = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        // Читаем файлы, которые Multer положил во временную папку
-        const rawImageBuffers = [];
-        
-        if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
-                try {
-                    const buffer = await fs.promises.readFile(file.path);
-                    rawImageBuffers.push(buffer);
-                    // Удаляем временный файл с диска после загрузки в память
-                    await fs.promises.unlink(file.path).catch(e => console.error('Не удалось удалить temp файл:', e));
-                } catch (err) {
-                    console.error('Ошибка чтения файла:', err);
-                }
-            }
-        } else if (req.body.mediaUrls) {
-            // ФОЛЛБЕК: Если файлы все еще шлют в Base64 (например, откуда-то из другого места)
-            const urls = typeof req.body.mediaUrls === 'string' ? JSON.parse(req.body.mediaUrls) : req.body.mediaUrls;
-            urls.forEach(img => {
-                if(img && img.includes(',')) {
-                    const base64Data = img.split(',')[1];
-                    rawImageBuffers.push(Buffer.from(base64Data, 'base64'));
-                }
-            });
-        }
+        // БЫСТРЫЙ ШАГ 1: Берем ПУТИ к файлам, которые загрузил multer (они уже на диске)
+        const filePaths = req.files ? req.files.map(f => f.path) : [];
 
-        // Оптимизация (sharp) - переводим в формат JPEG для API VK и Telegram
-        const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
-            return await sharp(buf)
-                .resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true })
-                .jpeg({ quality: 90 }) // Оставляем JPEG, так как VK/TG его любят больше
-                .toBuffer();
-        }));
-
-        const accountJobs = [];
-
-        // Формирование очереди заданий (подписи, водяные знаки)
+        // БЫСТРЫЙ ШАГ 2: Создаем записи в базе данных
         for (const accData of accounts) {
             const account = await prisma.account.findUnique({ 
                 where: { id: accData.accountId },
@@ -387,114 +348,41 @@ exports.createPost = async (req, res) => {
             });
             if (!account) continue;
 
-            let finalText = text || '';
-            const sigText = accData.signatureText !== undefined ? accData.signatureText : (accData.signature !== undefined ? accData.signature : account.signature);
-            const applySig = accData.applySignature !== undefined ? accData.applySignature : !!sigText;
+            const post = await prisma.post.create({
+                data: {
+                    accountId: account.id,
+                    text: text || '',
+                    mediaUrls: JSON.stringify(filePaths), // Временно сохраняем пути к сырым файлам
+                    publishAt: parsedPublishAt,
+                    status: isScheduled ? 'SCHEDULED' : 'PROCESSING' // PROCESSING означает "В обработке"
+                }
+            });
 
-            if (applySig && sigText) {
-                finalText += `\n\n${sigText}`;
-            }
-
-            let processedBuffers = [...optimizedBaseBuffers];
-            
-            let wmConfig = accData.watermarkConfig || account.watermark;
-            let applyWm = accData.applyWatermark === true || (accData.applyWatermark === undefined && !!wmConfig);
-
-            if (applyWm && wmConfig && processedBuffers.length > 0) {
-                processedBuffers = await Promise.all(
-                    processedBuffers.map(buf => applyWatermark(buf, wmConfig))
-                );
-            }
-
-            accountJobs.push({ account, finalText, processedBuffers });
-        }
-
-        // === ВЕТКА А: ОТЛОЖЕННЫЙ ПОСТ ===
-        if (isScheduled) {
-            for (const job of accountJobs) {
-                // СОХРАНЯЕМ ФАЙЛЫ (В высоком качестве для будущей публикации!)
-                const finalImagesUrls = await Promise.all(job.processedBuffers.map(async (buf) => {
-                    return await saveImageToFile(buf, 'scheduled');
-                }));
-
-                await prisma.post.create({
-                    data: {
-                        accountId: job.account.id,
-                        text: job.finalText,
-                        mediaUrls: JSON.stringify(finalImagesUrls), // Сохраняем пути, а не Base64
-                        publishAt: parsedPublishAt,
-                        status: 'SCHEDULED'
-                    }
+            // БЫСТРЫЙ ШАГ 3: Если пост надо выложить СЕЙЧАС — кидаем чек на кухню (в очередь)
+            if (!isScheduled) {
+                await postQueue.add('publish-job', {
+                    postId: post.id,
+                    accountId: account.id,
+                    text: text || '',
+                    filePaths: filePaths,
+                    watermarkConfig: accData.applyWatermark ? (accData.watermarkConfig || account.watermark) : null,
+                    signatureText: accData.applySignature ? (accData.signatureText !== undefined ? accData.signatureText : account.signature) : null
+                }, {
+                    attempts: 3, // Если сеть упадет, воркер попробует еще 3 раза
+                    backoff: { type: 'exponential', delay: 2000 }
                 });
             }
-            return res.status(200).json({ success: true, message: 'Запланировано' });
         }
-        
-        // === ВЕТКА Б: МОМЕНТАЛЬНАЯ ПУБЛИКАЦИЯ ===
-        else {
-            let hasErrors = false;
-            let lastError = '';
 
-            for (const job of accountJobs) {
-                try {
-                    const providerType = job.account.provider.toLowerCase(); 
-                    
-                    if (providerType === 'telegram') {
-                        const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
-                        await sendToTelegram(botToken, job.account.providerId, job.finalText, job.processedBuffers);
-                    } else if (providerType === 'vk') {
-                        await sendToKomodVK(job.account.accessToken, job.account.providerId, job.finalText, job.processedBuffers, null, job.account.userId);
-                    }
-
-                    // Сохраняем файлы ДЛЯ ИСТОРИИ (облегченные версии)
-                    const thumbnailsUrls = await Promise.all(job.processedBuffers.map(async (buf) => {
-                        // 🟢 ИСПРАВЛЕНИЕ: Сжимаем до WebP 400px (вес будет в 10 раз меньше, чем JPEG 800px)
-                        const thumbBuf = await sharp(buf)
-                            .resize({ width: 400, fit: 'inside', withoutEnlargement: true })
-                            .webp({ quality: 65 })
-                            .toBuffer();
-                        return await saveImageToFile(thumbBuf, 'history'); // или 'history_cron' для таймера
-                    }));
-
-                    await prisma.post.create({
-                        data: {
-                            accountId: job.account.id,
-                            text: job.finalText,
-                            mediaUrls: JSON.stringify(thumbnailsUrls), // Сохраняем пути
-                            publishAt: null, 
-                            status: 'PUBLISHED' 
-                        }
-                    });
-                } catch (err) {
-                    console.error(`Ошибка при отправке в ${job.account.name}:`, err.message);
-                    hasErrors = true;
-                    lastError = err.message;
-                    
-                    await prisma.post.create({
-                        data: {
-                            accountId: job.account.id,
-                            text: job.finalText,
-                            mediaUrls: "[]",
-                            publishAt: null,
-                            status: 'FAILED' 
-                        }
-                    });
-                }
-            }
-
-            if (hasErrors) {
-                return res.status(500).json({ success: false, error: `Не удалось отправить пост во все аккаунты. Последняя ошибка: ${lastError}` });
-            }
-
-            return res.status(200).json({ success: true, message: 'Успешно опубликовано' });
-        }
+        // БЫСТРЫЙ ШАГ 4: СРАЗУ отвечаем фронтенду, что всё супер!
+        // Пользователь сразу увидит галочку, пока сервер в фоне будет делать работу.
+        return res.status(200).json({ success: true, message: 'Посты успешно отправлены в обработку' });
 
     } catch (error) {
         console.error('[FATAL ERROR] Сбой createPost:', error);
         if (!res.headersSent) res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера' });
     }
 };
-
 
 /// === ТАЙМЕР (CRON): АВТОМАТИЧЕСКАЯ ОТПРАВКА ОТЛОЖЕННЫХ ПОСТОВ ===
 exports.initCron = () => {
@@ -543,15 +431,14 @@ exports.initCron = () => {
                         await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, null, account.userId);
                     }
 
-                    // Сжимаем фото для истории и сохраняем их как ФАЙЛЫ, а не Base64
-                    // Сохраняем файлы ДЛЯ ИСТОРИИ (облегченные версии)
-                    const thumbnailsUrls = await Promise.all(job.processedBuffers.map(async (buf) => {
+                    
+                    const thumbnailsUrls = await Promise.all(imageBuffers.map(async (buf) => {
                         // 🟢 ИСПРАВЛЕНИЕ: Сжимаем до WebP 400px (вес будет в 10 раз меньше, чем JPEG 800px)
                         const thumbBuf = await sharp(buf)
                             .resize({ width: 400, fit: 'inside', withoutEnlargement: true })
                             .webp({ quality: 65 })
                             .toBuffer();
-                        return await saveImageToFile(thumbBuf, 'history'); // или 'history_cron' для таймера
+                        return await saveImageToFile(thumbBuf, 'history_cron');
                     }));
                     await prisma.post.update({
                         where: { id: post.id },
@@ -947,3 +834,10 @@ exports.markSharedPostPublished = async (req, res) => {
         res.status(500).json({ success: false });
     }
 };
+
+
+// === ЭКСПОРТ ДЛЯ ФОНОВОГО ВОРКЕРА ===
+exports.sendToTelegram = sendToTelegram;
+exports.sendToKomodVK = sendToKomodVK;
+exports.applyWatermark = applyWatermark;
+exports.saveImageToFile = saveImageToFile;

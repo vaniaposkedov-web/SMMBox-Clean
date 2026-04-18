@@ -8,6 +8,7 @@ require('dotenv').config();
 
 // Запускаем планировщик постов
 require('./controllers/postController').initCron();
+require('./worker'); // Запускаем фонового воркера
 
 const authRoutes = require('./routes/authRoutes');
 const partnerRoutes = require('./routes/partnerRoutes');

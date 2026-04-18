@@ -139,6 +139,7 @@ export default function PostsHistory() {
   const filteredPosts = useMemo(() => {
     let base = postsHistory || [];
     if (activeTab === 'published') base = base.filter(p => p.status === 'PUBLISHED');
+    if (activeTab === 'processing') base = base.filter(p => p.status === 'PROCESSING'); // ДОБАВИЛИ ЭТУ СТРОКУ
     if (activeTab === 'scheduled') base = base.filter(p => p.status === 'SCHEDULED');
     if (activeTab === 'errors') base = base.filter(p => p.status === 'FAILED');
 
@@ -308,9 +309,10 @@ export default function PostsHistory() {
       </div>
 
       {/* TABS */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3 bg-gray-900/50 p-1.5 sm:p-2 rounded-[1.5rem] sm:rounded-[1.8rem] border border-gray-800">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 bg-gray-900/50 p-1.5 sm:p-2 rounded-[1.5rem] sm:rounded-[1.8rem] border border-gray-800">
         {[
           { id: 'published', label: 'Отправлено', icon: CheckCircle2, color: 'text-emerald-400' },
+          { id: 'processing', label: 'В работе', icon: Loader2, color: 'text-[#0077FF]' }, // ДОБАВИЛИ 4-Ю КНОПКУ
           { id: 'scheduled', label: 'В плане', icon: Clock, color: 'text-purple-400' },
           { id: 'errors', label: 'Ошибки', icon: AlertCircle, color: 'text-rose-400' }
         ].map(tab => (
@@ -379,7 +381,11 @@ export default function PostsHistory() {
                   </div>
                   <div className="mt-auto pt-4 sm:pt-5 border-t border-gray-800 flex items-center justify-between">
                     <span className="text-[10px] sm:text-[11px] font-black text-gray-500 flex items-center gap-1.5 sm:gap-2 bg-gray-900 px-2.5 sm:px-3 py-1.5 rounded-xl border border-gray-800">
-                      <Calendar size={12} className="text-[#0077FF]"/>
+                      {post.status === 'PROCESSING' ? (
+                        <Loader2 size={12} className="text-[#0077FF] animate-spin" />
+                      ) : (
+                        <Calendar size={12} className="text-[#0077FF]"/>
+                      )}
                       {new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <ChevronRight className="text-gray-700 group-hover:text-[#0077FF] transition-all group-hover:translate-x-1" size={20}/>
