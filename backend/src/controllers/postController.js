@@ -129,7 +129,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                 updateData.append('post_images_as_grid', '1');
                 
                 await axios({
-                    method: 'PUT',
+                    method: 'POST',
                     url: `${KOMOD_BASE_URL}/group/${targetGroup.id}`,
                     data: updateData.toString(),
                     headers: {
