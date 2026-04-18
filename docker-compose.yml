@@ -12,6 +12,15 @@ services:
       POSTGRES_DB: smmbox
     volumes:
       - pgdata:/var/lib/postgresql/data
+    
+  redis:
+    image: redis:7-alpine
+    container_name: smmbox_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
 
   backend:
     build: ./backend
@@ -19,6 +28,7 @@ services:
     restart: always
     environment:
       - DATABASE_URL=postgresql://admin:superpassword123@db:5432/smmbox?schema=public
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -34,6 +44,7 @@ services:
       - KIE_API_KEY=${KIE_API_KEY}
     depends_on:
       - db
+      - redis
     volumes:
       - ./backend/logs:/app/logs         # Теперь логи пишутся куда надо
       - ./backend/uploads:/app/uploads
@@ -54,3 +65,4 @@ services:
 
 volumes:
   pgdata:
+  redisdata:
