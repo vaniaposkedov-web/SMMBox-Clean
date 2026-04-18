@@ -10,7 +10,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // ВАЖНО: Тебе нужно зайти в postController.js и убедиться, что ты экспортируешь эти функции (напиши exports.applyWatermark = applyWatermark и т.д.)
 const { sendToTelegram, sendToKomodVK, applyWatermark, saveImageToFile } = require('./controllers/postController');
 
-const worker = new Worker('posts', async (job) => {
+const worker = new Worker('posts_v2', async (job) => {
     const { postId, accountId, text, filePaths, watermarkConfig, signatureText } = job.data;
     
     console.log(`[WORKER] Начал обработку поста ${postId}`);
@@ -64,8 +64,7 @@ const worker = new Worker('posts', async (job) => {
             data: { status: 'PUBLISHED', mediaUrls: JSON.stringify(thumbnailsUrls) }
         });
 
-        // 8. Удаляем временные файлы загруженные через Multer
-        filePaths.forEach(fp => fs.promises.unlink(fp).catch(() => {}));
+        
         
         console.log(`[WORKER] Успешно завершил пост ${postId}`);
 
