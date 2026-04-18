@@ -84,19 +84,19 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     if (!targetGroup) {
         logPost(userId, 'VK', 'INFO', `Группа не найдена. Авто-регистрация...`);
-        const addParams = new URLSearchParams();
+        const addForm = new FormData();
         if (isWall) {
-            addParams.append('account_id', cleanId);
-            addParams.append('is_profile', '1');
+            addForm.append('account_id', cleanId);
+            addForm.append('is_profile', '1');
         } else {
-            addParams.append('url', `https://vk.com/club${cleanId}`);
-            addParams.append('title', `Группа ${cleanId}`);
-            addParams.append('account_id', cleanId);
+            addForm.append('url', `https://vk.com/club${cleanId}`);
+            addForm.append('title', `Группа ${cleanId}`);
+            addForm.append('account_id', cleanId);
         }
-        addParams.append('post_images_as_grid', '1');
+        addForm.append('post_images_as_grid', '1');
 
-        await axios.post(`${KOMOD_BASE_URL}/group`, addParams.toString(), {
-            headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
+        await axios.post(`${KOMOD_BASE_URL}/group`, addForm, {
+            headers: { ...addForm.getHeaders(), 'Access-Token': token },
             validateStatus: () => true
         });
 
@@ -107,39 +107,42 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         if (!targetGroup) throw new Error(`Стена еще не активирована!`);
     }
 
-    // 🔥 ЖЕЛЕЗОБЕТОННОЕ ОБНОВЛЕНИЕ СЕТКИ ПЕРЕД КАЖДЫМ ПОСТОМ
+    // 🔥 АГРЕССИВНОЕ ОБНОВЛЕНИЕ ГРУППЫ С ПРОВЕРКОЙ РЕЗУЛЬТАТА
     try {
-        const updateParams = new URLSearchParams();
-        updateParams.append('post_images_as_grid', '1');
-        updateParams.append('title', targetGroup.title || targetGroup.name || 'Группа');
-        updateParams.append('account_id', targetGroup.account_id || cleanId);
-        if (isWall || String(targetGroup.is_profile) === '1') updateParams.append('is_profile', '1');
-        if (targetGroup.url) updateParams.append('url', targetGroup.url);
+        const updateForm = new FormData();
+        updateForm.append('post_images_as_grid', '1');
+        updateForm.append('title', targetGroup.title || targetGroup.name || 'Группа');
+        updateForm.append('account_id', targetGroup.account_id || cleanId);
+        if (isWall || String(targetGroup.is_profile) === '1') updateForm.append('is_profile', '1');
+        if (targetGroup.url) updateForm.append('url', targetGroup.url);
 
-        const upRes = await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateParams.toString(), {
-            headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
+        await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateForm, {
+            headers: { ...updateForm.getHeaders(), 'Access-Token': token },
             validateStatus: () => true
         });
 
-        // Теперь мы 100% увидим ответ от шлюза в логах!
-        logPost(userId, 'VK', 'INFO', `СЕТКА: Запрос отправлен для ${targetGroup.id}. Ответ шлюза: HTTP ${upRes.status}`, upRes.data);
+        // ДЕЛАЕМ ПРОВЕРКУ: Спрашиваем у Kom-od, сохранилась ли сетка на самом деле?
+        const verifyRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
+        const verifyGroup = (verifyRes.data?.data?.items || []).find(g => String(g.id) === String(targetGroup.id));
+        logPost(userId, 'VK', 'INFO', `ПРОВЕРКА KOM-OD: Настройка сетки (post_images_as_grid) = ${verifyGroup?.post_images_as_grid}`);
+        
     } catch (e) {
-        logPost(userId, 'VK', 'ERROR', `Ошибка обновления сетки: ${e.message}`);
+        logPost(userId, 'VK', 'ERROR', `Ошибка обновления группы: ${e.message}`);
     }
 
     targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
     
-    // 🔥 ДВА КРИТИЧНЫХ ПАРАМЕТРА ДЛЯ СЕТКИ
-    form.append('via_api', '0'); // Заставляем шлюз использовать браузер, а не чистое API ВК
-    form.append('post_images_as_grid', '1'); // Дублируем параметр прямо в пост на всякий случай
+    // 🔥 ФИКС: Принудительно отправляем через API (ВК API по умолчанию делает сетку!)
+    form.append('via_api', '1'); 
+    form.append('post_images_as_grid', '1'); // Дублируем для гарантии
 
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
     const formattedDate = tzString.substring(0, 16).replace('T', ' ');
     form.append('publish_at', formattedDate);
     
-    logPost(userId, 'VK', 'INFO', `Установлено время публикации (MSK): ${formattedDate}`);
+    logPost(userId, 'VK', 'INFO', `Установлено время: ${formattedDate}`);
     
     const media = [];
     if (text) media.push({ type: 'text', text: text });
@@ -167,8 +170,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             validateStatus: status => status < 500
         });
 
-        logPost(userId, 'VK', 'API_RESPONSE', `Ответ от шлюза Kom-od: HTTP ${postRes.status}`, postRes.data);
-
         if (postRes.data && postRes.data.success === false) {
             throw new Error('Ошибка шлюза: ' + JSON.stringify(postRes.data.errors));
         }
@@ -176,7 +177,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
 
     } catch (error) {
-        logPost(userId, 'VK', 'ERROR', `Фатальная ошибка отправки в ${providerId}`, error.message || error.response?.data);
+        logPost(userId, 'VK', 'ERROR', `Ошибка отправки`, error.message || error.response?.data);
         throw error;
     }
 }
@@ -200,7 +201,13 @@ const getUserId = (req) => {
 
 // === Вспомогательная функция для наложения водяного знака ===
 async function applyWatermark(imageBuffer, wmConfig) {
-    if (!wmConfig) return imageBuffer;
+    // 🛡️ ЖЕЛЕЗОБЕТОННАЯ ПРОВЕРКА: 
+    // Если конфига нет, ИЛИ пользователь не вписал текст/не загрузил картинку — отдаем чистое фото!
+    if (!wmConfig || 
+       (wmConfig.type === 'text' && (!wmConfig.text || wmConfig.text.trim() === '')) || 
+       (wmConfig.type === 'image' && !wmConfig.image)) {
+        return imageBuffer;
+    }
     
     try {
         const metadata = await sharp(imageBuffer).metadata();
@@ -217,7 +224,7 @@ async function applyWatermark(imageBuffer, wmConfig) {
         let overlayMeta;
 
         if (wmConfig.type === 'text') {
-            const text = wmConfig.text || 'SMMBOX';
+            const text = wmConfig.text; 
             const textColor = wmConfig.textColor || '#FFFFFF';
             const bgColor = wmConfig.bgColor || '#000000';
             const hasBg = wmConfig.hasBackground !== false;
@@ -252,15 +259,12 @@ async function applyWatermark(imageBuffer, wmConfig) {
             
         } else if (wmConfig.type === 'image' && wmConfig.image) {
             const base64Data = wmConfig.image.includes(',') ? wmConfig.image.split(',')[1] : wmConfig.image;
-            
             const targetWidth = Math.max(20, Math.floor(width * (sizeValue / 100) * 0.35));
             
             overlayBuffer = await sharp(Buffer.from(base64Data, 'base64'))
                 .resize({ width: targetWidth, withoutEnlargement: false })
                 .ensureAlpha(opacity)
                 .toBuffer();
-        } else {
-            return imageBuffer;
         }
 
         // Поворот (если задан)
@@ -272,7 +276,7 @@ async function applyWatermark(imageBuffer, wmConfig) {
 
         overlayMeta = await sharp(overlayBuffer).metadata();
 
-        // 🔥 ГЛАВНЫЙ ФИКС ВОДЯНЫХ ЗНАКОВ: Сжимаем знак, если он оказался больше самой фотографии
+        // 🔥 ЖЕСТКАЯ ЗАЩИТА: Сжимаем знак, если он оказался больше самой фотографии
         if (overlayMeta.width > width || overlayMeta.height > height) {
             overlayBuffer = await sharp(overlayBuffer)
                 .resize({ width: width, height: height, fit: 'inside' })
@@ -295,7 +299,6 @@ async function applyWatermark(imageBuffer, wmConfig) {
             if (pos === 'cc') top = Math.floor((height - overlayMeta.height) / 2);
         }
 
-        // Защита: не даем знаку улететь за край экрана
         left = Math.max(0, Math.min(left, width - overlayMeta.width));
         top = Math.max(0, Math.min(top, height - overlayMeta.height));
 
