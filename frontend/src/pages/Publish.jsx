@@ -45,8 +45,8 @@ export default function Publish() {
   const [text, setText] = useState('');
   const [selectedAccounts, setSelectedAccounts] = useState([]);
   
-  const [applyWatermark, setApplyWatermark] = useState(true);
-  const [applySignature, setApplySignature] = useState(true);
+  const [applyWatermark, setApplyWatermark] = useState(false);
+  const [applySignature, setApplySignature] = useState(false);
   
   const [publishMode, setPublishMode] = useState('now');
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => {
