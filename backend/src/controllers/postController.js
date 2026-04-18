@@ -84,19 +84,19 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     if (!targetGroup) {
         logPost(userId, 'VK', 'INFO', `Группа не найдена. Авто-регистрация...`);
-        const addForm = new FormData();
+        const addParams = new URLSearchParams();
         if (isWall) {
-            addForm.append('account_id', cleanId);
-            addForm.append('is_profile', '1');
+            addParams.append('account_id', cleanId);
+            addParams.append('is_profile', '1');
         } else {
-            addForm.append('url', `https://vk.com/club${cleanId}`);
-            addForm.append('title', `Группа ${cleanId}`);
-            addForm.append('account_id', cleanId);
+            addParams.append('url', `https://vk.com/club${cleanId}`);
+            addParams.append('title', `Группа ${cleanId}`);
+            addParams.append('account_id', cleanId);
         }
-        addForm.append('post_images_as_grid', '1');
+        addParams.append('post_images_as_grid', '1');
 
-        await axios.post(`${KOMOD_BASE_URL}/group`, addForm, {
-            headers: { ...addForm.getHeaders(), 'Access-Token': token },
+        await axios.post(`${KOMOD_BASE_URL}/group`, addParams.toString(), {
+            headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
             validateStatus: () => true
         });
 
@@ -107,35 +107,39 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         if (!targetGroup) throw new Error(`Стена еще не активирована!`);
     }
 
-    // 🔥 АГРЕССИВНОЕ ОБНОВЛЕНИЕ ГРУППЫ С ПРОВЕРКОЙ РЕЗУЛЬТАТА
-    try {
-        const updateForm = new FormData();
-        updateForm.append('post_images_as_grid', '1');
-        updateForm.append('title', targetGroup.title || targetGroup.name || 'Группа');
-        updateForm.append('account_id', targetGroup.account_id || cleanId);
-        if (isWall || String(targetGroup.is_profile) === '1') updateForm.append('is_profile', '1');
-        if (targetGroup.url) updateForm.append('url', targetGroup.url);
+    // 🔥 ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ СЕТКИ С ПРОВЕРКОЙ РЕЗУЛЬТАТА
+    if (targetGroup && targetGroup.id) {
+        try {
+            const updateParams = new URLSearchParams();
+            updateParams.append('post_images_as_grid', '1');
+            updateParams.append('title', targetGroup.title || targetGroup.name || 'Группа');
+            updateParams.append('account_id', targetGroup.account_id || cleanId);
+            if (isWall || String(targetGroup.is_profile) === '1') updateParams.append('is_profile', '1');
+            if (targetGroup.url) updateParams.append('url', targetGroup.url);
 
-        await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateForm, {
-            headers: { ...updateForm.getHeaders(), 'Access-Token': token },
-            validateStatus: () => true
-        });
+            const upRes = await axios.post(`${KOMOD_BASE_URL}/group/${targetGroup.id}`, updateParams.toString(), {
+                headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
+                validateStatus: () => true
+            });
+            
+            logPost(userId, 'VK', 'INFO', `СЕТКА: Запрос отправлен для ${targetGroup.id}. Ответ шлюза: HTTP ${upRes.status}`);
 
-        // ДЕЛАЕМ ПРОВЕРКУ: Спрашиваем у Kom-od, сохранилась ли сетка на самом деле?
-        const verifyRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
-        const verifyGroup = (verifyRes.data?.data?.items || []).find(g => String(g.id) === String(targetGroup.id));
-        logPost(userId, 'VK', 'INFO', `ПРОВЕРКА KOM-OD: Настройка сетки (post_images_as_grid) = ${verifyGroup?.post_images_as_grid}`);
-        
-    } catch (e) {
-        logPost(userId, 'VK', 'ERROR', `Ошибка обновления группы: ${e.message}`);
+            // Проверяем, применилась ли сетка
+            const verifyRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
+            const verifyGroup = (verifyRes.data?.data?.items || []).find(g => String(g.id) === String(targetGroup.id));
+            logPost(userId, 'VK', 'INFO', `ПРОВЕРКА KOM-OD: Настройка сетки (post_images_as_grid) = ${verifyGroup?.post_images_as_grid}`);
+            
+        } catch (e) {
+            logPost(userId, 'VK', 'ERROR', `Ошибка обновления группы: ${e.message}`);
+        }
     }
 
     targetGroupId = targetGroup.id;
     form.append('group_id', targetGroupId);
     
-    // 🔥 ФИКС: Принудительно отправляем через API (ВК API по умолчанию делает сетку!)
+    // 🔥 ФИКС: Обязательные параметры для ВК-сетки
     form.append('via_api', '1'); 
-    form.append('post_images_as_grid', '1'); // Дублируем для гарантии
+    form.append('post_images_as_grid', '1'); 
 
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
     const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
@@ -201,11 +205,25 @@ const getUserId = (req) => {
 
 // === Вспомогательная функция для наложения водяного знака ===
 async function applyWatermark(imageBuffer, wmConfig) {
-    // 🛡️ ЖЕЛЕЗОБЕТОННАЯ ПРОВЕРКА: 
-    // Если конфига нет, ИЛИ пользователь не вписал текст/не загрузил картинку — отдаем чистое фото!
+    // 🛡️ ЖЕЛЕЗОБЕТОННАЯ ПРОВЕРКА: Пропускаем чистое фото, если:
+    // 1. Конфига нет
+    // 2. Явно передано отключение (enabled/isActive = false)
+    // 3. Стоит дефолтный текст 'SADOVODPS', но знак не активирован явно
     if (!wmConfig || 
-       (wmConfig.type === 'text' && (!wmConfig.text || wmConfig.text.trim() === '')) || 
-       (wmConfig.type === 'image' && !wmConfig.image)) {
+        wmConfig.enabled === false || 
+        wmConfig.isActive === false) {
+        return imageBuffer;
+    }
+
+    if (wmConfig.type === 'text' && wmConfig.text === 'SADOVODPS' && !wmConfig.enabled) {
+        return imageBuffer;
+    }
+
+    if (wmConfig.type === 'text' && (!wmConfig.text || wmConfig.text.trim() === '')) {
+        return imageBuffer;
+    }
+
+    if (wmConfig.type === 'image' && !wmConfig.image) {
         return imageBuffer;
     }
     
@@ -267,7 +285,6 @@ async function applyWatermark(imageBuffer, wmConfig) {
                 .toBuffer();
         }
 
-        // Поворот (если задан)
         if (wmConfig.angle) {
             overlayBuffer = await sharp(overlayBuffer)
                 .rotate(wmConfig.angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -276,7 +293,6 @@ async function applyWatermark(imageBuffer, wmConfig) {
 
         overlayMeta = await sharp(overlayBuffer).metadata();
 
-        // 🔥 ЖЕСТКАЯ ЗАЩИТА: Сжимаем знак, если он оказался больше самой фотографии
         if (overlayMeta.width > width || overlayMeta.height > height) {
             overlayBuffer = await sharp(overlayBuffer)
                 .resize({ width: width, height: height, fit: 'inside' })
@@ -284,7 +300,6 @@ async function applyWatermark(imageBuffer, wmConfig) {
             overlayMeta = await sharp(overlayBuffer).metadata();
         }
 
-        // Расчет координат наложения
         let left = padX;
         let top = padY;
         const pos = wmConfig.position || 'br';
