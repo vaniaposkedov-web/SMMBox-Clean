@@ -337,19 +337,26 @@ exports.createPost = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
-        // БЫСТРЫЙ ШАГ 1: Надежно сохраняем файлы в постоянный volume
-        const safeFilePaths = [];
+        // БЫСТРЫЙ ШАГ 1: Надежно сохраняем файлы и генерируем два вида путей
+        const workerFilePaths = []; // Внутренние пути для Воркера (серверные)
+        const dbFilePaths = [];     // Публичные пути для базы и Фронтенда (чтобы картинки грузились)
+
         if (req.files && req.files.length > 0) {
-            // Создаем папку для очереди, если её нет
             const tempDir = path.join(__dirname, '../../uploads/temp_queue');
             if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
             for (const file of req.files) {
                 const ext = path.extname(file.originalname) || '.jpg';
-                const safePath = path.join(tempDir, `task_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`);
-                // Физически копируем файл в надежное место
+                const fileName = `task_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
+                const safePath = path.join(tempDir, fileName);
+                
+                // Копируем файл в надежную папку
                 await fs.promises.copyFile(file.path, safePath);
-                safeFilePaths.push(safePath);
+                // Удаляем исходный мусорный файл от multer из /tmp/
+                await fs.promises.unlink(file.path).catch(() => {}); 
+                
+                workerFilePaths.push(safePath);
+                dbFilePaths.push(`/uploads/temp_queue/${fileName}`); // Этот путь поймет браузер
             }
         }
 
@@ -365,24 +372,24 @@ exports.createPost = async (req, res) => {
                 data: {
                     accountId: account.id,
                     text: text || '',
-                    mediaUrls: JSON.stringify(safeFilePaths), // Временно сохраняем пути к сырым файлам
+                    mediaUrls: JSON.stringify(dbFilePaths), // <--- СОХРАНЯЕМ ПУБЛИЧНЫЕ ПУТИ
                     publishAt: parsedPublishAt,
-                    status: isScheduled ? 'SCHEDULED' : 'PROCESSING' // PROCESSING означает "В обработке"
+                    status: isScheduled ? 'SCHEDULED' : 'PROCESSING' 
                 }
             });
 
-            // БЫСТРЫЙ ШАГ 3: Если пост надо выложить СЕЙЧАС — кидаем чек на кухню (в очередь)
+            // БЫСТРЫЙ ШАГ 3: Если пост надо выложить СЕЙЧАС — кидаем в очередь
             if (!isScheduled) {
                 await postQueue.add('publish-job', {
                     postId: post.id,
                     accountId: account.id,
                     text: text || '',
-                    filePaths: safeFilePaths,
+                    filePaths: workerFilePaths, // <--- ОТДАЕМ ВОРКЕРУ ВНУТРЕННИЕ ПУТИ
                     watermarkConfig: accData.applyWatermark ? (accData.watermarkConfig || account.watermark) : null,
                     signatureText: accData.applySignature ? (accData.signatureText !== undefined ? accData.signatureText : account.signature) : null
                 }, {
-                    attempts: 3, // Если сеть упадет, воркер попробует еще 3 раза
-                    backoff: { type: 'exponential', delay: 2000 }
+                    attempts: 3, 
+                    backoff: { type: 'exponential', delay: 5000 }
                 });
             }
         }
