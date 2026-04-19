@@ -185,6 +185,7 @@ export default function Publish() {
     const isBasic = planType?.includes('БАЗОВ') || planType === 'BASIC';
 
     return {
+      isActive: isPaid, // Если false - аккаунты будут заморожены
       vk: isAdvanced ? 20 : (isBasic ? 15 : 6),
       tg: isAdvanced ? 8 : (isBasic ? 5 : 4)
     };
@@ -194,8 +195,8 @@ export default function Publish() {
     const vkAccounts = accounts.filter(a => (a.provider || '').toUpperCase() === 'VK' || (a.provider || '').toUpperCase() === 'VKONTAKTE');
     const tgAccounts = accounts.filter(a => (a.provider || '').toUpperCase() === 'TELEGRAM');
 
-    const processedVk = vkAccounts.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limitsData.vk }));
-    const processedTg = tgAccounts.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limitsData.tg }));
+    const processedVk = vkAccounts.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limitsData.vk, isFrozen: !limitsData.isActive }));
+    const processedTg = tgAccounts.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limitsData.tg, isFrozen: !limitsData.isActive }));
 
     return [...processedVk, ...processedTg];
   }, [accounts, limitsData]);
@@ -1011,6 +1012,9 @@ const handlePublish = async () => {
                         {providerAccounts.map(acc => {
                           const isSelected = selectedAccounts.includes(acc.id);
                           const isOverLimit = acc.isOverLimit;
+                          const isFrozen = acc.isFrozen;
+                          const isBlocked = isOverLimit || isFrozen;
+                          
                           const avatarSrc = acc.avatarUrl || acc.photo_url || acc.avatar;
                           const iconColor = provider.toLowerCase() === 'vk' ? 'text-blue-500' : 'text-sky-400';
                           
@@ -1018,6 +1022,11 @@ const handlePublish = async () => {
                             <div 
                               key={acc.id} 
                               onClick={() => {
+                                if (isFrozen) {
+                                  setToastMessage('Аккаунт заморожен. Оформите подписку!');
+                                  setTimeout(() => setToastMessage(null), 3000);
+                                  return;
+                                }
                                 if (isOverLimit) {
                                   setToastMessage('Лимит исчерпан. Продлите подписку!');
                                   setTimeout(() => setToastMessage(null), 3000);
@@ -1026,16 +1035,16 @@ const handlePublish = async () => {
                                 toggleAccount(acc.id);
                               }} 
                               className={`flex flex-col rounded-xl border transition-all overflow-hidden cursor-pointer active:scale-95 relative ${
-                                isOverLimit ? 'opacity-50 grayscale border-red-500/30 hover:border-red-500/50' : 
+                                isBlocked ? 'opacity-50 grayscale border-gray-600/30 hover:border-gray-600/50' : 
                                 isSelected ? (publishMode === 'schedule' ? 'bg-purple-500/10 border-purple-500/50 shadow-sm' : 'bg-blue-500/10 border-blue-500/50 shadow-sm') : 'bg-gray-900/50 border-gray-800 hover:border-gray-700 hover:bg-gray-800/50'
                               }`}
                             >
-                              {isOverLimit && (
-                                <div className="absolute top-0 left-0 w-full bg-red-600/90 text-white text-[8px] font-bold py-0.5 text-center tracking-widest uppercase z-10">
-                                  Лимит исчерпан
+                              {isBlocked && (
+                                <div className={`absolute top-0 left-0 w-full text-white text-[8px] font-bold py-0.5 text-center tracking-widest uppercase z-10 ${isFrozen ? 'bg-gray-600/90' : 'bg-red-600/90'}`}>
+                                  {isFrozen ? 'Заморожен' : 'Лимит исчерпан'}
                                 </div>
                               )}
-                              <div className={`flex items-center gap-2.5 p-2.5 w-full text-left min-h-[48px] ${isOverLimit ? 'pt-4' : ''}`}>
+                              <div className={`flex items-center gap-2.5 p-2.5 w-full text-left min-h-[48px] ${isBlocked ? 'pt-4' : ''}`}>
                                 <div className="relative w-8 h-8 rounded-lg shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
                                   {avatarSrc ? <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-lg" /> : <span className="text-[10px] sm:text-xs">{acc.name.substring(0, 2).toUpperCase()}</span>}
                                   <div className={`absolute -bottom-1 -right-1 w-4 h-4 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>

@@ -1089,31 +1089,46 @@ const handleSaveKomodGroups = async () => {
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight px-1 sm:px-0">Мои социальные сети</h1>
       </div>
 
-      {/* Динамический блок лимитов */}
-      <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors ${isLimitReached ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/10' : 'bg-gray-900 border-gray-800'}`}>
-        <div>
-          <p className="text-white font-bold text-base flex items-center gap-2">
-            {!isPaid ? '' : (isAdvanced ? 'Тариф Расширенный' : 'Тариф Базовый')} 
-            {isLimitReached && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest">Лимит исчерпан</span>}
-          </p>
-          
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-1.5">
-            <span className="text-gray-400 text-sm flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#0077FF]"></span> ВК: <span className={isVkLimitReached ? 'text-red-400 font-bold' : 'text-white font-bold'}>{vkCount} / {limits.vk}</span>
-            </span>
-            <span className="text-gray-400 text-sm flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#2AABEE]"></span> ТГ: <span className={isTgLimitReached ? 'text-red-400 font-bold' : 'text-white font-bold'}>{tgCount} / {limits.tg}</span>
-            </span>
-            <span className="text-gray-500 text-xs ml-2 border-l border-gray-700 pl-4 hidden sm:block">Всего: {currentCount}/{limits.total}</span>
+      {/* Динамический блок лимитов или Требование подписки */}
+      {!isPaid ? (
+        <div className="bg-red-500/10 border border-red-500/30 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 shadow-lg shadow-red-500/5">
+          <div>
+            <h3 className="text-red-500 font-bold text-base sm:text-lg">Нет активной подписки</h3>
+            <p className="text-gray-400 text-sm mt-1">Без подписки вы не сможете использовать или добавлять аккаунты.</p>
           </div>
-        </div>
-        
-        {!isAdvanced && (
-          <button onClick={() => navigate('/profile?tab=subscription')} className="w-full sm:w-auto text-sm bg-purple-600 hover:bg-purple-500 text-white px-6 py-3.5 sm:py-3 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 whitespace-nowrap min-h-[48px]">
-            {!isPaid ? 'Снять лимиты (от 1000₽)' : 'Улучшить до Расширенного (1800₽)'}
+          <button 
+            onClick={() => navigate('/profile?tab=subscription')} 
+            className="w-full sm:w-auto text-sm bg-red-600 hover:bg-red-500 text-white px-6 py-3.5 sm:py-3 rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95 whitespace-nowrap min-h-[48px]"
+          >
+            Оформить подписку
           </button>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-colors ${isLimitReached ? 'bg-red-500/10 border-red-500/30 shadow-lg shadow-red-500/10' : 'bg-gray-900 border-gray-800'}`}>
+          <div>
+            <p className="text-white font-bold text-base flex items-center gap-2">
+              {isAdvanced ? 'Тариф Расширенный' : 'Тариф Базовый'} 
+              {isLimitReached && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-widest">Лимит исчерпан</span>}
+            </p>
+            
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-1.5">
+              <span className="text-gray-400 text-sm flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#0077FF]"></span> ВК: <span className={isVkLimitReached ? 'text-red-400 font-bold' : 'text-white font-bold'}>{vkCount} / {limits.vk}</span>
+              </span>
+              <span className="text-gray-400 text-sm flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#2AABEE]"></span> ТГ: <span className={isTgLimitReached ? 'text-red-400 font-bold' : 'text-white font-bold'}>{tgCount} / {limits.tg}</span>
+              </span>
+              <span className="text-gray-500 text-xs ml-2 border-l border-gray-700 pl-4 hidden sm:block">Всего: {currentCount}/{limits.total}</span>
+            </div>
+          </div>
+          
+          {!isAdvanced && (
+            <button onClick={() => navigate('/profile?tab=subscription')} className="w-full sm:w-auto text-sm bg-purple-600 hover:bg-purple-500 text-white px-6 py-3.5 sm:py-3 rounded-xl font-bold transition-all shadow-lg shadow-purple-500/20 active:scale-95 whitespace-nowrap min-h-[48px]">
+              Улучшить до Расширенного (1800₽)
+            </button>
+          )}
+        </div>
+      )}
 
      {/* === БЛОК ВЫБОРА СОЦСЕТИ === */}
       <div className="bg-[#0d0f13] border border-gray-800 rounded-3xl p-5 sm:p-6 flex flex-col gap-5 mt-6 shadow-xl max-w-md mx-auto w-full relative overflow-hidden">
@@ -1152,22 +1167,25 @@ const handleSaveKomodGroups = async () => {
 
         <button
           onClick={() => {
+            if (!isPaid) return; // Если нет подписки - игнорируем
             if (!isLimitReached) {
               selectedNetwork === 'VK' ? handleConnectVkOAuth() : setShowTgHelperModal(true);
             }
           }}
-          disabled={isLimitReached}
+          disabled={!isPaid || isLimitReached}
           className={`relative z-10 w-full py-4 rounded-xl font-bold transition-all text-sm ${
-            isLimitReached 
+            !isPaid || isLimitReached 
               ? 'bg-gray-800/80 text-gray-500 cursor-not-allowed border border-gray-700/50' 
               : selectedNetwork === 'VK' 
                 ? 'bg-[#0077FF] text-white shadow-lg shadow-[#0077FF]/20 active:scale-95' 
                 : 'bg-[#2AABEE] text-white shadow-lg shadow-[#2AABEE]/20 active:scale-95'
           }`}
         >
-          {isLimitReached 
-            ? `Лимит ${selectedNetwork === 'VK' ? 'ВК' : 'Telegram'} исчерпан` 
-            : `Авторизовать ${selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}`
+          {!isPaid 
+            ? 'Оформите подписку для добавления'
+            : isLimitReached 
+              ? `Лимит ${selectedNetwork === 'VK' ? 'ВК' : 'Telegram'} исчерпан` 
+              : `Авторизовать ${selectedNetwork === 'VK' ? 'ВКонтакте' : 'Telegram'}`
           }
         </button>
       </div>
@@ -1183,27 +1201,29 @@ const handleSaveKomodGroups = async () => {
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:gap-3">
             {[
-              // Высчитываем, какие аккаунты вышли за лимит
-              ...connectedVk.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limits.vk })),
-              ...connectedTg.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limits.tg }))
+              // Высчитываем, какие аккаунты заморожены или вышли за лимит
+              ...connectedVk.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limits.vk, isFrozen: !isPaid })),
+              ...connectedTg.map((acc, idx) => ({ ...acc, isOverLimit: idx >= limits.tg, isFrozen: !isPaid }))
             ].map(acc => {
               const isVk = acc.provider === 'VK';
               const isPersonal = isVk && acc.providerId.startsWith('wall_');
               const accountName = acc.name || acc.title || (isVk ? 'ВК' : 'ТГ');
               const avatar = getValidAvatar(acc.avatarUrl || extractAvatar(acc), accountName);
+              
+              const isBlocked = acc.isFrozen || acc.isOverLimit;
 
               return (
                 <div 
                   key={acc.id} 
                   className={`flex flex-col p-2 bg-[#0d0f13] border rounded-xl relative group transition-all ${
-                    acc.isOverLimit ? 'border-red-500/30 opacity-50 grayscale' : 'border-gray-800 hover:border-gray-700'
+                    isBlocked ? 'opacity-50 grayscale border-gray-700/50' : 'border-gray-800 hover:border-gray-700'
                   }`}
                 >
                   
-                  {/* ПЛАШКА: Продлите подписку */}
-                  {acc.isOverLimit && (
-                    <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[8px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap z-10 shadow-lg">
-                      Продлите подписку
+                  {/* ПЛАШКА: Заморожен / Продлите подписку */}
+                  {isBlocked && (
+                    <div className={`absolute -top-2.5 left-1/2 -translate-x-1/2 text-white text-[8px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap z-10 shadow-lg ${acc.isFrozen ? 'bg-gray-600 border border-gray-500' : 'bg-red-600'}`}>
+                      {acc.isFrozen ? 'Заморожен' : 'Лимит исчерпан'}
                     </div>
                   )}
 
