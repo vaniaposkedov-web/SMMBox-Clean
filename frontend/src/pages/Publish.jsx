@@ -429,7 +429,7 @@ const toggleAllAccounts = () => {
   };
 
 const handlePublish = async () => {
-    // Проверка: заполнены ли данные профиля
+    // === 1. БАЗОВЫЕ ПРОВЕРКИ (оставляем как было) ===
     const isVulnerable = user?.email?.includes('.local') || !user?.phone;
     if (isVulnerable) {
       setToastMessage('Заполните оставшиеся данные в профиле!');
@@ -441,13 +441,10 @@ const handlePublish = async () => {
       return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
     }
     
-    // Если включен режим отложенной публикации, проверяем время
+    let publishAt = null;
     if (publishMode === 'schedule') {
-      if (!scheduleTime) {
-        return setTimeout(() => alert('Укажите время публикации!'), 10);
-      }
+      if (!scheduleTime) return setTimeout(() => alert('Укажите время публикации!'), 10);
       
-      // === ПРОВЕРКА: МИНИМУМ 5 МИНУТ ОТ ТЕКУЩЕГО ВРЕМЕНИ ===
       const baseDate = selectedCalendarDate || new Date().toLocaleDateString('en-CA'); 
       const [year, month, day] = baseDate.split('-');
       const [hours, minutes] = scheduleTime.split(':');
@@ -457,72 +454,69 @@ const handlePublish = async () => {
       selectedDateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
 
       const minAllowedTime = new Date();
-      minAllowedTime.setMinutes(minAllowedTime.getMinutes() + 5); // Сдвигаем текущее время на 5 минут вперед
+      minAllowedTime.setMinutes(minAllowedTime.getMinutes() + 5);
 
       if (selectedDateTime < minAllowedTime) {
         return setTimeout(() => alert('Запланировать пост можно минимум на 5 минут вперед от текущего времени!'), 10);
       }
+      publishAt = selectedDateTime.toISOString(); 
     }
     
-    setIsPublishing(true);
+    // === 2. МОМЕНТАЛЬНЫЙ UI (UX без зависаний) ===
+    // Пользователь сразу видит плашку "Успешно опубликовано", интерфейс разблокирован
+    setStep(4); 
+    if (saveTempDraft) saveTempDraft(null); 
 
-    // Даем React 50мс на отрисовку спиннера перед тяжелой конвертацией фото, чтобы интерфейс не зависал
-    setTimeout(async () => {
+    // === 3. ЗАЩИТА ОТ ЗАКРЫТИЯ ВКЛАДКИ ===
+    // Если юзер решит закрыть браузер (смахнуть приложение), пока идет тяжелая загрузка
+    const handleBeforeUnload = (e) => {
+        e.preventDefault();
+        e.returnValue = 'Фотографии еще загружаются на сервер! Если закроете страницу, пост будет утерян.';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // === 4. ФОНОВЫЙ ПРОЦЕСС ЗАГРУЗКИ ===
+    (async () => {
         try {
+            // Тяжелая операция сжатия картинок крутится в фоне и не вешает UI
             const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
+            
             const accountsData = selectedAccounts.map(id => {
               const acc = accounts.find(a => a.id === id);
-              
               const wmConfig = (acc?.watermark !== null && acc?.watermark !== undefined) 
                 ? acc.watermark 
                 : (applyWatermark ? (globalSettings?.watermark || watermarkSettings) : null);
-                
               const sigText = (acc?.signature !== null && acc?.signature !== undefined) 
                 ? acc.signature 
                 : (applySignature ? (globalSettings?.signature || '') : null);
 
-              return {
-                accountId: id,
-                applyWatermark: !!wmConfig,
-                applySignature: !!sigText,
-                watermarkConfig: wmConfig,
-                signatureText: sigText
-              };
+              return { accountId: id, applyWatermark: !!wmConfig, applySignature: !!sigText, watermarkConfig: wmConfig, signatureText: sigText };
             });
 
-            let publishAt = null;
-            if (publishMode === 'schedule') {
-                const baseDate = selectedCalendarDate || new Date().toLocaleDateString('en-CA'); 
-                const [year, month, day] = baseDate.split('-');
-                const [hours, minutes] = scheduleTime.split(':');
-                
-                const localDate = new Date();
-                localDate.setFullYear(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
-                localDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-                
-                publishAt = localDate.toISOString(); 
-            }
-
+            // Сетевой запрос выгрузки (может занимать 2-5 секунд при плохом интернете)
             const result = await createPostAction(text, webpBlobs, accountsData, publishAt);
+            
             if (result.success) {
-                setIsPublishing(false);
-                if (saveTempDraft) saveTempDraft(null); 
-                
-                // Мгновенно переключаем на экран успеха, не дожидаясь ответа сервера
-                setStep(4); 
-                
-                // Обновляем список постов в фоне
                 fetchScheduledPosts(); 
+                
+                // ЗАЩИТА REACT: Показываем тост об окончании выгрузки ТОЛЬКО если юзер 
+                // всё еще находится на странице /publish. Если он ушел в меню, тост не сломает приложение.
+                if (window.location.pathname.includes('/publish')) {
+                    setToastMessage('✅ Медиафайлы успешно доставлены на сервер!');
+                    setTimeout(() => setToastMessage(null), 3500);
+                }
             } else {
-                setIsPublishing(false);
-                setTimeout(() => alert(result.error || 'Ошибка сервера'), 50);
+                alert(result.error || 'Ошибка сервера при фоновой публикации');
             }
         } catch (error) {
             console.error("Ошибка при публикации:", error);
-            setIsPublishing(false);
-            setTimeout(() => alert('Произошла ошибка соединения с сервером.'), 50);
+            alert('Произошла ошибка соединения с сервером при фоновой публикации. Проверьте интернет.');
+        } finally {
+            // Как только файлы достигли бэкенда (твоей очереди) — снимаем защиту.
+            // Теперь бэкенд сам разберется с 28 постами, и браузер можно безопасно закрывать.
+            window.removeEventListener('beforeunload', handleBeforeUnload);
         }
-    }, 50);
+    })();
   };
 
   const handleSendToPartners = async () => {
