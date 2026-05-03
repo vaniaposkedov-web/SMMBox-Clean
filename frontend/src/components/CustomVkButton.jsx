@@ -113,8 +113,8 @@ export default function CustomVkButton({ onAuth }) {
       title="Войти через ВКонтакте"
     >
       <div className="absolute inset-0 flex items-center justify-center text-[#0077FF] group-hover:bg-[#0077FF] group-hover:text-white transition-colors duration-300 z-10">
-        <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
-          <path d="M4 7.5L7.5 16.5L12 7.5L16.5 16.5L20 7.5" />
+        <svg className="w-6 h-6 shrink-0" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" clipRule="evenodd" d="M23.45 5.948c.166-.546 0-.948-.795-.948H20.03c-.668 0-.976.347-1.143.73 0 0-1.335 3.196-3.226 5.272-.612.602-.89.793-1.224.793-.167 0-.418-.191-.418-.738V5.948c0-.656-.184-.948-.74-.948H9.151c-.417 0-.668.304-.668.593 0 .621.946.765 1.043 2.513v3.798c0 .833-.153.984-.487.984-.89 0-3.055-3.211-4.34-6.885-.259-.71-.537-1-1.205-1H1.865c-.75 0-.9.347-.9.73 0 .682.89 4.07 4.145 8.551 2.17 3.06 5.225 4.72 8.008 4.72 1.67 0 1.875-.368 1.875-1.004V15.34c0-.736.158-.884.687-.884.39 0 1.057.192 2.615 1.667 1.78 1.749 2.073 2.532 3.074 2.532h2.625c.75 0 1.126-.368.91-1.096-.238-.724-1.084-1.775-2.215-3.022-.612-.71-1.53-1.475-1.809-1.858-.389-.491-.278-.71 0-1.147 0 0 3.2-4.426 3.533-5.584Z" />
         </svg>
       </div>
     </div>
