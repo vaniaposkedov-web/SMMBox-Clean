@@ -52,7 +52,7 @@ const getPageTitle = (pathname) => {
 const DummyPage = ({ title }) => (
   <div className="p-8 text-center text-gray-400">
     <h1 className="text-2xl text-white font-bold mb-4">{title}</h1>
-    <p>Эта страница находится в разработке (Скоро здесь будет функционал как в SMMBox).</p>
+    <p>Эта страница находится в разработке (Скоро здесь будет функционал).</p>
   </div>
 );
 
@@ -84,7 +84,7 @@ function Sidebar() {
         <div className="w-8 h-8 bg-admin-accent rounded-lg flex items-center justify-center text-white">
           <Box size={20} />
         </div>
-        <span className="text-xl font-bold tracking-wide">SADOVOD<span className="text-admin-accent">SP</span></span>
+        <span className="text-xl font-bold tracking-wide">SADOVOD<span className="text-admin-accent">PS</span></span>
       </div>
       
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
@@ -354,7 +354,7 @@ function UserLayout() {
 
   // ⚡ МЕНЯЕМ ТОЛЬКО НАЗВАНИЕ ВКЛАДКИ В БРАУЗЕРЕ ⚡
   useEffect(() => {
-    document.title = `SADOVODSP | ${getPageTitle(location.pathname)}`;
+    document.title = `SADOVODPS | ${getPageTitle(location.pathname)}`;
   }, [location.pathname]);
 
   return (

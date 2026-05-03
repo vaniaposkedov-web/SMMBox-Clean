@@ -604,7 +604,7 @@ const handleSaveKomodGroups = async () => {
   };
 
   const copyBotName = (e) => {
-    e.stopPropagation(); navigator.clipboard.writeText('@smmbox_auth_bot');
+    e.stopPropagation(); navigator.clipboard.writeText('@sadovodps_auth_bot');
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
@@ -656,7 +656,7 @@ const handleSaveKomodGroups = async () => {
     const initialPos = acc.watermark?.position || 'br';
     const coords = (acc.watermark?.x !== undefined && acc.watermark?.x !== null) ? {x: acc.watermark.x, y: acc.watermark.y} : posToCoords[initialPos];
     setLocalWatermark({
-      type: 'text', text: 'SMMBOX', image: null, opacity: 90, size: 100, angle: 0,
+      type: 'text', text: 'SADOVODPS', image: null, opacity: 90, size: 100, angle: 0,
       textColor: '#FFFFFF', bgColor: '#000000', hasBackground: true,
       ...acc.watermark, position: initialPos, x: coords.x, y: coords.y
     });
@@ -945,7 +945,7 @@ const handleSaveKomodGroups = async () => {
                   {acc.provider === 'TELEGRAM' && (
                     <>
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-gray-400 bg-black/30 p-2.5 rounded-lg mb-3 gap-2">
-                        <span className="truncate w-full sm:w-auto">Бот: <span className="font-mono text-white">@smmbox_auth_bot</span></span>
+                        <span className="truncate w-full sm:w-auto">Бот: <span className="font-mono text-white">@sadovodps_auth_bot</span></span>
                         <button onClick={copyBotName} className="shrink-0 w-full sm:w-auto text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-2.5 sm:py-1.5 rounded-md flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0">
                           {copied ? <><Check size={14} className="text-emerald-500" /> Сохранено</> : <><Copy size={14} /> Копировать</>}
                         </button>
@@ -953,7 +953,7 @@ const handleSaveKomodGroups = async () => {
 
                       {/* НОВАЯ КНОПКА ВОЗВРАТА БОТА */}
                       <a 
-                        href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                        href="https://t.me/sadovodps_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full mb-3 bg-[#0088CC]/20 hover:bg-[#0088CC]/30 text-[#0088CC] border border-[#0088CC]/30 py-3 sm:py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 min-h-[44px]"
@@ -1319,7 +1319,7 @@ const handleSaveKomodGroups = async () => {
                       borderRadius: '6px', fontSize: '15px', fontWeight: 'bold', zIndex: 10
                     }}
                   >
-                    {localWatermark.type === 'image' && localWatermark.image ? (<img src={localWatermark.image} alt="watermark" draggable="false" className="max-h-10 sm:max-h-12 object-contain drop-shadow-lg pointer-events-none" />) : (localWatermark.text || 'SMMBOX')}
+                    {localWatermark.type === 'image' && localWatermark.image ? (<img src={localWatermark.image} alt="watermark" draggable="false" className="max-h-10 sm:max-h-12 object-contain drop-shadow-lg pointer-events-none" />) : (localWatermark.text || 'SADOVODPS')}
                   </div>
                 </div>
               </div>
@@ -1340,7 +1340,7 @@ const handleSaveKomodGroups = async () => {
                       <>
                         <div className="space-y-2">
                           <label className="text-[10px] sm:text-xs font-semibold text-gray-400 uppercase">Текст знака</label>
-                          <input type="text" value={localWatermark.text || ''} onChange={e => setLocalWatermark({...localWatermark, text: e.target.value})} placeholder="SMMBOX" className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 sm:py-2.5 px-4 text-base sm:text-sm text-white focus:border-blue-500 outline-none transition-colors min-h-[48px] sm:min-h-[44px]" />
+                          <input type="text" value={localWatermark.text || ''} onChange={e => setLocalWatermark({...localWatermark, text: e.target.value})} placeholder="SADOVODPS" className="w-full bg-black/40 border border-gray-700 rounded-xl py-3 sm:py-2.5 px-4 text-base sm:text-sm text-white focus:border-blue-500 outline-none transition-colors min-h-[48px] sm:min-h-[44px]" />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5"><ColorPicker label="Цвет текста" colorKey="textColor" /><ColorPicker label="Фон плашки" colorKey="bgColor" hasCheckbox checkboxKey="hasBackground" /></div>
                       </>
@@ -1434,7 +1434,7 @@ const handleSaveKomodGroups = async () => {
                     <p className="text-sm text-gray-400">Привяжите личный ТГ-аккаунт (нажмите <b className="text-white">Запустить</b> в боте)</p>
                   </div>
                   <a
-                    href={`https://t.me/smmbox_auth_bot?start=bind_${user?.id || ''}`}
+                    href={`https://t.me/sadovodps_auth_bot?start=bind_${user?.id || ''}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full py-2.5 rounded-lg font-bold text-white transition-all flex justify-center items-center gap-2 bg-gray-800 hover:bg-gray-700 text-sm border border-gray-700 mt-2"
@@ -1460,7 +1460,7 @@ const handleSaveKomodGroups = async () => {
                     </div>
                   ) : (
                     <a
-                    href="https://t.me/smmbox_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                    href="https://t.me/sadovodps_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => {
@@ -1635,7 +1635,7 @@ const handleSaveKomodGroups = async () => {
         }
       `}</style>
 
-      {/* ЭКРАН ЗАГРУЗКИ (SMMBox Style) */}
+      {/* ЭКРАН ЗАГРУЗКИ (SADOVODPS Style) */}
       {(vkConnectStatus === 'syncing_profile' || vkConnectStatus === 'syncing_groups') && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
            <div className="absolute inset-0 bg-[#121212]/90 backdrop-blur-sm"></div>

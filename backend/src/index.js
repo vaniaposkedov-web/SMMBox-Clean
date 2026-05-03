@@ -109,7 +109,7 @@ if (process.env.VERCEL) {
   module.exports = app;
 } else {
   server.listen(PORT, () => {
-      console.log(`Сервер SMMBOX запущен локально на порту ${PORT}`);
+      console.log(`Сервер SADOVODPS запущен локально на порту ${PORT}`);
   });
 }
 

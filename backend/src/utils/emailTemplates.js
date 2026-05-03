@@ -17,7 +17,7 @@ const getBaseTemplate = (content) => `
       </tr>
       <tr>
         <td style="padding: 20px 40px; background-color: #0f172a; text-align: center; color: #64748b; font-size: 12px;">
-          © 2026 SMMBOXSS. Все права защищены.<br>
+          © 2026 SADOVODPS. Все права защищены.<br>
           Это автоматическое письмо, на него не нужно отвечать.
         </td>
       </tr>
@@ -48,7 +48,7 @@ exports.welcomeTemplate = (name, id) => getBaseTemplate(`
     Добро пожаловать, ${name}!
   </h2>
   <p style="font-size: 16px; line-height: 24px; color: #94a3b8; margin-bottom: 24px; text-align: center;">
-    Регистрация прошла успешно. Теперь вам доступны все функции автопостинга SMMBOXSS.
+    Регистрация прошла успешно. Теперь вам доступны все функции автопостинга SADOVODPS.
   </p>
   <div style="background-color: #0f172a; border-radius: 16px; padding: 20px; text-align: center; border: 1px solid #334155;">
     <p style="margin: 0; color: #64748b; font-size: 14px;">Ваш уникальный ID:</p>

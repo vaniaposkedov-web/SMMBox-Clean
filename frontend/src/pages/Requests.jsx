@@ -154,7 +154,7 @@ export default function Requests() {
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = `smmdeck_photo_${Date.now()}.jpg`;
+      link.download = `sadovodps_photo_${Date.now()}.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

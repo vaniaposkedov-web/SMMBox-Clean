@@ -14,7 +14,7 @@ const sendEmail = async (email, subject, message) => {
     });
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || `"SMMBOX" <${process.env.SMTP_USER}>`,
+      from: process.env.EMAIL_FROM || `"SADOVODPS" <${process.env.SMTP_USER}>`,
       to: email,
       subject: subject,
       html: message,

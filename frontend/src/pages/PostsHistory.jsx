@@ -194,7 +194,7 @@ export default function PostsHistory() {
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = `smmdeck_${Date.now()}.${ext}`;
+      link.download = `sadovodps_${Date.now()}.${ext}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

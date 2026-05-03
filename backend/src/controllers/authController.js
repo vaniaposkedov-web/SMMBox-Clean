@@ -76,7 +76,7 @@ exports.register = async (req, res) => {
     try {
       await sendEmail(email, 'Подтверждение регистрации', `
         <div style="font-family: sans-serif; max-width: 400px;">
-          <h2 style="color: #111;">Добро пожаловать в SMMBOX!</h2>
+          <h2 style="color: #111;">Добро пожаловать в SADOVODPS!</h2>
           <p style="color: #666;">Введите этот код в приложении для подтверждения почты:</p>
           <div style="background: #f4f7ff; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0;">
             <b style="font-size: 32px; color: #0077FF; letter-spacing: 5px;">${verificationCode}</b>
@@ -289,7 +289,7 @@ exports.requestLinkEmail = async (req, res) => {
     
     // === ВОТ ЭТОГО БЛОКА ТАМ НЕ БЫЛО. ТЕПЕРЬ ПИСЬМО БУДЕТ ОТПРАВЛЯТЬСЯ ===
     try {
-      await sendEmail(email, 'Подтверждение почты SMMBOX', `
+      await sendEmail(email, 'Подтверждение почты SADOVODPS', `
         <div style="font-family: sans-serif; max-width: 400px;">
           <h2 style="color: #111;">Привязка почты</h2>
           <p style="color: #666;">Введите этот код в профиле для подтверждения:</p>
@@ -356,7 +356,7 @@ exports.forgotPassword = async (req, res) => {
     });
 
     // ФАКТИЧЕСКАЯ ОТПРАВКА ПИСЬМА (раньше этого блока не было)
-    const resetLink = `https://smmdeck.ru/reset-password/${token}`;
+    const resetLink = `${process.env.FRONTEND_URL || 'https://sadovodps24.ru'}/reset-password/${token}`;
     try {
       await sendEmail(email, 'Восстановление пароля', `Для сброса пароля перейдите по ссылке:\n\n${resetLink}\n\nЕсли вы не запрашивали сброс, просто проигнорируйте это письмо.`);
     } catch (e) {
