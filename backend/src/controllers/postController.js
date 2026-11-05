@@ -1,14 +1,14 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../utils/prisma');
 const axios = require('axios');
 const FormData = require('form-data');
-const sharp = require('sharp'); 
-const cron = require('node-cron'); 
-const jwt = require('jsonwebtoken');
+const sharp = require('sharp');
+const cron = require('node-cron');
 const { logPost } = require('../utils/log_post');
 const fs = require('fs');
 const path = require('path');
-const { postQueue } = require('../queue'); // Добавь эту строчку
+const { postQueue } = require('../queue');
+const { getUserLimits, getAllowedAccountIds, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
+const { escapeXml } = require('../utils/security');
 
 // === ЛОГИКА ОТПРАВКИ В TELEGRAM ===В общем
 async function sendToTelegram(token, chatId, text, imageBuffers) {
@@ -160,8 +160,9 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             validateStatus: status => status < 500
         });
 
-        if (postRes.data && postRes.data.success === false) {
-            throw new Error('Ошибка шлюза: ' + JSON.stringify(postRes.data.errors));
+        if (postRes.status >= 400 || postRes.data?.success === false) {
+            const details = postRes.data?.errors || postRes.data?.message || `код ${postRes.status}`;
+            throw new Error('Ошибка шлюза: ' + (typeof details === 'string' ? details : JSON.stringify(details)));
         }
 
         logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
@@ -172,22 +173,16 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     }
 }
 
-// === ЗАЩИТА АВТОРИЗАЦИИ ===
-const getUserId = (req) => {
-    if (req.user && typeof req.user === 'object') return req.user.id || req.user.userId;
-    if (req.userId) return req.userId;
-    if (typeof req.user === 'string') return req.user;
+const getUserId = (req) => req.userId;
 
-    try {
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.split(' ')[1];
-            const decoded = jwt.decode(token); 
-            if (decoded) return decoded.id || decoded.userId;
-        }
-    } catch (e) {}
-    return null;
-};
+const JOB_OPTIONS = { attempts: 3, backoff: { type: 'exponential', delay: 5000 } };
+const TEMP_QUEUE_DIR = path.join(__dirname, '../../uploads/temp_queue');
+const ORIGINALS_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const parseJson = (value, fallback) => { try { return value ? JSON.parse(value) : fallback; } catch (e) { return fallback; } };
+
+const removeUploadedFiles = (req) => Promise.all((req.files || []).map((file) => fs.promises.unlink(file.path).catch(() => {})));
+
+const safeColor = (value, fallback) => (/^#[0-9a-f]{3,8}$/i.test(String(value || '')) ? value : fallback);
 
 // === Вспомогательная функция для наложения водяного знака ===
 async function applyWatermark(imageBuffer, wmConfig) {
@@ -229,8 +224,8 @@ async function applyWatermark(imageBuffer, wmConfig) {
 
         if (wmConfig.type === 'text') {
             const text = wmConfig.text; 
-            const textColor = wmConfig.textColor || '#FFFFFF';
-            const bgColor = wmConfig.bgColor || '#000000';
+            const textColor = safeColor(wmConfig.textColor, '#FFFFFF');
+            const bgColor = safeColor(wmConfig.bgColor, '#000000');
             const hasBg = wmConfig.hasBackground !== false;
             
             const fontSize = Math.max(12, Math.floor(width * (sizeValue / 100) * 0.20)); 
@@ -244,11 +239,11 @@ async function applyWatermark(imageBuffer, wmConfig) {
             const svgHeight = fontSize + (innerPadV * 2);
 
             const hasStroke = wmConfig.hasStroke;
-            const strokeColor = wmConfig.strokeColor || '#000000';
+            const strokeColor = safeColor(wmConfig.strokeColor, '#000000');
             const strokeWidth = Math.max(1, Math.floor((wmConfig.strokeWidth || 2) * (width / 1000)));
 
             const strokeAttr = hasStroke ? `stroke="${strokeColor}" stroke-width="${strokeWidth}" paint-order="stroke"` : '';
-            const fontFam = wmConfig.fontFamily ? wmConfig.fontFamily.replace(/"/g, "'") : 'sans-serif';
+            const fontFam = wmConfig.fontFamily ? String(wmConfig.fontFamily).replace(/[^\w\s,'"-]/g, '').replace(/"/g, "'") : 'sans-serif';
 
             const svg = `
                 <svg width="${svgWidth}" height="${svgHeight}">
@@ -257,7 +252,7 @@ async function applyWatermark(imageBuffer, wmConfig) {
                         .text { fill: ${textColor}; font-size: ${fontSize}px; font-family: ${fontFam}; font-weight: bold; opacity: ${opacity}; }
                     </style>
                     <rect width="100%" height="100%" rx="${fontSize * 0.2}" class="bg" />
-                    <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" class="text" ${strokeAttr}>${text}</text>
+                    <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" class="text" ${strokeAttr}>${escapeXml(text)}</text>
                 </svg>`;
             overlayBuffer = Buffer.from(svg);
             
@@ -334,7 +329,23 @@ exports.createPost = async (req, res) => {
         }
         
         if (!accounts || accounts.length === 0) {
+            await removeUploadedFiles(req);
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
+        }
+
+        // Публиковать можно только в свои аккаунты, при активной подписке и в пределах тарифа
+        const userId = getUserId(req);
+        const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+        const limits = getUserLimits(currentUser);
+        if (!limits.active) {
+            await removeUploadedFiles(req);
+            return res.status(403).json({ success: false, error: NO_SUBSCRIPTION_ERROR });
+        }
+        const ownAccounts = await prisma.account.findMany({ where: { userId }, select: { id: true, provider: true, createdAt: true } });
+        const allowedIds = getAllowedAccountIds(ownAccounts, limits);
+        if (accounts.some((item) => !allowedIds.has(item.accountId))) {
+            await removeUploadedFiles(req);
+            return res.status(403).json({ success: false, error: 'Один из выбранных аккаунтов недоступен для публикации' });
         }
 
         // БЫСТРЫЙ ШАГ 1: Надежно сохраняем файлы и генерируем два вида путей
@@ -360,43 +371,54 @@ exports.createPost = async (req, res) => {
             }
         }
 
-        // БЫСТРЫЙ ШАГ 2: Создаем записи в базе данных
+        // Создаём записи в базе. Оформление сохраняется вместе с постом: оно нужно и отложенным постам, и повторной отправке.
+        const createdPosts = [];
         for (const accData of accounts) {
-            const account = await prisma.account.findUnique({ 
+            const account = await prisma.account.findUnique({
                 where: { id: accData.accountId },
-                include: { watermark: true } 
+                include: { watermark: true }
             });
             if (!account) continue;
+
+            const watermarkConfig = accData.applyWatermark ? (accData.watermarkConfig || account.watermark) : null;
+            const signatureText = accData.applySignature ? (accData.signatureText !== undefined ? accData.signatureText : account.signature) : null;
 
             const post = await prisma.post.create({
                 data: {
                     accountId: account.id,
                     text: text || '',
-                    mediaUrls: JSON.stringify(dbFilePaths), // <--- СОХРАНЯЕМ ПУБЛИЧНЫЕ ПУТИ
+                    mediaUrls: JSON.stringify(dbFilePaths),
+                    originalMediaUrls: JSON.stringify(dbFilePaths),
+                    watermarkConfig: watermarkConfig ? JSON.stringify(watermarkConfig) : null,
+                    signatureText: signatureText || null,
                     publishAt: parsedPublishAt,
-                    status: isScheduled ? 'SCHEDULED' : 'PROCESSING' 
+                    status: isScheduled ? 'SCHEDULED' : 'PROCESSING'
                 }
             });
 
-            // БЫСТРЫЙ ШАГ 3: Если пост надо выложить СЕЙЧАС — кидаем в очередь
+            const created = { id: post.id, status: post.status, errorMessage: null, accountName: account.name, provider: account.provider };
+
             if (!isScheduled) {
-                await postQueue.add('publish-job', {
-                    postId: post.id,
-                    accountId: account.id,
-                    text: text || '',
-                    filePaths: workerFilePaths, // <--- ОТДАЕМ ВОРКЕРУ ВНУТРЕННИЕ ПУТИ
-                    watermarkConfig: accData.applyWatermark ? (accData.watermarkConfig || account.watermark) : null,
-                    signatureText: accData.applySignature ? (accData.signatureText !== undefined ? accData.signatureText : account.signature) : null
-                }, {
-                    attempts: 3, 
-                    backoff: { type: 'exponential', delay: 5000 }
-                });
+                try {
+                    await postQueue.add('publish-job', {
+                        postId: post.id,
+                        accountId: account.id,
+                        text: text || '',
+                        filePaths: workerFilePaths,
+                        watermarkConfig,
+                        signatureText
+                    }, JOB_OPTIONS);
+                } catch (queueError) {
+                    console.error('Очередь публикаций недоступна:', queueError.message);
+                    created.status = 'FAILED';
+                    created.errorMessage = 'Очередь публикаций недоступна';
+                    await prisma.post.update({ where: { id: post.id }, data: { status: 'FAILED', errorMessage: created.errorMessage } });
+                }
             }
+            createdPosts.push(created);
         }
 
-        // БЫСТРЫЙ ШАГ 4: СРАЗУ отвечаем фронтенду, что всё супер!
-        // Пользователь сразу увидит галочку, пока сервер в фоне будет делать работу.
-        return res.status(200).json({ success: true, message: 'Посты успешно отправлены в обработку' });
+        return res.status(200).json({ success: true, message: 'Посты приняты в обработку', posts: createdPosts });
 
     } catch (error) {
         console.error('[FATAL ERROR] Сбой createPost:', error);
@@ -404,100 +426,114 @@ exports.createPost = async (req, res) => {
     }
 };
 
-/// === ТАЙМЕР (CRON): АВТОМАТИЧЕСКАЯ ОТПРАВКА ОТЛОЖЕННЫХ ПОСТОВ ===
+// Статус постов для экрана после публикации: показываем успех только тогда, когда он действительно есть.
+exports.getPostStatuses = async (req, res) => {
+    try {
+        const ids = String(req.query.ids || '').split(',').map((id) => id.trim()).filter(Boolean).slice(0, 50);
+        const posts = await prisma.post.findMany({
+            where: { id: { in: ids }, account: { userId: getUserId(req) } },
+            select: { id: true, status: true, errorMessage: true, account: { select: { name: true, provider: true } } }
+        });
+        res.json({
+            success: true,
+            posts: posts.map((p) => ({ id: p.id, status: p.status, errorMessage: p.errorMessage, accountName: p.account.name, provider: p.account.provider }))
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Ошибка загрузки статуса' });
+    }
+};
+
+// Файлы для воркера: исходные фото поста. Старые посты могли хранить картинки прямо в базе.
+const resolveFilePaths = async (post) => {
+    const urls = parseJson(post.originalMediaUrls, null) || parseJson(post.mediaUrls, []);
+    const filePaths = [];
+    for (const url of urls) {
+        if (String(url).startsWith('data:')) {
+            fs.mkdirSync(TEMP_QUEUE_DIR, { recursive: true });
+            const file = path.join(TEMP_QUEUE_DIR, `task_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`);
+            await fs.promises.writeFile(file, Buffer.from(String(url).split(',')[1], 'base64'));
+            filePaths.push(file);
+        } else {
+            filePaths.push(path.join(__dirname, '../..', String(url)));
+        }
+    }
+    return filePaths;
+};
+
+// Отложенные посты идут через ту же очередь и тот же воркер, что и обычные:
+// те же водяной знак, подпись и обработка фото. Если фото пропало, пост станет «Ошибка», а не уйдёт без картинок.
+const enqueueDuePosts = async () => {
+    const duePosts = await prisma.post.findMany({ where: { status: 'SCHEDULED', publishAt: { lte: new Date() } } });
+
+    for (const post of duePosts) {
+        // Статус меняется сразу, чтобы следующий запуск планировщика не отправил пост второй раз.
+        const { count } = await prisma.post.updateMany({
+            where: { id: post.id, status: 'SCHEDULED' },
+            data: { status: 'PROCESSING', errorMessage: null }
+        });
+        if (count === 0) continue;
+
+        try {
+            await postQueue.add('publish-job', {
+                postId: post.id,
+                accountId: post.accountId,
+                text: post.text || '',
+                filePaths: await resolveFilePaths(post),
+                watermarkConfig: parseJson(post.watermarkConfig, null),
+                signatureText: post.signatureText
+            }, JOB_OPTIONS);
+        } catch (error) {
+            console.error(`[CRON ERROR] Пост ${post.id}:`, error.message);
+            await prisma.post.update({ where: { id: post.id }, data: { status: 'FAILED', errorMessage: 'Не удалось поставить пост в очередь' } });
+        }
+    }
+};
+
+// Исходные фото хранятся 30 дней: они нужны для отправки партнёрам и повторной публикации.
+// Фото постов, которые ещё ждут отправки, не удаляются, сколько бы они ни ждали.
+exports.cleanupTempQueue = async () => {
+    if (!fs.existsSync(TEMP_QUEUE_DIR)) return { removed: 0 };
+
+    const pending = await prisma.post.findMany({
+        where: { status: { in: ['SCHEDULED', 'PROCESSING'] } },
+        select: { mediaUrls: true, originalMediaUrls: true }
+    });
+    const inUse = new Set();
+    for (const post of pending) {
+        for (const url of [...parseJson(post.mediaUrls, []), ...parseJson(post.originalMediaUrls, [])]) {
+            inUse.add(path.basename(String(url)));
+        }
+    }
+
+    let removed = 0;
+    const now = Date.now();
+    for (const file of await fs.promises.readdir(TEMP_QUEUE_DIR)) {
+        if (inUse.has(file)) continue;
+        const filePath = path.join(TEMP_QUEUE_DIR, file);
+        const stats = await fs.promises.stat(filePath);
+        if (now - stats.mtimeMs > ORIGINALS_RETENTION_MS) {
+            await fs.promises.unlink(filePath).catch(() => {});
+            removed += 1;
+        }
+    }
+    return { removed };
+};
+
 exports.initCron = () => {
     cron.schedule('* * * * *', async () => {
         try {
-            const now = new Date();
-            const postsToPublish = await prisma.post.findMany({
-                where: { status: 'SCHEDULED', publishAt: { lte: now } },
-                include: { account: true }
-            });
-
-            if (postsToPublish.length > 0) {
-                console.log(`\n[CRON] ⏰ Найдено отложенных постов для отправки: ${postsToPublish.length}`);
-            }
-
-            for (const post of postsToPublish) {
-                try {
-                    const account = post.account;
-                    const mediaUrls = JSON.parse(post.mediaUrls || '[]');
-                    
-                    const imageBuffers = [];
-                    
-                    // Читаем фото: поддержка и новых (файлы) и старых (Base64) постов
-                    for (const imgUrl of mediaUrls) {
-                        if (imgUrl.startsWith('data:')) {
-                            // Поддержка СТАРЫХ постов (Base64)
-                            const base64Data = imgUrl.split(',')[1];
-                            imageBuffers.push(Buffer.from(base64Data, 'base64'));
-                        } else {
-                            // Читаем НОВЫЕ файлы с диска
-                            const filePath = path.join(__dirname, '../..', imgUrl);
-                            try {
-                                const buf = await fs.promises.readFile(filePath);
-                                imageBuffers.push(buf);
-                            } catch (e) {
-                                console.error(`[CRON ERROR] Не найден файл ${filePath}`);
-                            }
-                        }
-                    }
-
-                    const providerType = account.provider.toLowerCase();
-                    if (providerType === 'telegram') {
-                        const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
-                        await sendToTelegram(botToken, account.providerId, post.text, imageBuffers);
-                    } else if (providerType === 'vk') {
-                        await sendToKomodVK(account.accessToken, account.providerId, post.text, imageBuffers, null, account.userId);
-                    }
-
-                    
-                    const thumbnailsUrls = await Promise.all(imageBuffers.map(async (buf) => {
-                        // 🟢 ИСПРАВЛЕНИЕ: Сжимаем до WebP 400px (вес будет в 10 раз меньше, чем JPEG 800px)
-                        const thumbBuf = await sharp(buf)
-                            .resize({ width: 400, fit: 'inside', withoutEnlargement: true })
-                            .webp({ quality: 65 })
-                            .toBuffer();
-                        return await saveImageToFile(thumbBuf, 'history_cron');
-                    }));
-                    await prisma.post.update({
-                        where: { id: post.id },
-                        data: { 
-                            status: 'PUBLISHED', 
-                            mediaUrls: JSON.stringify(thumbnailsUrls) 
-                            // ВАЖНО: Мы НЕ обнуляем publishAt, чтобы пост остался в календаре
-                        } 
-                    });
-                    
-                    console.log(`[CRON] ✅ Отложенный пост #${post.id} успешно отправлен!`);
-                } catch (err) {
-                    console.error(`[CRON ERROR] Ошибка отправки отложенного поста #${post.id}:`, err.message);
-                    await prisma.post.update({ where: { id: post.id }, data: { status: 'FAILED' } });
-                }
-            }
+            await enqueueDuePosts();
         } catch (e) {
-            console.error('[CRON FATAL ERROR]', e);
+            console.error('[CRON FATAL ERROR]', e.message);
         }
     });
 
-    // === АВТО-ОЧИСТКА ВРЕМЕННЫХ ФАЙЛОВ ===
-    // Каждую ночь в 3:00 удаляем отработанные фото из очереди старше 1 дня
     cron.schedule('0 3 * * *', async () => {
         try {
-            const tempDir = path.join(__dirname, '../../uploads/temp_queue');
-            if (fs.existsSync(tempDir)) {
-                const files = await fs.promises.readdir(tempDir);
-                const now = Date.now();
-                for (const file of files) {
-                    const filePath = path.join(tempDir, file);
-                    const stats = await fs.promises.stat(filePath);
-                    // Если файлу больше 24 часов - удаляем
-                    if (now - stats.mtimeMs > 24 * 60 * 60 * 1000) { 
-                        await fs.promises.unlink(filePath).catch(()=>({}));
-                    }
-                }
-            }
-        } catch (e) { console.error('[CRON] Ошибка очистки темп-файлов', e); }
+            await exports.cleanupTempQueue();
+        } catch (e) {
+            console.error('[CRON] Ошибка очистки файлов', e.message);
+        }
     });
 };
 
@@ -510,6 +546,7 @@ exports.getScheduledPosts = async (req, res) => {
 
         const posts = await prisma.post.findMany({
             where: { account: { userId: userId } },
+            omit: { watermarkConfig: true },
             include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
             orderBy: [{ createdAt: 'desc' }],
             take: 75 // 🟢 ИСПРАВЛЕНИЕ: Загружаем 75 постов вместо 500
@@ -527,7 +564,7 @@ exports.updateScheduledPost = async (req, res) => {
         const { id } = req.params;
         const { text, publishAt } = req.body;
         
-        const post = await prisma.post.findUnique({ where: { id }});
+        const post = await prisma.post.findFirst({ where: { id, account: { userId: getUserId(req) } } });
         if (!post) return res.status(404).json({ success: false, error: 'Пост не найден' });
         if (post.status !== 'SCHEDULED') return res.status(400).json({ success: false, error: 'Этот пост уже опубликован' });
         
@@ -559,7 +596,22 @@ exports.shareWithPartners = async (req, res) => {
         const senderId = getUserId(req);
 
         if (!senderId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
-        if (!partnerIds || partnerIds.length === 0) return res.status(400).json({ success: false, error: 'Выберите партнера' });
+        if (!Array.isArray(partnerIds) || partnerIds.length === 0) {
+            await removeUploadedFiles(req);
+            return res.status(400).json({ success: false, error: 'Выберите партнера' });
+        }
+
+        // Посты можно отправлять только тем, кто действительно принял заявку в партнёры
+        const accepted = await prisma.partnership.findMany({
+            where: { status: 'ACCEPTED', OR: [{ requesterId: senderId }, { receiverId: senderId }] },
+            select: { requesterId: true, receiverId: true },
+        });
+        const myPartnerIds = new Set(accepted.map((p) => (p.requesterId === senderId ? p.receiverId : p.requesterId)));
+        partnerIds = partnerIds.map(String).filter((id) => myPartnerIds.has(id));
+        if (partnerIds.length === 0) {
+            await removeUploadedFiles(req);
+            return res.status(403).json({ success: false, error: 'Выбранные пользователи не являются вашими партнёрами' });
+        }
 
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
         if (!sender) return res.status(404).json({ success: false, error: 'Отправитель не найден' });
@@ -612,7 +664,7 @@ exports.shareWithPartners = async (req, res) => {
                     } catch (e) {
                         console.error('Ошибка конвертации Base64 в файл:', e);
                     }
-                } else if (img && typeof img === 'string' && img.startsWith('/uploads/')) {
+                } else if (img && typeof img === 'string' && img.startsWith('/uploads/') && !img.includes('..')) {
                     // Если вдруг прислали уже готовый путь
                     savedImageUrls.push(img);
                 }
@@ -672,8 +724,8 @@ exports.getSharedPosts = async (req, res) => {
 // === ОТКАЗАТЬСЯ ОТ ПОСТА ПАРТНЕРА (С УВЕДОМЛЕНИЕМ) ===
 exports.deleteSharedPost = async (req, res) => {
     try {
-        const post = await prisma.sharedPost.findUnique({
-            where: { id: req.params.id },
+        const post = await prisma.sharedPost.findFirst({
+            where: { id: req.params.id, receiverId: getUserId(req) },
             include: { receiver: { select: { name: true, pavilion: true } } }
         });
         
@@ -699,7 +751,8 @@ exports.deleteSharedPost = async (req, res) => {
 
 exports.deleteScheduledPost = async (req, res) => {
     try {
-        await prisma.post.delete({ where: { id: req.params.id } });
+        const { count } = await prisma.post.deleteMany({ where: { id: req.params.id, account: { userId: getUserId(req) } } });
+        if (count === 0) return res.status(404).json({ success: false, error: 'Пост не найден' });
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false });
@@ -708,7 +761,7 @@ exports.deleteScheduledPost = async (req, res) => {
 
 exports.markSharedPostRead = async (req, res) => {
   try {
-    await prisma.sharedPost.update({ where: { id: req.body.id }, data: { isRead: true } });
+    await prisma.sharedPost.updateMany({ where: { id: req.body.id, receiverId: getUserId(req) }, data: { isRead: true } });
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Ошибка' }); }
 };
@@ -767,6 +820,7 @@ exports.getPostsHistory = async (req, res) => {
         // 1. Берем обычные посты (VK / Telegram)
         const posts = await prisma.post.findMany({
             where: { account: { userId: userId } },
+            omit: { watermarkConfig: true },
             include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
             orderBy: [{ createdAt: 'desc' }],
             take: 500 
@@ -826,6 +880,7 @@ exports.retryPost = async (req, res) => {
             where: { id },
             data: { 
                 status: 'SCHEDULED',
+                errorMessage: null,
                 publishAt: new Date() 
             }
         });
@@ -842,9 +897,9 @@ exports.retryPost = async (req, res) => {
 exports.markSharedPostPublished = async (req, res) => {
     try {
         const { id } = req.params;
-        const sharedPost = await prisma.sharedPost.findUnique({
-            where: { id },
-            include: { sender: true, receiver: { select: { name: true, pavilion: true } } }
+        const sharedPost = await prisma.sharedPost.findFirst({
+            where: { id, receiverId: getUserId(req) },
+            include: { receiver: { select: { name: true, pavilion: true } } }
         });
 
         // 🛡️ ЗАЩИТА ОТ ДУБЛЕЙ: Проверяем, не опубликован ли он уже

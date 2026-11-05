@@ -1,17 +1,30 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../utils/prisma');
 const axios = require('axios');
+const { getUserLimits, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
+
+const DEFAULT_AI_PROMPT = 'Ты профессиональный SMM-маркетолог. Твоя задача: улучшить предоставленный текст поста. Исправь ошибки, сделай текст более вовлекающим, разбей на удобные абзацы и добавь 2-3 подходящих эмодзи. Не выдумывай факты и цены, которых нет в оригинале.';
+const MAX_TEXT_LENGTH = 5000;
+
+exports.DEFAULT_AI_PROMPT = DEFAULT_AI_PROMPT;
 
 exports.generateText = async (req, res) => {
     try {
-        const { text, systemPrompt } = req.body;
-        
+        const text = String(req.body.text || '').trim();
+        if (!text) return res.status(400).json({ success: false, error: 'Введите текст' });
+        if (text.length > MAX_TEXT_LENGTH) return res.status(400).json({ success: false, error: 'Текст слишком длинный' });
+
+        const currentUser = await prisma.user.findUnique({ where: { id: req.userId } });
+        if (!getUserLimits(currentUser).active) {
+            return res.status(403).json({ success: false, error: NO_SUBSCRIPTION_ERROR });
+        }
+
+        // Инструкция для нейросети берётся из настроек админки, а не из браузера.
+        const settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } });
+        const systemPrompt = settings?.aiPrompt || DEFAULT_AI_PROMPT;
+
         const apiKey = process.env.KIE_API_KEY;
-        
-        // Возвращаем рабочую модель, которая была до моих правок!
-        const modelName = 'gpt-5-2'; 
-        
-        const apiUrl = `https://api.kie.ai/${modelName}/v1/chat/completions`; 
+        const modelName = 'gpt-5-2';
+        const apiUrl = `https://api.kie.ai/${modelName}/v1/chat/completions`;
 
         const response = await axios.post(apiUrl, {
             messages: [
@@ -20,24 +33,19 @@ exports.generateText = async (req, res) => {
             ],
             temperature: 0.7
         }, {
-            headers: { 
+            headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
             validateStatus: function (status) { return status < 500; }
         });
 
-        console.log('\n=== ОТВЕТ ОТ KIE API ===');
-        console.log(`Статус-код: ${response.status}`);
-        console.log(JSON.stringify(response.data, null, 2));
-        console.log('========================\n');
-
         // 1. Успешный ответ
         if (response.data && response.data.choices && response.data.choices.length > 0) {
             const generatedText = response.data.choices[0].message.content;
 
             // --- СОХРАНЕНИЕ ЛОГА ИИ В БАЗУ ДАННЫХ ---
-            const userId = req.user?.userId || req.user?.id;
+            const userId = req.userId;
             if (userId) {
                 await prisma.aiLog.create({
                     data: {

@@ -376,7 +376,7 @@ const handleSaveKomodGroups = async () => {
 
     // Подключаемся к WebSocket серверу
     const socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
-      query: { userId: user.id }
+      auth: { token: localStorage.getItem('token') || token }
       // 🟢 ИСПРАВЛЕНИЕ: Мы удалили строку "transports: ['websocket']". 
       // Теперь Socket.io сам обойдет блокировку NGINX на TimeWeb 
       // и подключится через резервный канал связи!

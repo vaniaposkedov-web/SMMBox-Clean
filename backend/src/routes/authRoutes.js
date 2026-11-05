@@ -1,30 +1,37 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const upload = require('../middleware/upload'); // Подключаем мидлвар
+const upload = require('../middleware/upload');
 const authMiddleware = require('../middleware/auth');
-const { protect } = require('../middleware/auth');
 
-router.post('/register', authController.register);
-router.post('/verify-email', authController.verifyEmail);
-router.post('/login', authController.login);
+const limiter = (max) => rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Слишком много попыток. Подождите 15 минут и попробуйте снова.' },
+});
+const loginLimiter = limiter(30);
+const codeLimiter = limiter(10);
 
-// --- НОВЫЕ МАРШРУТЫ ДЛЯ СОЦСЕТЕЙ ---
-router.post('/telegram', authController.telegramAuth);
-router.post('/vk', authController.vkAuth);
-router.post('/link-email', authController.linkEmailAndSendCode);
-// ------------------------------------
+router.post('/register', loginLimiter, authController.register);
+router.post('/verify-email', codeLimiter, authController.verifyEmail);
+router.post('/login', loginLimiter, authController.login);
+
+router.post('/telegram', loginLimiter, authController.telegramAuth);
+router.post('/vk', loginLimiter, authController.vkAuth);
+
 router.post('/complete-onboarding', authMiddleware, authController.completeOnboarding);
-router.post('/tg-chat-info', authController.getTgChatInfo); // <--- ДОБАВИТЬ ЭТО
+router.post('/tg-chat-info', authMiddleware, authController.getTgChatInfo);
 
-router.post('/request-link-email', authController.requestLinkEmail);
-router.post('/verify-link-email', authController.verifyLinkEmail);
+router.post('/request-link-email', authMiddleware, codeLimiter, authController.requestLinkEmail);
+router.post('/verify-link-email', authMiddleware, codeLimiter, authController.verifyLinkEmail);
 
-router.post('/forgot-password', authController.forgotPassword);
-router.post('/reset-password/:token', authController.resetPassword);
+router.post('/forgot-password', codeLimiter, authController.forgotPassword);
+router.post('/reset-password/:token', codeLimiter, authController.resetPassword);
 router.get('/me', authMiddleware, authController.getMe);
 
-// Используем upload.single('avatar') чтобы multer ловил файл с именем avatar
 router.put('/profile', authMiddleware, upload.single('avatar'), authController.updateProfile);
 
 module.exports = router;

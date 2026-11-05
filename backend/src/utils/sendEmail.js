@@ -1,30 +1,30 @@
 const nodemailer = require('nodemailer');
 
-// Теперь функция правильно принимает 3 отдельных аргумента
+// Returns true when the mail server accepted the letter, so callers can tell the user the truth.
 const sendEmail = async (email, subject, message) => {
   try {
+    const port = Number(process.env.SMTP_PORT) || 465;
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: Number(process.env.SMTP_PORT) || 465, 
-      secure: true, // Для 465 порта строго true
+      port,
+      secure: port === 465,
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS, 
+        pass: process.env.SMTP_PASS,
       },
     });
 
-    const mailOptions = {
+    const info = await transporter.sendMail({
       from: process.env.EMAIL_FROM || `"SADOVODPS" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: subject,
+      subject,
       html: message,
-    };
-
-    const info = await transporter.sendMail(mailOptions);
+    });
     console.log('Письмо успешно отправлено: %s', info.messageId);
-
+    return true;
   } catch (error) {
-    console.error('❌ ОШИБКА SMTP (NODEMAILER):', error.message);
+    console.error('Ошибка SMTP:', error.message);
+    return false;
   }
 };
 

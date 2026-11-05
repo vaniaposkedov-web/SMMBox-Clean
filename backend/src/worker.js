@@ -1,10 +1,13 @@
 const { Worker } = require('bullmq');
 const { connection } = require('./queue');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('./utils/prisma');
 const fs = require('fs');
-const prisma = new PrismaClient();
 const sharp = require('sharp');
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const describeError = (error) => {
+    const data = error.response?.data;
+    return String(data?.description || data?.message || error.message || 'Неизвестная ошибка').slice(0, 300);
+};
 
 // ИМПОРТИРУЕМ твои функции из postController. 
 // ВАЖНО: Тебе нужно зайти в postController.js и убедиться, что ты экспортируешь эти функции (напиши exports.applyWatermark = applyWatermark и т.д.)
@@ -48,33 +51,37 @@ const worker = new Worker('posts_v2', async (job) => {
             await sendToTelegram(botToken, account.providerId, finalText, processedBuffers);
             await sleep(2000); // 🟢 АНТИ-СПАМ: Задержка 2 секунды после отправки в ТГ
         } else if (providerType === 'vk') {
-            await sendToKomodVK(account.accessToken, account.providerId, finalText, processedBuffers, null, account.userId);
+            await sendToKomodVK(process.env.KOMOD_TOKEN, account.providerId, finalText, processedBuffers, null, account.userId);
             await sleep(1000); // 🟢 АНТИ-СПАМ: Задержка 1 секунда для ВК
         }
 
-        // 6. Сохраняем миниатюры для истории
-        const thumbnailsUrls = await Promise.all(processedBuffers.map(async (buf) => {
-            const thumbBuf = await sharp(buf).resize({ width: 400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 65 }).toBuffer();
-            return await saveImageToFile(thumbBuf, 'history');
-        }));
+        // 6. Сохраняем миниатюры для истории. Пост уже отправлен: сбой здесь не должен вызвать повторную публикацию.
+        let thumbnailsUrls = null;
+        try {
+            thumbnailsUrls = await Promise.all(processedBuffers.map(async (buf) => {
+                const thumbBuf = await sharp(buf).resize({ width: 400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 65 }).toBuffer();
+                return await saveImageToFile(thumbBuf, 'history');
+            }));
+        } catch (thumbnailError) {
+            console.error(`[WORKER] Миниатюры поста ${postId} не сохранены:`, thumbnailError.message);
+        }
 
         // 7. ОБНОВЛЯЕМ БАЗУ - УСПЕХ!
         await prisma.post.update({
             where: { id: postId },
-            data: { status: 'PUBLISHED', mediaUrls: JSON.stringify(thumbnailsUrls) }
+            data: { status: 'PUBLISHED', errorMessage: null, ...(thumbnailsUrls ? { mediaUrls: JSON.stringify(thumbnailsUrls) } : {}) }
         });
 
-        
-        
         console.log(`[WORKER] Успешно завершил пост ${postId}`);
 
     } catch (error) {
         console.error(`[WORKER ERROR] Ошибка поста ${postId}:`, error.message);
         
-        // ОБНОВЛЯЕМ БАЗУ - ОШИБКА!
+        // Очередь повторит отправку сама, поэтому ошибкой считается только последняя попытка
+        const isLastAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
         await prisma.post.update({
             where: { id: postId },
-            data: { status: 'FAILED' }
+            data: isLastAttempt ? { status: 'FAILED', errorMessage: describeError(error) } : { errorMessage: describeError(error) }
         });
         
         throw error; // Чтобы BullMQ знал, что задача провалилась

@@ -43,6 +43,7 @@ export const useStore = create(
       },
 
       tempDraft: null,
+      sessionExpired: false,
       saveTempDraft: (data) => set({ tempDraft: data }),
 
       presets: [
@@ -294,7 +295,7 @@ export const useStore = create(
       requestEmailLink: async (userId, email) => {
         try {
           const res = await fetch('/api/auth/request-link-email', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, email }),
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` }, body: JSON.stringify({ email }),
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
@@ -332,7 +333,7 @@ export const useStore = create(
       verifyEmailLink: async (userId, email, code, phone) => { 
         try {
           const res = await fetch('/api/auth/verify-link-email', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, email, code, phone }), 
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` }, body: JSON.stringify({ email, code, phone }), 
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
@@ -599,7 +600,7 @@ export const useStore = create(
             body: JSON.stringify({ hash })
           });
           const data = await res.json();
-          return data.success ? { success: true } : { success: false, error: data.error };
+          return data.success ? { success: true, data } : { success: false, error: data.error };
         } catch (error) {
           return { success: false, error: 'Ошибка сети' };
         }
@@ -723,7 +724,7 @@ export const useStore = create(
           if (res.ok && data.success) {
             // Обновляем отложку, если это был запланированный пост
             if (publishAt) get().fetchScheduledPosts();
-            return { success: true };
+            return { success: true, posts: data.posts || [] };
           }
           return { success: false, error: data.error || 'Ошибка при обработке сервером' };
         } catch (error) { 

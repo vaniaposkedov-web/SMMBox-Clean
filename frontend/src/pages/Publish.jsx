@@ -71,6 +71,8 @@ export default function Publish() {
   const [selectedPartners, setSelectedPartners] = useState([]);
   // === ДОБАВЬТЕ ЭТУ СТРОКУ ===
   const [toastMessage, setToastMessage] = useState(null);
+  const [publishResults, setPublishResults] = useState([]);
+  const [publishTimedOut, setPublishTimedOut] = useState(false);
 
   const [editPost, setEditPost] = useState(null);
   const [editTab, setEditTab] = useState('text');
@@ -94,6 +96,33 @@ export default function Publish() {
 
   
   const [isSharing, setIsSharing] = useState(false);
+
+  // После отправки следим за настоящим статусом постов в очереди
+  const publishIds = useMemo(() => publishResults.map((p) => p.id).join(','), [publishResults]);
+  useEffect(() => {
+    if (step !== 4 || publishMode === 'schedule' || !publishIds) return undefined;
+
+    const startedAt = Date.now();
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/posts/status?ids=${encodeURIComponent(publishIds)}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || useStore.getState().token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const latest = data.posts || [];
+          setPublishResults(latest);
+          if (latest.every((p) => p.status !== 'PROCESSING')) clearInterval(timer);
+        }
+      } catch (e) { /* следующая попытка через пару секунд */ }
+      if (Date.now() - startedAt > 120000) {
+        setPublishTimedOut(true);
+        clearInterval(timer);
+      }
+    }, 1500);
+
+    return () => clearInterval(timer);
+  }, [step, publishMode, publishIds]);
  const handleShareToPartners = async () => {
     if (selectedPartners.length === 0) return;
     
@@ -463,61 +492,47 @@ const handlePublish = async () => {
       publishAt = selectedDateTime.toISOString(); 
     }
     
-    // === 2. МОМЕНТАЛЬНЫЙ UI (UX без зависаний) ===
-    // Пользователь сразу видит плашку "Успешно опубликовано", интерфейс разблокирован
-    setStep(4); 
-    if (saveTempDraft) saveTempDraft(null); 
-
-    // === 3. ЗАЩИТА ОТ ЗАКРЫТИЯ ВКЛАДКИ ===
-    // Если юзер решит закрыть браузер (смахнуть приложение), пока идет тяжелая загрузка
+    // Пока фото загружаются, закрытие вкладки может потерять пост
     const handleBeforeUnload = (e) => {
-        e.preventDefault();
-        e.returnValue = 'Фотографии еще загружаются на сервер! Если закроете страницу, пост будет утерян.';
+      e.preventDefault();
+      e.returnValue = 'Фотографии ещё загружаются на сервер. Если закрыть страницу, пост будет потерян.';
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
+    setIsPublishing(true);
+    setPublishTimedOut(false);
 
-    // === 4. ФОНОВЫЙ ПРОЦЕСС ЗАГРУЗКИ ===
-    (async () => {
-        try {
-            // Тяжелая операция сжатия картинок крутится в фоне и не вешает UI
-            const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
-            
-            const accountsData = selectedAccounts.map(id => {
-              const acc = accounts.find(a => a.id === id);
-              const wmConfig = (acc?.watermark !== null && acc?.watermark !== undefined) 
-                ? acc.watermark 
-                : (applyWatermark ? (globalSettings?.watermark || watermarkSettings) : null);
-              const sigText = (acc?.signature !== null && acc?.signature !== undefined) 
-                ? acc.signature 
-                : (applySignature ? (globalSettings?.signature || '') : null);
+    try {
+      const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
 
-              return { accountId: id, applyWatermark: !!wmConfig, applySignature: !!sigText, watermarkConfig: wmConfig, signatureText: sigText };
-            });
+      const accountsData = selectedAccounts.map(id => {
+        const acc = accounts.find(a => a.id === id);
+        const wmConfig = (acc?.watermark !== null && acc?.watermark !== undefined)
+          ? acc.watermark
+          : (applyWatermark ? (globalSettings?.watermark || watermarkSettings) : null);
+        const sigText = (acc?.signature !== null && acc?.signature !== undefined)
+          ? acc.signature
+          : (applySignature ? (globalSettings?.signature || '') : null);
 
-            // Сетевой запрос выгрузки (может занимать 2-5 секунд при плохом интернете)
-            const result = await createPostAction(text, webpBlobs, accountsData, publishAt);
-            
-            if (result.success) {
-                fetchScheduledPosts(); 
-                
-                // ЗАЩИТА REACT: Показываем тост об окончании выгрузки ТОЛЬКО если юзер 
-                // всё еще находится на странице /publish. Если он ушел в меню, тост не сломает приложение.
-                if (window.location.pathname.includes('/publish')) {
-                    setToastMessage('✅ Медиафайлы успешно доставлены на сервер!');
-                    setTimeout(() => setToastMessage(null), 3500);
-                }
-            } else {
-                alert(result.error || 'Ошибка сервера при фоновой публикации');
-            }
-        } catch (error) {
-            console.error("Ошибка при публикации:", error);
-            alert('Произошла ошибка соединения с сервером при фоновой публикации. Проверьте интернет.');
-        } finally {
-            // Как только файлы достигли бэкенда (твоей очереди) — снимаем защиту.
-            // Теперь бэкенд сам разберется с 28 постами, и браузер можно безопасно закрывать.
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-        }
-    })();
+        return { accountId: id, applyWatermark: !!wmConfig, applySignature: !!sigText, watermarkConfig: wmConfig, signatureText: sigText };
+      });
+
+      const result = await createPostAction(text, webpBlobs, accountsData, publishAt);
+
+      if (result.success) {
+        setPublishResults(result.posts || []);
+        setStep(4);
+        if (saveTempDraft) saveTempDraft(null);
+        fetchScheduledPosts();
+      } else {
+        alert(result.error || 'Сервер не принял пост. Попробуйте ещё раз.');
+      }
+    } catch (error) {
+      console.error('Ошибка при публикации:', error);
+      alert('Не удалось отправить пост. Проверьте интернет и попробуйте ещё раз.');
+    } finally {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      setIsPublishing(false);
+    }
   };
 
   const handleSendToPartners = async () => {
@@ -602,6 +617,8 @@ const handlePublish = async () => {
     setText('');
     setSelectedAccounts([]);
     setScheduleTime('');
+    setPublishResults([]);
+    setPublishTimedOut(false);
     setStep(1);
     setIsPublishing(false); 
     setShowPartnerModal(false);
@@ -1072,29 +1089,73 @@ const handlePublish = async () => {
           </div>
         )}
 
-        {step === 4 && (
-          <div className="bg-admin-card border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-xl text-center animate-fade-in relative overflow-hidden">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-gradient-to-b from-green-500/10 to-transparent pointer-events-none"></div>
-            <div className="w-20 h-20 sm:w-24 sm:h-24 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-5 sm:mb-6"><CheckCircle2 size={40} className="sm:w-12 sm:h-12" /></div>
-            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">{publishMode === 'schedule' ? 'Пост запланирован!' : 'Успешно опубликовано!'}</h2>
-            <p className="text-sm sm:text-base text-gray-400 mb-8 max-w-sm mx-auto">Ваш контент отправлен в {selectedAccounts.length} аккаунт(а/ов).</p>
-            <div className="space-y-3">
-              <button onClick={resetForm} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-xl font-bold border border-gray-700 transition-colors">
-                <LayoutTemplate size={20} /> <span>В главное меню</span>
-              </button>
-              <button 
-                onClick={() => setShowPartnerModal(true)} 
-                className="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-500/20 active:scale-95"
-              >
-                <Share2 size={18} /> Поделиться с партнерами
-              </button>
+        {step === 4 && (() => {
+          const isSchedule = publishMode === 'schedule';
+          const isSending = !isSchedule && !publishTimedOut && publishResults.some((p) => p.status === 'PROCESSING');
+          const failed = publishResults.filter((p) => p.status === 'FAILED');
+          const hasFailures = failed.length > 0 && !isSending;
+          const title = isSchedule
+            ? 'Пост запланирован!'
+            : isSending
+              ? 'Публикуем пост...'
+              : publishTimedOut && publishResults.some((p) => p.status === 'PROCESSING')
+                ? 'Публикация идёт дольше обычного'
+                : failed.length === publishResults.length && failed.length > 0
+                  ? 'Не удалось опубликовать'
+                  : failed.length > 0
+                    ? 'Опубликовано частично'
+                    : 'Успешно опубликовано!';
+          const accent = isSending
+            ? 'bg-blue-500/20 text-blue-400'
+            : hasFailures
+              ? 'bg-red-500/20 text-red-500'
+              : 'bg-green-500/20 text-green-500';
+
+          return (
+            <div className="bg-admin-card border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-xl text-center animate-fade-in relative overflow-hidden">
+              <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center mx-auto mb-5 sm:mb-6 ${accent}`}>
+                {isSending ? <Loader2 size={40} className="animate-spin sm:w-12 sm:h-12" /> : hasFailures ? <AlertCircle size={40} className="sm:w-12 sm:h-12" /> : <CheckCircle2 size={40} className="sm:w-12 sm:h-12" />}
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">{title}</h2>
+
+              {!isSchedule && publishResults.length > 0 && (
+                <div className="max-w-sm mx-auto mb-6 space-y-2 text-left">
+                  {publishResults.map((item) => (
+                    <div key={item.id} className="bg-gray-900/60 border border-gray-800 rounded-xl px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-gray-200 truncate">{item.accountName}</span>
+                        {item.status === 'PROCESSING' && <Loader2 size={16} className="text-blue-400 animate-spin shrink-0" />}
+                        {item.status === 'PUBLISHED' && <CheckCircle2 size={16} className="text-green-500 shrink-0" />}
+                        {item.status === 'FAILED' && <AlertCircle size={16} className="text-red-500 shrink-0" />}
+                      </div>
+                      {item.status === 'FAILED' && item.errorMessage && <p className="text-xs text-red-400 mt-1 break-words">{item.errorMessage}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {isSchedule && <p className="text-sm sm:text-base text-gray-400 mb-8 max-w-sm mx-auto">Пост выйдет в {publishResults.length || selectedAccounts.length} аккаунт(а/ов) в выбранное время.</p>}
+              {isSending && <p className="text-sm text-gray-400 mb-6">Страницу можно закрыть: пост уже в очереди. Результат будет в разделе «Посты».</p>}
+              {hasFailures && <p className="text-sm text-gray-400 mb-6">Посты с ошибкой сохранены в разделе «Посты» на вкладке «Ошибки».</p>}
+
+              <div className="space-y-3">
+                <button onClick={resetForm} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-xl font-bold border border-gray-700 transition-colors">
+                  <LayoutTemplate size={20} /> <span>В главное меню</span>
+                </button>
+                <button
+                  onClick={() => setShowPartnerModal(true)}
+                  className="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-500/20 active:scale-95"
+                >
+                  <Share2 size={18} /> Поделиться с партнерами
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
       </div>
 
-      
+
 
       {step < 4 && (
         <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">

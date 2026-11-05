@@ -6,6 +6,11 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
+const jwt = require('jsonwebtoken');
+const { getJwtSecret } = require('./utils/security');
+getJwtSecret(); // Без секрета входа сервер не запускается
+const prisma = require('./utils/prisma');
+
 // Запускаем планировщик постов
 require('./controllers/postController').initCron();
 require('./worker'); // Запускаем фонового воркера
@@ -44,8 +49,15 @@ const io = new Server(server, {
 global.userSockets = new Map();
 
 io.on('connection', (socket) => {
-  const userId = socket.handshake.query.userId;
-  
+  // Личные события получает только тот, кто подтвердил себя токеном.
+  let userId = null;
+  try {
+    const decoded = jwt.verify(socket.handshake.auth?.token, getJwtSecret());
+    userId = String(decoded.id || decoded.userId);
+  } catch (e) {
+    userId = null;
+  }
+
   if (userId) {
     if (!global.userSockets.has(userId)) {
       global.userSockets.set(userId, new Set());
@@ -66,7 +78,8 @@ io.on('connection', (socket) => {
 // Передаем io внутрь Express, чтобы контроллеры могли отправлять сигналы
 app.set('io', io);
 
-app.set('trust proxy', 1);
+// Перед приложением стоят два nginx: на хосте и в контейнере фронтенда.
+app.set('trust proxy', Number(process.env.TRUST_PROXY || 2));
 
 app.use(cors({ 
   origin: allowedOrigins, 
@@ -101,8 +114,26 @@ const aiLimiter = rateLimit({
 
 app.use('/api/ai', aiLimiter, aiRoutes);
 
-// Статика
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Публичная проверка на тех. работы
+app.get('/api/system/status', async (req, res) => {
+    try {
+        const settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } });
+        res.json({
+            isMaintenance: settings?.isMaintenance || false,
+            message: settings?.maintenanceMessage || 'Сайт находится на техническом обслуживании. Мы скоро вернемся!'
+        });
+    } catch (e) {
+        res.json({ isMaintenance: false });
+    }
+});
+
+// Ошибки загрузки файлов и прочие сбои: понятный ответ без подробностей сервера
+app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    console.error('Ошибка запроса:', err.message);
+    const isUploadError = err.name === 'MulterError' || err.message === 'Разрешены только изображения!';
+    res.status(isUploadError ? 400 : 500).json({ success: false, error: isUploadError ? err.message : 'Внутренняя ошибка сервера' });
+});
 
 // Запуск сервера (ВАЖНО: теперь server.listen, а не app.listen)
 if (process.env.VERCEL) {
@@ -113,17 +144,3 @@ if (process.env.VERCEL) {
   });
 }
 
-// ПУБЛИЧНАЯ ПРОВЕРКА НА ТЕХ. РАБОТЫ
-app.get('/api/system/status', async (req, res) => {
-    try {
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
-        const settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } });
-        res.json({ 
-            isMaintenance: settings?.isMaintenance || false, 
-            message: settings?.maintenanceMessage || 'Сайт находится на техническом обслуживании. Мы скоро вернемся!' 
-        });
-    } catch (e) {
-        res.json({ isMaintenance: false });
-    }
-});

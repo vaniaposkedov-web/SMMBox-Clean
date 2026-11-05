@@ -76,6 +76,7 @@ const urlToFile = async (url, filename) => {
   }
   try {
     const res = await fetch(getImageUrl(url));
+    if (!res.ok) return null;
     const blob = await res.blob();
     // Определяем расширение по MIME-типу (webp/jpg)
     const mimeType = blob.type || 'image/webp';
@@ -83,6 +84,15 @@ const urlToFile = async (url, filename) => {
     if (mimeType.includes('webp')) finalFilename = finalFilename.replace('.jpg', '.webp');
     return new File([blob], finalFilename, { type: mimeType });
   } catch (e) { return null; }
+};
+
+// Для партнёров и повтора нужно исходное фото без водяного знака. Оно хранится 30 дней,
+// а если его уже нет, берём уменьшенную копию из истории.
+const loadSourceFile = async (original, thumbnail, filename) => {
+  const source = original ? await urlToFile(original, filename) : null;
+  if (source) return { file: source, isThumbnail: false };
+  const copy = thumbnail ? await urlToFile(thumbnail, filename) : null;
+  return { file: copy, isThumbnail: Boolean(copy) };
 };
 
 export default function PostsHistory() {
@@ -159,6 +169,8 @@ export default function PostsHistory() {
   }, [filteredPosts, visibleCount]);
 
   const currentMediaList = useMemo(() => parseMediaUrls(selectedPost?.mediaUrls), [selectedPost]);
+  const sourceMediaList = useMemo(() => parseMediaUrls(selectedPost?.originalMediaUrls), [selectedPost]);
+  const mediaCount = Math.max(currentMediaList.length, sourceMediaList.length);
 
 
 
@@ -186,9 +198,11 @@ export default function PostsHistory() {
     }
   }, [fsImageIndex]);
 
-  const handleDownload = async (imgUrl) => {
+  const handleDownload = async (imgUrl, fallbackUrl) => {
     try {
-      const response = await fetch(getImageUrl(imgUrl));
+      let response = await fetch(getImageUrl(imgUrl));
+      if (!response.ok && fallbackUrl) response = await fetch(getImageUrl(fallbackUrl));
+      if (!response.ok) throw new Error('Файл не найден');
       const blob = await response.blob();
       const ext = blob.type.includes('webp') ? 'webp' : 'jpg';
       const blobUrl = window.URL.createObjectURL(blob);
@@ -210,11 +224,11 @@ export default function PostsHistory() {
     setIsPreparing(true);
 
     try {
-      const reconstructedPhotos = await Promise.all(currentMediaList.map(async (url, index) => {
-        const file = await urlToFile(url, `duplicate_${index}.webp`);
+      const reconstructedPhotos = await Promise.all(Array.from({ length: mediaCount }, async (_, index) => {
+        const { file } = await loadSourceFile(sourceMediaList[index], currentMediaList[index], `duplicate_${index}.webp`);
         return file ? {
           id: `dup_${Math.random().toString(36).substr(2, 9)}`,
-          url: getImageUrl(url),
+          url: URL.createObjectURL(file),
           file: file
         } : null;
       }));
@@ -246,15 +260,16 @@ export default function PostsHistory() {
     setPartnerStatus('sending');
     
     try {
-      const blobs = await Promise.all(currentMediaList.map(url => urlToFile(url, 'share.webp')));
-      const validBlobs = blobs.filter(b => b !== null);
+      const loaded = await Promise.all(Array.from({ length: mediaCount }, (_, index) => loadSourceFile(sourceMediaList[index], currentMediaList[index], `share_${index}.webp`)));
+      const validBlobs = loaded.map((item) => item.file).filter(Boolean);
+      const usedThumbnails = loaded.some((item) => item.isThumbnail);
       
       const res = await sharePostAction(selectedPost.text, validBlobs, selectedPartners);
       
       if (res?.success) {
         setPartnerStatus('sent');
         setIsSharing(false);
-        setToastMessage('Отправлено партнерам!');
+        setToastMessage(usedThumbnails ? 'Отправлено. Исходные фото уже удалены, ушли уменьшенные копии.' : 'Отправлено партнерам!');
         
         setTimeout(() => {
           setShowPartnerModal(false);
@@ -322,7 +337,7 @@ export default function PostsHistory() {
             className={`flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-4 rounded-[1.2rem] sm:rounded-2xl text-[10px] sm:text-sm font-black transition-all ${activeTab === tab.id ? 'bg-gray-800 text-white shadow-xl border border-gray-700 translate-y-[-1px]' : 'text-gray-500 hover:text-gray-300'}`}
           >
             <tab.icon size={18} className={activeTab === tab.id ? tab.color : 'text-gray-600'} />
-            <span className="hidden xs:inline uppercase tracking-wider">{tab.label}</span>
+            <span className="uppercase tracking-wider">{tab.label}</span>
           </button>
         ))}
       </div>
@@ -442,6 +457,11 @@ export default function PostsHistory() {
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-6 bg-[#0f1115]">
+              {selectedPost.status === 'FAILED' && selectedPost.errorMessage && (
+                <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 break-words">
+                  Причина ошибки: {selectedPost.errorMessage}
+                </div>
+              )}
               {currentMediaList.length > 0 && (
                 <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-4 mb-4 -mx-1 px-1">
                    {currentMediaList.map((img, i) => (
@@ -615,7 +635,7 @@ export default function PostsHistory() {
                 {fsImageIndex + 1} / {currentMediaList.length}
              </div>
              <button 
-                onClick={() => handleDownload(currentMediaList[fsImageIndex])} 
+                onClick={() => handleDownload(sourceMediaList[fsImageIndex] || currentMediaList[fsImageIndex], currentMediaList[fsImageIndex])} 
                 className="flex items-center gap-4 px-10 py-5 bg-white text-black rounded-[2rem] font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-2xl"
               >
                <Download size={20} /> Скачать

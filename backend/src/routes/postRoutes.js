@@ -13,6 +13,7 @@ router.delete('/shared/:id', authMiddleware, postController.deleteSharedPost);
 router.post('/shared/read', authMiddleware, postController.markSharedPostRead);
 
 // РОУТЫ ДЛЯ КАЛЕНДАРЯ И РЕДАКТИРОВАНИЯ
+router.get('/status', authMiddleware, postController.getPostStatuses);
 router.get('/scheduled', authMiddleware, postController.getScheduledPosts);
 router.put('/scheduled/:id', authMiddleware, postController.updateScheduledPost);
 router.delete('/scheduled/:id', authMiddleware, postController.deleteScheduledPost);

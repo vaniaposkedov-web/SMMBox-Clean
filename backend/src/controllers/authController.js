@@ -1,19 +1,61 @@
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const axios = require('axios');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const sharp = require('sharp');
+const prisma = require('../utils/prisma');
 const sendEmail = require('../utils/sendEmail');
+const { passwordResetTemplate } = require('../utils/emailTemplates');
+const {
+  signUserToken,
+  sanitizeUser,
+  generateVerificationCode,
+  sha256,
+  safeEqual,
+  verifyTelegramLogin,
+  fetchVkIdUser,
+  getBotToken,
+  telegramFileToDataUri,
+} = require('../utils/security');
+
+const CODE_LIFETIME_MS = 15 * 60 * 1000;
+const MIN_PASSWORD_LENGTH = 6;
+
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+const codeExpiry = () => new Date(Date.now() + CODE_LIFETIME_MS);
+const isCodeFresh = (user) => !user.emailVerificationExpires || new Date(user.emailVerificationExpires) > new Date();
+
+const verificationLetter = (code) => `
+  <div style="font-family: sans-serif; max-width: 400px;">
+    <h2 style="color: #111;">Добро пожаловать в SADOVODPS!</h2>
+    <p style="color: #666;">Введите этот код на сайте для подтверждения почты:</p>
+    <div style="background: #f4f7ff; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0;">
+      <b style="font-size: 32px; color: #0077FF; letter-spacing: 5px;">${code}</b>
+    </div>
+    <p style="font-size: 12px; color: #999;">Код действует 15 минут. Если это были не вы, просто проигнорируйте письмо.</p>
+  </div>
+`;
+
+async function generateUniqueId() {
+  for (;;) {
+    const id = String(crypto.randomInt(10000000, 100000000));
+    const duplicate = await prisma.user.findUnique({ where: { id } });
+    if (!duplicate) return id;
+  }
+}
 
 exports.register = async (req, res) => {
   try {
-    const { email, password, name, phone } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { password, name, phone } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: 'Email и пароль обязательны' });
     }
+    if (String(password).length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ error: `Пароль должен быть не короче ${MIN_PASSWORD_LENGTH} символов` });
+    }
 
-    // 1. ЗАЩИТА ОТ ОШИБКИ 500: Проверяем, не занят ли телефон другим пользователем
     if (phone) {
       const phoneOwner = await prisma.user.findUnique({ where: { phone } });
       if (phoneOwner && phoneOwner.email !== email) {
@@ -21,230 +63,147 @@ exports.register = async (req, res) => {
       }
     }
 
-    // 2. Ищем существующего пользователя
-    let existingUser = await prisma.user.findUnique({ where: { email } });
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    const code = generateVerificationCode();
 
     if (existingUser) {
-      // Если пользователь есть, но не подтвержден — обновляем данные и шлем новый код
-      if (!existingUser.isEmailVerified) {
-        await prisma.user.update({
-          where: { email },
-          data: { 
-            password: hashedPassword, 
-            name: name || '', 
-            phone: phone || null, 
-            emailVerificationCode: verificationCode 
-          }
-        });
-      } else {
+      if (existingUser.isEmailVerified) {
         return res.status(400).json({ error: 'Пользователь с таким email уже существует' });
       }
+      // The password stays as it was: otherwise someone else could replace it before the owner confirms the email.
+      await prisma.user.update({
+        where: { email },
+        data: { emailVerificationCode: code, emailVerificationExpires: codeExpiry() },
+      });
     } else {
-      // 3. ГЕНЕРАЦИЯ УНИКАЛЬНОГО ЧИСЛОВОГО ID (например, 96720965)
-      let newId;
-      let isUnique = false;
-
-      // Цикл будет работать, пока не найдет свободный ID в базе
-      while (!isUnique) {
-        // Генерируем случайное 8-значное число от 10000000 до 99999999
-        newId = Math.floor(10000000 + Math.random() * 90000000);
-        
-        // Проверяем, нет ли уже пользователя с таким ID
-        // ВАЖНО: Если в схеме Prisma id — это String, используйте String(newId)
-        const duplicate = await prisma.user.findUnique({ where: { id: String(newId) } });
-        if (!duplicate) isUnique = true;
-      }
-
-      // 4. СОЗДАНИЕ НОВОГО ПОЛЬЗОВАТЕЛЯ с числовым ID
       await prisma.user.create({
-        data: { 
-          id: String(newId), // Записываем наш сгенерированный ID
-          email, 
-          password: hashedPassword, 
-          name: name || '', 
-          phone: phone || null, 
-          emailVerificationCode: verificationCode, 
+        data: {
+          id: await generateUniqueId(),
+          email,
+          password: await bcrypt.hash(password, 10),
+          name: name || '',
+          phone: phone || null,
+          emailVerificationCode: code,
+          emailVerificationExpires: codeExpiry(),
           isEmailVerified: false,
-          isOnboardingCompleted: true
-        }
+          isOnboardingCompleted: true,
+        },
       });
     }
-    
-    // 5. ОТПРАВКА КОДА ПОДТВЕРЖДЕНИЯ
-    try {
-      await sendEmail(email, 'Подтверждение регистрации', `
-        <div style="font-family: sans-serif; max-width: 400px;">
-          <h2 style="color: #111;">Добро пожаловать в SADOVODPS!</h2>
-          <p style="color: #666;">Введите этот код в приложении для подтверждения почты:</p>
-          <div style="background: #f4f7ff; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0;">
-            <b style="font-size: 32px; color: #0077FF; letter-spacing: 5px;">${verificationCode}</b>
-          </div>
-          <p style="font-size: 12px; color: #999;">Если вы не регистрировались у нас, просто проигнорируйте это письмо.</p>
-        </div>
-      `);
-    } catch (e) {
-      // Ошибку почты только логируем, чтобы не прерывать регистрацию
-      console.error('Ошибка при отправке письма:', e);
+
+    const sent = await sendEmail(email, 'Подтверждение регистрации', verificationLetter(code));
+    if (!sent) {
+      return res.status(502).json({ error: 'Не удалось отправить письмо с кодом. Попробуйте позже.' });
     }
 
-    res.json({ 
-      success: true, 
-      message: 'Код подтверждения отправлен на вашу почту' 
-    });
-
-  } catch (error) { 
-    console.error('Критическая ошибка регистрации:', error);
-    res.status(500).json({ error: 'Внутренняя ошибка сервера' }); 
+    res.json({ success: true, message: 'Код подтверждения отправлен на вашу почту' });
+  } catch (error) {
+    console.error('Ошибка регистрации:', error.message);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
   }
 };
+
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Введите email и пароль' });
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.password) return res.status(400).json({ error: 'Неверный email или пароль' });
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt.compare(String(password), user.password);
     if (!isMatch) return res.status(400).json({ error: 'Неверный email или пароль' });
 
-    // ЕСЛИ ПОЧТА НЕ ПОДТВЕРЖДЕНА - отправляем новый код и просим ввести
     if (user.isEmailVerified === false) {
-       const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-       await prisma.user.update({ where: { id: user.id }, data: { emailVerificationCode: newCode } });
-       
-       try {
-         await sendEmail(email, 'Подтверждение входа', `Ваш новый код подтверждения: ${newCode}`);
-       } catch (e) { console.error('Ошибка отправки email:', e); }
-
-       return res.status(400).json({ error: 'EMAIL_NOT_VERIFIED' });
+      const code = generateVerificationCode();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerificationCode: code, emailVerificationExpires: codeExpiry() },
+      });
+      await sendEmail(email, 'Подтверждение входа', verificationLetter(code));
+      return res.status(400).json({ error: 'EMAIL_NOT_VERIFIED' });
     }
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-    res.json({ success: true, token, user });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера при входе' }); }
+    res.json({ success: true, token: signUserToken(user), user: sanitizeUser(user) });
+  } catch (error) {
+    console.error('Ошибка входа:', error.message);
+    res.status(500).json({ error: 'Ошибка сервера при входе' });
+  }
 };
 
-async function generateUniqueId() {
-  let newId;
-  let isUnique = false;
-  while (!isUnique) {
-    // Меняем на 11-значное число
-    newId = String(Math.floor(10000000000 + Math.random() * 90000000000));
-    const duplicate = await prisma.user.findUnique({ where: { id: newId } });
-    if (!duplicate) isUnique = true;
-  }
-  return newId;
-}
 exports.telegramAuth = async (req, res) => {
   try {
+    if (!verifyTelegramLogin(req.body, getBotToken())) {
+      return res.status(401).json({ error: 'Не удалось подтвердить вход через Telegram' });
+    }
     const { id, first_name, last_name, username, photo_url } = req.body;
-    if (!id) return res.status(400).json({ error: 'Нет данных Telegram' });
 
     let user = await prisma.user.findUnique({ where: { telegramId: String(id) } });
     let isNewUser = false;
 
     if (!user) {
       isNewUser = true;
-      const newId = await generateUniqueId(); // Генерируем красивый ID
       const fullName = [first_name, last_name].filter(Boolean).join(' ') || username || 'TG Юзер';
-      
       user = await prisma.user.create({
-        data: { 
-          id: newId, // Сохраняем сгенерированный ID
-          telegramId: String(id), 
-          name: fullName, 
-          avatarUrl: photo_url || null, 
-          isOnboardingCompleted: true, 
-          isEmailVerified: true 
-        }
+        data: {
+          id: await generateUniqueId(),
+          telegramId: String(id),
+          name: fullName,
+          avatarUrl: photo_url || null,
+          isOnboardingCompleted: true,
+          isEmailVerified: true,
+        },
       });
-      await prisma.socialProfile.create({
-        data: { userId: user.id, provider: 'TELEGRAM', providerAccountId: String(id), name: fullName, avatarUrl: photo_url || null, accessToken: '' }
+      await prisma.socialProfile.upsert({
+        where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: String(id) } },
+        update: {},
+        create: { userId: user.id, provider: 'TELEGRAM', providerAccountId: String(id), name: fullName, avatarUrl: photo_url || null, accessToken: '' },
       });
-    } else {
-       if (photo_url && !user.avatarUrl) {
-          await prisma.user.update({ where: { id: user.id }, data: { avatarUrl: photo_url } });
-       }
+    } else if (photo_url && !user.avatarUrl) {
+      user = await prisma.user.update({ where: { id: user.id }, data: { avatarUrl: photo_url } });
     }
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-    res.json({ success: true, token, user, isNewUser });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+    res.json({ success: true, token: signUserToken(user), user: sanitizeUser(user), isNewUser });
+  } catch (error) {
+    console.error('Ошибка входа через Telegram:', error.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 };
 
 exports.vkAuth = async (req, res) => {
   try {
-    const vkIdStr = req.body.id || req.body.user_id;
-    const access_token = req.body.access_token;
-    const email = req.body.email;
-    let first_name = req.body.first_name || '';
-    let last_name = req.body.last_name || '';
-    let photo_100 = req.body.photo_100 || null;
+    const vkUser = await fetchVkIdUser(req.body.access_token);
+    if (!vkUser) return res.status(401).json({ error: 'Не удалось подтвердить вход через ВКонтакте' });
 
-    if (!vkIdStr) return res.status(400).json({ error: 'Нет данных VK' });
-
-    let user = await prisma.user.findUnique({ where: { vkId: String(vkIdStr) } });
+    const vkId = String(vkUser.user_id);
+    const avatar = vkUser.avatar || null;
+    let user = await prisma.user.findUnique({ where: { vkId } });
     let isNewUser = false;
 
     if (!user) {
-      if (email) {
-        user = await prisma.user.findUnique({ where: { email: email } });
-      }
-
-      if (user) {
-        user = await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            vkId: String(vkIdStr),
-            avatarUrl: user.avatarUrl || photo_100
-          }
-        });
-      } else {
-        isNewUser = true;
-        const newId = await generateUniqueId(); // Генерируем красивый ID
-        const fullName = [first_name, last_name].filter(Boolean).join(' ') || 'VK Юзер';
-        
-        user = await prisma.user.create({
-          data: {
-            id: newId, // Сохраняем сгенерированный ID
-            vkId: String(vkIdStr),
-            email: email || null,
-            name: fullName,
-            avatarUrl: photo_100,
-            isOnboardingCompleted: true,
-            isEmailVerified: !!email
-          }
-        });
-      }
-
-      await prisma.socialProfile.create({
+      isNewUser = true;
+      const email = normalizeEmail(vkUser.email) || null;
+      // An account with this email is never joined automatically: its owner links VK from the profile.
+      const emailTaken = email ? await prisma.user.findUnique({ where: { email } }) : null;
+      user = await prisma.user.create({
         data: {
-          userId: user.id,
-          provider: 'VK',
-          providerAccountId: String(vkIdStr),
-          name: [first_name, last_name].filter(Boolean).join(' ') || 'VK Юзер',
-          avatarUrl: photo_100,
-          accessToken: access_token || ''
-        }
+          id: await generateUniqueId(),
+          vkId,
+          email: emailTaken ? null : email,
+          name: [vkUser.first_name, vkUser.last_name].filter(Boolean).join(' ') || 'VK Юзер',
+          avatarUrl: avatar,
+          isOnboardingCompleted: true,
+          isEmailVerified: Boolean(email && !emailTaken),
+        },
       });
-
-    } else {
-      await prisma.socialProfile.updateMany({
-        where: { userId: user.id, provider: 'VK' },
-        data: { accessToken: access_token, avatarUrl: photo_100 }
-      });
-      if (!user.avatarUrl && photo_100) {
-        await prisma.user.update({ where: { id: user.id }, data: { avatarUrl: photo_100 } });
-      }
+    } else if (avatar && !user.avatarUrl) {
+      user = await prisma.user.update({ where: { id: user.id }, data: { avatarUrl: avatar } });
     }
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-    res.json({ success: true, token, user, isNewUser });
+    res.json({ success: true, token: signUserToken(user), user: sanitizeUser(user), isNewUser });
   } catch (error) {
-    console.error('Ошибка в vkAuth:', error);
+    console.error('Ошибка входа через VK:', error.message);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
@@ -254,242 +213,193 @@ exports.getTgChatInfo = async (req, res) => {
     const { channel } = req.body;
     if (!channel) return res.status(400).json({ error: 'Укажите ссылку на канал' });
 
-    let channelName = channel.replace('https://t.me/', '').replace('t.me/', '').replace('@', '').split('/')[0].split('?')[0].trim();
-    if (!channelName.startsWith('@') && !channelName.startsWith('-100')) channelName = '@' + channelName;
+    let channelName = String(channel).replace('https://t.me/', '').replace('t.me/', '').replace('@', '').split('/')[0].split('?')[0].trim();
+    if (!channelName.startsWith('-100')) channelName = '@' + channelName;
 
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChat?chat_id=${channelName}`);
+    const botToken = getBotToken();
+    const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChat`, { params: { chat_id: channelName } });
     const chat = tgRes.data.result;
 
-    let avatarUrl = null;
+    let avatar = null;
     if (chat.photo?.small_file_id) {
-        const fileRes = await axios.get(`https://api.telegram.org/bot${botToken}/getFile?file_id=${chat.photo.small_file_id}`);
-        avatarUrl = `https://api.telegram.org/file/bot${botToken}/${fileRes.data.result.file_path}`;
+      avatar = await telegramFileToDataUri(botToken, chat.photo.small_file_id).catch(() => null);
     }
-    res.json({ success: true, chatId: String(chat.id), title: chat.title, username: chat.username ? `@${chat.username}` : '', avatar: avatarUrl });
-  } catch (error) { res.status(400).json({ success: false, error: 'Бот не админ или канал неверен' }); }
-};
-
-exports.completeOnboarding = async (req, res) => {
-  try {
-    const { userId } = req.body;
-    const user = await prisma.user.update({ where: { id: String(userId) }, data: { isOnboardingCompleted: true } });
-    res.json({ success: true, user });
-  } catch (error) { res.status(500).json({ error: 'Ошибка завершения' }); }
+    res.json({ success: true, chatId: String(chat.id), title: chat.title, username: chat.username ? `@${chat.username}` : '', avatar });
+  } catch (error) {
+    res.status(400).json({ success: false, error: 'Бот не админ или канал неверен' });
+  }
 };
 
 exports.requestLinkEmail = async (req, res) => {
   try {
-    const { userId, email } = req.body;
+    const email = normalizeEmail(req.body.email);
+    if (!email) return res.status(400).json({ error: 'Укажите email' });
+
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing && existing.id !== String(userId)) return res.status(400).json({ error: 'Email занят' });
-    
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    await prisma.user.update({ where: { id: String(userId) }, data: { emailVerificationCode: code } });
-    
-    // === ВОТ ЭТОГО БЛОКА ТАМ НЕ БЫЛО. ТЕПЕРЬ ПИСЬМО БУДЕТ ОТПРАВЛЯТЬСЯ ===
-    try {
-      await sendEmail(email, 'Подтверждение почты SADOVODPS', `
-        <div style="font-family: sans-serif; max-width: 400px;">
-          <h2 style="color: #111;">Привязка почты</h2>
-          <p style="color: #666;">Введите этот код в профиле для подтверждения:</p>
-          <div style="background: #f4f7ff; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0;">
-            <b style="font-size: 32px; color: #0077FF; letter-spacing: 5px;">${code}</b>
-          </div>
-        </div>
-      `);
-    } catch (e) {
-      console.error('Ошибка отправки email:', e);
-    }
+    if (existing && existing.id !== req.userId) return res.status(400).json({ error: 'Email занят' });
+
+    const code = generateVerificationCode();
+    // The code is tied to this address, so it cannot confirm a different one.
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { emailVerificationCode: `link:${email}:${code}`, emailVerificationExpires: codeExpiry() },
+    });
+
+    const sent = await sendEmail(email, 'Подтверждение почты SADOVODPS', verificationLetter(code));
+    if (!sent) return res.status(502).json({ error: 'Не удалось отправить письмо с кодом. Попробуйте позже.' });
 
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+  } catch (error) {
+    console.error('Ошибка привязки почты:', error.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 };
 
 exports.verifyLinkEmail = async (req, res) => {
   try {
-    const { userId, email, code, phone } = req.body;
-    const user = await prisma.user.findUnique({ where: { id: String(userId) } });
-    if (user.emailVerificationCode !== code) return res.status(400).json({ error: 'Неверный код' });
+    const email = normalizeEmail(req.body.email);
+    const { code, phone } = req.body;
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user || !isCodeFresh(user) || !user.emailVerificationCode || !safeEqual(user.emailVerificationCode, `link:${email}:${code}`)) {
+      return res.status(400).json({ error: 'Неверный код' });
+    }
     const updated = await prisma.user.update({
-      where: { id: String(userId) }, data: { email, phone, isEmailVerified: true, emailVerificationCode: null }
+      where: { id: req.userId },
+      data: {
+        email,
+        ...(phone ? { phone } : {}),
+        isEmailVerified: true,
+        emailVerificationCode: null,
+        emailVerificationExpires: null,
+      },
     });
-    res.json({ success: true, user: updated });
-  } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+    res.json({ success: true, user: sanitizeUser(updated) });
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(400).json({ error: 'Этот email или телефон уже используется' });
+    console.error('Ошибка подтверждения почты:', error.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 };
 
 exports.verifyEmail = async (req, res) => {
   try {
-    const { email, code } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { code } = req.body;
     if (!email || !code) return res.status(400).json({ error: 'Email и код обязательны' });
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(400).json({ error: 'Пользователь не найден' });
-
-    if (user.emailVerificationCode !== code) return res.status(400).json({ error: 'Неверный код подтверждения' });
-
-    // Код верный! Подтверждаем почту
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: { isEmailVerified: true, emailVerificationCode: null }
-    });
-
-    // Сразу авторизуем пользователя после успешного ввода кода
-    const token = jwt.sign({ userId: updatedUser.id, role: updatedUser.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-    res.json({ success: true, token, user: updatedUser });
-  } catch (error) { 
-    res.status(500).json({ error: 'Ошибка сервера при проверке кода' }); 
-  }
-};
-exports.linkEmailAndSendCode = async (req, res) => { exports.requestLinkEmail(req, res); };
-
-exports.forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(400).json({ error: 'Пользователь не найден' });
-
-    const token = crypto.randomBytes(32).toString('hex');
-    await prisma.user.update({ 
-      where: { email }, 
-      data: { resetPasswordToken: token, resetPasswordExpires: new Date(Date.now() + 3600000) } 
-    });
-
-    // ФАКТИЧЕСКАЯ ОТПРАВКА ПИСЬМА (раньше этого блока не было)
-    const resetLink = `${process.env.FRONTEND_URL || 'https://sadovodps24.ru'}/reset-password/${token}`;
-    try {
-      await sendEmail(email, 'Восстановление пароля', `Для сброса пароля перейдите по ссылке:\n\n${resetLink}\n\nЕсли вы не запрашивали сброс, просто проигнорируйте это письмо.`);
-    } catch (e) {
-      console.error('Ошибка отправки email:', e);
+    if (!user || !user.emailVerificationCode || !isCodeFresh(user) || !safeEqual(user.emailVerificationCode, code)) {
+      return res.status(400).json({ error: 'Неверный или просроченный код подтверждения' });
     }
 
-    res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: 'Ошибка' }); }
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { isEmailVerified: true, emailVerificationCode: null, emailVerificationExpires: null },
+    });
+
+    res.json({ success: true, token: signUserToken(updatedUser), user: sanitizeUser(updatedUser) });
+  } catch (error) {
+    console.error('Ошибка проверки кода:', error.message);
+    res.status(500).json({ error: 'Ошибка сервера при проверке кода' });
+  }
+};
+
+// The answer is the same whether the email exists or not, so the form cannot be used to look up users.
+exports.forgotPassword = async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const user = email ? await prisma.user.findUnique({ where: { email } }) : null;
+    if (user) {
+      const token = crypto.randomBytes(32).toString('hex');
+      await prisma.user.update({
+        where: { email },
+        data: { resetPasswordToken: sha256(token), resetPasswordExpires: new Date(Date.now() + 60 * 60 * 1000) },
+      });
+      const base = process.env.FRONTEND_URL || 'https://sadovodps24.ru';
+      await sendEmail(email, 'Восстановление пароля', passwordResetTemplate(`${base}/reset-password/${token}`));
+    }
+    res.json({ success: true, message: 'Если такой адрес зарегистрирован, письмо уже отправлено' });
+  } catch (error) {
+    console.error('Ошибка восстановления пароля:', error.message);
+    res.status(500).json({ error: 'Ошибка' });
+  }
 };
 
 exports.resetPassword = async (req, res) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
-    const user = await prisma.user.findFirst({ where: { resetPasswordToken: token, resetPasswordExpires: { gt: new Date() } } });
+    if (!password || String(password).length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ error: `Пароль должен быть не короче ${MIN_PASSWORD_LENGTH} символов` });
+    }
+    const user = await prisma.user.findFirst({ where: { resetPasswordToken: sha256(token), resetPasswordExpires: { gt: new Date() } } });
     if (!user) return res.status(400).json({ error: 'Ссылка недействительна' });
 
-    const hash = await bcrypt.hash(password, 10);
-    await prisma.user.update({ where: { id: user.id }, data: { password: hash, resetPasswordToken: null, resetPasswordExpires: null } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: await bcrypt.hash(String(password), 10), resetPasswordToken: null, resetPasswordExpires: null },
+    });
     res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: 'Ошибка' }); }
+  } catch (error) {
+    console.error('Ошибка сброса пароля:', error.message);
+    res.status(500).json({ error: 'Ошибка' });
+  }
 };
 
 exports.updateProfile = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id || req.body.userId;
+    const userId = req.userId;
     const { name, pavilion, phone } = req.body;
-    
-    if (!userId) {
-        return res.status(400).json({ success: false, error: 'ID пользователя не найден' });
-    }
 
-    // Формируем объект только с теми данными, которые реально пришли
     const data = {};
     if (name !== undefined) data.name = name;
     if (pavilion !== undefined) data.pavilion = pavilion;
     if (phone !== undefined) data.phone = phone;
-    
-    // ⚡ ПРАВИЛЬНАЯ ОБРАБОТКА АВАТАРКИ (с защитой от краша)
+
     if (req.file) {
-        const fs = require('fs');
-        const path = require('path');
-        
-        try {
-            const sharp = require('sharp');
-            const uploadsDir = path.join(__dirname, '../../uploads/profiles');
-            
-            if (!fs.existsSync(uploadsDir)) {
-                fs.mkdirSync(uploadsDir, { recursive: true });
-            }
-            
-            const fileName = `avatar_${userId}_${Date.now()}.jpg`;
-            const filePath = path.join(uploadsDir, fileName);
-            
-            // Сжимаем аватарку и делаем её идеальным квадратом 400x400
-            await sharp(req.file.path)
-                .resize({ width: 400, height: 400, fit: 'cover' })
-                .jpeg({ quality: 85 })
-                .toFile(filePath);
-                
-            // Удаляем временный мусор
-            await fs.promises.unlink(req.file.path).catch(() => {});
-            
-            // Прописываем правильный путь (через /api/, чтобы обходить Nginx)
-            data.avatarUrl = `/api/uploads/profiles/${fileName}`;
-        } catch (imgErr) {
-            console.error("Ошибка при обработке картинки:", imgErr);
-            // Фолбек: если sharp по какой-то причине не сработал, просто копируем файл как есть
-            const ext = path.extname(req.file.originalname) || '.jpg';
-            const fileName = `avatar_${userId}_${Date.now()}${ext}`;
-            const destPath = path.join(__dirname, '../../uploads/profiles', fileName);
-            
-            if (!fs.existsSync(path.dirname(destPath))) fs.mkdirSync(path.dirname(destPath), { recursive: true });
-            
-            await fs.promises.copyFile(req.file.path, destPath);
-            await fs.promises.unlink(req.file.path).catch(() => {});
-            
-            data.avatarUrl = `/api/uploads/profiles/${fileName}`;
-        }
+      const uploadsDir = path.join(__dirname, '../../uploads/profiles');
+      fs.mkdirSync(uploadsDir, { recursive: true });
+      const fileName = `avatar_${userId}_${Date.now()}.jpg`;
+      try {
+        await sharp(req.file.path)
+          .resize({ width: 400, height: 400, fit: 'cover' })
+          .jpeg({ quality: 85 })
+          .toFile(path.join(uploadsDir, fileName));
+        data.avatarUrl = `/api/uploads/profiles/${fileName}`;
+      } catch (imgErr) {
+        console.error('Ошибка обработки аватарки:', imgErr.message);
+        return res.status(400).json({ success: false, error: 'Не удалось обработать изображение' });
+      } finally {
+        await fs.promises.unlink(req.file.path).catch(() => {});
+      }
     }
-    
-    // Сохраняем в базу данных
-    const updated = await prisma.user.update({ 
-        where: { id: String(userId) }, 
-        data 
-    });
-    
-    res.json({ success: true, user: updated });
-  } catch (error) { 
-    console.error('Ошибка обновления профиля:', error);
-    
-    // 🛡️ Перехватываем ошибку уникального номера телефона или почты
-    if (error.code === 'P2002') {
-        if (error.meta?.target?.includes('phone')) {
-            return res.status(400).json({ success: false, error: 'Этот номер телефона уже используется другим пользователем!' });
-        }
+
+    const updated = await prisma.user.update({ where: { id: userId }, data });
+    res.json({ success: true, user: sanitizeUser(updated) });
+  } catch (error) {
+    console.error('Ошибка обновления профиля:', error.message);
+    if (error.code === 'P2002' && error.meta?.target?.includes('phone')) {
+      return res.status(400).json({ success: false, error: 'Этот номер телефона уже используется другим пользователем!' });
     }
-    
-    res.status(500).json({ success: false, error: 'Ошибка сохранения данных: ' + error.message }); 
+    res.status(500).json({ success: false, error: 'Ошибка сохранения данных' });
   }
 };
 
 exports.completeOnboarding = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
-    
-    // Обновляем статус пользователя в базе данных
-    await prisma.user.update({
-      where: { id: String(userId) },
-      data: { isOnboardingCompleted: true }
-    });
-    
+    await prisma.user.update({ where: { id: req.userId }, data: { isOnboardingCompleted: true } });
     res.json({ success: true });
   } catch (error) {
-    console.error('Ошибка завершения Onboarding:', error);
+    console.error('Ошибка завершения Onboarding:', error.message);
     res.status(500).json({ error: 'Ошибка сервера при завершении Onboarding' });
   }
 };
 
 exports.getMe = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
-    if (!userId) return res.status(401).json({ error: 'Не авторизован' });
-
-    const user = await prisma.user.findUnique({ 
-        where: { id: String(userId) }
-    });
-
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-    
-    // Удаляем пароль из ответа для безопасности
-    const { password, ...safeUser } = user;
-    res.json({ success: true, user: safeUser });
+    res.json({ success: true, user: sanitizeUser(user) });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка сервера' });
   }

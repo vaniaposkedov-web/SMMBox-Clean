@@ -17,7 +17,7 @@ import Requests from './pages/Requests';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import PrivacyPolicy from './pages/PrivacyPolicy';
-import Onboarding from './pages/Onboarding'; 
+ 
 import PartnersManager from './components/settings/PartnersManager';
 import PostsHistory from './pages/PostsHistory';
 import SignatureConstructor from './pages/SignatureConstructor';
@@ -412,7 +412,6 @@ function App() {
       {/* И обернули в MaintenanceGuard ЗДЕСЬ */}
       <MaintenanceGuard>
         <Routes>
-          <Route path="/onboarding" element={<Onboarding />} />
 
           <Route element={<UserLayout />}>
             <Route path="/" element={<Navigate to="/profile" replace />} />

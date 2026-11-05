@@ -1,7 +1,8 @@
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../utils/prisma');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const prisma = new PrismaClient();
+const { signUserToken, sanitizeUser } = require('../utils/security');
+
+const { DEFAULT_AI_PROMPT } = require('./aiController');
 
 exports.adminLogin = async (req, res) => {
     const { email, password } = req.body;
@@ -9,11 +10,10 @@ exports.adminLogin = async (req, res) => {
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || user.role !== 'ADMIN') return res.status(401).json({ error: 'Неверные учетные данные' }); 
 
-        const isMatch = await bcrypt.compare(password, user.password);
+        const isMatch = user.password ? await bcrypt.compare(String(password), user.password) : false;
         if (!isMatch) return res.status(401).json({ error: 'Неверные учетные данные' });
 
-        const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
-        res.json({ success: true, token, user });
+        res.json({ success: true, token: signUserToken(user, '12h'), user: sanitizeUser(user) });
     } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };
 
@@ -153,9 +153,7 @@ exports.getUserDetails = async (req, res) => {
         });
 
         const postsCount = await prisma.post.count({ where: { account: { userId: req.params.id } } });
-        const { password, ...safeUser } = user;
-
-        res.json({ success: true, user: safeUser, postsCount, recentPosts });
+        res.json({ success: true, user: sanitizeUser(user), postsCount, recentPosts });
     } catch (error) { 
         console.error('Ошибка в getUserDetails:', error);
         res.status(500).json({ error: 'Ошибка сервера при загрузке досье' }); 
@@ -170,7 +168,7 @@ exports.updateUserAdmin = async (req, res) => {
             where: { id },
             data: { pavilion }
         });
-        res.json({ success: true, user: updatedUser });
+        res.json({ success: true, user: sanitizeUser(updatedUser) });
     } catch (error) { res.status(500).json({ error: 'Ошибка обновления пользователя' }); }
 };
 
@@ -297,7 +295,7 @@ exports.getAiSettings = async (req, res) => {
         let settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } });
         if (!settings) {
             settings = await prisma.systemSettings.create({
-                data: { id: 'global', aiPrompt: "Ты — профессиональный SMM-копирайтер..." }
+                data: { id: 'global', aiPrompt: DEFAULT_AI_PROMPT }
             });
         }
         res.json({ success: true, aiPrompt: settings.aiPrompt });
@@ -347,9 +345,10 @@ exports.updateMaintenance = async (req, res) => {
     try {
         const { isMaintenance, maintenanceMessage, isWarning } = req.body;
         
-        await prisma.systemSettings.update({
+        await prisma.systemSettings.upsert({
             where: { id: 'global' },
-            data: { isMaintenance, maintenanceMessage }
+            update: { isMaintenance, maintenanceMessage },
+            create: { id: 'global', aiPrompt: DEFAULT_AI_PROMPT, isMaintenance, maintenanceMessage }
         });
 
         // Получаем объект io из app
@@ -379,7 +378,9 @@ exports.exportDatabase = async (req, res) => {
     try {
         // Собираем данные из всех основных таблиц
         const backup = {
-            users: await prisma.user.findMany({ include: { accounts: true } }),
+            users: (await prisma.user.findMany({
+                include: { accounts: { select: { id: true, provider: true, providerId: true, name: true, signature: true, isValid: true, createdAt: true } } }
+            })).map(sanitizeUser),
             posts: await prisma.post.findMany(),
             transactions: await prisma.transaction.findMany(),
             plans: await prisma.subscriptionPlan.findMany(),

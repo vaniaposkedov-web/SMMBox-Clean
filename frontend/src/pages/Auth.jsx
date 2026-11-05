@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft, Loader2, KeyRound } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -10,6 +10,8 @@ export default function Auth() {
   const navigate = useNavigate();
   const telegramLogin = useStore((state) => state.telegramLogin);
   const vkLogin = useStore((state) => state.vkLogin);
+  const [sessionExpired, setSessionExpired] = useState(() => useStore.getState().sessionExpired);
+  useEffect(() => { useStore.setState({ sessionExpired: false }); }, []);
 
   const [isLogin, setIsLogin] = useState(true);
   const [isVerification, setIsVerification] = useState(false);
@@ -43,6 +45,7 @@ export default function Auth() {
     setError('');
     setSuccessMsg('');
     setIsLoading(true);
+    setSessionExpired(false);
 
     try {
      
@@ -219,6 +222,7 @@ export default function Auth() {
           )}
 
           <div className="min-h-[32px] sm:min-h-[40px] pt-1">
+            {sessionExpired && !error && <div className="text-amber-400 text-xs text-center bg-amber-500/10 py-2 sm:py-3 rounded-xl border border-amber-500/20 mb-2">Время входа истекло. Войдите снова.</div>}
             {error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-2 sm:py-3 rounded-xl border border-red-500/20">{error}</div>}
             {successMsg && <div className="text-green-500 text-xs text-center bg-green-500/10 py-2 sm:py-3 rounded-xl border border-green-500/20">{successMsg}</div>}
           </div>

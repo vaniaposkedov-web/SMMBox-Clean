@@ -169,6 +169,10 @@ model Post {
   accountId   String   
   account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+  originalMediaUrls String? @db.Text
+  watermarkConfig   String? @db.Text
+  signatureText     String? @db.Text
+  errorMessage      String?
   @@index([accountId])
   @@index([status, publishAt])
   @@index([createdAt])
