@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
+const { LEGAL_VERSION } = require('./legal');
 
 const getJwtSecret = () => {
   const secret = process.env.JWT_SECRET;
@@ -26,6 +27,7 @@ const sanitizeUser = (user) => {
   if (!user) return user;
   const safe = { ...user };
   for (const field of PRIVATE_USER_FIELDS) delete safe[field];
+  safe.consentRequired = user.role !== 'ADMIN' && user.legalVersion !== LEGAL_VERSION;
   return safe;
 };
 

@@ -20,6 +20,7 @@ router.put('/plans/:id', adminAuth, adminController.updatePlan);
 router.post('/users/:id/grant-pro', adminAuth, adminController.grantProStatus);
 router.post('/users/:id/login-link', adminAuth, adminController.createLoginLink);
 router.post('/users/:id/unlink', adminAuth, adminController.unlinkClientSocial);
+router.delete('/users/:id', adminAuth, adminController.eraseClient);
 
 // === РОУТЫ НАСТРОЕК НЕЙРОСЕТИ ===
 router.get('/settings/ai', adminAuth, adminController.getAiSettings);

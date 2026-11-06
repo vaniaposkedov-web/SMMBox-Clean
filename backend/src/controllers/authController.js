@@ -12,6 +12,8 @@ const {
   getBotToken,
 } = require('../utils/security');
 const { SOCIAL_LOGIN_FIELDS, unlinkSocialLogin } = require('../utils/socialLogin');
+const { LEGAL_VERSION, CONSENT_REQUIRED_ERROR, hasLegalConsent, consentRecords } = require('../utils/legal');
+const { eraseUser } = require('../utils/accountErasure');
 
 async function generateUniqueId() {
   for (;;) {
@@ -21,10 +23,19 @@ async function generateUniqueId() {
   }
 }
 
+const createUserWithConsent = async (data) => {
+  const id = await generateUniqueId();
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({ data: { ...data, id, legalVersion: LEGAL_VERSION, isOnboardingCompleted: true } });
+    await tx.legalConsent.createMany({ data: consentRecords(id) });
+    return user;
+  });
+};
+
 exports.telegramAuth = async (req, res) => {
   try {
-    // createAccount добавляет сайт, в подписи Telegram этого поля нет.
-    const { createAccount, ...telegramData } = req.body;
+    // Эти поля добавляет сайт, в подписи Telegram их нет.
+    const { createAccount, acceptTerms, personalDataConsent, ...telegramData } = req.body;
     if (!verifyTelegramLogin(telegramData, getBotToken())) {
       return res.status(401).json({ error: 'Не удалось подтвердить вход через Telegram' });
     }
@@ -36,17 +47,10 @@ exports.telegramAuth = async (req, res) => {
     if (!user) {
       // Новый аккаунт создаётся только с согласия человека: возможно, у него уже есть аккаунт с другой соцсетью.
       if (!createAccount) return res.json({ requiresConfirmation: true });
+      if (!hasLegalConsent({ acceptTerms, personalDataConsent })) return res.status(400).json({ error: CONSENT_REQUIRED_ERROR });
       isNewUser = true;
       const fullName = [first_name, last_name].filter(Boolean).join(' ') || username || 'TG Юзер';
-      user = await prisma.user.create({
-        data: {
-          id: await generateUniqueId(),
-          telegramId: String(id),
-          name: fullName,
-          avatarUrl: photo_url || null,
-          isOnboardingCompleted: true,
-        },
-      });
+      user = await createUserWithConsent({ telegramId: String(id), name: fullName, avatarUrl: photo_url || null });
       await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: String(id) } },
         update: {},
@@ -76,15 +80,12 @@ exports.vkAuth = async (req, res) => {
     if (!user) {
       // Новый аккаунт создаётся только с согласия человека: возможно, у него уже есть аккаунт с другой соцсетью.
       if (!req.body.createAccount) return res.json({ requiresConfirmation: true });
+      if (!hasLegalConsent(req.body)) return res.status(400).json({ error: CONSENT_REQUIRED_ERROR });
       isNewUser = true;
-      user = await prisma.user.create({
-        data: {
-          id: await generateUniqueId(),
-          vkId,
-          name: [vkUser.first_name, vkUser.last_name].filter(Boolean).join(' ') || 'VK Юзер',
-          avatarUrl: avatar,
-          isOnboardingCompleted: true,
-        },
+      user = await createUserWithConsent({
+        vkId,
+        name: [vkUser.first_name, vkUser.last_name].filter(Boolean).join(' ') || 'VK Юзер',
+        avatarUrl: avatar,
       });
     } else if (avatar && !user.avatarUrl) {
       user = await prisma.user.update({ where: { id: user.id }, data: { avatarUrl: avatar } });
@@ -200,6 +201,41 @@ exports.recoverAccess = async (req, res) => {
   } catch (error) {
     console.error('Ошибка входа по ссылке поддержки:', error.message);
     res.status(500).json({ error: 'Ошибка сервера' });
+  }
+};
+
+// Клиент, который ещё не принимал документы или должен принять их новую редакцию.
+exports.acceptLegalDocuments = async (req, res) => {
+  try {
+    if (!hasLegalConsent(req.body)) return res.status(400).json({ error: CONSENT_REQUIRED_ERROR });
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (user.legalVersion === LEGAL_VERSION) return res.json({ success: true, user: sanitizeUser(user) });
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.legalConsent.createMany({ data: consentRecords(req.userId) });
+      return tx.user.update({ where: { id: req.userId }, data: { legalVersion: LEGAL_VERSION } });
+    });
+    res.json({ success: true, user: sanitizeUser(updated) });
+  } catch (error) {
+    console.error('Ошибка принятия документов:', error.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+};
+
+// Клиент удаляет аккаунт сам. Это же отзыв согласия на обработку персональных данных.
+exports.deleteAccount = async (req, res) => {
+  try {
+    if (req.body.confirm !== true) return res.status(400).json({ error: 'Подтвердите удаление аккаунта.' });
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { role: true } });
+    if (user.role === 'ADMIN') return res.status(400).json({ error: 'Аккаунт администратора так удалить нельзя.' });
+
+    await eraseUser(req.userId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Ошибка удаления аккаунта:', error.message);
+    res.status(500).json({ error: 'Не удалось удалить аккаунт. Попробуйте ещё раз или напишите в поддержку.' });
   }
 };
 

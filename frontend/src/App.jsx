@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import {
   Plus, User, Users, Box, LogOut, MoreHorizontal, ChevronDown, ChevronUp, Layers,
-  FileText, BarChart2, Droplet, PenTool, Bell
+  FileText, BarChart2, Droplet, PenTool, Bell, Scale
 } from 'lucide-react';
 import { useStore } from './store'; 
 
@@ -16,6 +16,9 @@ import Requests from './pages/Requests';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import Terms from './pages/Terms';
+import PersonalDataConsent from './pages/PersonalDataConsent';
+import ConsentGate from './components/legal/ConsentGate';
  
 import PartnersManager from './components/settings/PartnersManager';
 import PostsHistory from './pages/PostsHistory';
@@ -42,6 +45,9 @@ const getPageTitle = (pathname) => {
     '/signatures': 'Управление подписями',
     '/settings': 'Настройки системы',
     '/analytics': 'Аналитика',
+    '/terms': 'Пользовательское соглашение',
+    '/privacy': 'Политика обработки данных',
+    '/personal-data-consent': 'Согласие на обработку данных',
   };
   return titles[pathname] || 'Панель управления';
 };
@@ -140,6 +146,7 @@ function Sidebar() {
               <NavLink to="/analytics" className={subLinkClass}><BarChart2 size={16} /> Аналитика</NavLink>
               <NavLink to="/watermark" className={subLinkClass}><Droplet size={16} /> Водяной знак</NavLink>
               <NavLink to="/signatures" className={subLinkClass}><PenTool size={16} /> Подписи к постам</NavLink>
+              <NavLink to="/privacy" className={subLinkClass}><Scale size={16} /> Документы</NavLink>
             </div>
           )}
         </div>
@@ -202,6 +209,10 @@ function BottomNav() {
               <NavLink to="/signatures" onClick={() => setIsMoreMenuOpen(false)} className={popoverLinkClass}>
                 <PenTool size={22} className="mb-2" />
                 <span className="text-[10px] text-center leading-tight">Подписи к<br/>постам</span>
+              </NavLink>
+              <NavLink to="/privacy" onClick={() => setIsMoreMenuOpen(false)} className={popoverLinkClass}>
+                <Scale size={22} className="mb-2" />
+                <span className="text-[10px] text-center leading-tight">Документы</span>
               </NavLink>
             </div>
           </div>
@@ -285,6 +296,7 @@ function UserLayout() {
         </div>
       </main>
       <BottomNav />
+      <ConsentGate />
     </div>
   );
 }
@@ -315,6 +327,8 @@ function App() {
             <Route path="/auth" element={<Auth />} />
             <Route path="/recover/:code" element={<RecoverAccess />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/personal-data-consent" element={<PersonalDataConsent />} />
             <Route path="/boss-login" element={<AdminLogin />} />
             <Route path="/system-core-dashboard" element={<AdminDashboard />} />
             <Route path="*" element={<Navigate to="/auth" replace />} />
@@ -339,6 +353,8 @@ function App() {
             <Route path="/partners" element={<PartnersManager />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/personal-data-consent" element={<PersonalDataConsent />} />
             
             {/* === НАШИ НОВЫЕ РОУТЫ ИЗ ВКЛАДКИ "ЕЩЕ" === */}
             <Route path="/accounts" element={<AccountsManager />} />

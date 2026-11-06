@@ -14,6 +14,7 @@ const prisma = require('./utils/prisma');
 // Запускаем планировщик постов
 require('./controllers/postController').initCron();
 require('./controllers/partnerController').initPartnerCron();
+require('./utils/logger').initLogCleanup();
 require('./worker'); // Запускаем фонового воркера
 
 const authRoutes = require('./routes/authRoutes');

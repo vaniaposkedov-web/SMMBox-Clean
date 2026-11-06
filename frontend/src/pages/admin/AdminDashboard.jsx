@@ -252,6 +252,24 @@ const submitProGrant = async (isRevoke = false) => {
     setTimeout(() => setLinkCopied(false), 2000);
   };
 
+  const eraseClient = async () => {
+    const { id, name } = userDetails.user;
+    if (!window.confirm(`Удалить клиента ${name || id} и все его данные? Это нельзя отменить.`)) return;
+    setAccessError('');
+    setAccessBusy(true);
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` } });
+      const data = await res.json();
+      if (!res.ok) { setAccessError(data.error || 'Не удалось удалить клиента'); return; }
+      setAllUsers((prev) => prev.filter((client) => client.id !== id));
+      setIsModalOpen(false);
+    } catch (e) {
+      setAccessError('Ошибка соединения с сервером');
+    } finally {
+      setAccessBusy(false);
+    }
+  };
+
   const savePavilion = async () => {
       setIsSavingPavilion(true);
       const token = localStorage.getItem('adminToken');
@@ -1002,6 +1020,21 @@ const submitProGrant = async (isRevoke = false) => {
                       </div>
                     )}
                     {accessError && <p role="status" className="text-xs text-red-400">{accessError}</p>}
+                  </div>
+
+                  <div className="p-5 bg-gray-900 border border-gray-800 rounded-xl space-y-3">
+                    <label className="text-xs font-bold text-gray-500 block uppercase">Документы и данные</label>
+                    {userDetails.consents?.length ? (
+                      <ul className="text-xs text-gray-300 space-y-1">
+                        {userDetails.consents.map((consent) => (
+                          <li key={consent.id}>
+                            {new Date(consent.createdAt).toLocaleString('ru-RU')}: {consent.action === 'WITHDRAWN' ? 'отозвано' : 'принято'} — {consent.document === 'TERMS' ? 'соглашение' : 'согласие на обработку данных'}, редакция {consent.version}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="text-xs text-amber-400">Клиент ещё не принял документы. Сайт попросит его об этом при входе.</p>}
+                    <p className="text-xs text-gray-500">Если клиент отозвал согласие или потребовал удалить данные, срок на это не больше 30 дней. Сначала убедитесь, что обращается именно он.</p>
+                    <button type="button" onClick={eraseClient} disabled={accessBusy} className="w-full py-2.5 text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 font-bold rounded-lg transition-colors text-sm disabled:opacity-50">Удалить клиента и все его данные</button>
                   </div>
 
                   <div className="p-5 bg-gray-900 border border-gray-800 rounded-xl">

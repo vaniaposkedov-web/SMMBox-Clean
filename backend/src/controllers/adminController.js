@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { signUserToken, sanitizeUser, sha256 } = require('../utils/security');
 const { SOCIAL_LOGIN_FIELDS, unlinkSocialLogin } = require('../utils/socialLogin');
+const { eraseUser } = require('../utils/accountErasure');
 const { logEvent } = require('../utils/logger');
 
 const LOGIN_LINK_LIFETIME_MS = 60 * 60 * 1000;
@@ -52,6 +53,22 @@ exports.unlinkClientSocial = async (req, res) => {
         await logEvent(req.user.id, 'INFO', 'ADMIN', `Отвязан ${provider} у клиента ${client.id}`);
         res.json({ success: true, user: sanitizeUser(updated) });
     } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+};
+
+// Клиент отозвал согласие или потребовал удалить данные через поддержку.
+exports.eraseClient = async (req, res) => {
+    try {
+        const client = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, role: true } });
+        if (!client) return res.status(404).json({ error: 'Клиент не найден' });
+        if (client.role === 'ADMIN') return res.status(400).json({ error: 'Администратора так удалить нельзя' });
+
+        await eraseUser(client.id);
+        await logEvent(req.user.id, 'INFO', 'ADMIN', `Удалён клиент ${client.id} и его данные`);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Ошибка удаления клиента:', error.message);
+        res.status(500).json({ error: 'Не удалось удалить клиента' });
+    }
 };
 
 exports.getDashboardData = async (req, res) => {
@@ -190,7 +207,8 @@ exports.getUserDetails = async (req, res) => {
         });
 
         const postsCount = await prisma.post.count({ where: { account: { userId: req.params.id } } });
-        res.json({ success: true, user: sanitizeUser(user), postsCount, recentPosts });
+        const consents = await prisma.legalConsent.findMany({ where: { userId: req.params.id }, orderBy: { createdAt: 'desc' }, take: 10 });
+        res.json({ success: true, user: sanitizeUser(user), postsCount, recentPosts, consents });
     } catch (error) { 
         console.error('Ошибка в getUserDetails:', error);
         res.status(500).json({ error: 'Ошибка сервера при загрузке досье' }); 

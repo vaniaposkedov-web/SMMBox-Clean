@@ -894,6 +894,7 @@ const handlePublish = async () => {
                     <Sparkles size={16} /> Улучшить текст
                   </button>
                 </div>
+                <p className="w-full text-[11px] leading-snug text-gray-500">Кнопка «Улучшить текст» отправляет текст внешнему сервису искусственного интеллекта. Не указывайте в нём личные данные других людей.</p>
               </div>
             </div>
           </div>

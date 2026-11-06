@@ -6,15 +6,20 @@ import { Link } from 'react-router-dom';
 import CustomTelegramButton from '../components/CustomTelegramButton';
 import CustomVkButton from '../components/CustomVkButton';
 import { SUPPORT_TELEGRAM } from '../telegramBot';
+import LegalConsentChecks from '../components/legal/LegalConsentChecks';
+
+const NO_CHECKS = { acceptTerms: false, personalDataConsent: false };
 
 export default function Auth() {
   const telegramLogin = useStore((state) => state.telegramLogin);
   const vkLogin = useStore((state) => state.vkLogin);
   const [sessionExpired, setSessionExpired] = useState(() => useStore.getState().sessionExpired);
-  useEffect(() => { useStore.setState({ sessionExpired: false }); }, []);
+  const [accountDeleted] = useState(() => useStore.getState().accountDeleted);
+  useEffect(() => { useStore.setState({ sessionExpired: false, accountDeleted: false }); }, []);
 
   const [error, setError] = useState('');
   const [pendingSocial, setPendingSocial] = useState(null);
+  const [checks, setChecks] = useState(NO_CHECKS);
 
   // При отказе во входе через соцсеть человек должен увидеть причину на странице,
   // а новый аккаунт создаётся только после его согласия.
@@ -23,6 +28,7 @@ export default function Auth() {
     setSessionExpired(false);
     const result = await login(data);
     if (result.requiresConfirmation) {
+      setChecks(NO_CHECKS);
       setPendingSocial({ name, login, data });
       return;
     }
@@ -34,24 +40,25 @@ export default function Auth() {
   const createSocialAccount = async () => {
     const { name, login, data } = pendingSocial;
     setPendingSocial(null);
-    await finishSocialLogin(name, login, { ...data, createAccount: true });
+    await finishSocialLogin(name, login, { ...data, ...checks, createAccount: true });
   };
 
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 relative overflow-hidden">
       {pendingSocial && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" className="w-full max-w-sm bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 shadow-2xl">
+          <div role="dialog" aria-modal="true" className="w-full max-w-sm max-h-full overflow-y-auto bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 shadow-2xl">
             <h3 className="text-white font-bold text-lg mb-3">Аккаунт с этим профилем {pendingSocial.name} не найден</h3>
             <p className="text-gray-400 text-sm mb-5">
               Если вы уже заходили на сайт через другую соцсеть, войдите через неё и привяжите {pendingSocial.name} в профиле, в разделе «Настройки». Так у вас останутся тариф, аккаунты и посты. Новый аккаунт будет пустым.
             </p>
-            <div className="space-y-3">
-              <button type="button" onClick={() => setPendingSocial(null)} className="w-full py-3 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-colors">
-                Войти через другую соцсеть
-              </button>
-              <button type="button" onClick={createSocialAccount} className="w-full py-3 rounded-xl font-bold text-sm text-gray-300 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors">
+            <LegalConsentChecks value={checks} onChange={setChecks} />
+            <div className="space-y-3 mt-5">
+              <button type="button" onClick={createSocialAccount} disabled={!checks.acceptTerms || !checks.personalDataConsent} className="w-full py-3 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                 Создать новый аккаунт
+              </button>
+              <button type="button" onClick={() => setPendingSocial(null)} className="w-full py-3 rounded-xl font-bold text-sm text-gray-300 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors">
+                Войти через другую соцсеть
               </button>
             </div>
           </div>
@@ -78,16 +85,22 @@ export default function Auth() {
           <CustomVkButton onAuth={handleVkAuth} onError={setError} />
         </div>
 
-        {(sessionExpired || error) && (
+        {(sessionExpired || error || accountDeleted) && (
           <div className="mt-6">
-            {sessionExpired && !error && <div className="text-amber-400 text-xs text-center bg-amber-500/10 py-2 sm:py-3 px-3 rounded-xl border border-amber-500/20">Время входа истекло. Войдите снова.</div>}
+            {accountDeleted && !error && <div role="status" className="text-green-500 text-xs text-center bg-green-500/10 py-2 sm:py-3 px-3 rounded-xl border border-green-500/20">Аккаунт и данные удалены.</div>}
+            {sessionExpired && !error && !accountDeleted && <div className="text-amber-400 text-xs text-center bg-amber-500/10 py-2 sm:py-3 px-3 rounded-xl border border-amber-500/20">Время входа истекло. Войдите снова.</div>}
             {error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-2 sm:py-3 px-3 rounded-xl border border-red-500/20">{error}</div>}
           </div>
         )}
 
-        <p className="text-center text-[10px] sm:text-xs text-gray-500 mt-6 leading-relaxed">
-          Продолжая, вы принимаете <Link to="/privacy" className="text-blue-500 hover:underline">Пользовательское соглашение и Политику конфиденциальности</Link>.
-        </p>
+        <div className="text-center text-[10px] sm:text-xs text-gray-500 mt-6 leading-relaxed space-y-2">
+          <p>Перед созданием аккаунта мы попросим принять соглашение и дать согласие на обработку персональных данных.</p>
+          <p className="flex flex-wrap justify-center gap-x-3 gap-y-1">
+            <Link to="/terms" className="text-blue-500 hover:underline">Соглашение</Link>
+            <Link to="/privacy" className="text-blue-500 hover:underline">Политика</Link>
+            <Link to="/personal-data-consent" className="text-blue-500 hover:underline">Согласие</Link>
+          </p>
+        </div>
 
         <div className="mt-6 pt-6 border-t border-gray-800 text-center text-sm text-gray-400">
           Потеряли доступ к соцсетям?{' '}

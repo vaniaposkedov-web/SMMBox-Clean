@@ -21,6 +21,8 @@ router.post('/link/telegram', authMiddleware, loginLimiter, authController.linkT
 router.post('/link/vk', authMiddleware, loginLimiter, authController.linkVkLogin);
 router.post('/unlink/:provider', authMiddleware, loginLimiter, authController.unlinkSocial);
 router.post('/recover', codeLimiter, authController.recoverAccess);
+router.post('/consent', authMiddleware, loginLimiter, authController.acceptLegalDocuments);
+router.post('/delete-account', authMiddleware, loginLimiter, authController.deleteAccount);
 
 router.get('/me', authMiddleware, authController.getMe);
 

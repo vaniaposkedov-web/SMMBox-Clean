@@ -35,6 +35,7 @@ export const useStore = create(
 
       tempDraft: null,
       sessionExpired: false,
+      accountDeleted: false,
       saveTempDraft: (data) => set({ tempDraft: data }),
 
       presets: [
@@ -206,6 +207,35 @@ export const useStore = create(
           localStorage.setItem('token', data.token);
           set({ user: data.user, token: data.token });
           get().fetchProfiles(data.user.id);
+          return { success: true };
+        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
+      },
+
+      acceptLegalDocuments: async (checks) => {
+        try {
+          const res = await fetch('/api/auth/consent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` },
+            body: JSON.stringify(checks),
+          });
+          const data = await res.json();
+          if (!res.ok) return { success: false, error: data.error };
+          set({ user: { ...get().user, ...data.user } });
+          return { success: true };
+        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
+      },
+
+      deleteAccount: async () => {
+        try {
+          const res = await fetch('/api/auth/delete-account', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` },
+            body: JSON.stringify({ confirm: true }),
+          });
+          const data = await res.json();
+          if (!res.ok) return { success: false, error: data.error };
+          get().logout();
+          set({ accountDeleted: true });
           return { success: true };
         } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },

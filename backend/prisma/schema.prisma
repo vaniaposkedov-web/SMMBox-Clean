@@ -41,6 +41,7 @@ model User {
   telegramBindCode         String?
   telegramBindExpires      DateTime?
   tokenVersion             Int       @default(0) // Растёт, когда нужно закрыть все прежние входы
+  legalVersion             String?   // Редакция документов, которую принял клиент
   
   profiles                 SocialProfile[]
   accounts                 Account[]
@@ -243,12 +244,24 @@ model SharedPost {
 // === ФИНАНСЫ И ПЛАТЕЖИ ===
 model Transaction {
   id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String?  // После удаления аккаунта сумма остаётся для учёта, но без связи с человеком
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   
   amount    Int      // Сумма в рублях
   type      String   @default("PRO_SUBSCRIPTION") 
   createdAt DateTime @default(now())
+}
+
+// Доказательство согласий. Связи с User нет намеренно: запись должна пережить удаление аккаунта.
+model LegalConsent {
+  id        String   @id @default(uuid())
+  userId    String
+  document  String   // TERMS, PERSONAL_DATA
+  version   String
+  action    String   @default("GIVEN") // GIVEN, WITHDRAWN
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // === ГЛОБАЛЬНЫЕ НАСТРОЙКИ СИСТЕМЫ ===

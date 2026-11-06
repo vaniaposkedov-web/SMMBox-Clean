@@ -64,6 +64,21 @@ export default function Profile() {
     setLinkNotice(null);
     showLinkResult('ВКонтакте', await linkVkLogin(data));
   }, [linkVkLogin, showLinkResult]);
+  const deleteAccount = useStore((state) => state.deleteAccount);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deleteWord, setDeleteWord] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    setDeleteError('');
+    const result = await deleteAccount();
+    if (!result.success) {
+      setIsDeletingAccount(false);
+      setDeleteError(result.error || 'Не удалось удалить аккаунт. Попробуйте ещё раз.');
+    }
+  };
+
   const handleVkLinkError = useCallback((text) => setLinkNotice(text ? { ok: false, text } : null), []);
 
   const unlinkSocialLogin = useStore((state) => state.unlinkSocialLogin);
@@ -505,24 +520,16 @@ export default function Profile() {
                 </h2>
                 
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-4 bg-gray-900 border border-gray-800 rounded-2xl">
-                    <div className="flex items-center gap-4 min-w-0 pr-2">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 bg-green-500/10 text-green-500">
-                        <CheckCircle2 size={20} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-white text-sm sm:text-base font-bold truncate">Документы подписаны</p>
-                        <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 truncate">Пользовательское соглашение</p>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => navigate('/privacy')} 
-                      className="text-blue-500 hover:text-blue-400 p-2 text-sm font-bold transition-colors shrink-0"
-                    >
-                      Читать
+                  {[
+                    ['/terms', 'Пользовательское соглашение и оферта'],
+                    ['/privacy', 'Политика обработки персональных данных'],
+                    ['/personal-data-consent', 'Согласие на обработку персональных данных'],
+                  ].map(([path, title]) => (
+                    <button key={path} type="button" onClick={() => navigate(path)} className="w-full flex items-center justify-between gap-3 p-4 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-2xl text-left transition-colors">
+                      <span className="text-white text-sm font-bold min-w-0">{title}</span>
+                      <span className="text-blue-500 text-sm font-bold shrink-0">Читать</span>
                     </button>
-                  </div>
-
+                  ))}
                 </div>
               </div>
 
@@ -534,6 +541,30 @@ export default function Profile() {
                 <button onClick={() => logout()} className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 py-3.5 sm:py-4 rounded-xl text-sm font-bold transition-colors flex justify-center items-center gap-2 min-h-[48px] active:scale-95">
                   Выйти из системы
                 </button>
+                {!showDeleteAccount ? (
+                  <button type="button" onClick={() => setShowDeleteAccount(true)} className="mt-4 text-xs text-gray-500 hover:text-red-400 underline transition-colors">
+                    Удалить аккаунт
+                  </button>
+                ) : (
+                  <div className="mt-5 w-full text-left space-y-3 border-t border-gray-800 pt-5">
+                    <h3 className="text-white font-bold text-sm">Удаление аккаунта</h3>
+                    <p className="text-gray-400 text-xs leading-relaxed">Это также отзыв согласия на обработку персональных данных. Сразу удалятся профиль, посты, подключённые группы и каналы, ключи доступа и настройки. Запланированные посты не выйдут. Вернуть аккаунт будет нельзя.</p>
+                    <p className="text-gray-400 text-xs leading-relaxed">Сумма и дата оплат останутся для учёта, но без связи с вами. Если у вас действует тариф, сначала напишите в поддержку о возврате денег за неиспользованные дни.</p>
+                    <label className="block text-xs text-gray-400">
+                      Введите слово УДАЛИТЬ
+                      <input value={deleteWord} onChange={(event) => setDeleteWord(event.target.value)} className="mt-2 w-full p-3 rounded-xl border border-gray-700 bg-black text-white text-sm outline-none focus:border-red-500" />
+                    </label>
+                    {deleteError && <p role="status" className="text-red-500 text-xs">{deleteError}</p>}
+                    <div className="flex gap-3">
+                      <button type="button" onClick={handleDeleteAccount} disabled={deleteWord.trim().toUpperCase() !== 'УДАЛИТЬ' || isDeletingAccount} className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                        {isDeletingAccount ? 'Удаляем...' : 'Удалить навсегда'}
+                      </button>
+                      <button type="button" onClick={() => { setShowDeleteAccount(false); setDeleteWord(''); setDeleteError(''); }} className="flex-1 py-3 rounded-xl text-sm font-bold text-gray-300 bg-gray-800 hover:bg-gray-700 transition-colors">
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
