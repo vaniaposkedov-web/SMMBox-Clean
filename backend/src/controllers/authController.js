@@ -2,7 +2,6 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
 const sharp = require('sharp');
 const prisma = require('../utils/prisma');
 const sendEmail = require('../utils/sendEmail');
@@ -16,7 +15,6 @@ const {
   verifyTelegramLogin,
   fetchVkIdUser,
   getBotToken,
-  telegramFileToDataUri,
 } = require('../utils/security');
 
 const CODE_LIFETIME_MS = 15 * 60 * 1000;
@@ -212,28 +210,6 @@ exports.vkAuth = async (req, res) => {
   } catch (error) {
     console.error('Ошибка входа через VK:', error.message);
     res.status(500).json({ error: 'Ошибка сервера' });
-  }
-};
-
-exports.getTgChatInfo = async (req, res) => {
-  try {
-    const { channel } = req.body;
-    if (!channel) return res.status(400).json({ error: 'Укажите ссылку на канал' });
-
-    let channelName = String(channel).replace('https://t.me/', '').replace('t.me/', '').replace('@', '').split('/')[0].split('?')[0].trim();
-    if (!channelName.startsWith('-100')) channelName = '@' + channelName;
-
-    const botToken = getBotToken();
-    const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChat`, { params: { chat_id: channelName } });
-    const chat = tgRes.data.result;
-
-    let avatar = null;
-    if (chat.photo?.small_file_id) {
-      avatar = await telegramFileToDataUri(botToken, chat.photo.small_file_id).catch(() => null);
-    }
-    res.json({ success: true, chatId: String(chat.id), title: chat.title, username: chat.username ? `@${chat.username}` : '', avatar });
-  } catch (error) {
-    res.status(400).json({ success: false, error: 'Бот не админ или канал неверен' });
   }
 };
 
@@ -450,16 +426,6 @@ exports.updateProfile = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Этот номер телефона уже используется другим пользователем!' });
     }
     res.status(500).json({ success: false, error: 'Ошибка сохранения данных' });
-  }
-};
-
-exports.completeOnboarding = async (req, res) => {
-  try {
-    await prisma.user.update({ where: { id: req.userId }, data: { isOnboardingCompleted: true } });
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Ошибка завершения Onboarding:', error.message);
-    res.status(500).json({ error: 'Ошибка сервера при завершении Onboarding' });
   }
 };
 

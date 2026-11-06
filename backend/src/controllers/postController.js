@@ -823,58 +823,6 @@ exports.deleteScheduledPost = async (req, res) => {
     }
 };
 
-exports.markSharedPostRead = async (req, res) => {
-  try {
-    await prisma.sharedPost.updateMany({ where: { id: req.body.id, receiverId: getUserId(req) }, data: { isRead: true } });
-    res.json({ success: true });
-  } catch (error) { res.status(500).json({ error: 'Ошибка' }); }
-};
-
-// === API ДЛЯ АДМИНКИ: ЧТЕНИЕ ЛОГОВ ПУБЛИКАЦИИ ===
-exports.getSystemLogs = async (req, res) => {
-    const fs = require('fs');
-    const path = require('path');
-    const { date } = req.query; 
-    
-    try {
-        const targetDate = date || new Date().toLocaleDateString('en-CA');
-        const logPath = path.join(__dirname, '../../logs', `posts_${targetDate}.log`);
-        
-        if (!fs.existsSync(logPath)) {
-            return res.json({ success: true, logs: [], message: 'За эту дату логов нет' });
-        }
-        
-        const fileContent = fs.readFileSync(logPath, 'utf-8');
-        const logLines = fileContent.split('\n').filter(line => line.trim() !== '');
-        
-        const parsedLogs = logLines.map((line, index) => {
-            const match = line.match(/^\[(.*?)\]\s+\[USER:(.*?)\]\s+\[(.*?)\]\s+\[(.*?)\]\s+(.*?)\s+\|\s+DETAILS:\s+(.*)$/);
-            
-            if (match) {
-                let parsedDetails = match[6];
-                try { parsedDetails = JSON.parse(match[6]); } catch (e) {}
-
-                return {
-                    id: `${targetDate}-${index}`,
-                    timestamp: match[1],
-                    userId: match[2],
-                    provider: match[3],
-                    action: match[4],      
-                    message: match[5],
-                    details: parsedDetails
-                };
-            }
-            return { id: `${targetDate}-${index}`, raw: line };
-        }).reverse(); 
-        
-        res.json({ success: true, logs: parsedLogs });
-    } catch (error) {
-        console.error('Ошибка чтения логов для админки:', error);
-        res.status(500).json({ success: false, error: 'Не удалось прочитать файлы логов' });
-    }
-};
-
-
 // === ПОЛУЧИТЬ ПОЛНУЮ ИСТОРИЮ ПОСТОВ (ВК/ТГ + ПАРТНЕРЫ) ===
 exports.getPostsHistory = async (req, res) => {
     try {

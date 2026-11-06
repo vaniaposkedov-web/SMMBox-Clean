@@ -24,9 +24,6 @@ router.post('/vk', loginLimiter, authController.vkAuth);
 router.post('/link/telegram', authMiddleware, loginLimiter, authController.linkTelegramLogin);
 router.post('/link/vk', authMiddleware, loginLimiter, authController.linkVkLogin);
 
-router.post('/complete-onboarding', authMiddleware, authController.completeOnboarding);
-router.post('/tg-chat-info', authMiddleware, authController.getTgChatInfo);
-
 router.post('/request-link-email', authMiddleware, codeLimiter, authController.requestLinkEmail);
 router.post('/verify-link-email', authMiddleware, codeLimiter, authController.verifyLinkEmail);
 

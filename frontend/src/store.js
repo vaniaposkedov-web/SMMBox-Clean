@@ -33,15 +33,6 @@ export const useStore = create(
         opacity: 90
       },
 
-      publishDraft: {
-        step: 1, 
-        photos: [], 
-        text: '',
-        accountIds: [],
-        isScheduled: false,
-        publishDate: ''
-      },
-
       tempDraft: null,
       sessionExpired: false,
       saveTempDraft: (data) => set({ tempDraft: data }),
@@ -51,19 +42,6 @@ export const useStore = create(
         { id: 'minimal', name: 'Минимализм', watermark: false, signature: false }
       ],
 
-      updatePublishDraft: (data) => set((state) => ({
-        publishDraft: { ...state.publishDraft, ...data }
-      })),
-
-      clearPublishDraft: () => set({
-        publishDraft: { step: 1, photos: [], text: '', accountIds: [], isScheduled: false, publishDate: '' }
-      }),
-
-      setWatermarkSettings: (newSettings) => set((state) => ({
-        watermarkSettings: { ...state.watermarkSettings, ...newSettings }
-      })),
-
-      
       fetchProfiles: async (userId) => {
         try {
           const token = localStorage.getItem('token') || get().token;
@@ -83,62 +61,6 @@ export const useStore = create(
 
 
       // === ФУНКЦИЯ УДАЛЕНИЯ ПРОФИЛЯ ===
-      removeSocialProfile: async (profileId) => {
-        try {
-          const { token, fetchProfiles, fetchAccounts, user } = get();
-          
-          const response = await fetch(`/api/accounts/profiles/${profileId}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-
-          const data = await response.json();
-
-          if (data.success) {
-            // Мгновенно убираем профиль и его аккаунты с экрана
-            set((state) => ({
-              profiles: state.profiles.filter(p => p.id !== profileId),
-              accounts: state.accounts.filter(a => a.socialProfileId !== profileId)
-            }));
-            
-            // Обновляем данные с сервера для надежности
-            await fetchProfiles(user.id);
-            await fetchAccounts(user.id);
-            
-            return { success: true };
-          } else {
-            throw new Error(data.error || 'Ошибка при удалении профиля');
-          }
-        } catch (error) {
-          console.error('Ошибка removeSocialProfile:', error);
-          alert('Не удалось отключить профиль: ' + error.message);
-          return { success: false, error: error.message };
-        }
-      },
-
-      
-
-      linkSocialProfile: async (userId, provider, providerAccountId, name, avatarUrl, accessToken) => {
-        try {
-          const res = await fetch('/api/accounts/profiles/link', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` },
-            body: JSON.stringify({ userId, provider, providerAccountId, name, avatarUrl, accessToken })
-          });
-          const data = await res.json();
-          if (res.ok && data.success) {
-            get().fetchProfiles(userId);
-            return { success: true, profile: data.profile };
-          }
-          return { success: false, error: data.error };
-        } catch (error) {
-          return { success: false, error: 'Ошибка соединения с сервером' };
-        }
-      },
-
       fetchPostsHistory: async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
@@ -197,17 +119,6 @@ export const useStore = create(
           const res = await fetch(`/api/posts/scheduled/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
           if (res.ok) get().fetchScheduledPosts();
         } catch (error) {}
-      },
-
-      scanTelegramChannels: async (botToken) => {
-        try {
-          const res = await fetch('/api/accounts/tg/scan', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ botToken })
-          });
-          const data = await res.json();
-          if (res.ok && data.success) return { success: true, channels: data.channels };
-          return { success: false, error: data.error || 'Ошибка сканирования' };
-        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
       },
 
       fetchCurrentUser: async () => {
@@ -357,17 +268,6 @@ export const useStore = create(
         } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
 
-      forgotPasswordAction: async (email) => {
-        try {
-          const res = await fetch('/api/auth/forgot-password', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
-          });
-          const data = await res.json();
-          if (res.ok) return { success: true };
-          return { success: false, error: data.error };
-        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
-      },
-
       resetPasswordAction: async (token, newPassword) => {
         try {
           const res = await fetch(`/api/auth/reset-password/${token}`, {
@@ -396,27 +296,8 @@ export const useStore = create(
       logout: () => {
         localStorage.removeItem('token');
         set({ 
-          user: null, token: null, accounts: [], profiles: [], myPartners: [], incomingRequests: [], notifications: [], sharedIncoming: [], sharedOutgoing: [],
-          publishDraft: { step: 1, photos: [], text: '', accountIds: [], isScheduled: false, publishDate: '' }
+          user: null, token: null, accounts: [], profiles: [], myPartners: [], incomingRequests: [], notifications: [], sharedIncoming: [], sharedOutgoing: []
         });
-      },
-
-      completeOnboarding: async () => {
-        try {
-          const res = await fetch('/api/auth/complete-onboarding', {
-            method: 'POST', 
-            headers: { 'Authorization': `Bearer ${get().token}` }
-          });
-          if (res.ok) {
-            // Обновляем статус пользователя в стейте, чтобы пропустить Onboarding
-            set({ user: { ...get().user, isOnboardingCompleted: true } });
-            return { success: true };
-          }
-          return { success: false };
-        } catch (error) {
-          console.error("Ошибка завершения Onboarding:", error);
-          return { success: false };
-        }
       },
 
       fetchPartnerData: async (userId) => {
@@ -439,20 +320,6 @@ export const useStore = create(
           if (res.ok) return await res.json();
           return [];
         } catch (error) { return []; }
-      },
-
-      saveVkAccounts: async (userId, accessToken, selectedGroups) => {
-        try {
-          const res = await fetch('/api/accounts/vk/save', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId, accessToken, groups: selectedGroups })
-          });
-          const data = await res.json();
-          if (res.ok && data.success) {
-            get().fetchAccounts(userId);
-            return { success: true };
-          }
-          return { success: false, error: data.error };
-        } catch (error) { return { success: false, error: 'Ошибка сервера' }; }
       },
 
       sendPartnershipRequest: async (requesterId, receiverId) => {
@@ -518,38 +385,12 @@ export const useStore = create(
         } catch (error) { return { success: false }; }
       },
 
-      clearNotifications: async (userId) => {
-        try {
-          const res = await fetch('/api/partners/notifications/clear', { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, 
-            body: JSON.stringify({ userId }) 
-          });
-          if (res.ok) {
-            get().fetchPartnerData(userId);
-            return { success: true };
-          }
-          return { success: false };
-        } catch (error) { return { success: false }; }
-      },
-
       markNotificationAsRead: async (id) => {
         // Мгновенно убираем индикатор в интерфейсе
         set((state) => ({ notifications: state.notifications.map(n => n.id === id ? { ...n, isRead: true } : n) }));
         // Тихо отправляем запрос на сервер
         try {
           await fetch('/api/partners/notifications/read', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ id })
-          });
-        } catch (e) {}
-      },
-
-      markSharedPostAsRead: async (id) => {
-        // Мгновенно убираем индикатор в интерфейсе
-        set((state) => ({ sharedIncoming: state.sharedIncoming.map(p => p.id === id ? { ...p, isRead: true } : p) }));
-        // Тихо отправляем запрос на сервер
-        try {
-          await fetch('/api/posts/shared/read', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ id })
           });
         } catch (e) {}
@@ -799,20 +640,6 @@ export const useStore = create(
         }
       },
 
-      saveVkGroupWithToken: async (userId, groupLink, accessToken) => {
-        try {
-          const res = await fetch('/api/accounts/vk/save-by-token', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId, groupLink, accessToken })
-          });
-          const data = await res.json();
-          if (res.ok && data.success) {
-            get().fetchAccounts(userId); 
-            return { success: true, group: data.group };
-          }
-          return { success: false, error: data.error };
-        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
-      },
-
       verifyVkAccountsStatus: async () => {
         try {
           const user = get().user;
@@ -823,49 +650,6 @@ export const useStore = create(
           // ДОБАВЛЕН await
           if (res.ok) await get().fetchAccounts(user.id); 
         } catch (error) {}
-      },
-
-
-      fetchVkManagedGroupsClient: async (profileId) => {
-        return new Promise((resolve) => {
-          try {
-            const state = get();
-            const profile = state.profiles.find(p => p.id === profileId);
-
-            if (!profile || !profile.accessToken) {
-              return resolve({ success: false, error: 'Профиль ВК не найден или нет токена' });
-            }
-
-            // Генерируем уникальное имя callback-функции
-            const callbackName = 'vkCallback_' + Math.round(100000 * Math.random());
-
-            // Создаем глобальную функцию
-            window[callbackName] = function(data) {
-              delete window[callbackName];
-              document.body.removeChild(script);
-
-              if (data.error) {
-                return resolve({ success: false, error: `Ошибка VK: ${data.error.error_msg}` });
-              }
-              const groups = data.response ? data.response.items : [];
-              resolve({ success: true, groups });
-            };
-
-            // Создаем скрипт для JSONP запроса
-            const script = document.createElement('script');
-            script.src = `https://api.vk.com/method/groups.get?extended=1&filter=admin,editor&access_token=${profile.accessToken}&v=5.199&callback=${callbackName}`;
-            
-            script.onerror = () => {
-              delete window[callbackName];
-              document.body.removeChild(script);
-              resolve({ success: false, error: 'Ошибка сети при обращении к ВКонтакте' });
-            };
-
-            document.body.appendChild(script);
-          } catch (error) {
-            resolve({ success: false, error: 'Внутренняя ошибка при загрузке групп' });
-          }
-        });
       },
 
 

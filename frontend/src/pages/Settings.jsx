@@ -1,4 +1,6 @@
-import { Settings as SettingsIcon, Share2, Droplet } from 'lucide-react';
+import {
+  Settings as SettingsIcon
+} from 'lucide-react';
 
 
 export default function Settings() {

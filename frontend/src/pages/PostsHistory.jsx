@@ -3,12 +3,10 @@ import { useStore } from '../store';
 import SendingNotice from '../components/SendingNotice';
 import { estimateShareSeconds, getDeliveryMessage } from '../sendingTime';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FileText, CheckCircle2, Clock, AlertCircle, Search,
-  Calendar, Image as ImageIcon, Send, Trash2, 
-  X, Share2, LayoutPanelLeft, ChevronRight, Download, 
-  RefreshCw, Loader2, Maximize2, ChevronLeft, PlusCircle, ChevronUp,
-  Users, Check, ChevronDown
+import {
+  CheckCircle2, Clock, AlertCircle, Search, Calendar, Image as ImageIcon, Send, Trash2, X,
+  Share2, LayoutPanelLeft, ChevronRight, Download, RefreshCw, Loader2, Maximize2,
+  ChevronLeft, ChevronUp, Users, Check, ChevronDown
 } from 'lucide-react';
 
 // === СВЕРХ-УМНЫЙ ПАРСЕР КАРТИНОК (ФИКС 404 ОШИБОК) ===
@@ -241,7 +239,8 @@ export default function PostsHistory() {
         photos: reconstructedPhotos.filter(p => p !== null),
         step: 1, 
         view: 'wizard',
-        publishMode: mode 
+        publishMode: mode,
+        sharedPostId: selectedPost.sharedPostId || undefined
       });
 
       setIsPreparing(false);

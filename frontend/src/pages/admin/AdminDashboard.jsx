@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
-import { 
-  Users, Crown, MessageSquare, LogOut, Sun, Search, ShieldAlert, 
-  Activity, Eye, X, Loader2, Settings, TrendingUp, CreditCard,
-  BarChart3, Database, Wrench, AlertTriangle, Network, Package, Plus, Save, User as UserIcon,
-  Sparkles, ChevronDown, Download, Bell
+import {
+  Users, Crown, MessageSquare, LogOut, Sun, Search, ShieldAlert, Activity, X, Loader2,
+  Settings, TrendingUp, CreditCard, BarChart3, Database, Wrench, AlertTriangle, Network,
+  Package, Save, User as UserIcon, Sparkles, ChevronDown, Download, Bell
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area // <--- ДОБАВИТЬ СЮДА
 } from 'recharts';
 
@@ -27,7 +26,6 @@ export default function AdminDashboard() {
   // === СОСТОЯНИЕ ДОСЬЕ ===
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [userDetails, setUserDetails] = useState(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
   const [dossierTab, setDossierTab] = useState('main'); // Вкладки внутри досье
   const [editPavilion, setEditPavilion] = useState('');
   const [isSavingPavilion, setIsSavingPavilion] = useState(false);
@@ -79,12 +77,6 @@ const [proModal, setProModal] = useState({ isOpen: false, user: null });
   }, [activeTab]);
 
   const [isDark, setIsDark] = useState(() => localStorage.getItem('adminTheme') !== 'light');
-
-  const mockActivityData = [
-    { time: '00:00', users: 12, posts: 5 }, { time: '04:00', users: 8, posts: 2 },
-    { time: '08:00', users: 45, posts: 20 }, { time: '12:00', users: 120, posts: 85 },
-    { time: '16:00', users: 142, posts: 110 }, { time: '20:00', users: 90, posts: 60 }
-  ];
 
   useEffect(() => {
     localStorage.setItem('adminTheme', isDark ? 'dark' : 'light');
@@ -162,20 +154,6 @@ const submitProGrant = async (isRevoke = false) => {
     setIsSubmittingPro(false);
   };
 
-  const revokePro = async (userId) => {
-    if (!window.confirm('Точно забрать подписку?')) return;
-    const token = localStorage.getItem('adminToken');
-    try {
-      await fetch(`/api/admin/users/${userId}/grant-pro`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ months: 0 })
-      });
-      fetchDashboardData();
-      if (isModalOpen && userDetails && userDetails.user.id === userId) openUserDetails(userId);
-    } catch (e) {}
-  };
-
   const exportPrompt = () => {
     const element = document.createElement("a");
     const file = new Blob([aiPrompt], {type: 'text/plain'});
@@ -219,7 +197,6 @@ const submitProGrant = async (isRevoke = false) => {
 
   const openUserDetails = async (userId) => {
     setIsModalOpen(true);
-    setLoadingDetails(true);
     setDossierTab('main');
     const token = localStorage.getItem('adminToken');
     try {
@@ -230,7 +207,6 @@ const submitProGrant = async (isRevoke = false) => {
           setEditPavilion(result.user.pavilion || ''); 
       }
     } catch (e) {}
-    setLoadingDetails(false);
   };
 
   const savePavilion = async () => {

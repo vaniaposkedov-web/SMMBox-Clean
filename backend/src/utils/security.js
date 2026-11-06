@@ -69,13 +69,6 @@ const fetchVkIdUser = async (accessToken) => {
 
 const getBotToken = () => (process.env.TELEGRAM_BOT_TOKEN || '').replace(/['"]/g, '').trim();
 
-// Telegram file links contain the bot token, so the picture is embedded instead of sharing the link.
-const telegramFileToDataUri = async (botToken, fileId) => {
-  const file = await axios.get(`https://api.telegram.org/bot${botToken}/getFile`, { params: { file_id: fileId } });
-  const image = await axios.get(`https://api.telegram.org/file/bot${botToken}/${file.data.result.file_path}`, { responseType: 'arraybuffer' });
-  return `data:image/jpeg;base64,${Buffer.from(image.data).toString('base64')}`;
-};
-
 const escapeXml = (value) =>
   String(value)
     .replace(/&/g, '&amp;')
@@ -94,6 +87,5 @@ module.exports = {
   verifyTelegramLogin,
   fetchVkIdUser,
   getBotToken,
-  telegramFileToDataUri,
   escapeXml,
 };

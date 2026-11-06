@@ -1,6 +1,8 @@
 // frontend/src/components/MaintenanceGuard.jsx
 import { useEffect, useState } from 'react';
-import { Wrench, AlertTriangle, Loader2, X, Bell } from 'lucide-react';
+import {
+  Wrench, Loader2, X, Bell
+} from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import io from 'socket.io-client'; // Не забудьте установить: npm install socket.io-client
 

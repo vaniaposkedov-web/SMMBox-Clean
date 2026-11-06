@@ -204,9 +204,8 @@ exports.markNotificationRead = async (req, res) => {
   }
 };
 
-exports.initPartnerCron = () => {
-  cron.schedule('0 0 * * *', async () => {
-    try {
+// Раз в сутки: заявки без ответа и посты, которые партнёр не использовал за неделю.
+exports.cleanupExpiredPartnerItems = async () => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -234,7 +233,8 @@ exports.initPartnerCron = () => {
       }
 
       const ignoredPosts = await prisma.sharedPost.findMany({
-        where: { isPublished: false, createdAt: { lt: sevenDaysAgo } },
+        // Пост, который партнёр уже отправляет или запланировал, не считается забытым.
+        where: { isPublished: false, createdAt: { lt: sevenDaysAgo }, posts: { none: { status: { in: ['PROCESSING', 'SCHEDULED'] } } } },
         include: { receiver: { select: PUBLIC_FIELDS } },
       });
 
@@ -249,6 +249,12 @@ exports.initPartnerCron = () => {
         });
         await prisma.sharedPost.delete({ where: { id: post.id } });
       }
+};
+
+exports.initPartnerCron = () => {
+  cron.schedule('0 0 * * *', async () => {
+    try {
+      await exports.cleanupExpiredPartnerItems();
     } catch (error) {
       console.error('Ошибка в Partner CRON:', error.message);
     }

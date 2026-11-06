@@ -1,11 +1,9 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, 
-  Send, CheckCircle2, Share2, Users, LayoutTemplate,
-  Search, CalendarClock, Clock, Loader2,
-  Settings, PenTool, Check, Trash2, Plus, 
-  AlertCircle // <-- ОБЯЗАТЕЛЬНО ДОЛЖНА БЫТЬ ДОБАВЛЕНА СЮДА
+import {
+  ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, Send, CheckCircle2, Share2, Users,
+  LayoutTemplate, Search, CalendarClock, Clock, Loader2, Settings, PenTool, Check, Trash2,
+  Plus, AlertCircle
 } from 'lucide-react';
 import { useStore } from '../store';
 import SendingNotice from '../components/SendingNotice';
@@ -27,7 +25,6 @@ const IconTG = () => (
 
 export default function Publish() {
   
-  const publishDraft = useStore((state) => state.publishDraft); // ✅ ОБЯЗАТЕЛЬНО ДОБАВИТЬ ЭТУ СТРОКУ
   const navigate = useNavigate();
   
   // Состояния для публикации
@@ -37,7 +34,6 @@ export default function Publish() {
     tempDraft, saveTempDraft, createPostAction,
     myPartners, sharePostAction, fetchPartnerData
   } = useStore();
-  const [postTime, setPostTime] = useState('');
   const isRestored = useRef(false);
 
   const [view, setView] = useState('start'); 
@@ -62,8 +58,6 @@ export default function Publish() {
 
   const [isImprovingAI, setIsImprovingAI] = useState(false);
   const [aiProgress, setAiProgress] = useState(0);
-  const [showAiModal, setShowAiModal] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
 
   const [isPublishing, setIsPublishing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -316,11 +310,6 @@ const toggleAllAccounts = () => {
 
 
 
-  const handleGlobalToggle = (type) => {
-    if (type === 'watermark') setApplyWatermark(prev => !prev);
-    else setApplySignature(prev => !prev);
-  };
-
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
@@ -346,42 +335,6 @@ const toggleAllAccounts = () => {
   };
 
 
-  // 1. Старая функция (оставляем для партнеров, чтобы не ломать API шеринга)
-  const fileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 1200;
-          const MAX_HEIGHT = 1200;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height && width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          } else if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
-        };
-        img.onerror = error => reject(error);
-      };
-      reader.onerror = error => reject(error);
-    });
-  };
-
-  // Измененная функция: теперь возвращает бинарный WebP (Blob) вместо Base64 строки
   const compressImageToWebP = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -542,27 +495,6 @@ const handlePublish = async () => {
     } finally {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       setIsPublishing(false);
-    }
-  };
-
-  const handleSendToPartners = async () => {
-    if (selectedPartners.length === 0) return alert('Выберите хотя бы одного партнера!');
-    setPartnerStatus('sending');
-    
-    try {
-      const base64Images = await Promise.all(photos.map(p => fileToBase64(p.file)));
-      const result = await sharePostAction(text, base64Images, selectedPartners);
-      
-      if (result.success) {
-         setPartnerStatus('sent');
-         setSelectedPartners([]); 
-      } else {
-         alert(result.error || 'Ошибка при отправке');
-         setPartnerStatus('idle');
-      }
-    } catch (e) {
-      alert('Ошибка соединения с сервером');
-      setPartnerStatus('idle');
     }
   };
 
@@ -981,7 +913,6 @@ const handlePublish = async () => {
                     <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Время публикации</h2>
                     <p className="text-xs sm:text-sm text-gray-400">
                       Укажите точное время
-                      {publishDraft?.publishDate && <span className="text-purple-400 ml-1">(на {publishDraft.publishDate})</span>}
                     </p>
                   </div>
                 </div>

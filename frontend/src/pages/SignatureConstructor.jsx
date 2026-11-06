@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 // БЫЛО: import { useStore } from '../../store';
 // СТАЛО:
 import { useStore } from '../store'; 
-import { 
-  Save, Type, Loader2, Check,
-  Edit3, X, Plus, Trash2, CheckCircle2, ChevronLeft,
-  Search, ChevronDown, MessageSquare, AlignLeft
+import {
+  Save, Loader2, Check, Edit3, X, Plus, Trash2, CheckCircle2, ChevronLeft, Search,
+  ChevronDown, AlignLeft
 } from 'lucide-react';
 
 export default function SignatureConstructor() {

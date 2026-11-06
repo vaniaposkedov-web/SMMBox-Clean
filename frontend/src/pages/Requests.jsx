@@ -1,12 +1,10 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useStore } from '../store';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Bell, Inbox, X, Send, UserPlus, UserCheck, UserX,
-  CheckCircle2, Image as ImageIcon, Share2, Layers,
-  ChevronRight, Trash2, Maximize2, ChevronLeft, Download,
-  Loader2, Calendar, FileText, Clock, RefreshCw, PlusCircle,
-  ChevronUp, CalendarClock, Check
+import {
+  Bell, Inbox, X, Send, UserPlus, UserCheck, UserX, CheckCircle2, Image as ImageIcon,
+  Share2, ChevronRight, Maximize2, ChevronLeft, Download, Loader2, FileText, ChevronUp,
+  CalendarClock, Check
 } from 'lucide-react';
 
 // === Утилиты для картинок ===
