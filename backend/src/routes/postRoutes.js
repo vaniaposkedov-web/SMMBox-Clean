@@ -20,6 +20,5 @@ router.delete('/scheduled/:id', authMiddleware, postController.deleteScheduledPo
 
 router.get('/history', authMiddleware, postController.getPostsHistory);
 router.post('/retry/:id', authMiddleware, postController.retryPost);
-router.post('/shared/:id/publish', authMiddleware, postController.markSharedPostPublished);
 
 module.exports = router;

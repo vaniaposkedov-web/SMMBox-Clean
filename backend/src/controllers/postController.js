@@ -6,7 +6,7 @@ const cron = require('node-cron');
 const { logPost } = require('../utils/log_post');
 const fs = require('fs');
 const path = require('path');
-const { postQueue } = require('../queue');
+const { postQueue, WORKER_CONCURRENCY } = require('../queue');
 const { getUserLimits, getAllowedAccountIds, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
 const { escapeXml } = require('../utils/security');
 
@@ -176,7 +176,19 @@ const parseJson = (value, fallback) => { try { return value ? JSON.parse(value) 
 
 const removeUploadedFiles = (req) => Promise.all((req.files || []).map((file) => fs.promises.unlink(file.path).catch(() => {})));
 
-const safeColor = (value, fallback) => (/^#[0-9a-f]{3,8}$/i.test(String(value || '')) ? value : fallback);
+// Сколько примерно ждать отправки: посты идут по очереди, один пост занимает около 10 секунд.
+const SECONDS_PER_POST = 10;
+const estimatePublishSeconds = async () => {
+    try {
+        const { waiting = 0, active = 0, delayed = 0 } = await postQueue.getJobCounts('waiting', 'active', 'delayed');
+        const rounds = Math.max(1, Math.ceil((waiting + active + delayed) / WORKER_CONCURRENCY));
+        return rounds * SECONDS_PER_POST;
+    } catch (error) {
+        return null;
+    }
+};
+
+const safeColor = (value, fallback) =>(/^#[0-9a-f]{3,8}$/i.test(String(value || '')) ? value : fallback);
 
 // Настоящая ширина текста в выбранном шрифте: иначе широкие буквы обрезаются по краю знака.
 async function measureTextWidth(text, fontFamily, fontSize) {
@@ -390,6 +402,11 @@ exports.createPost = async (req, res) => {
             }
         }
 
+        // Если партнёр публикует присланный ему пост, отметка «опубликован» появится, когда воркер его действительно отправит.
+        const sharedPost = req.body.sharedPostId
+            ? await prisma.sharedPost.findFirst({ where: { id: String(req.body.sharedPostId), receiverId: userId, isPublished: false }, select: { id: true } })
+            : null;
+
         // Создаём записи в базе. Оформление сохраняется вместе с постом: оно нужно и отложенным постам, и повторной отправке.
         const createdPosts = [];
         for (const accData of accounts) {
@@ -411,7 +428,8 @@ exports.createPost = async (req, res) => {
                     watermarkConfig: watermarkConfig ? JSON.stringify(watermarkConfig) : null,
                     signatureText: signatureText || null,
                     publishAt: parsedPublishAt,
-                    status: isScheduled ? 'SCHEDULED' : 'PROCESSING'
+                    status: isScheduled ? 'SCHEDULED' : 'PROCESSING',
+                    sharedPostId: sharedPost?.id
                 }
             });
 
@@ -437,7 +455,8 @@ exports.createPost = async (req, res) => {
             createdPosts.push(created);
         }
 
-        return res.status(200).json({ success: true, message: 'Посты приняты в обработку', posts: createdPosts });
+        const estimatedSeconds = isScheduled ? null : await estimatePublishSeconds();
+        return res.status(200).json({ success: true, message: 'Посты приняты в обработку', posts: createdPosts, estimatedSeconds });
 
     } catch (error) {
         console.error('[FATAL ERROR] Сбой createPost:', error);
@@ -455,7 +474,8 @@ exports.getPostStatuses = async (req, res) => {
         });
         res.json({
             success: true,
-            posts: posts.map((p) => ({ id: p.id, status: p.status, errorMessage: p.errorMessage, accountName: p.account.name, provider: p.account.provider }))
+            posts: posts.map((p) => ({ id: p.id, status: p.status, errorMessage: p.errorMessage, accountName: p.account.name, provider: p.account.provider })),
+            estimatedSeconds: posts.some((p) => p.status === 'PROCESSING') ? await estimatePublishSeconds() : null
         });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Ошибка загрузки статуса' });
@@ -626,6 +646,7 @@ exports.shareWithPartners = async (req, res) => {
             select: { requesterId: true, receiverId: true },
         });
         const myPartnerIds = new Set(accepted.map((p) => (p.requesterId === senderId ? p.receiverId : p.requesterId)));
+        const notPartners = partnerIds.map(String).filter((id) => !myPartnerIds.has(id));
         partnerIds = partnerIds.map(String).filter((id) => myPartnerIds.has(id));
         if (partnerIds.length === 0) {
             await removeUploadedFiles(req);
@@ -637,7 +658,8 @@ exports.shareWithPartners = async (req, res) => {
 
         // 🛡️ 2. БЕЗОПАСНАЯ ОБРАБОТКА ФАЙЛОВ (И ОТ OOM, И ОТ ОШИБОК ПАРСИНГА)
         let savedImageUrls = [];
-        
+        let failedPhotos = 0;
+
         if (req.files && req.files.length > 0) {
             // ВЕТКА А: Если фронтенд прислал файлы через FormData
             for (const file of req.files) {
@@ -653,6 +675,7 @@ exports.shareWithPartners = async (req, res) => {
                     const url = await saveImageToFile(optimizedBuf, 'shared');
                     if (url) savedImageUrls.push(url);
                 } catch (e) {
+                    failedPhotos += 1;
                     console.error('Ошибка обработки фото партнера (файл):', e);
                 }
             }
@@ -681,6 +704,7 @@ exports.shareWithPartners = async (req, res) => {
                         const url = await saveImageToFile(optimizedBuf, 'shared_base64');
                         if (url) savedImageUrls.push(url);
                     } catch (e) {
+                        failedPhotos += 1;
                         console.error('Ошибка конвертации Base64 в файл:', e);
                     }
                 } else if (img && typeof img === 'string' && img.startsWith('/uploads/') && !img.includes('..')) {
@@ -690,29 +714,47 @@ exports.shareWithPartners = async (req, res) => {
             }
         }
 
+        // Пост без части фото партнёру не отправляем: лучше честно сказать об ошибке.
+        if (failedPhotos > 0) {
+            return res.status(400).json({ success: false, error: `Не удалось обработать фото (${failedPhotos}). Пост не отправлен, попробуйте ещё раз.` });
+        }
+
         const mediaString = JSON.stringify(savedImageUrls);
         const postText = req.body.text || '';
 
-        // 🛡️ 3. ПОСЛЕДОВАТЕЛЬНАЯ ЗАПИСЬ В БАЗУ ДАННЫХ
+        // 🛡️ 3. ПОСЛЕДОВАТЕЛЬНАЯ ЗАПИСЬ В БАЗУ ДАННЫХ. Пост дошёл до партнёра, когда он появился в его входящих.
+        const delivered = [];
+        const failed = [...notPartners];
         for (const receiverId of partnerIds) {
             try {
                 await prisma.sharedPost.create({
                     data: { senderId: sender.id, receiverId, text: postText, mediaUrls: mediaString }
                 });
+                delivered.push(receiverId);
+            } catch (dbError) {
+                console.error(`Ошибка записи в БД для партнера ${receiverId}:`, dbError.message);
+                failed.push(receiverId);
+                continue;
+            }
+            try {
                 await prisma.notification.create({
-                    data: { 
-                        userId: receiverId, 
+                    data: {
+                        userId: receiverId,
                         type: 'INFO',
                         text: `Партнер ${sender?.name || 'Без имени'} поделился с вами новой публикацией.`,
                         metadata: JSON.stringify({ text: postText, mediaUrls: savedImageUrls })
                     }
                 });
             } catch (dbError) {
-                console.error(`Ошибка записи в БД для партнера ${receiverId}:`, dbError.message);
+                console.error(`Уведомление партнеру ${receiverId} не сохранено:`, dbError.message);
             }
         }
 
-        res.json({ success: true });
+        if (delivered.length === 0) {
+            return res.status(500).json({ success: false, error: 'Не удалось доставить пост партнёрам. Попробуйте ещё раз.' });
+        }
+
+        res.json({ success: true, delivered, failed });
     } catch (error) {
         console.error('ФАТАЛЬНАЯ ОШИБКА ШЕРИНГА:', error);
         res.status(500).json({ success: false, error: `Внутренняя ошибка сервера: ${error.message}` });
@@ -726,7 +768,10 @@ exports.getSharedPosts = async (req, res) => {
 
         const incoming = await prisma.sharedPost.findMany({
             where: { receiverId: userId },
-            include: { sender: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
+            include: {
+                sender: { select: { id: true, name: true, pavilion: true, avatarUrl: true } },
+                posts: { select: { id: true, status: true, publishAt: true } }
+            },
             orderBy: { createdAt: 'desc' }
         });
         const outgoing = await prisma.sharedPost.findMany({
@@ -912,45 +957,30 @@ exports.retryPost = async (req, res) => {
 };
 
 
-/// === ОТМЕТИТЬ ПОСТ КАК ОПУБЛИКОВАННЫЙ И УВЕДОМИТЬ АВТОРА ===
-exports.markSharedPostPublished = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const sharedPost = await prisma.sharedPost.findFirst({
-            where: { id, receiverId: getUserId(req) },
-            include: { receiver: { select: { name: true, pavilion: true } } }
-        });
+// === ОТМЕТИТЬ ПОСТ ПАРТНЁРА КАК ОПУБЛИКОВАННЫЙ И УВЕДОМИТЬ АВТОРА ===
+// Вызывается воркером, когда пост действительно вышел в соцсети партнёра.
+// Партнёр мог выбрать несколько аккаунтов: отметка ставится один раз, и уведомление уходит тоже одно.
+const confirmSharedPostPublished = async (id) => {
+    const { count } = await prisma.sharedPost.updateMany({ where: { id, isPublished: false }, data: { isPublished: true } });
+    if (count === 0) return;
 
-        // 🛡️ ЗАЩИТА ОТ ДУБЛЕЙ: Проверяем, не опубликован ли он уже
-        if (!sharedPost || sharedPost.isPublished) {
-            return res.status(404).json({ success: false, error: 'Пост не найден или уже обработан' });
+    const sharedPost = await prisma.sharedPost.findUnique({
+        where: { id },
+        include: { receiver: { select: { name: true, pavilion: true } } }
+    });
+    await prisma.notification.create({
+        data: {
+            userId: sharedPost.senderId,
+            type: 'SUCCESS',
+            text: `Партнер ${sharedPost.receiver?.name || 'Без имени'} (Павильон ${sharedPost.receiver?.pavilion || '?'}) опубликовал ваш пост у себя!`,
+            metadata: JSON.stringify({ text: sharedPost.text, mediaUrls: sharedPost.mediaUrls })
         }
-        
-        // Обновляем статус
-        await prisma.sharedPost.update({
-            where: { id },
-            data: { isPublished: true }
-        });
-
-        // Создаем 1 уведомление
-        await prisma.notification.create({
-            data: {
-                userId: sharedPost.senderId,
-                type: 'SUCCESS',
-                text: `Партнер ${sharedPost.receiver?.name || 'Без имени'} (Павильон ${sharedPost.receiver?.pavilion || '?'}) опубликовал ваш пост у себя!`,
-                metadata: JSON.stringify({ text: sharedPost.text, mediaUrls: sharedPost.mediaUrls })
-            }
-        });
-
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Ошибка в markSharedPostPublished:', error);
-        res.status(500).json({ success: false });
-    }
+    });
 };
 
 
 // === ЭКСПОРТ ДЛЯ ФОНОВОГО ВОРКЕРА ===
+exports.confirmSharedPostPublished = confirmSharedPostPublished;
 exports.sendToTelegram = sendToTelegram;
 exports.sendToKomodVK = sendToKomodVK;
 exports.applyWatermark = applyWatermark;

@@ -710,7 +710,7 @@ export const useStore = create(
 
      // ... предыдущий код стора
 
-      createPostAction: async (text, mediaBlobs, accountsData, publishAt) => {
+      createPostAction: async (text, mediaBlobs, accountsData, publishAt, sharedPostId) => {
         try {
           const state = get();
           
@@ -719,6 +719,7 @@ export const useStore = create(
           
           if (text) formData.append('text', text);
           if (publishAt) formData.append('publishAt', publishAt);
+          if (sharedPostId) formData.append('sharedPostId', sharedPostId);
           
           // Аккаунты передаем как строку
           formData.append('accountsData', JSON.stringify(accountsData));
@@ -744,7 +745,7 @@ export const useStore = create(
           if (res.ok && data.success) {
             // Обновляем отложку, если это был запланированный пост
             if (publishAt) get().fetchScheduledPosts();
-            return { success: true, posts: data.posts || [] };
+            return { success: true, posts: data.posts || [], estimatedSeconds: data.estimatedSeconds ?? null };
           }
           return { success: false, error: data.error || 'Ошибка при обработке сервером' };
         } catch (error) { 
@@ -794,7 +795,7 @@ export const useStore = create(
           const data = await res.json();
           if (res.ok && data.success) {
             get().fetchSharedPosts();
-            return { success: true };
+            return { success: true, delivered: data.delivered || [], failed: data.failed || [] };
           }
           return { success: false, error: data.error };
         } catch (error) { 
@@ -871,23 +872,6 @@ export const useStore = create(
         });
       },
 
-
-      markSharedPostPublishedAction: async (id) => {
-        try {
-          const baseUrl = import.meta.env.VITE_API_URL || '';
-          const res = await fetch(`${baseUrl}/api/posts/shared/${id}/publish`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${get().token}` }
-          });
-          if (res.ok) {
-            get().fetchSharedPosts(); 
-            return { success: true };
-          }
-          return { success: false };
-        } catch (error) { 
-          return { success: false }; 
-        }
-      },
 
       deleteSharedPostAction: async (id) => {
         try {

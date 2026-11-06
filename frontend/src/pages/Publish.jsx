@@ -8,6 +8,8 @@ import {
   AlertCircle // <-- ОБЯЗАТЕЛЬНО ДОЛЖНА БЫТЬ ДОБАВЛЕНА СЮДА
 } from 'lucide-react';
 import { useStore } from '../store';
+import SendingNotice from '../components/SendingNotice';
+import { estimateShareSeconds, getDeliveryMessage } from '../sendingTime';
 
 const IconVK = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
@@ -73,6 +75,8 @@ export default function Publish() {
   const [toastMessage, setToastMessage] = useState(null);
   const [publishResults, setPublishResults] = useState([]);
   const [publishTimedOut, setPublishTimedOut] = useState(false);
+  const [publishEta, setPublishEta] = useState(null);
+  const [sharedPostId, setSharedPostId] = useState(null); // Пост от партнёра, который публикуется сейчас
 
   const [editPost, setEditPost] = useState(null);
   const [editTab, setEditTab] = useState('text');
@@ -96,6 +100,7 @@ export default function Publish() {
 
   
   const [isSharing, setIsSharing] = useState(false);
+  const [shareEta, setShareEta] = useState(null);
 
   // После отправки следим за настоящим статусом постов в очереди
   const publishIds = useMemo(() => publishResults.map((p) => p.id).join(','), [publishResults]);
@@ -112,6 +117,7 @@ export default function Publish() {
           const data = await res.json();
           const latest = data.posts || [];
           setPublishResults(latest);
+          setPublishEta(data.estimatedSeconds ?? null);
           if (latest.every((p) => p.status !== 'PROCESSING')) clearInterval(timer);
         }
       } catch (e) { /* следующая попытка через пару секунд */ }
@@ -127,6 +133,7 @@ export default function Publish() {
     if (selectedPartners.length === 0) return;
     
     setIsSharing(true);
+    setShareEta(estimateShareSeconds(photos.length, selectedPartners.length));
     setPartnerStatus('sending'); // Включаем статус загрузки
     
     // Даем React 50мс на отрисовку спиннера "Отправка..."
@@ -140,7 +147,7 @@ export default function Publish() {
             // ⚡ УЛУЧШЕНИЕ UX: Показываем статус успеха ПЕРЕД закрытием окна
             setPartnerStatus('sent');
             setIsSharing(false);
-            setToastMessage('Отправлено партнерам!');
+            setToastMessage(getDeliveryMessage(res, myPartners));
             
             // Ждем 1.5 секунды, чтобы юзер увидел зеленую кнопку, и только потом закрываем
             setTimeout(() => {
@@ -268,6 +275,7 @@ export default function Publish() {
       if (tempDraft.publishMode) setPublishMode(tempDraft.publishMode);
       if (tempDraft.scheduleTime) setScheduleTime(tempDraft.scheduleTime);
       if (tempDraft.selectedCalendarDate) setSelectedCalendarDate(tempDraft.selectedCalendarDate);
+      if (tempDraft.sharedPostId) setSharedPostId(tempDraft.sharedPostId);
     }
     isRestored.current = true;
   }, [tempDraft]);
@@ -277,11 +285,11 @@ export default function Publish() {
     const timer = setTimeout(() => {
       saveTempDraft({ 
         text, selectedAccounts, applyWatermark, applySignature,
-        step, view, publishMode, scheduleTime, selectedCalendarDate
+        step, view, publishMode, scheduleTime, selectedCalendarDate, sharedPostId
       });
     }, 500); 
     return () => clearTimeout(timer);
-  }, [text, selectedAccounts, applyWatermark, applySignature, step, view, publishMode, scheduleTime, selectedCalendarDate, saveTempDraft]);
+  }, [text, selectedAccounts, applyWatermark, applySignature, step, view, publishMode, scheduleTime, selectedCalendarDate, sharedPostId, saveTempDraft]);
 
   const toggleAccount = (id) => {
     setSelectedAccounts(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
@@ -517,10 +525,11 @@ const handlePublish = async () => {
         return { accountId: id, applyWatermark: !!wmConfig, applySignature: !!sigText, watermarkConfig: acc?.watermark ? undefined : wmConfig, signatureText: sigText };
       });
 
-      const result = await createPostAction(text, webpBlobs, accountsData, publishAt);
+      const result = await createPostAction(text, webpBlobs, accountsData, publishAt, sharedPostId);
 
       if (result.success) {
         setPublishResults(result.posts || []);
+        setPublishEta(result.estimatedSeconds);
         setStep(4);
         if (saveTempDraft) saveTempDraft(null);
         fetchScheduledPosts();
@@ -625,6 +634,7 @@ const handlePublish = async () => {
     setShowPartnerModal(false);
     setSelectedPartners([]); 
     setPartnerStatus('idle');
+    setSharedPostId(null);
     setView('start'); 
     if (saveTempDraft) saveTempDraft(null);
   };
@@ -1136,7 +1146,11 @@ const handlePublish = async () => {
               )}
 
               {isSchedule && <p className="text-sm sm:text-base text-gray-400 mb-8 max-w-sm mx-auto">Пост выйдет в {publishResults.length || selectedAccounts.length} аккаунт(а/ов) в выбранное время.</p>}
-              {isSending && <p className="text-sm text-gray-400 mb-6">Страницу можно закрыть: пост уже в очереди. Результат будет в разделе «Посты».</p>}
+              {isSending && (
+                <div className="max-w-sm mx-auto mb-6">
+                  <SendingNotice subject="Пост будет отправлен" seconds={publishEta} hint="Страницу можно закрыть: пост уже в очереди. Результат будет в разделе «Посты»." />
+                </div>
+              )}
               {hasFailures && <p className="text-sm text-gray-400 mb-6">Посты с ошибкой сохранены в разделе «Посты» на вкладке «Ошибки».</p>}
 
               <div className="space-y-3">
@@ -1188,7 +1202,7 @@ const handlePublish = async () => {
       {/* === МОДАЛЬНОЕ ОКНО ВЫБОРА ПАРТНЕРОВ === */}
       {showPartnerModal && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowPartnerModal(false)}></div>
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !isSharing && setShowPartnerModal(false)}></div>
           <div className="relative w-full max-w-md bg-[#111318] border border-gray-800 rounded-2xl shadow-2xl flex flex-col z-10 overflow-hidden">
             
             <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-800 bg-gray-900/50">
@@ -1211,7 +1225,7 @@ const handlePublish = async () => {
                   </button>
                 )}
               </div>
-              <button onClick={() => setShowPartnerModal(false)} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-xl transition-colors self-start sm:self-center shrink-0">
+              <button onClick={() => setShowPartnerModal(false)} disabled={isSharing} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-xl transition-colors self-start sm:self-center shrink-0 disabled:opacity-40">
                 <X size={18} />
               </button>
             </div>
@@ -1248,8 +1262,14 @@ const handlePublish = async () => {
               )}
             </div>
             
+            {isSharing && (
+              <div className="p-4 border-t border-gray-800 bg-gray-900/50">
+                <SendingNotice subject="Пост будет отправлен партнёрам" seconds={shareEta} hint="Не закрывайте страницу, пока идёт отправка." keepPageOpen />
+              </div>
+            )}
+
             <div className="p-4 border-t border-gray-800 bg-gray-900/50 flex gap-3">
-              <button onClick={() => setShowPartnerModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-all text-sm">
+              <button onClick={() => setShowPartnerModal(false)} disabled={isSharing} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-all text-sm disabled:opacity-40">
                 Отмена
               </button>
               <button 

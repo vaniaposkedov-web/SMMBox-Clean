@@ -9,4 +9,7 @@ const connection = {
 // Создаем саму очередь с названием 'posts'
 const postQueue = new Queue('posts_v2', { connection });
 
-module.exports = { postQueue, connection };
+// Сколько постов воркер отправляет одновременно
+const WORKER_CONCURRENCY = 2;
+
+module.exports = { postQueue, connection, WORKER_CONCURRENCY };

@@ -61,12 +61,28 @@ const urlToFile = async (url, filename) => {
   } catch (e) { return null; }
 };
 
+// Что партнёр уже сделал с присланным постом: отметка «опубликован» появится, только когда пост выйдет.
+const getRepostState = (post) => {
+  const posts = post?.posts || [];
+  if (posts.some((p) => p.status === 'PROCESSING')) {
+    return { text: 'Отправляется в ваши соцсети', className: 'text-blue-300 bg-blue-500/10 border-blue-500/20' };
+  }
+  const scheduled = posts.find((p) => p.status === 'SCHEDULED');
+  if (scheduled) {
+    const date = new Date(scheduled.publishAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+    return { text: `Запланирован на ${date}`, className: 'text-purple-300 bg-purple-500/10 border-purple-500/20' };
+  }
+  if (posts.some((p) => p.status === 'FAILED')) {
+    return { text: 'Не удалось опубликовать. Попробуйте ещё раз.', className: 'text-red-300 bg-red-500/10 border-red-500/20' };
+  }
+  return null;
+};
+
 export default function Requests() {
   const { 
     user, fetchPartnerData, fetchSharedPosts,
     acceptPartnership, declinePartnership,
     deleteSharedPostAction, saveTempDraft, 
-    markSharedPostPublishedAction,
     markNotificationAsRead
   } = useStore();
   
@@ -168,16 +184,22 @@ export default function Requests() {
     setIsPreparing(true);
 
     try {
-      await markSharedPostPublishedAction(previewPost.id);
       const reconstructedPhotos = await Promise.all(currentMediaList.map(async (url, index) => {
         const file = await urlToFile(url, `shared_${index}.jpg`);
         return file ? { id: `dup_${Math.random().toString(36).substr(2, 9)}`, url: getImageUrl(url), file: file } : null;
       }));
 
+      if (reconstructedPhotos.some((photo) => photo === null)) {
+        setIsPreparing(false);
+        alert('Не удалось загрузить фото этого поста. Попробуйте ещё раз.');
+        return;
+      }
+
       saveTempDraft({ 
         text: previewPost.text || '', 
-        photos: reconstructedPhotos.filter(p => p !== null),
-        step: 1, view: 'wizard', publishMode: mode 
+        photos: reconstructedPhotos,
+        step: 1, view: 'wizard', publishMode: mode,
+        sharedPostId: previewPost.id
       });
 
       setIsPreparing(false);
@@ -204,7 +226,7 @@ export default function Requests() {
             className={`relative flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-4 rounded-[1.2rem] sm:rounded-2xl text-[10px] sm:text-sm font-black transition-all ${activeTab === tab.id ? 'bg-gray-800 text-white shadow-xl border border-gray-700 translate-y-[-1px]' : 'text-gray-500 hover:text-gray-300'}`}
           >
             <tab.icon size={18} className={activeTab === tab.id ? 'text-[#0077FF]' : 'text-gray-600'} />
-            <span className="hidden xs:inline uppercase tracking-wider">{tab.label}</span>
+            <span className="uppercase tracking-wider">{tab.label}</span>
             {tab.count > 0 && (
               <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] sm:text-xs font-bold w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-full border-2 border-admin-bg shadow-lg">
                 {tab.count}
@@ -315,6 +337,7 @@ export default function Requests() {
                 {incomingPosts.map(post => {
                   const mediaArr = parseMediaUrls(post.mediaUrls);
                   const firstImage = mediaArr.length > 0 ? getImageUrl(mediaArr[0]) : null;
+                  const repostState = getRepostState(post);
 
                   return (
                     <div key={post.id} onClick={() => setPreviewPost(post)} className="bg-admin-card border border-gray-800 p-5 sm:p-6 rounded-[1.5rem] sm:rounded-[2rem] hover:border-gray-600 transition-all cursor-pointer flex flex-col h-full group shadow-lg active:scale-[0.98]">
@@ -341,6 +364,7 @@ export default function Requests() {
                           </div>
                           <p className="text-white text-sm sm:text-base line-clamp-2 font-bold leading-relaxed">{post.text || 'Без текста'}</p>
                        </div>
+                       {repostState && <p className={`text-xs font-bold rounded-xl border px-3 py-2 mb-4 ${repostState.className}`}>{repostState.text}</p>}
                        <div className="mt-auto pt-4 sm:pt-5 border-t border-gray-800 flex items-center justify-between">
                           <span className="text-[10px] sm:text-[11px] text-gray-500 font-black uppercase bg-gray-900 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl border border-gray-800">
                             {new Date(post.createdAt).toLocaleDateString()}
@@ -396,6 +420,7 @@ export default function Requests() {
                    {previewPost.text || <span className="italic text-gray-600">Текст отсутствует</span>}
                  </p>
               </div>
+              {getRepostState(previewPost) && <p className={`text-xs font-bold rounded-xl border px-3 py-2 mt-3 ${getRepostState(previewPost).className}`}>{getRepostState(previewPost).text}</p>}
             </div>
 
             <div className="p-4 sm:p-5 border-t border-gray-800/50 bg-[#0f1115] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-5 shrink-0 flex gap-3 relative z-20">

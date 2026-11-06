@@ -1,5 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useStore } from '../store';
+import SendingNotice from '../components/SendingNotice';
+import { estimateShareSeconds, getDeliveryMessage } from '../sendingTime';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileText, CheckCircle2, Clock, AlertCircle, Search,
@@ -121,6 +123,7 @@ export default function PostsHistory() {
   const [selectedPartners, setSelectedPartners] = useState([]);
   const [partnerStatus, setPartnerStatus] = useState('idle');
   const [isSharing, setIsSharing] = useState(false);
+  const [shareEta, setShareEta] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
 
   useEffect(() => {
@@ -257,19 +260,28 @@ export default function PostsHistory() {
     if (selectedPartners.length === 0) return;
     
     setIsSharing(true);
+    setShareEta(estimateShareSeconds(mediaCount, selectedPartners.length));
     setPartnerStatus('sending');
     
     try {
       const loaded = await Promise.all(Array.from({ length: mediaCount }, (_, index) => loadSourceFile(sourceMediaList[index], currentMediaList[index], `share_${index}.webp`)));
       const validBlobs = loaded.map((item) => item.file).filter(Boolean);
       const usedThumbnails = loaded.some((item) => item.isThumbnail);
+
+      if (validBlobs.length < mediaCount) {
+        setIsSharing(false);
+        setPartnerStatus('idle');
+        setToastMessage('Не удалось загрузить фото этого поста. Партнёрам ничего не отправлено.');
+        setTimeout(() => setToastMessage(null), 3000);
+        return;
+      }
       
       const res = await sharePostAction(selectedPost.text, validBlobs, selectedPartners);
       
       if (res?.success) {
         setPartnerStatus('sent');
         setIsSharing(false);
-        setToastMessage(usedThumbnails ? 'Отправлено. Исходные фото уже удалены, ушли уменьшенные копии.' : 'Отправлено партнерам!');
+        setToastMessage(`${getDeliveryMessage(res, myPartners)}${usedThumbnails ? ' Исходные фото уже удалены, ушли уменьшенные копии.' : ''}`);
         
         setTimeout(() => {
           setShowPartnerModal(false);
@@ -531,13 +543,13 @@ export default function PostsHistory() {
       {/* PARTNER MODAL */}
       {showPartnerModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowPartnerModal(false)}></div>
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !isSharing && setShowPartnerModal(false)}></div>
           <div className="relative w-full max-w-md bg-[#111318] border border-gray-800 rounded-[2.5rem] shadow-2xl flex flex-col z-10 overflow-hidden">
             <div className="flex items-center justify-between p-6 border-b border-gray-800 bg-gray-900/50">
               <h3 className="text-lg font-black text-white flex items-center gap-3 uppercase tracking-tighter">
                 <Users size={20} className="text-purple-500" /> Выберите партнеров
               </h3>
-              <button onClick={() => setShowPartnerModal(false)} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-full">
+              <button onClick={() => setShowPartnerModal(false)} disabled={isSharing} className="text-gray-400 hover:text-white p-2 hover:bg-gray-800 rounded-full disabled:opacity-40">
                 <X size={20} />
               </button>
             </div>
@@ -572,8 +584,14 @@ export default function PostsHistory() {
                 </div>
               )}
             </div>
+            {isSharing && (
+              <div className="px-6 py-4 border-t border-gray-800 bg-gray-900/50">
+                <SendingNotice subject="Пост будет отправлен партнёрам" seconds={shareEta} hint="Не закрывайте страницу, пока идёт отправка." keepPageOpen />
+              </div>
+            )}
+
             <div className="p-6 border-t border-gray-800 bg-gray-900/50 flex gap-3">
-              <button onClick={() => setShowPartnerModal(false)} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all">
+              <button onClick={() => setShowPartnerModal(false)} disabled={isSharing} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all disabled:opacity-40">
                 Отмена
               </button>
               <button 

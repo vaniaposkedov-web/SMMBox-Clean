@@ -1,0 +1,17 @@
+// Время округляется вверх: лучше пообещать чуть больше и уложиться.
+export const formatWait = (seconds) => {
+  const rounded = Math.max(5, Math.ceil(seconds / 5) * 5);
+  if (rounded < 60) return `${rounded} секунд`;
+  const minutes = Math.ceil(rounded / 60);
+  return `${minutes} ${minutes % 10 === 1 && minutes % 100 !== 11 ? 'минуты' : 'минут'}`;
+};
+
+// Отправка партнёрам: сжатие и загрузка одного фото занимают пару секунд, запись партнёрам почти мгновенна.
+export const estimateShareSeconds = (photosCount, partnersCount) => Math.ceil(3 + photosCount * 2.5 + partnersCount * 0.2);
+
+export const getDeliveryMessage = (result, partners) => {
+  const failed = result.failed || [];
+  if (failed.length === 0) return 'Пост дошёл до партнёров!';
+  const names = failed.map((id) => partners.find((partner) => partner.id === id)?.name || 'партнёр').join(', ');
+  return `Дошло: ${result.delivered?.length || 0} из ${(result.delivered?.length || 0) + failed.length}. Не удалось отправить: ${names}.`;
+};

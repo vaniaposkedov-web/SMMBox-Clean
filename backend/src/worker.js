@@ -1,5 +1,5 @@
 const { Worker } = require('bullmq');
-const { connection } = require('./queue');
+const { connection, WORKER_CONCURRENCY } = require('./queue');
 const prisma = require('./utils/prisma');
 const fs = require('fs');
 const sharp = require('sharp');
@@ -11,7 +11,7 @@ const describeError = (error) => {
 
 // ИМПОРТИРУЕМ твои функции из postController. 
 // ВАЖНО: Тебе нужно зайти в postController.js и убедиться, что ты экспортируешь эти функции (напиши exports.applyWatermark = applyWatermark и т.д.)
-const { sendToTelegram, sendToKomodVK, applyWatermark, saveImageToFile } = require('./controllers/postController');
+const { sendToTelegram, sendToKomodVK, applyWatermark, saveImageToFile, confirmSharedPostPublished } = require('./controllers/postController');
 
 const worker = new Worker('posts_v2', async (job) => {
     const { postId, accountId, text, filePaths, watermarkConfig, signatureText } = job.data;
@@ -67,10 +67,19 @@ const worker = new Worker('posts_v2', async (job) => {
         }
 
         // 7. ОБНОВЛЯЕМ БАЗУ - УСПЕХ!
-        await prisma.post.update({
+        const publishedPost = await prisma.post.update({
             where: { id: postId },
             data: { status: 'PUBLISHED', errorMessage: null, ...(thumbnailsUrls ? { mediaUrls: JSON.stringify(thumbnailsUrls) } : {}) }
         });
+
+        // 8. Пост от партнёра: только теперь он считается опубликованным. Сбой здесь не должен вызвать повторную публикацию.
+        if (publishedPost.sharedPostId) {
+            try {
+                await confirmSharedPostPublished(publishedPost.sharedPostId);
+            } catch (confirmError) {
+                console.error(`[WORKER] Отметка поста партнёра ${publishedPost.sharedPostId} не сохранена:`, confirmError.message);
+            }
+        }
 
         console.log(`[WORKER] Успешно завершил пост ${postId}`);
 
@@ -88,7 +97,7 @@ const worker = new Worker('posts_v2', async (job) => {
     }
 }, { 
     connection, 
-    concurrency: 2 // ВАЖНО: Воркер будет обрабатывать максимум 3 поста одновременно, чтобы не убить процессор
+    concurrency: WORKER_CONCURRENCY // ВАЖНО: ограничение, чтобы не убить процессор
 });
 
 module.exports = worker;

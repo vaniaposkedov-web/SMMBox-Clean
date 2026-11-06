@@ -184,9 +184,12 @@ model Post {
   watermarkConfig   String? @db.Text
   signatureText     String? @db.Text
   errorMessage      String?
+  sharedPostId      String?
+  sharedPost        SharedPost? @relation(fields: [sharedPostId], references: [id], onDelete: SetNull)
   @@index([accountId])
   @@index([status, publishAt])
   @@index([createdAt])
+  @@index([sharedPostId])
 }
 
 model Partnership {
@@ -227,6 +230,7 @@ model SharedPost {
 
   sender      User     @relation("SentSharedPosts", fields: [senderId], references: [id], onDelete: Cascade)
   receiver    User     @relation("ReceivedSharedPosts", fields: [receiverId], references: [id], onDelete: Cascade)
+  posts       Post[]   // Публикации этого поста в соцсетях партнёра
 
   @@index([senderId])
   @@index([receiverId])
