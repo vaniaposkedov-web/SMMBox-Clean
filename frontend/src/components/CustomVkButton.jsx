@@ -1,13 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import * as VKID from '@vkid/sdk';
 
-export default function CustomVkButton({ onAuth }) {
+const VK_LOGIN_FAILED = 'Не удалось войти через ВКонтакте. Попробуйте ещё раз или войдите по почте.';
+
+export default function CustomVkButton({ onAuth, onError }) {
+  const handledCodes = useRef(new Set());
+
   useEffect(() => {
     VKID.Config.init({
       app: import.meta.env.VITE_VK_APP_ID || 54490006,
       
 
-      redirectUrl: window.location.origin + window.location.pathname, 
+      redirectUrl: `${window.location.origin}/auth`, 
       
       responseMode: VKID.ConfigResponseMode.Callback,
       mode: VKID.ConfigAuthMode.InNewWindow,
@@ -33,7 +37,7 @@ export default function CustomVkButton({ onAuth }) {
       if (code && deviceId) {
         // 2. ЕСЛИ МЫ ВО ВСПЛЫВАЮЩЕМ ОКНЕ (POPUP)
         if (window.opener) {
-          window.opener.postMessage({ type: 'VK_POPUP_SUCCESS', code, deviceId }, '*');
+          window.opener.postMessage({ type: 'VK_POPUP_SUCCESS', code, deviceId }, window.location.origin);
           window.close(); // Убиваем popup
           return;
         } else {
@@ -56,54 +60,36 @@ export default function CustomVkButton({ onAuth }) {
   }, [onAuth]);
 
   const processTokens = async (code, deviceId) => {
+    // Код обменивается только один раз, а прийти может двумя путями: из библиотеки ВК и из окна входа.
+    if (handledCodes.current.has(code)) return;
+    handledCodes.current.add(code);
+
     try {
       const tokens = await VKID.Auth.exchangeCode(code, deviceId);
-      let userId = tokens.user_id || tokens.id;
-      
-      if (!userId && tokens.id_token) {
-        try {
-          const decodedJwt = JSON.parse(atob(tokens.id_token.split('.')[1]));
-          userId = decodedJwt.user_id || decodedJwt.sub || decodedJwt.vk_account_id;
-        } catch (e) {}
-      }
-
-      let firstName = '';
-      let lastName = '';
-      let avatar = '';
-
-      try {
-        const userInfoRes = await VKID.Auth.userInfo(tokens.access_token);
-        const userObj = userInfoRes.user || userInfoRes;
-        userId = userId || userObj.id || userObj.user_id;
-        firstName = userObj.first_name || '';
-        lastName = userObj.last_name || '';
-        avatar = userObj.avatar || userObj.photo_100 || '';
-      } catch (e) {
-        console.error('Не удалось получить данные профиля ВК', e);
-      }
-
-      if (onAuth && userId) {
-        onAuth({
-          access_token: tokens.access_token,
-          user_id: userId,
-          id: userId,
-          email: tokens.email || null,
-          first_name: firstName,
-          last_name: lastName,
-          photo_100: avatar
-        });
-      }
+      // Кто вошёл, сервер сам спрашивает у ВК по этому токену.
+      if (onAuth) await onAuth({ access_token: tokens.access_token });
     } catch (error) {
       console.error('Ошибка авторизации ВК:', error);
+      if (onError) onError(VK_LOGIN_FAILED);
     }
   };
 
   const handleVkLogin = () => {
+    if (onError) onError('');
     VKID.Auth.login().then((res) => {
-      const code = res.code || res.payload?.code;
-      const deviceId = res.device_id || res.payload?.device_id;
+      const code = res?.code || res?.payload?.code;
+      const deviceId = res?.device_id || res?.payload?.device_id;
       if (code && deviceId) processTokens(code, deviceId);
-    }).catch((err) => console.error('Ошибка окна авторизации ВК:', err));
+      else if (onError) onError(VK_LOGIN_FAILED);
+    }).catch((err) => {
+      // Человек просто закрыл окно ВК: это не ошибка.
+      if (err?.code === VKID.AuthErrorCode.NewTabHasBeenClosed) return;
+      console.error('Ошибка окна авторизации ВК:', err);
+      if (!onError) return;
+      onError(err?.code === VKID.AuthErrorCode.CannotCreateNewTab
+        ? 'Браузер заблокировал окно входа. Разрешите всплывающие окна для этого сайта и нажмите кнопку ещё раз.'
+        : VK_LOGIN_FAILED);
+    });
   };
 
   return (

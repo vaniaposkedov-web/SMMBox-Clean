@@ -11,6 +11,7 @@ import {
 
 import CustomTelegramButton from '../../components/CustomTelegramButton';
 import CustomVkButton from '../../components/CustomVkButton';
+import { TELEGRAM_BOT_NAME } from '../../telegramBot';
 import { io } from 'socket.io-client';
 
 // Вставьте этот блок после импорта socket.io-client
@@ -313,6 +314,7 @@ const handleSaveKomodGroups = async () => {
     setVkConnectStatus('syncing_groups'); 
     setKomodModal({ isOpen: false, profileId: null }); 
 
+    const addErrors = [];
     // Создаем массив задач для параллельного выполнения
     const tasks = komodSelected.map(async (uniqueId) => {
       const group = selectableGroups.find((g, idx) => String(extractId(g) || `idx-${idx}`) === String(uniqueId));
@@ -340,6 +342,7 @@ const handleSaveKomodGroups = async () => {
         
         const groupUrl = `https://vk.com/${screenName}`;
         const res = await useStore.getState().addVkKomodGroup(groupUrl, groupName, komodModal.profileId, groupAvatar);
+        if (!res.success) addErrors.push(`${groupName}: ${res.error || 'не удалось добавить'}`);
         return res.success;
       }
     });
@@ -352,6 +355,7 @@ const handleSaveKomodGroups = async () => {
     await handleRefreshProfiles();
     setIsSyncingVk(false);
     setVkConnectStatus(addedCount > 0 ? 'groups_success' : 'idle');
+    if (addErrors.length > 0) alert(`Не удалось подключить:\n${addErrors.join('\n')}`);
   };
 
 
@@ -604,7 +608,7 @@ const handleSaveKomodGroups = async () => {
   };
 
   const copyBotName = (e) => {
-    e.stopPropagation(); navigator.clipboard.writeText('@sadovodps_auth_bot');
+    e.stopPropagation(); navigator.clipboard.writeText(`@${TELEGRAM_BOT_NAME}`);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
@@ -945,7 +949,7 @@ const handleSaveKomodGroups = async () => {
                   {acc.provider === 'TELEGRAM' && (
                     <>
                       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-gray-400 bg-black/30 p-2.5 rounded-lg mb-3 gap-2">
-                        <span className="truncate w-full sm:w-auto">Бот: <span className="font-mono text-white">@sadovodps_auth_bot</span></span>
+                        <span className="truncate w-full sm:w-auto">Бот: <span className="font-mono text-white">@{TELEGRAM_BOT_NAME}</span></span>
                         <button onClick={copyBotName} className="shrink-0 w-full sm:w-auto text-gray-400 hover:text-white transition-colors bg-gray-800 px-3 py-2.5 sm:py-1.5 rounded-md flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0">
                           {copied ? <><Check size={14} className="text-emerald-500" /> Сохранено</> : <><Copy size={14} /> Копировать</>}
                         </button>
@@ -953,7 +957,7 @@ const handleSaveKomodGroups = async () => {
 
                       {/* НОВАЯ КНОПКА ВОЗВРАТА БОТА */}
                       <a 
-                        href="https://t.me/sadovodps_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                        href={`https://t.me/${TELEGRAM_BOT_NAME}?startchannel=true&admin=post_messages+edit_messages+delete_messages`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full mb-3 bg-[#0088CC]/20 hover:bg-[#0088CC]/30 text-[#0088CC] border border-[#0088CC]/30 py-3 sm:py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 min-h-[44px]"
@@ -1434,7 +1438,7 @@ const handleSaveKomodGroups = async () => {
                     <p className="text-sm text-gray-400">Привяжите личный ТГ-аккаунт (нажмите <b className="text-white">Запустить</b> в боте)</p>
                   </div>
                   <a
-                    href={`https://t.me/sadovodps_auth_bot?start=bind_${user?.id || ''}`}
+                    href={`https://t.me/${TELEGRAM_BOT_NAME}?start=bind_${user?.id || ''}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full py-2.5 rounded-lg font-bold text-white transition-all flex justify-center items-center gap-2 bg-gray-800 hover:bg-gray-700 text-sm border border-gray-700 mt-2"
@@ -1460,7 +1464,7 @@ const handleSaveKomodGroups = async () => {
                     </div>
                   ) : (
                     <a
-                    href="https://t.me/sadovodps_auth_bot?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+                    href={`https://t.me/${TELEGRAM_BOT_NAME}?startchannel=true&admin=post_messages+edit_messages+delete_messages`}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => {

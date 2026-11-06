@@ -174,8 +174,13 @@ exports.getKomodGroupsForSelection = async (req, res) => {
         return group;
       }));
 
-      const authData = response.data?.auth || null;
-      return res.json({ success: true, groups: enrichedItems, auth: authData });
+      // Данные входа в ВК остаются на сервере: в браузер уходят только имя и фото профиля.
+      let authData = response.data?.auth || null;
+      if (typeof authData === 'string') {
+        try { authData = JSON.parse(authData); } catch (e) { authData = null; }
+      }
+      const apiUserData = authData?.apiUserData || null;
+      return res.json({ success: true, groups: enrichedItems, auth: apiUserData ? { apiUserData } : null });
       
     } catch (apiError) {
       if (apiError.response && apiError.response.status === 404) {
@@ -216,12 +221,12 @@ exports.addVkKomodGroup = async (req, res) => {
     }
 
     // Извлекаем ID для проверки на дубликаты у других пользователей
-    const parsedId = url.split('/').pop().replace('club', '').replace('public', '').replace('event', '');
-    const providerId = `group_${parsedId}`;
+    const urlTail = (value) => String(value || '').replace(/\/+$/, '').split('/').pop().replace(/^(club|public|event)(?=\d)/, '');
+    const parsedId = urlTail(url);
 
     // ПРОВЕРКА: Не привязана ли эта группа уже к другому пользователю?
     const existingAcc = await prisma.account.findUnique({
-      where: { provider_providerId: { provider: 'VK', providerId: providerId } }
+      where: { provider_providerId: { provider: 'VK', providerId: `group_${parsedId}` } }
     });
 
     if (existingAcc && existingAcc.userId !== userId) {
@@ -241,31 +246,59 @@ exports.addVkKomodGroup = async (req, res) => {
       }
     }
 
-    // 1. Отправляем в Kom-od
-    const params = new URLSearchParams();
-    params.append('url', url);
-    params.append('title', title || 'Без названия');
-    params.append('account_id', profile.providerAccountId);
-    params.append('random_account', '0'); 
-    params.append('post_images_as_grid', '1');
+    // 1. Добавляем группу в Kom-od и проверяем по его списку, что она там появилась у этого аккаунта
+    const loadOwnGroups = async () => {
+      const groupsRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+      const items = groupsRes.data?.data?.items || [];
+      return items.filter((group) => String(group.account_id) === String(profile.providerAccountId));
+    };
+    const isSameGroup = (group) => String(group.uid || group.id) === parsedId || urlTail(group.url) === parsedId;
 
-    try {
-      await axios.post(`${KOMOD_BASE_URL}/group`, params, {
+    const groupsBefore = await loadOwnGroups();
+    let komodGroup = groupsBefore.find(isSameGroup);
+    let gatewayReason = '';
+
+    if (!komodGroup) {
+      const params = new URLSearchParams();
+      params.append('url', url);
+      params.append('title', title || 'Без названия');
+      params.append('account_id', profile.providerAccountId);
+      params.append('random_account', '0');
+      params.append('post_images_as_grid', '1');
+
+      const addRes = await axios.post(`${KOMOD_BASE_URL}/group`, params, {
         headers: { 'Access-Token': KOMOD_TOKEN, 'Content-Type': 'application/x-www-form-urlencoded' },
-        validateStatus: () => true 
+        validateStatus: () => true
       });
-    } catch (apiError) {
-      console.error('[KOM-OD] Ошибка при добавлении группы в шлюз:', apiError.message);
+      const details = addRes.data?.errors || addRes.data?.message;
+      if (details) gatewayReason = typeof details === 'string' ? details : JSON.stringify(details);
+
+      const knownIds = new Set(groupsBefore.map((group) => String(group.id)));
+      const groupsAfter = await loadOwnGroups();
+      const added = groupsAfter.filter((group) => !knownIds.has(String(group.id)));
+      komodGroup = groupsAfter.find(isSameGroup) || (added.length === 1 ? added[0] : null);
     }
 
-    // 2. Сохраняем локально (БЕЗ перезаписи userId в блоке update)
+    if (!komodGroup) {
+      return res.status(400).json({ error: `Kom-OD не добавил группу${gatewayReason ? `: ${gatewayReason}` : ''}` });
+    }
+
+    // 2. Сохраняем под номером из Kom-od: под ним группу находят синхронизация и публикация, поэтому дублей не будет
+    const providerId = `group_${komodGroup.uid || komodGroup.id}`;
+    const canonicalAcc = await prisma.account.findUnique({
+      where: { provider_providerId: { provider: 'VK', providerId } }
+    });
+    if (canonicalAcc && canonicalAcc.userId !== userId) {
+      return res.status(403).json({ error: 'Это сообщество уже привязано к другому пользователю!' });
+    }
+
     const account = await prisma.account.upsert({
-      where: { provider_providerId: { provider: 'VK', providerId: providerId } },
-      update: { 
-        name: title, 
-        avatarUrl: avatarUrl, 
-        isValid: true, 
-        profileId: profile.id 
+      where: { provider_providerId: { provider: 'VK', providerId } },
+      update: {
+        name: title,
+        avatarUrl: avatarUrl,
+        isValid: true,
+        profileId: profile.id
         // userId здесь НЕ обновляем, чтобы не "украсть" группу, если она уже существует
       },
       create: {
@@ -309,16 +342,9 @@ exports.syncVkKomod = async (req, res) => {
 
     // 2. Токен шлюза один на всех пользователей, поэтому здесь обновляются только профили,
     // которые этот пользователь подключил сам. Новые профили создаёт только confirmVkKomod.
-    const validAccIds = allAccounts.map(a => String(a.id));
+    // Профили и группы здесь не удаляются: сбой шлюза или неполный список не должны стирать
+    // подключения клиента и историю его постов. Удалить их может только сам пользователь.
     const existingVkProfiles = await prisma.socialProfile.findMany({ where: { userId, provider: 'VK' } });
-
-    if (allAccounts.length > 0) {
-      for (const p of existingVkProfiles) {
-        if (!validAccIds.includes(String(p.providerAccountId))) {
-          await prisma.socialProfile.delete({ where: { id: p.id } });
-        }
-      }
-    }
 
     const ownAccounts = allAccounts.filter(a => existingVkProfiles.some(p => String(p.providerAccountId) === String(a.id)));
     const metaMap = {};
@@ -460,16 +486,6 @@ exports.syncVkKomod = async (req, res) => {
       });
     }
 
-    // 6. Очистка
-    const existingVkAccounts = allGroupsRaw.length > 0 ? await prisma.account.findMany({ where: { userId, provider: 'VK' } }) : [];
-    for (const acc of existingVkAccounts) {
-      if (acc.providerId.startsWith('group_') || acc.providerId.startsWith('wall_')) {
-        if (!validGroupProviderIds.includes(acc.providerId)) {
-          await prisma.account.delete({ where: { id: acc.id } });
-        }
-      }
-    }
-
     res.json({ success: true, count: validGroupProviderIds.length });
   } catch (error) {
     console.error('Ошибка синхронизации syncVkKomod:', error);
@@ -532,23 +548,19 @@ exports.confirmVkKomod = async (req, res) => {
         validateStatus: (status) => status < 500,
       }
     );
-    if (response.data && response.data.success === false) {
-      return res.status(400).json({ error: 'Ошибка шлюза: ' + JSON.stringify(response.data.errors) });
+    if (response.status >= 400 || response.data?.success === false) {
+      const details = response.data?.errors || response.data?.message || `код ${response.status}`;
+      return res.status(400).json({ error: 'Ошибка шлюза: ' + (typeof details === 'string' ? details : JSON.stringify(details)) });
     }
 
+    // Ключ шлюза общий, поэтому аккаунт определяется по коду этого подключения.
+    // Если код не найден и шлюз сам не назвал аккаунт, подключение отклоняется: чужой аккаунт брать нельзя.
+    const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
+    const gatewayAccounts = accRes.data?.data?.items || [];
     const body = response.data || {};
-    let komodId = body.data?.id || body.data?.account_id || body.id || body.account_id;
-
-    // Если шлюз не назвал аккаунт, берём самый новый из ещё никем не привязанных.
-    if (!komodId) {
-      const accRes = await axios.get(`${KOMOD_BASE_URL}/account`, { headers: { 'Access-Token': KOMOD_TOKEN } });
-      const items = accRes.data?.data?.items || [];
-      const claimed = await prisma.socialProfile.findMany({ where: { provider: 'VK' }, select: { providerAccountId: true } });
-      const claimedIds = new Set(claimed.map((p) => String(p.providerAccountId)));
-      const free = items.filter((a) => !claimedIds.has(String(a.id))).sort((a, b) => Number(b.id) - Number(a.id));
-      komodId = free[0]?.id;
-    }
-    if (!komodId) return res.status(400).json({ error: 'Не удалось определить подключённый аккаунт ВК' });
+    const komodId = gatewayAccounts.find((item) => item.hash === hash)?.id
+      || body.data?.id || body.data?.account_id || body.id || body.account_id;
+    if (!komodId) return res.status(400).json({ error: 'Не удалось определить подключённый аккаунт ВК. Подключите его ещё раз.' });
 
     const providerAccountId = String(komodId);
     const taken = await prisma.socialProfile.findUnique({

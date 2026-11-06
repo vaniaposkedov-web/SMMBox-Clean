@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Send } from 'lucide-react';
+import { TELEGRAM_BOT_NAME } from '../telegramBot';
 
 export default function CustomTelegramButton({ onAuthCallback }) {
   const containerRef = useRef(null);
@@ -9,11 +10,10 @@ export default function CustomTelegramButton({ onAuthCallback }) {
       containerRef.current.innerHTML = '';
     }
 
-    const botName = import.meta.env.VITE_TG_BOT_NAME || 'sadovodps_auth_bot';
 
     const script = document.createElement('script');
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
-    script.setAttribute('data-telegram-login', botName);
+    script.setAttribute('data-telegram-login', TELEGRAM_BOT_NAME);
     script.setAttribute('data-size', 'large');
     script.setAttribute('data-request-access', 'write');
     script.setAttribute('data-userpic', 'false');

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft, Loader2, KeyRound } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -28,6 +28,19 @@ export default function Auth() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
+
+  // При отказе во входе через соцсеть человек должен увидеть причину на странице.
+  const handleTelegramAuth = useCallback(async (data) => {
+    setError('');
+    const result = await telegramLogin(data);
+    if (!result.success) setError(result.error || 'Не удалось войти через Telegram. Попробуйте ещё раз или войдите по почте.');
+  }, [telegramLogin]);
+
+  const handleVkAuth = useCallback(async (data) => {
+    setError('');
+    const result = await vkLogin(data);
+    if (!result.success) setError(result.error || 'Не удалось войти через ВКонтакте. Попробуйте ещё раз или войдите по почте.');
+  }, [vkLogin]);
 
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/\D/g, '');
@@ -243,8 +256,8 @@ export default function Auth() {
               </p>
               <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase tracking-wider">Быстрый вход через соцсети</p>
               <div className="flex justify-center gap-4">
-                <CustomTelegramButton onAuthCallback={telegramLogin} />
-                <CustomVkButton onAuth={vkLogin} />
+                <CustomTelegramButton onAuthCallback={handleTelegramAuth} />
+                <CustomVkButton onAuth={handleVkAuth} onError={setError} />
               </div>
             </div>
 

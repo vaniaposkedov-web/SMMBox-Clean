@@ -69,37 +69,30 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     let targetGroupId = null;
     const cleanId = providerId.replace('wall_', '').replace('group_', '');
-    const isWall = providerId.startsWith('wall_');
+
 
     logPost(userId, 'VK', 'START', `Начинаем отправку. Провайдер: ${providerId}`);
 
     const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
-    const groups = grpRes.data?.data?.items || grpRes.data?.data || [];
+    const allGroups = grpRes.data?.data?.items || grpRes.data?.data || [];
 
-    let targetGroup = groups.find(g => 
-        String(g.uid) === cleanId || 
-        String(g.id) === cleanId || 
-        String(g.account_id) === cleanId ||
-        (g.url && String(g.url).includes(cleanId))
-    );
+    // Ключ шлюза общий на всех клиентов, поэтому ищем только среди групп аккаунтов этого пользователя
+    // и только по точному совпадению номера или адреса группы.
+    const ownProfiles = await prisma.socialProfile.findMany({
+        where: { userId: String(userId), provider: 'VK' },
+        select: { providerAccountId: true }
+    });
+    const ownAccountIds = new Set(ownProfiles.map((profile) => String(profile.providerAccountId)));
+    const urlTail = (group) => String(group.url || '').replace(/\/+$/, '').split('/').pop().replace(/^(club|public|event|id)(?=\d)/, '');
+
+    const targetGroup = allGroups.find((group) => (
+        ownAccountIds.has(String(group.account_id)) &&
+        (String(group.uid || group.id) === cleanId || urlTail(group) === cleanId)
+    ));
 
     if (!targetGroup) {
-        logPost(userId, 'VK', 'INFO', `Группа не найдена. Авто-регистрация...`);
-        // Простая строка параметров, как любит этот API
-        const addPayload = isWall 
-            ? `account_id=${cleanId}&is_profile=1&post_images_as_grid=1`
-            : `url=https://vk.com/club${cleanId}&title=Группа_${cleanId}&account_id=${cleanId}&post_images_as_grid=1`;
-
-        await axios.post(`${KOMOD_BASE_URL}/group`, addPayload, {
-            headers: { 'Access-Token': token, 'Content-Type': 'application/x-www-form-urlencoded' },
-            validateStatus: () => true
-        });
-
-        const newGrpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
-        const newGroups = newGrpRes.data?.data?.items || newGrpRes.data?.data || [];
-        targetGroup = newGroups.find(g => String(g.uid) === cleanId || String(g.account_id) === cleanId);
-        
-        if (!targetGroup) throw new Error(`Стена еще не активирована!`);
+        logPost(userId, 'VK', 'ERROR', `Группа ${providerId} не найдена среди подключённых аккаунтов`);
+        throw new Error('Группа не подключена в Kom-OD. Подключите её заново в разделе «Аккаунты и страницы».');
     }
 
     // 🔥 ИДЕАЛЬНАЯ КОПИЯ CURL-ЗАПРОСА АЛЕКСЕЯ
@@ -161,6 +154,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         });
 
         if (postRes.status >= 400 || postRes.data?.success === false) {
+            logPost(userId, 'VK', 'ERROR', `Шлюз отклонил пост: HTTP ${postRes.status}`);
             const details = postRes.data?.errors || postRes.data?.message || `код ${postRes.status}`;
             throw new Error('Ошибка шлюза: ' + (typeof details === 'string' ? details : JSON.stringify(details)));
         }
