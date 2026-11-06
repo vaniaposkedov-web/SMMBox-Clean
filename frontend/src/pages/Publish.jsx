@@ -513,7 +513,8 @@ const handlePublish = async () => {
           ? acc.signature
           : (applySignature ? (globalSettings?.signature || '') : null);
 
-        return { accountId: id, applyWatermark: !!wmConfig, applySignature: !!sigText, watermarkConfig: wmConfig, signatureText: sigText };
+        // Свой знак аккаунта сервер берёт из базы: логотипы нескольких аккаунтов не помещаются в одну отправку поста.
+        return { accountId: id, applyWatermark: !!wmConfig, applySignature: !!sigText, watermarkConfig: acc?.watermark ? undefined : wmConfig, signatureText: sigText };
       });
 
       const result = await createPostAction(text, webpBlobs, accountsData, publishAt);

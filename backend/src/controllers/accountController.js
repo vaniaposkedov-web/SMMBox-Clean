@@ -696,6 +696,39 @@ exports.verifyTgAccountsStatus = async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };
 
+const clampInt = (value, min, max, fallback) => {
+  const number = Number(value);
+  if (value === null || value === undefined || value === '' || !Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+};
+
+const numberOrNull = (value) => {
+  const number = Number(value);
+  return value === null || value === undefined || value === '' || !Number.isFinite(number) ? null : number;
+};
+
+// Всё, что хранится из настроек водяного знака. Настройка, которой здесь нет, теряется при сохранении.
+const watermarkFields = (watermark) => ({
+  type: watermark.type || 'text',
+  text: watermark.text || '',
+  image: watermark.image || null,
+  fontFamily: watermark.fontFamily || 'system-ui',
+  position: watermark.position || 'br',
+  margin: clampInt(watermark.margin, 0, 20, 5),
+  opacity: clampInt(watermark.opacity, 10, 100, 90),
+  size: clampInt(watermark.size, 5, 250, 20),
+  angle: numberOrNull(watermark.angle) ?? 0,
+  textColor: watermark.textColor || '#FFFFFF',
+  bgColor: watermark.bgColor || '#000000',
+  hasBackground: watermark.hasBackground !== false,
+  bgPadding: clampInt(watermark.bgPadding, 0, 30, 10),
+  hasStroke: watermark.hasStroke === true,
+  strokeColor: watermark.strokeColor || '#000000',
+  strokeWidth: clampInt(watermark.strokeWidth, 1, 8, 2),
+  x: numberOrNull(watermark.x),
+  y: numberOrNull(watermark.y),
+});
+
 exports.saveAccountDesign = async (req, res) => {
   const { id } = req.params;
   const { signature, watermark } = req.body;
@@ -706,10 +739,11 @@ exports.saveAccountDesign = async (req, res) => {
     if (watermark === null) {
       try { await prisma.watermark.delete({ where: { accountId: id } }); } catch(e) {} 
     } else if (watermark !== undefined) {
+      const fields = watermarkFields(watermark);
       await prisma.watermark.upsert({
         where: { accountId: id },
-        update: { type: watermark.type || 'text', text: watermark.text || '', image: watermark.image || null, position: watermark.position || 'br', opacity: Number(watermark.opacity || 90), size: Number(watermark.size || 100), angle: Number(watermark.angle || 0), textColor: watermark.textColor || '#FFFFFF', bgColor: watermark.bgColor || '#000000', hasBackground: watermark.hasBackground !== false, x: watermark.x !== undefined ? Number(watermark.x) : null, y: watermark.y !== undefined ? Number(watermark.y) : null },
-        create: { accountId: id, type: watermark.type || 'text', text: watermark.text || '', image: watermark.image || null, position: watermark.position || 'br', opacity: Number(watermark.opacity || 90), size: Number(watermark.size || 100), angle: Number(watermark.angle || 0), textColor: watermark.textColor || '#FFFFFF', bgColor: watermark.bgColor || '#000000', hasBackground: watermark.hasBackground !== false, x: watermark.x !== undefined ? Number(watermark.x) : null, y: watermark.y !== undefined ? Number(watermark.y) : null }
+        update: fields,
+        create: { accountId: id, ...fields }
       });
     }
     res.json({ success: true });
@@ -732,10 +766,11 @@ exports.saveGlobalSettings = async (req, res) => {
     if (watermark === null) {
       try { await prisma.globalWatermark.delete({ where: { userId: String(userId) } }); } catch(e) {} 
     } else if (watermark !== undefined) {
+      const fields = watermarkFields(watermark);
       await prisma.globalWatermark.upsert({
         where: { userId: String(userId) },
-        update: { type: watermark.type || 'text', text: watermark.text || '', image: watermark.image || null, position: watermark.position || 'br', opacity: Number(watermark.opacity || 90), size: Number(watermark.size || 100), angle: Number(watermark.angle || 0), textColor: watermark.textColor || '#FFFFFF', bgColor: watermark.bgColor || '#000000', hasBackground: watermark.hasBackground !== false, x: watermark.x !== undefined ? Number(watermark.x) : null, y: watermark.y !== undefined ? Number(watermark.y) : null },
-        create: { userId: String(userId), type: watermark.type || 'text', text: watermark.text || '', image: watermark.image || null, position: watermark.position || 'br', opacity: Number(watermark.opacity || 90), size: Number(watermark.size || 100), angle: Number(watermark.angle || 0), textColor: watermark.textColor || '#FFFFFF', bgColor: watermark.bgColor || '#000000', hasBackground: watermark.hasBackground !== false, x: watermark.x !== undefined ? Number(watermark.x) : null, y: watermark.y !== undefined ? Number(watermark.y) : null }
+        update: fields,
+        create: { userId: String(userId), ...fields }
       });
     }
     res.json({ success: true });

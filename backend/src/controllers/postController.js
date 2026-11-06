@@ -178,19 +178,32 @@ const removeUploadedFiles = (req) => Promise.all((req.files || []).map((file) =>
 
 const safeColor = (value, fallback) => (/^#[0-9a-f]{3,8}$/i.test(String(value || '')) ? value : fallback);
 
+// Настоящая ширина текста в выбранном шрифте: иначе широкие буквы обрезаются по краю знака.
+async function measureTextWidth(text, fontFamily, fontSize) {
+    const probeSize = 100;
+    const svg = `<svg width="${Math.ceil(probeSize * (text.length * 1.5 + 2))}" height="${probeSize * 2}"><text x="${probeSize}" y="${probeSize * 1.4}" font-size="${probeSize}" style="font-family: ${fontFamily}; font-weight: bold;" fill="#fff">${escapeXml(text)}</text></svg>`;
+    try {
+        const { info } = await sharp(Buffer.from(svg)).trim().toBuffer({ resolveWithObject: true });
+        return Math.ceil((info.width / probeSize) * fontSize);
+    } catch (err) {
+        return Math.floor(fontSize * 0.60 * text.length);
+    }
+}
+
 // === Вспомогательная функция для наложения водяного знака ===
+// Предпросмотр считает по тем же формулам: frontend/src/components/settings/watermarkTools.js
 async function applyWatermark(imageBuffer, wmConfig) {
     // 🛡️ ЖЕЛЕЗОБЕТОННАЯ ПРОВЕРКА: Пропускаем чистое фото, если:
     // 1. Конфига нет
     // 2. Явно передано отключение (enabled/isActive = false)
-    // 3. Стоит дефолтный текст 'SADOVODPS', но знак не активирован явно
-    if (!wmConfig || 
-        wmConfig.enabled === false || 
+    // 3. Это текст 'SADOVODPS' по умолчанию, который человек не сохранял (у сохранённых настроек есть id)
+    if (!wmConfig ||
+        wmConfig.enabled === false ||
         wmConfig.isActive === false) {
         return imageBuffer;
     }
 
-    if (wmConfig.type === 'text' && wmConfig.text === 'SADOVODPS' && !wmConfig.enabled) {
+    if (wmConfig.type === 'text' && wmConfig.text === 'SADOVODPS' && !wmConfig.enabled && !wmConfig.id) {
         return imageBuffer;
     }
 
@@ -206,12 +219,12 @@ async function applyWatermark(imageBuffer, wmConfig) {
         const metadata = await sharp(imageBuffer).metadata();
         const { width, height } = metadata;
 
-        const sizeValue = wmConfig.size !== undefined ? wmConfig.size : 20; 
-        const marginValue = wmConfig.margin !== undefined ? wmConfig.margin : 5;
-        const opacity = (wmConfig.opacity !== undefined ? wmConfig.opacity : 80) / 100;
-        
+        const sizeValue = wmConfig.size ?? 20;
+        const marginValue = wmConfig.margin ?? 5;
+        const opacity = (wmConfig.opacity ?? 80) / 100;
+
         const padX = Math.floor(width * (marginValue / 100));
-        const padY = Math.floor(width * (marginValue / 100));
+        const padY = Math.floor(height * (marginValue / 100));
 
         let overlayBuffer;
         let overlayMeta;
@@ -224,39 +237,50 @@ async function applyWatermark(imageBuffer, wmConfig) {
             
             const fontSize = Math.max(12, Math.floor(width * (sizeValue / 100) * 0.20)); 
             
-            const bgPaddingVal = wmConfig.bgPadding !== undefined ? wmConfig.bgPadding : 10;
+            const bgPaddingVal = hasBg ? (wmConfig.bgPadding ?? 10) : 0;
             const innerPadV = Math.floor(fontSize * (bgPaddingVal / 25));
             const innerPadH = Math.floor(fontSize * (bgPaddingVal / 12));
-            
-            const textWidth = Math.floor(fontSize * 0.60 * text.length);
-            const svgWidth = textWidth + (innerPadH * 2);
-            const svgHeight = fontSize + (innerPadV * 2);
 
-            const hasStroke = wmConfig.hasStroke;
+            const hasStroke = wmConfig.hasStroke === true;
             const strokeColor = safeColor(wmConfig.strokeColor, '#000000');
             const strokeWidth = Math.max(1, Math.floor((wmConfig.strokeWidth || 2) * (width / 1000)));
 
             const strokeAttr = hasStroke ? `stroke="${strokeColor}" stroke-width="${strokeWidth}" paint-order="stroke"` : '';
             const fontFam = wmConfig.fontFamily ? String(wmConfig.fontFamily).replace(/[^\w\s,'"-]/g, '').replace(/"/g, "'") : 'sans-serif';
 
+            const textWidth = await measureTextWidth(text, fontFam, fontSize);
+            const plateWidth = textWidth + (innerPadH * 2);
+            const plateHeight = Math.ceil(fontSize * 1.2) + (innerPadV * 2);
+            // Обводка выходит за край букв: оставляем ей место, чтобы она не обрезалась.
+            const strokeRoom = hasStroke ? Math.ceil(strokeWidth / 2) + 1 : 0;
+
             const svg = `
-                <svg width="${svgWidth}" height="${svgHeight}">
+                <svg width="${plateWidth + (strokeRoom * 2)}" height="${plateHeight + (strokeRoom * 2)}">
                     <style>
-                        .bg { fill: ${bgColor}; opacity: ${hasBg ? opacity * 0.6 : 0}; }
-                        .text { fill: ${textColor}; font-size: ${fontSize}px; font-family: ${fontFam}; font-weight: bold; opacity: ${opacity}; }
+                        .bg { fill: ${bgColor}; }
+                        .text { fill: ${textColor}; font-size: ${fontSize}px; font-family: ${fontFam}; font-weight: bold; }
                     </style>
-                    <rect width="100%" height="100%" rx="${fontSize * 0.2}" class="bg" />
-                    <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" class="text" ${strokeAttr}>${escapeXml(text)}</text>
+                    <g opacity="${opacity}">
+                        ${hasBg ? `<rect x="${strokeRoom}" y="${strokeRoom}" width="${plateWidth}" height="${plateHeight}" rx="${fontSize * 0.2}" class="bg" />` : ''}
+                        <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" class="text" ${strokeAttr}>${escapeXml(text)}</text>
+                    </g>
                 </svg>`;
             overlayBuffer = Buffer.from(svg);
-            
+
         } else if (wmConfig.type === 'image' && wmConfig.image) {
             const base64Data = wmConfig.image.includes(',') ? wmConfig.image.split(',')[1] : wmConfig.image;
             const targetWidth = Math.max(20, Math.floor(width * (sizeValue / 100) * 0.35));
-            
+
             overlayBuffer = await sharp(Buffer.from(base64Data, 'base64'))
                 .resize({ width: targetWidth, withoutEnlargement: false })
-                .ensureAlpha(opacity)
+                .ensureAlpha()
+                .composite([{
+                    input: Buffer.from([255, 255, 255, Math.round(opacity * 255)]),
+                    raw: { width: 1, height: 1, channels: 4 },
+                    tile: true,
+                    blend: 'dest-in',
+                }])
+                .png()
                 .toBuffer();
         }
 
@@ -277,16 +301,17 @@ async function applyWatermark(imageBuffer, wmConfig) {
 
         let left = padX;
         let top = padY;
-        const pos = wmConfig.position || 'br';
 
-        if (wmConfig.position === 'custom' && wmConfig.x !== undefined && wmConfig.y !== undefined) {
+        if (wmConfig.position === 'custom' && Number.isFinite(wmConfig.x) && Number.isFinite(wmConfig.y)) {
             left = Math.floor((width * wmConfig.x) / 100) - Math.floor(overlayMeta.width / 2);
             top = Math.floor((height * wmConfig.y) / 100) - Math.floor(overlayMeta.height / 2);
         } else {
-            if (pos.includes('r')) left = width - overlayMeta.width - padX;
-            if (pos.includes('c')) left = Math.floor((width - overlayMeta.width) / 2);
-            if (pos.includes('b')) top = height - overlayMeta.height - padY;
-            if (pos === 'cc') top = Math.floor((height - overlayMeta.height) / 2);
+            // Первая буква — строка (верх, центр, низ), вторая — столбец (лево, центр, право).
+            const [row, column] = /^[tcb][lcr]$/.test(wmConfig.position) ? wmConfig.position : 'br';
+            if (column === 'c') left = Math.floor((width - overlayMeta.width) / 2);
+            if (column === 'r') left = width - overlayMeta.width - padX;
+            if (row === 'c') top = Math.floor((height - overlayMeta.height) / 2);
+            if (row === 'b') top = height - overlayMeta.height - padY;
         }
 
         left = Math.max(0, Math.min(left, width - overlayMeta.width));

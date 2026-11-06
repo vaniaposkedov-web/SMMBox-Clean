@@ -5,23 +5,7 @@ import {
   Upload, Edit3, X, Plus, Trash2, CheckCircle2, ChevronLeft,
   Search, ChevronDown
 } from 'lucide-react';
-
-const defaultWatermark = {
-  type: 'text', 
-  text: 'GLOBOX', 
-  position: 'br', // tl, tc, tr, cl, cc, cr, bl, bc, br
-  margin: 5,      
-  opacity: 80,    
-  size: 20,       
-  fontFamily: 'system-ui',
-  textColor: '#FFFFFF',
-  hasBackground: true,
-  bgColor: '#000000',
-  bgPadding: 10,
-  hasStroke: false,
-  strokeColor: '#000000',
-  strokeWidth: 2
-};
+import { DEFAULT_WATERMARK, PREVIEW_CONTAINER_STYLE, compressLogo, getWatermarkPreviewStyle, getWatermarkProblem } from './watermarkTools';
 
 const SAMPLE_IMAGES = [
   "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop",
@@ -48,7 +32,7 @@ export default function WatermarkConstructor() {
   const [view, setView] = useState('landing'); 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [settings, setSettings] = useState(defaultWatermark);
+  const [settings, setSettings] = useState(DEFAULT_WATERMARK);
   
   const [previewFilter, setPreviewFilter] = useState('dark'); 
   const [imgIdx, setImgIdx] = useState(0);
@@ -85,7 +69,7 @@ export default function WatermarkConstructor() {
   // --- УПРАВЛЕНИЕ ---
   const handleSelectAccount = (acc) => {
     setSelectedAccount(acc);
-    setSettings(acc.watermark ? { ...defaultWatermark, ...acc.watermark } : { ...defaultWatermark });
+    setSettings({ ...DEFAULT_WATERMARK, ...acc.watermark });
     setIsAccountModalOpen(false);
     setView('editor');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -93,6 +77,11 @@ export default function WatermarkConstructor() {
 
   const handleSave = async () => {
     if (!selectedAccount) return;
+    const problem = getWatermarkProblem(settings);
+    if (problem) {
+      alert(problem);
+      return;
+    }
     setIsSaving(true);
     const result = await saveAccountDesign(selectedAccount.id, selectedAccount.signature, settings);
     setIsSaving(false);
@@ -111,97 +100,17 @@ export default function WatermarkConstructor() {
 
   const updateSettings = (updates) => setSettings(prev => ({ ...prev, ...updates }));
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        // Сжимаем логотип перед сохранением в Base64 (иначе сервер заблокирует запрос)
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 400; // Для логотипа этого более чем достаточно
-          const MAX_HEIGHT = 400;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height && width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          } else if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          // Сохраняем в PNG, чтобы не потерять прозрачный фон логотипа
-          updateSettings({ image: canvas.toDataURL('image/png', 0.9), type: 'image' });
-        };
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    try {
+      updateSettings({ image: await compressLogo(file), type: 'image' });
+    } catch (error) {
+      alert(error.message);
     }
   };
 
-  // --- ЛОГИКА РАСПОЛОЖЕНИЯ (АДАПТИВНАЯ ПОД ЛЮБЫЕ ФОТО) ---
-  const getWatermarkStyle = () => {
-    const margin = `${settings.margin || 0}%`;
-    const style = {
-      position: 'absolute',
-      opacity: (settings.opacity ?? 80) / 100,
-      transformOrigin: 'center',
-      zIndex: 30,
-      pointerEvents: 'none',
-      transition: 'all 0.2s ease-out',
-      maxWidth: '100%',
-      maxHeight: '100%'
-    };
-
-    let transformBase = '';
-    if (settings.position.includes('t')) style.top = margin;
-    if (settings.position.includes('b')) style.bottom = margin;
-    if (settings.position.includes('l')) style.left = margin;
-    if (settings.position.includes('r')) style.right = margin;
-    
-    if (settings.position === 'tc' || settings.position === 'cc' || settings.position === 'bc') {
-      style.left = '50%'; transformBase += ' translateX(-50%)';
-    }
-    if (settings.position === 'cl' || settings.position === 'cc' || settings.position === 'cr') {
-      style.top = '50%'; transformBase += ' translateY(-50%)';
-    }
-
-    style.transform = transformBase.trim();
-
-    if (settings.type === 'text') {
-      style.fontSize = `${(settings.size || 20) / 10}rem`; 
-      style.color = settings.textColor || '#FFFFFF';
-      style.fontFamily = settings.fontFamily || 'system-ui';
-      style.fontWeight = 'bold';
-      style.lineHeight = '1.2';
-      style.whiteSpace = 'nowrap';
-      
-      if (settings.hasBackground) {
-        style.backgroundColor = settings.bgColor;
-        const padV = (settings.bgPadding || 10) / 25; 
-        const padH = (settings.bgPadding || 10) / 12;
-        style.padding = `${padV}em ${padH}em`;
-        style.borderRadius = '0.3em'; 
-      }
-
-      if (settings.hasStroke) {
-        style.WebkitTextStroke = `${settings.strokeWidth || 2}px ${settings.strokeColor || '#000000'}`;
-      }
-    } else {
-      style.height = `${settings.size || 20}%`;
-      style.width = 'auto';
-      style.objectFit = 'contain';
-    }
-
-    return style;
-  };
+  const watermarkStyle = { ...getWatermarkPreviewStyle(settings), zIndex: 30, pointerEvents: 'none', transition: 'all 0.2s ease-out' };
 
 
   // --- ЭКРАН 1: СПИСОК / ПРИВЕТСТВИЕ ---
@@ -410,7 +319,7 @@ export default function WatermarkConstructor() {
         
         {/* === ЛЕВАЯ ПАНЕЛЬ: ПРЕДПРОСМОТР === */}
         <div className="lg:col-span-7">
-          <div className={`relative w-full aspect-video rounded-xl overflow-hidden border-2 transition-all duration-500 shadow-md ${previewFilter === 'dark' ? 'border-gray-800 bg-gray-950' : 'border-gray-300 bg-white'}`}>
+          <div style={PREVIEW_CONTAINER_STYLE} className={`relative w-full aspect-video rounded-xl overflow-hidden border-2 transition-all duration-500 shadow-md ${previewFilter === 'dark' ? 'border-gray-800 bg-gray-950' : 'border-gray-300 bg-white'}`}>
              
              {/* Фоновое изображение (Автоматически листается) */}
              <div 
@@ -433,10 +342,11 @@ export default function WatermarkConstructor() {
              </div>
 
              {/* Адаптивный Водяной знак */}
-             {settings.type === 'image' && settings.image ? (
-               <img src={settings.image} style={getWatermarkStyle()} alt="Watermark" />
-             ) : (
-               <div style={getWatermarkStyle()}>{settings.text || 'GLOBOX'}</div>
+             {settings.type === 'image' && settings.image && (
+               <img src={settings.image} style={watermarkStyle} alt="Watermark" />
+             )}
+             {settings.type === 'text' && settings.text?.trim() && (
+               <div style={watermarkStyle}>{settings.text}</div>
              )}
           </div>
         </div>

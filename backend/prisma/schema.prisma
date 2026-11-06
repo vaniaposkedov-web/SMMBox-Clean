@@ -137,6 +137,11 @@ model Watermark {
   bgColor       String   @default("#000000")
   x             Float?
   y             Float?
+  margin        Int      @default(5)
+  bgPadding     Int      @default(10)
+  hasStroke     Boolean  @default(false)
+  strokeColor   String   @default("#000000")
+  strokeWidth   Int      @default(2)
 }
 
 model GlobalWatermark {
@@ -156,7 +161,13 @@ model GlobalWatermark {
   position      String   @default("br")
   size          Int      @default(100)
   opacity       Int      @default(90)
-  
+  fontFamily    String?  @default("system-ui")
+  margin        Int      @default(5)
+  bgPadding     Int      @default(10)
+  hasStroke     Boolean  @default(false)
+  strokeColor   String   @default("#000000")
+  strokeWidth   Int      @default(2)
+
   updatedAt     DateTime @updatedAt
 }
 
