@@ -241,9 +241,10 @@ const submitProGrant = async (isRevoke = false) => {
   };
 
   const unlinkClientSocial = async (provider, name) => {
-    if (!window.confirm(`Отвязать ${name} у клиента? Все его входы на сайт закроются.`)) return;
+    const warning = provider === 'vk' ? 'Все его входы на сайт закроются.' : 'Каналы останутся в аккаунте.';
+    if (!window.confirm(`Отвязать ${name} у клиента? ${warning}`)) return;
     const data = await accessRequest('unlink', { provider });
-    if (data) setUserDetails((prev) => ({ ...prev, user: { ...prev.user, ...data.user } }));
+    if (data) setUserDetails((prev) => ({ ...prev, telegramLinked: provider === 'telegram' ? false : prev.telegramLinked, user: { ...prev.user, ...data.user } }));
   };
 
   const copyLoginLink = () => {
@@ -996,10 +997,11 @@ const submitProGrant = async (isRevoke = false) => {
                   <div className="p-5 bg-gray-900 border border-gray-800 rounded-xl space-y-3">
                     <label className="text-xs font-bold text-gray-500 block uppercase">Вход клиента</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {[['telegram', 'Telegram', userDetails.user.telegramId], ['vk', 'ВКонтакте', userDetails.user.vkId]].map(([provider, name, linkedId]) => (
+                      {[['vk', 'ВКонтакте', 'Вход на сайт', userDetails.user.vkId], ['telegram', 'Telegram', 'Подключение каналов', userDetails.telegramLinked]].map(([provider, name, purpose, linkedId]) => (
                         <div key={provider} className="flex items-center justify-between gap-3 p-3 bg-black border border-gray-800 rounded-lg">
                           <div className="min-w-0 text-sm">
                             <p className="font-bold text-white">{name}</p>
+                            <p className="text-xs text-gray-500">{purpose}</p>
                             <p className={`text-xs truncate ${linkedId ? 'text-green-500' : 'text-gray-500'}`}>{linkedId ? 'Привязан' : 'Не привязан'}</p>
                           </div>
                           {linkedId && (
@@ -1008,7 +1010,7 @@ const submitProGrant = async (isRevoke = false) => {
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-gray-500">Клиент потерял доступ к соцсетям? Сначала убедитесь, что это он, например, сверьте номер телефона. Затем отвяжите потерянную соцсеть и выдайте ссылку для входа.</p>
+                    <p className="text-xs text-gray-500">Клиент потерял доступ к ВКонтакте? Сначала убедитесь, что это он, например, сверьте номер телефона. Затем отвяжите потерянный профиль и выдайте ссылку для входа.</p>
                     <button type="button" onClick={createLoginLink} disabled={accessBusy} className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors text-sm disabled:opacity-50">Выдать ссылку для входа</button>
                     {loginLink && (
                       <div className="space-y-2">

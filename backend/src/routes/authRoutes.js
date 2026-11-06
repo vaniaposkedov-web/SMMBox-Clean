@@ -15,9 +15,7 @@ const limiter = (max) => rateLimit({
 const loginLimiter = limiter(30);
 const codeLimiter = limiter(10);
 
-router.post('/telegram', loginLimiter, authController.telegramAuth);
 router.post('/vk', loginLimiter, authController.vkAuth);
-router.post('/link/telegram', authMiddleware, loginLimiter, authController.linkTelegramLogin);
 router.post('/link/vk', authMiddleware, loginLimiter, authController.linkVkLogin);
 router.post('/unlink/:provider', authMiddleware, loginLimiter, authController.unlinkSocial);
 router.post('/recover', codeLimiter, authController.recoverAccess);

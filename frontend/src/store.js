@@ -158,26 +158,6 @@ export const useStore = create(
         } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
 
-      telegramLogin: async (telegramData) => {
-        try {
-          const res = await fetch('/api/auth/telegram', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(telegramData)
-          });
-          const data = await res.json();
-          if (data.requiresConfirmation) return { success: false, requiresConfirmation: true };
-          if (res.ok) {
-            set({ user: data.user, token: data.token });
-            localStorage.setItem('token', data.token);
-            
-            // ВАЖНО: Добавь эту строку, чтобы профиль сразу появился на странице!
-            get().fetchProfiles(data.user.id);
-            
-            return { success: true };
-          }
-          return { success: false, error: data.error };
-        } catch (error) { return { success: false, error: 'Ошибка сервера' }; }
-      },
-
       linkSocialLogin: async (url, data) => {
         try {
           const res = await fetch(url, {
@@ -192,20 +172,17 @@ export const useStore = create(
           return { success: true };
         } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
-      linkTelegramLogin: (data) => get().linkSocialLogin('/api/auth/link/telegram', data),
       linkVkLogin: (data) => get().linkSocialLogin('/api/auth/link/vk', data),
 
-      unlinkSocialLogin: async (provider) => {
+      unlinkTelegram: async () => {
         try {
-          const res = await fetch(`/api/auth/unlink/${provider}`, {
+          const res = await fetch('/api/auth/unlink/telegram', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` },
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
-          // Сервер закрыл все прежние входы, поэтому этот браузер получает новый.
-          localStorage.setItem('token', data.token);
-          set({ user: data.user, token: data.token });
+          set({ user: data.user });
           get().fetchProfiles(data.user.id);
           return { success: true };
         } catch (error) { return { success: false, error: 'Ошибка сети' }; }

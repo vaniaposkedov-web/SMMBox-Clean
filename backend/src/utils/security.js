@@ -39,21 +39,6 @@ const safeEqual = (a, b) => {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 };
 
-// https://core.telegram.org/widgets/login#checking-authorization
-const verifyTelegramLogin = (data, botToken, maxAgeSeconds = 24 * 60 * 60) => {
-  if (!botToken || !data || !data.hash || !data.auth_date) return false;
-  const checkString = Object.keys(data)
-    .filter((key) => key !== 'hash')
-    .sort()
-    .map((key) => `${key}=${data[key]}`)
-    .join('\n');
-  const secret = crypto.createHash('sha256').update(botToken).digest();
-  const expected = crypto.createHmac('sha256', secret).update(checkString).digest('hex');
-  if (!safeEqual(expected, data.hash)) return false;
-  const age = Math.floor(Date.now() / 1000) - Number(data.auth_date);
-  return Number.isFinite(age) && age >= -60 && age <= maxAgeSeconds;
-};
-
 // The VK user is taken only from VK's own answer for this token, never from what the browser sent.
 const fetchVkIdUser = async (accessToken) => {
   const clientId = process.env.VK_APP_ID;
@@ -84,7 +69,6 @@ module.exports = {
   sanitizeUser,
   sha256,
   safeEqual,
-  verifyTelegramLogin,
   fetchVkIdUser,
   getBotToken,
   escapeXml,

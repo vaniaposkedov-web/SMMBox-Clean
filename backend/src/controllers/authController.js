@@ -7,11 +7,9 @@ const {
   signUserToken,
   sanitizeUser,
   sha256,
-  verifyTelegramLogin,
   fetchVkIdUser,
-  getBotToken,
 } = require('../utils/security');
-const { SOCIAL_LOGIN_FIELDS, unlinkSocialLogin } = require('../utils/socialLogin');
+const { unlinkTelegram } = require('../utils/socialLogin');
 const { LEGAL_VERSION, CONSENT_REQUIRED_ERROR, hasLegalConsent, consentRecords } = require('../utils/legal');
 const { eraseUser } = require('../utils/accountErasure');
 
@@ -32,41 +30,6 @@ const createUserWithConsent = async (data) => {
   });
 };
 
-exports.telegramAuth = async (req, res) => {
-  try {
-    // Эти поля добавляет сайт, в подписи Telegram их нет.
-    const { createAccount, acceptTerms, personalDataConsent, ...telegramData } = req.body;
-    if (!verifyTelegramLogin(telegramData, getBotToken())) {
-      return res.status(401).json({ error: 'Не удалось подтвердить вход через Telegram' });
-    }
-    const { id, first_name, last_name, username, photo_url } = telegramData;
-
-    let user = await prisma.user.findUnique({ where: { telegramId: String(id) } });
-    let isNewUser = false;
-
-    if (!user) {
-      // Новый аккаунт создаётся только с согласия человека: возможно, у него уже есть аккаунт с другой соцсетью.
-      if (!createAccount) return res.json({ requiresConfirmation: true });
-      if (!hasLegalConsent({ acceptTerms, personalDataConsent })) return res.status(400).json({ error: CONSENT_REQUIRED_ERROR });
-      isNewUser = true;
-      const fullName = [first_name, last_name].filter(Boolean).join(' ') || username || 'TG Юзер';
-      user = await createUserWithConsent({ telegramId: String(id), name: fullName, avatarUrl: photo_url || null });
-      await prisma.socialProfile.upsert({
-        where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: String(id) } },
-        update: {},
-        create: { userId: user.id, provider: 'TELEGRAM', providerAccountId: String(id), name: fullName, avatarUrl: photo_url || null, accessToken: '' },
-      });
-    } else if (photo_url && !user.avatarUrl) {
-      user = await prisma.user.update({ where: { id: user.id }, data: { avatarUrl: photo_url } });
-    }
-
-    res.json({ success: true, token: signUserToken(user), user: sanitizeUser(user), isNewUser });
-  } catch (error) {
-    console.error('Ошибка входа через Telegram:', error.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
-};
-
 exports.vkAuth = async (req, res) => {
   try {
     const vkUser = await fetchVkIdUser(req.body.access_token);
@@ -78,7 +41,7 @@ exports.vkAuth = async (req, res) => {
     let isNewUser = false;
 
     if (!user) {
-      // Новый аккаунт создаётся только с согласия человека: возможно, у него уже есть аккаунт с другой соцсетью.
+      // Новый аккаунт создаётся только с согласия человека: возможно, у него уже есть аккаунт с другим профилем.
       if (!req.body.createAccount) return res.json({ requiresConfirmation: true });
       if (!hasLegalConsent(req.body)) return res.status(400).json({ error: CONSENT_REQUIRED_ERROR });
       isNewUser = true;
@@ -98,41 +61,8 @@ exports.vkAuth = async (req, res) => {
   }
 };
 
-// Привязка входа через соцсеть к аккаунту, в который человек уже вошёл.
+// Привязка профиля ВКонтакте к аккаунту, в который человек уже вошёл, например по ссылке поддержки.
 // Неудача отвечает кодом 400, а не 401: 401 означает, что истёк сам вход на сайт.
-exports.linkTelegramLogin = async (req, res) => {
-  try {
-    if (!verifyTelegramLogin(req.body, getBotToken())) {
-      return res.status(400).json({ error: 'Не удалось подтвердить Telegram. Попробуйте ещё раз.' });
-    }
-    const telegramId = String(req.body.id);
-    const owner = await prisma.user.findUnique({ where: { telegramId } });
-    if (owner && owner.id !== req.userId) {
-      return res.status(409).json({ error: 'Этот Telegram уже привязан к другому аккаунту на сайте.' });
-    }
-    const current = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (current.telegramId && current.telegramId !== telegramId) {
-      return res.status(409).json({ error: 'К вашему аккаунту уже привязан другой Telegram.' });
-    }
-    const name = [req.body.first_name, req.body.last_name].filter(Boolean).join(' ') || req.body.username || 'Telegram';
-    const photo = req.body.photo_url || null;
-    const updated = await prisma.user.update({
-      where: { id: req.userId },
-      data: { telegramId, ...(photo && !current.avatarUrl ? { avatarUrl: photo } : {}) },
-    });
-    await prisma.socialProfile.upsert({
-      where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: telegramId } },
-      update: {},
-      create: { userId: req.userId, provider: 'TELEGRAM', providerAccountId: telegramId, name, avatarUrl: photo, accessToken: '' },
-    });
-    res.json({ success: true, user: sanitizeUser(updated) });
-  } catch (error) {
-    if (error.code === 'P2002') return res.status(409).json({ error: 'Этот Telegram уже привязан к другому аккаунту на сайте.' });
-    console.error('Ошибка привязки Telegram:', error.message);
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
-};
-
 exports.linkVkLogin = async (req, res) => {
   try {
     const vkUser = await fetchVkIdUser(req.body.access_token);
@@ -159,24 +89,21 @@ exports.linkVkLogin = async (req, res) => {
   }
 };
 
-// Клиент сам отвязывает соцсеть. Последний способ входа отвязать нельзя, иначе аккаунт будет потерян.
+// Клиент отвязывает Telegram, через который подключает каналы. На вход на сайт это не влияет.
+// ВКонтакте отвязать нельзя: это единственный способ входа, и аккаунт будет потерян.
 exports.unlinkSocial = async (req, res) => {
   try {
     const { provider } = req.params;
-    const field = SOCIAL_LOGIN_FIELDS[provider];
-    if (!field) return res.status(404).json({ error: 'Неизвестная соцсеть' });
+    if (provider === 'vk') return res.status(400).json({ error: 'ВКонтакте — единственный способ входа. Чтобы сменить профиль, напишите в поддержку.' });
+    if (provider !== 'telegram') return res.status(404).json({ error: 'Неизвестная соцсеть' });
 
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user[field]) return res.status(400).json({ error: 'Эта соцсеть не привязана.' });
-    if (!Object.values(SOCIAL_LOGIN_FIELDS).some((other) => other !== field && user[other])) {
-      return res.status(400).json({ error: 'Это единственный способ входа. Сначала привяжите вторую соцсеть.' });
-    }
+    const profiles = await prisma.socialProfile.count({ where: { userId: req.userId, provider: 'TELEGRAM' } });
+    if (profiles === 0) return res.status(400).json({ error: 'Telegram не привязан.' });
 
-    const updated = await unlinkSocialLogin(req.userId, provider);
-    // Все прежние входы закрыты, поэтому этот браузер получает новый.
-    res.json({ success: true, token: signUserToken(updated), user: sanitizeUser(updated) });
+    const updated = await unlinkTelegram(req.userId);
+    res.json({ success: true, user: sanitizeUser(updated) });
   } catch (error) {
-    console.error('Ошибка отвязки соцсети:', error.message);
+    console.error('Ошибка отвязки Telegram:', error.message);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };

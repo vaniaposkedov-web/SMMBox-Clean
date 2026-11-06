@@ -28,7 +28,7 @@ export default function RecoverAccess() {
         </div>
         <h1 className="text-xl sm:text-2xl font-bold text-white mb-2">Восстановление доступа</h1>
         <p className="text-gray-400 text-xs sm:text-sm mb-6">
-          Поддержка выдала вам ссылку для входа. Она работает один раз. После входа привяжите новый Telegram или ВКонтакте в разделе «Настройки».
+          Поддержка выдала вам ссылку для входа. Она работает один раз. После входа привяжите профиль ВКонтакте в разделе «Настройки».
         </p>
         <button onClick={handleEnter} disabled={isLoading} className="w-full font-bold py-3 sm:py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm sm:text-base disabled:opacity-50 transition-colors flex justify-center items-center gap-2">
           {isLoading && <Loader2 className="animate-spin" size={18} />} Войти в аккаунт

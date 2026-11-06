@@ -5,7 +5,6 @@ import {
   Send, Plus, ShieldAlert, Check, Type, X, Loader2, CheckCircle2, Users
 } from 'lucide-react';
 
-import CustomTelegramButton from '../../components/CustomTelegramButton';
 import CustomVkButton from '../../components/CustomVkButton';
 import { TELEGRAM_BOT_NAME } from '../../telegramBot';
 import { io } from 'socket.io-client';

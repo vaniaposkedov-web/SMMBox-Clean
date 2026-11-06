@@ -7,7 +7,6 @@ import {
   Phone, Key, Users, Send, Loader2, Plus, Crown, MessageCircle
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import CustomTelegramButton from '../components/CustomTelegramButton';
 import CustomVkButton from '../components/CustomVkButton';
 import { SUPPORT_TELEGRAM } from '../telegramBot';
 import { LEGAL_DOCUMENTS } from '../legal/details';
@@ -47,24 +46,17 @@ export default function Profile() {
   const location = useLocation();
   const [highlightForm, setHighlightForm] = useState(false);
 
-  // Привязка входа через соцсети к этому аккаунту
-  const linkTelegramLogin = useStore((state) => state.linkTelegramLogin);
+  // Привязка профиля ВКонтакте к этому аккаунту, например после входа по ссылке поддержки
   const linkVkLogin = useStore((state) => state.linkVkLogin);
   const [linkNotice, setLinkNotice] = useState(null);
 
-  const showLinkResult = useCallback((name, result) => {
-    setLinkNotice(result.success
-      ? { ok: true, text: `${name} привязан. Теперь вы можете входить через него в этот аккаунт.` }
-      : { ok: false, text: result.error || `Не удалось привязать ${name}. Попробуйте ещё раз.` });
-  }, []);
-  const handleLinkTelegram = useCallback(async (data) => {
-    setLinkNotice(null);
-    showLinkResult('Telegram', await linkTelegramLogin(data));
-  }, [linkTelegramLogin, showLinkResult]);
   const handleLinkVk = useCallback(async (data) => {
     setLinkNotice(null);
-    showLinkResult('ВКонтакте', await linkVkLogin(data));
-  }, [linkVkLogin, showLinkResult]);
+    const result = await linkVkLogin(data);
+    setLinkNotice(result.success
+      ? { ok: true, text: 'ВКонтакте привязан. Теперь вы можете входить через него в этот аккаунт.' }
+      : { ok: false, text: result.error || 'Не удалось привязать ВКонтакте. Попробуйте ещё раз.' });
+  }, [linkVkLogin]);
   const deleteAccount = useStore((state) => state.deleteAccount);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deleteWord, setDeleteWord] = useState('');
@@ -82,26 +74,30 @@ export default function Profile() {
 
   const handleVkLinkError = useCallback((text) => setLinkNotice(text ? { ok: false, text } : null), []);
 
-  const unlinkSocialLogin = useStore((state) => state.unlinkSocialLogin);
+  // Telegram нужен только для подключения каналов через бота.
+  const profiles = useStore((state) => state.profiles) || [];
+  const fetchProfiles = useStore((state) => state.fetchProfiles);
+  const unlinkTelegram = useStore((state) => state.unlinkTelegram);
+  const telegramProfile = profiles.find((profile) => profile.provider === 'TELEGRAM');
   const [isUnlinking, setIsUnlinking] = useState(false);
-  const handleUnlink = async (provider, name) => {
-    const channelsNote = provider === 'telegram' ? ' Каналы останутся в аккаунте.' : '';
-    if (!window.confirm(`Отвязать ${name}? Входить через него больше не получится, а на других устройствах сайт попросит войти заново.${channelsNote}`)) return;
+  const handleUnlinkTelegram = async () => {
+    if (!window.confirm('Отвязать Telegram? Каналы останутся в аккаунте, и посты продолжат выходить. Добавлять новые каналы через этот Telegram будет нельзя.')) return;
     setIsUnlinking(true);
     setLinkNotice(null);
-    const result = await unlinkSocialLogin(provider);
+    const result = await unlinkTelegram();
     setIsUnlinking(false);
     setLinkNotice(result.success
-      ? { ok: true, text: `${name} отвязан. Вы можете привязать другой профиль.` }
-      : { ok: false, text: result.error || `Не удалось отвязать ${name}. Попробуйте ещё раз.` });
+      ? { ok: true, text: 'Telegram отвязан. Каналы остались в аккаунте.' }
+      : { ok: false, text: result.error || 'Не удалось отвязать Telegram. Попробуйте ещё раз.' });
   };
 
   useEffect(() => {
     if (user?.id) {
       fetchAccounts(user.id);
       fetchScheduledPosts();
+      fetchProfiles(user.id);
     }
-  }, [user?.id, fetchAccounts, fetchScheduledPosts]);
+  }, [user?.id, fetchAccounts, fetchScheduledPosts, fetchProfiles]);
 
 
   useEffect(() => {
@@ -151,12 +147,6 @@ export default function Profile() {
   if (!user) return null;
   const isVulnerable = !user?.phone || !user?.pavilion;
   const isRecovered = new URLSearchParams(location.search).get('recovered') === '1';
-  const linkedLogins = [user.telegramId, user.vkId].filter(Boolean).length;
-  const renderLinkedLogin = (provider, name) => (linkedLogins > 1 ? (
-    <button type="button" onClick={() => handleUnlink(provider, name)} disabled={isUnlinking} className="shrink-0 text-xs font-bold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-3 py-2 rounded-xl transition-colors disabled:opacity-50">
-      Отвязать
-    </button>
-  ) : <CheckCircle2 size={22} className="text-green-500 shrink-0" />);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -234,12 +224,7 @@ export default function Profile() {
     window.open(tgLink, '_blank', 'noopener,noreferrer');
   };
 
-  const getRegMethod = () => {
-    const ways = [];
-    if (user?.telegramId) ways.push('Telegram');
-    if (user?.vkId) ways.push('ВКонтакте');
-    return ways.join(', ') || 'соцсеть не привязана';
-  };
+  const getRegMethod = () => (user?.vkId ? 'ВКонтакте' : 'ВКонтакте не привязан');
 
   // --- ЛОГИКА ТИПА ТАРИФА ---
   const isSubscriptionActive = user?.isPro && (!user?.proExpiresAt || new Date(user.proExpiresAt) > new Date());
@@ -477,37 +462,43 @@ export default function Profile() {
             <div className="space-y-4 sm:space-y-6 flex flex-col">
               <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-8 shadow-xl">
                 <h2 className="text-lg sm:text-xl font-bold text-white mb-2 flex items-center gap-2">
-                  <Key size={20} className="text-blue-500" /> Вход через соцсети
+                  <Key size={20} className="text-blue-500" /> Вход на сайт
                 </h2>
-                <p className="text-gray-500 text-xs sm:text-sm mb-4">Привяжите Telegram и ВКонтакте: если потеряете доступ к одной соцсети, войдёте через другую.</p>
-                {isRecovered && linkedLogins === 0 && (
+                <p className="text-gray-500 text-xs sm:text-sm mb-4">Вход на сайт выполняется через ВКонтакте.</p>
+                {isRecovered && !user.vkId && (
                   <p role="status" className="text-xs mb-3 px-3 py-2 rounded-xl border text-blue-300 bg-blue-500/10 border-blue-500/20">
-                    Вы вошли по ссылке поддержки. Привяжите Telegram или ВКонтакте, чтобы дальше входить самостоятельно.
+                    Вы вошли по ссылке поддержки. Привяжите ВКонтакте, чтобы дальше входить самостоятельно.
                   </p>
                 )}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-3 p-3 bg-gray-900 border border-gray-800 rounded-2xl">
-                    <div className="min-w-0">
-                      <p className="text-white text-sm font-bold">Telegram</p>
-                      <p className={`text-xs mt-0.5 ${user.telegramId ? 'text-green-500' : 'text-gray-500'}`}>{user.telegramId ? 'Привязан' : 'Не привязан'}</p>
-                    </div>
-                    {user.telegramId
-                      ? renderLinkedLogin('telegram', 'Telegram')
-                      : <CustomTelegramButton onAuthCallback={handleLinkTelegram} />}
-                  </div>
                   <div className="flex items-center justify-between gap-3 p-3 bg-gray-900 border border-gray-800 rounded-2xl">
                     <div className="min-w-0">
                       <p className="text-white text-sm font-bold">ВКонтакте</p>
                       <p className={`text-xs mt-0.5 ${user.vkId ? 'text-green-500' : 'text-gray-500'}`}>{user.vkId ? 'Привязан' : 'Не привязан'}</p>
                     </div>
                     {user.vkId
-                      ? renderLinkedLogin('vk', 'ВКонтакте')
+                      ? <CheckCircle2 size={22} className="text-green-500 shrink-0" />
                       : <CustomVkButton onAuth={handleLinkVk} onError={handleVkLinkError} failureText="Не удалось привязать ВКонтакте. Попробуйте ещё раз." />}
                   </div>
+                  {user.vkId && (
+                    <p className="text-gray-500 text-xs">Потеряли доступ или хотите сменить профиль? <a href={`https://t.me/${PRO_MANAGER_TG}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Напишите в поддержку</a>.</p>
+                  )}
+                  <div className="flex items-center justify-between gap-3 p-3 bg-gray-900 border border-gray-800 rounded-2xl">
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-bold">Telegram для каналов</p>
+                      <p className={`text-xs mt-0.5 truncate ${telegramProfile ? 'text-green-500' : 'text-gray-500'}`}>{telegramProfile ? `Привязан: ${telegramProfile.name}` : 'Не привязан'}</p>
+                    </div>
+                    {telegramProfile ? (
+                      <button type="button" onClick={handleUnlinkTelegram} disabled={isUnlinking} className="shrink-0 text-xs font-bold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-3 py-2 rounded-xl transition-colors disabled:opacity-50">
+                        Отвязать
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => navigate('/accounts')} className="shrink-0 text-xs font-bold text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 px-3 py-2 rounded-xl transition-colors">
+                        Подключить
+                      </button>
+                    )}
+                  </div>
                 </div>
-                {linkedLogins === 1 && (
-                  <p className="text-gray-500 text-xs mt-3">Это ваш единственный способ входа. Чтобы его отвязать, сначала привяжите вторую соцсеть.</p>
-                )}
                 {linkNotice && (
                   <p role="status" className={`text-xs mt-3 px-3 py-2 rounded-xl border ${linkNotice.ok ? 'text-green-500 bg-green-500/10 border-green-500/20' : 'text-red-500 bg-red-500/10 border-red-500/20'}`}>
                     {linkNotice.text}

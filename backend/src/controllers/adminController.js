@@ -2,7 +2,7 @@ const prisma = require('../utils/prisma');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { signUserToken, sanitizeUser, sha256 } = require('../utils/security');
-const { SOCIAL_LOGIN_FIELDS, unlinkSocialLogin } = require('../utils/socialLogin');
+const { unlinkVkLogin, unlinkTelegram } = require('../utils/socialLogin');
 const { eraseUser } = require('../utils/accountErasure');
 const { logEvent } = require('../utils/logger');
 
@@ -44,12 +44,12 @@ exports.createLoginLink = async (req, res) => {
 exports.unlinkClientSocial = async (req, res) => {
     try {
         const { provider } = req.body;
-        if (!Object.keys(SOCIAL_LOGIN_FIELDS).includes(provider)) return res.status(400).json({ error: 'Неизвестная соцсеть' });
+        if (provider !== 'vk' && provider !== 'telegram') return res.status(400).json({ error: 'Неизвестная соцсеть' });
 
         const client = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
         if (!client) return res.status(404).json({ error: 'Клиент не найден' });
 
-        const updated = await unlinkSocialLogin(client.id, provider);
+        const updated = provider === 'vk' ? await unlinkVkLogin(client.id) : await unlinkTelegram(client.id);
         await logEvent(req.user.id, 'INFO', 'ADMIN', `Отвязан ${provider} у клиента ${client.id}`);
         res.json({ success: true, user: sanitizeUser(updated) });
     } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
@@ -208,7 +208,8 @@ exports.getUserDetails = async (req, res) => {
 
         const postsCount = await prisma.post.count({ where: { account: { userId: req.params.id } } });
         const consents = await prisma.legalConsent.findMany({ where: { userId: req.params.id }, orderBy: { createdAt: 'desc' }, take: 10 });
-        res.json({ success: true, user: sanitizeUser(user), postsCount, recentPosts, consents });
+        const telegramLinked = (await prisma.socialProfile.count({ where: { userId: req.params.id, provider: 'TELEGRAM' } })) > 0;
+        res.json({ success: true, user: sanitizeUser(user), postsCount, recentPosts, consents, telegramLinked });
     } catch (error) { 
         console.error('Ошибка в getUserDetails:', error);
         res.status(500).json({ error: 'Ошибка сервера при загрузке досье' }); 

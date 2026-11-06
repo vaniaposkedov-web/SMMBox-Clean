@@ -2,63 +2,59 @@ import { useCallback, useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { User } from 'lucide-react';
 
-import CustomTelegramButton from '../components/CustomTelegramButton';
 import CustomVkButton from '../components/CustomVkButton';
 import { SUPPORT_TELEGRAM } from '../telegramBot';
 import LegalConsentChecks from '../components/legal/LegalConsentChecks';
 
 const NO_CHECKS = { acceptTerms: false, personalDataConsent: false };
 const LEGAL_LINK = 'text-blue-500 hover:underline';
+const SUPPORT_LINK = `https://t.me/${SUPPORT_TELEGRAM}`;
 
 export default function Auth() {
-  const telegramLogin = useStore((state) => state.telegramLogin);
   const vkLogin = useStore((state) => state.vkLogin);
   const [sessionExpired, setSessionExpired] = useState(() => useStore.getState().sessionExpired);
   const [accountDeleted] = useState(() => useStore.getState().accountDeleted);
   useEffect(() => { useStore.setState({ sessionExpired: false, accountDeleted: false }); }, []);
 
   const [error, setError] = useState('');
-  const [pendingSocial, setPendingSocial] = useState(null);
+  const [pendingLogin, setPendingLogin] = useState(null);
   const [checks, setChecks] = useState(NO_CHECKS);
 
-  // При отказе во входе через соцсеть человек должен увидеть причину на странице,
-  // а новый аккаунт создаётся только после его согласия.
-  const finishSocialLogin = useCallback(async (name, login, data) => {
+  // При отказе во входе человек должен увидеть причину на странице, а новый аккаунт создаётся только после его согласия.
+  const finishVkLogin = useCallback(async (data) => {
     setError('');
     setSessionExpired(false);
-    const result = await login(data);
+    const result = await vkLogin(data);
     if (result.requiresConfirmation) {
       setChecks(NO_CHECKS);
-      setPendingSocial({ name, login, data });
+      setPendingLogin(data);
       return;
     }
-    if (!result.success) setError(result.error || `Не удалось войти через ${name}. Попробуйте ещё раз.`);
-  }, []);
-  const handleTelegramAuth = useCallback((data) => finishSocialLogin('Telegram', telegramLogin, data), [finishSocialLogin, telegramLogin]);
-  const handleVkAuth = useCallback((data) => finishSocialLogin('ВКонтакте', vkLogin, data), [finishSocialLogin, vkLogin]);
+    if (!result.success) setError(result.error || 'Не удалось войти через ВКонтакте. Попробуйте ещё раз.');
+  }, [vkLogin]);
 
-  const createSocialAccount = async () => {
-    const { name, login, data } = pendingSocial;
-    setPendingSocial(null);
-    await finishSocialLogin(name, login, { ...data, ...checks, createAccount: true });
+  const createAccount = async () => {
+    const data = pendingLogin;
+    setPendingLogin(null);
+    await finishVkLogin({ ...data, ...checks, createAccount: true });
   };
 
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 relative overflow-hidden">
-      {pendingSocial && (
+      {pendingLogin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
           <div role="dialog" aria-modal="true" className="w-full max-w-sm max-h-full overflow-y-auto bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 shadow-2xl">
-            <h3 className="text-white font-bold text-lg mb-3">Аккаунт с этим профилем {pendingSocial.name} не найден</h3>
+            <h3 className="text-white font-bold text-lg mb-3">Аккаунт с этим профилем ВКонтакте не найден</h3>
             <p className="text-gray-400 text-sm mb-5">
-              Если вы уже заходили на сайт через другую соцсеть, войдите через неё и привяжите {pendingSocial.name} в профиле, в разделе «Настройки». Так у вас останутся тариф, аккаунты и посты. Новый аккаунт будет пустым.
+              Если у вас уже есть аккаунт на сайте, например вы входили через Telegram или другой профиль ВКонтакте, не создавайте новый: <a href={SUPPORT_LINK} target="_blank" rel="noopener noreferrer" className={LEGAL_LINK}>напишите в поддержку</a>, и менеджер поможет сохранить тариф, каналы и посты. Новый аккаунт будет пустым.
             </p>
             <LegalConsentChecks value={checks} onChange={setChecks} />
             <div className="space-y-3 mt-5">
-              <button type="button" onClick={createSocialAccount} disabled={!checks.acceptTerms || !checks.personalDataConsent} className="w-full py-3 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <button type="button" onClick={createAccount} disabled={!checks.acceptTerms || !checks.personalDataConsent} className="w-full py-3 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                 Создать новый аккаунт
               </button>
-              <button type="button" onClick={() => setPendingSocial(null)} className="w-full py-3 rounded-xl font-bold text-sm text-gray-300 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors">
-                Войти через другую соцсеть
+              <button type="button" onClick={() => setPendingLogin(null)} className="w-full py-3 rounded-xl font-bold text-sm text-gray-300 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors">
+                Отмена
               </button>
             </div>
           </div>
@@ -77,12 +73,12 @@ export default function Auth() {
             <User size={24} className="sm:w-7 sm:h-7" />
           </div>
           <h1 className="text-xl sm:text-2xl font-bold text-white mb-2">Вход в SADOVODPS</h1>
-          <p className="text-gray-400 text-xs sm:text-sm">Войдите или зарегистрируйтесь через Telegram или ВКонтакте</p>
+          <p className="text-gray-400 text-xs sm:text-sm">Войдите или зарегистрируйтесь через ВКонтакте</p>
         </div>
 
-        <div className="flex justify-center gap-4">
-          <CustomTelegramButton onAuthCallback={handleTelegramAuth} />
-          <CustomVkButton onAuth={handleVkAuth} onError={setError} />
+        <div className="flex flex-col items-center gap-2">
+          <CustomVkButton onAuth={finishVkLogin} onError={setError} />
+          <span className="text-xs text-gray-400">Войти через ВКонтакте</span>
         </div>
 
         {(sessionExpired || error || accountDeleted) && (
@@ -98,8 +94,8 @@ export default function Auth() {
         </p>
 
         <div className="mt-6 pt-6 border-t border-gray-800 text-center text-sm text-gray-400">
-          Потеряли доступ к соцсетям?{' '}
-          <a href={`https://t.me/${SUPPORT_TELEGRAM}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:text-blue-400 transition-colors">
+          Потеряли доступ к ВКонтакте?{' '}
+          <a href={SUPPORT_LINK} target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:text-blue-400 transition-colors">
             Напишите в поддержку
           </a>
         </div>
