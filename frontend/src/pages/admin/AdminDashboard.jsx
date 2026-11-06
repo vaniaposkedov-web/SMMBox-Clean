@@ -26,6 +26,10 @@ export default function AdminDashboard() {
   // === СОСТОЯНИЕ ДОСЬЕ ===
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [userDetails, setUserDetails] = useState(null);
+  const [loginLink, setLoginLink] = useState(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [accessBusy, setAccessBusy] = useState(false);
+  const [accessError, setAccessError] = useState('');
   const [dossierTab, setDossierTab] = useState('main'); // Вкладки внутри досье
   const [editPavilion, setEditPavilion] = useState('');
   const [isSavingPavilion, setIsSavingPavilion] = useState(false);
@@ -197,6 +201,8 @@ const submitProGrant = async (isRevoke = false) => {
 
   const openUserDetails = async (userId) => {
     setIsModalOpen(true);
+    setLoginLink(null);
+    setAccessError('');
     setDossierTab('main');
     const token = localStorage.getItem('adminToken');
     try {
@@ -207,6 +213,43 @@ const submitProGrant = async (isRevoke = false) => {
           setEditPavilion(result.user.pavilion || ''); 
       }
     } catch (e) {}
+  };
+
+  const accessRequest = async (url, body) => {
+    setAccessError('');
+    setAccessBusy(true);
+    try {
+      const res = await fetch(`/api/admin/users/${userDetails.user.id}/${url}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` },
+        body: JSON.stringify(body || {}),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAccessError(data.error || 'Не удалось выполнить действие'); return null; }
+      return data;
+    } catch (e) {
+      setAccessError('Ошибка соединения с сервером');
+      return null;
+    } finally {
+      setAccessBusy(false);
+    }
+  };
+
+  const createLoginLink = async () => {
+    const data = await accessRequest('login-link');
+    if (data) { setLoginLink(`${window.location.origin}/recover/${data.code}`); setLinkCopied(false); }
+  };
+
+  const unlinkClientSocial = async (provider, name) => {
+    if (!window.confirm(`Отвязать ${name} у клиента? Все его входы на сайт закроются.`)) return;
+    const data = await accessRequest('unlink', { provider });
+    if (data) setUserDetails((prev) => ({ ...prev, user: { ...prev.user, ...data.user } }));
+  };
+
+  const copyLoginLink = () => {
+    navigator.clipboard.writeText(loginLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   };
 
   const savePavilion = async () => {
@@ -226,15 +269,12 @@ const submitProGrant = async (isRevoke = false) => {
       setIsSavingPavilion(false);
   };
 
-  const filteredUsers = allUsers.filter(u => 
-    (u?.email && u.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (u?.id && u.id.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (u?.phone && u.phone.includes(searchQuery))
-  );
+  const matchesUser = (u, query) => [u?.id, u?.name, u?.email].some((value) => value && value.toLowerCase().includes(query.toLowerCase())) ||
+    Boolean(u?.phone && u.phone.includes(query));
 
-  const planSearchFilteredUsers = allUsers.filter(u => 
-    planUserSearch && ((u?.email && u.email.toLowerCase().includes(planUserSearch.toLowerCase())) || (u?.id && u.id.toLowerCase().includes(planUserSearch.toLowerCase())))
-  );
+  const filteredUsers = allUsers.filter((u) => matchesUser(u, searchQuery));
+
+  const planSearchFilteredUsers = allUsers.filter((u) => planUserSearch && matchesUser(u, planUserSearch));
 
   const theme = {
     bg: isDark ? 'bg-[#0a0a0a]' : 'bg-gray-100',
@@ -398,7 +438,7 @@ const submitProGrant = async (isRevoke = false) => {
                       {data?.recentTransactions?.map(t => (
                         <tr key={t.id} className={theme.rowHover}>
                           <td className="px-6 py-4 font-black text-green-500">+{t.amount} ₽</td>
-                          <td className="px-6 py-4 font-bold">{t.user?.email || t.user?.id}</td>
+                          <td className="px-6 py-4 font-bold">{t.user?.email || t.user?.name || t.user?.id}</td>
                           <td className="px-6 py-4"><span className="bg-blue-600/20 text-blue-500 border border-blue-500/30 px-3 py-1 rounded-full text-xs font-bold">{t.type}</span></td>
                           <td className="px-6 py-4 text-right text-xs text-gray-500">{new Date(t.createdAt).toLocaleString()}</td>
                         </tr>
@@ -487,7 +527,7 @@ const submitProGrant = async (isRevoke = false) => {
                 </div>
                 <div className="relative w-full sm:w-auto">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Поиск по ID, Email, Телефону..." className={`w-full sm:w-80 pl-10 pr-4 py-2 ${theme.inputBg} border rounded-xl outline-none focus:border-blue-500 text-sm`} />
+                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Поиск по ID, имени, телефону..." className={`w-full sm:w-80 pl-10 pr-4 py-2 ${theme.inputBg} border rounded-xl outline-none focus:border-blue-500 text-sm`} />
                 </div>
               </div>
 
@@ -553,7 +593,7 @@ const submitProGrant = async (isRevoke = false) => {
                   </div>
                   <div className="relative w-full sm:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                    <input type="text" value={planUserSearch} onChange={(e) => setPlanUserSearch(e.target.value)} placeholder="Поиск (Email, ID)..." className={`w-full pl-10 pr-4 py-2 ${theme.inputBg} border rounded-xl outline-none focus:border-blue-500 text-sm`} />
+                    <input type="text" value={planUserSearch} onChange={(e) => setPlanUserSearch(e.target.value)} placeholder="Поиск по ID, имени, телефону..." className={`w-full pl-10 pr-4 py-2 ${theme.inputBg} border rounded-xl outline-none focus:border-blue-500 text-sm`} />
                   </div>
                 </div>
 
@@ -695,7 +735,7 @@ const submitProGrant = async (isRevoke = false) => {
                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                             <div className="flex flex-wrap gap-2 items-center">
                               <span className="bg-blue-600/20 border border-blue-500/30 text-blue-400 font-mono text-[10px] sm:text-xs px-2 py-1 rounded-md font-bold">ID: {log.userId}</span>
-                              <span className="text-xs sm:text-sm font-bold text-gray-300">{log.user?.email || 'Удален'}</span>
+                              <span className="text-xs sm:text-sm font-bold text-gray-300">{log.user?.email || log.user?.name || 'Удален'}</span>
                               <span className="text-[10px] text-gray-500 font-medium bg-gray-800 px-2 py-1 rounded-md">
                                 {new Date(log.createdAt).toLocaleString('ru-RU')}
                               </span>
@@ -907,7 +947,7 @@ const submitProGrant = async (isRevoke = false) => {
               <h2 className="text-2xl font-black flex items-center gap-3">
                 <UserIcon className="text-blue-500" /> Досье клиента
               </h2>
-              <p className="text-sm text-gray-500 mt-1">{userDetails.user.email || 'Без Email'} <span className="font-mono bg-gray-900 px-2 py-0.5 rounded ml-2">{userDetails.user.id}</span></p>
+              <p className="text-sm text-gray-500 mt-1">{userDetails.user.name || 'Без имени'} <span className="font-mono bg-gray-900 px-2 py-0.5 rounded ml-2">{userDetails.user.id}</span></p>
 
               <div className="flex gap-2 mt-6 overflow-x-auto hide-scrollbar pb-2">
                  <button onClick={()=>setDossierTab('main')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors shrink-0 ${dossierTab==='main' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>Сводка</button>
@@ -933,6 +973,35 @@ const submitProGrant = async (isRevoke = false) => {
                       <p><span className="text-gray-500 block text-xs uppercase mb-1">Тариф</span> {userDetails.user.isPro ? <span className="text-yellow-500 font-bold bg-yellow-500/10 px-2 py-0.5 rounded">{userDetails.user.proPlanType || 'PRO'} до {new Date(userDetails.user.proExpiresAt).toLocaleDateString()}</span> : <span className="text-gray-400 font-bold bg-gray-800 px-2 py-0.5 rounded">FREE</span>}</p>
                       <button onClick={() => setProModal({ isOpen: true, user: userDetails.user })} className="mt-4 w-full py-2 bg-blue-600/20 text-blue-500 hover:bg-blue-600/30 font-bold rounded-lg transition-colors">Управление подпиской</button>
                     </div>
+                  </div>
+
+                  <div className="p-5 bg-gray-900 border border-gray-800 rounded-xl space-y-3">
+                    <label className="text-xs font-bold text-gray-500 block uppercase">Вход клиента</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[['telegram', 'Telegram', userDetails.user.telegramId], ['vk', 'ВКонтакте', userDetails.user.vkId]].map(([provider, name, linkedId]) => (
+                        <div key={provider} className="flex items-center justify-between gap-3 p-3 bg-black border border-gray-800 rounded-lg">
+                          <div className="min-w-0 text-sm">
+                            <p className="font-bold text-white">{name}</p>
+                            <p className={`text-xs truncate ${linkedId ? 'text-green-500' : 'text-gray-500'}`}>{linkedId ? 'Привязан' : 'Не привязан'}</p>
+                          </div>
+                          {linkedId && (
+                            <button type="button" onClick={() => unlinkClientSocial(provider, name)} disabled={accessBusy} className="shrink-0 text-xs font-bold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-3 py-2 rounded-lg transition-colors disabled:opacity-50">Отвязать</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500">Клиент потерял доступ к соцсетям? Сначала убедитесь, что это он, например, сверьте номер телефона. Затем отвяжите потерянную соцсеть и выдайте ссылку для входа.</p>
+                    <button type="button" onClick={createLoginLink} disabled={accessBusy} className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors text-sm disabled:opacity-50">Выдать ссылку для входа</button>
+                    {loginLink && (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input readOnly value={loginLink} aria-label="Ссылка для входа" onFocus={(e) => e.target.select()} className="flex-1 min-w-0 p-2.5 rounded-lg border border-gray-700 bg-black text-white text-xs outline-none" />
+                          <button type="button" onClick={copyLoginLink} className="shrink-0 px-4 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-bold transition-colors">{linkCopied ? 'Скопировано' : 'Копировать'}</button>
+                        </div>
+                        <p className="text-xs text-amber-400">Ссылка даёт полный вход в аккаунт. Она работает один раз и действует 1 час. Отправьте её только этому клиенту.</p>
+                      </div>
+                    )}
+                    {accessError && <p role="status" className="text-xs text-red-400">{accessError}</p>}
                   </div>
 
                   <div className="p-5 bg-gray-900 border border-gray-800 rounded-xl">
@@ -1023,7 +1092,7 @@ const submitProGrant = async (isRevoke = false) => {
                     <h3 className="text-sm font-bold text-gray-400 mb-3 uppercase">Отправленные инвайты (Рефералы)</h3>
                     {userDetails.user.sentRequests?.map(req => (
                       <div key={req.id} className="p-3 bg-gray-900 border border-gray-800 rounded-lg mb-2 text-sm">
-                        <span className="text-white">{req.receiver.email || req.receiver.id}</span>
+                        <span className="text-white">{req.receiver.email || req.receiver.name || req.receiver.id}</span>
                         <span className="text-xs text-gray-500 block mt-1">{req.receiver.isPro ? 'Платный юзер' : 'Free юзер'}</span>
                       </div>
                     ))}
@@ -1034,7 +1103,7 @@ const submitProGrant = async (isRevoke = false) => {
                     // КАК ДОЛЖНО БЫТЬ:
                         {userDetails.user.receivedRequests?.map(req => (
                           <div key={req.id} className="p-3 bg-gray-900 border border-gray-800 rounded-lg mb-2 text-sm">
-                            <span className="text-white">{req.requester.email || req.requester.id}</span>
+                            <span className="text-white">{req.requester.email || req.requester.name || req.requester.id}</span>
                           </div>
                         ))}
                     {!userDetails.user.receivedRequests?.length && <p className="text-xs text-gray-600">Зарегистрировался сам</p>}
@@ -1053,7 +1122,7 @@ const submitProGrant = async (isRevoke = false) => {
           <div className={`${theme.card} w-full max-w-sm border rounded-3xl p-6 shadow-2xl relative animate-in zoom-in-95`}>
             <button onClick={() => setProModal({ isOpen: false, user: null })} className="absolute top-5 right-5 p-2 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"><X size={20}/></button>
             <h2 className="text-xl font-bold mb-6 flex items-center gap-2"><Crown className="text-yellow-500"/> Управление подпиской</h2>
-            <p className="text-xs text-gray-500 mb-6 truncate">Клиент: {proModal.user.email || proModal.user.id}</p>
+            <p className="text-xs text-gray-500 mb-6 truncate">Клиент: {proModal.user.email || proModal.user.name || proModal.user.id}</p>
             
             <div className="space-y-4 mb-6">
               {proModal.user?.isPro && (

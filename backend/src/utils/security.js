@@ -9,7 +9,7 @@ const getJwtSecret = () => {
 };
 
 const signUserToken = (user, expiresIn = '7d') =>
-  jwt.sign({ userId: user.id, role: user.role }, getJwtSecret(), { expiresIn });
+  jwt.sign({ userId: user.id, role: user.role, tv: user.tokenVersion ?? 0 }, getJwtSecret(), { expiresIn });
 
 const PRIVATE_USER_FIELDS = [
   'password',
@@ -19,16 +19,15 @@ const PRIVATE_USER_FIELDS = [
   'resetPasswordExpires',
   'telegramBindCode',
   'telegramBindExpires',
+  'tokenVersion',
 ];
 
 const sanitizeUser = (user) => {
   if (!user) return user;
-  const safe = { ...user, hasPassword: Boolean(user.password) };
+  const safe = { ...user };
   for (const field of PRIVATE_USER_FIELDS) delete safe[field];
   return safe;
 };
-
-const generateVerificationCode = () => String(crypto.randomInt(100000, 1000000));
 
 const sha256 = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
 
@@ -81,7 +80,6 @@ module.exports = {
   getJwtSecret,
   signUserToken,
   sanitizeUser,
-  generateVerificationCode,
   sha256,
   safeEqual,
   verifyTelegramLogin,

@@ -1,6 +1,11 @@
 const prisma = require('../utils/prisma');
 const bcrypt = require('bcryptjs');
-const { signUserToken, sanitizeUser } = require('../utils/security');
+const crypto = require('crypto');
+const { signUserToken, sanitizeUser, sha256 } = require('../utils/security');
+const { SOCIAL_LOGIN_FIELDS, unlinkSocialLogin } = require('../utils/socialLogin');
+const { logEvent } = require('../utils/logger');
+
+const LOGIN_LINK_LIFETIME_MS = 60 * 60 * 1000;
 
 const { DEFAULT_AI_PROMPT } = require('./aiController');
 
@@ -15,6 +20,37 @@ exports.adminLogin = async (req, res) => {
         if (!isMatch) return res.status(401).json({ error: 'Неверные учетные данные' });
 
         res.json({ success: true, token: signUserToken(user, '12h'), user: sanitizeUser(user) });
+    } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+};
+
+// Клиент потерял доступ к соцсетям: менеджер проверяет его и выдаёт одноразовую ссылку для входа.
+exports.createLoginLink = async (req, res) => {
+    try {
+        const client = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, role: true } });
+        if (!client) return res.status(404).json({ error: 'Клиент не найден' });
+        if (client.role === 'ADMIN') return res.status(400).json({ error: 'Для администратора ссылка не выдаётся. Используйте команду на сервере.' });
+
+        const code = crypto.randomBytes(24).toString('base64url');
+        const expiresAt = new Date(Date.now() + LOGIN_LINK_LIFETIME_MS);
+        await prisma.user.update({ where: { id: client.id }, data: { resetPasswordToken: sha256(code), resetPasswordExpires: expiresAt } });
+        await logEvent(req.user.id, 'INFO', 'ADMIN', `Выдана ссылка для входа клиенту ${client.id}`);
+
+        res.json({ success: true, code, expiresAt });
+    } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
+};
+
+// Администратор может отвязать и последний способ входа: потом клиент вернётся по ссылке.
+exports.unlinkClientSocial = async (req, res) => {
+    try {
+        const { provider } = req.body;
+        if (!Object.keys(SOCIAL_LOGIN_FIELDS).includes(provider)) return res.status(400).json({ error: 'Неизвестная соцсеть' });
+
+        const client = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+        if (!client) return res.status(404).json({ error: 'Клиент не найден' });
+
+        const updated = await unlinkSocialLogin(client.id, provider);
+        await logEvent(req.user.id, 'INFO', 'ADMIN', `Отвязан ${provider} у клиента ${client.id}`);
+        res.json({ success: true, user: sanitizeUser(updated) });
     } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
 };
 
@@ -329,7 +365,7 @@ exports.getAiLogs = async (req, res) => {
             orderBy: { createdAt: 'desc' },
             take,
             skip,
-            include: { user: { select: { email: true } } }
+            include: { user: { select: { email: true, name: true } } }
         });
 
         const total = await prisma.aiLog.count({ where });

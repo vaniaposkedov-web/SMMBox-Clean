@@ -27,8 +27,7 @@ import WatermarkConstructor from './components/settings/WatermarkConstructor';
 
 // --- СТРАНИЦЫ АВТОРИЗАЦИИ И ВОССТАНОВЛЕНИЯ ---
 import Auth from './pages/Auth'; 
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
+import RecoverAccess from './pages/RecoverAccess';
 
 // === СЛОВАРЬ НАЗВАНИЙ ВКЛАДОК ===
 const getPageTitle = (pathname) => {
@@ -314,8 +313,7 @@ function App() {
         <MaintenanceGuard>
           <Routes>
             <Route path="/auth" element={<Auth />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/recover/:code" element={<RecoverAccess />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/boss-login" element={<AdminLogin />} />
             <Route path="/system-core-dashboard" element={<AdminDashboard />} />
@@ -350,7 +348,7 @@ function App() {
             <Route path="/signatures" element={<SignatureConstructor />} />
           </Route>
 
-          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route path="/recover/:code" element={<RecoverAccess />} />
           <Route path="/boss-login" element={<AdminLogin />} />
           <Route path="/system-core-dashboard" element={<AdminDashboard />} />
 

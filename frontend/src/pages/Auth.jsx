@@ -1,46 +1,32 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useStore } from '../store';
-import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, ArrowLeft, Loader2, KeyRound } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { User } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import CustomTelegramButton from '../components/CustomTelegramButton';
 import CustomVkButton from '../components/CustomVkButton';
+import { SUPPORT_TELEGRAM } from '../telegramBot';
 
 export default function Auth() {
-  const navigate = useNavigate();
   const telegramLogin = useStore((state) => state.telegramLogin);
   const vkLogin = useStore((state) => state.vkLogin);
   const [sessionExpired, setSessionExpired] = useState(() => useStore.getState().sessionExpired);
   useEffect(() => { useStore.setState({ sessionExpired: false }); }, []);
 
-  const [isLogin, setIsLogin] = useState(true);
-  const [isVerification, setIsVerification] = useState(false);
-  const [isForgotPassword, setIsForgotPassword] = useState(false); 
-  const [showPassword, setShowPassword] = useState(false);
-  
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-  const [isAccepted, setIsAccepted] = useState(false);
-
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-
   const [pendingSocial, setPendingSocial] = useState(null);
 
   // При отказе во входе через соцсеть человек должен увидеть причину на странице,
   // а новый аккаунт создаётся только после его согласия.
   const finishSocialLogin = useCallback(async (name, login, data) => {
     setError('');
+    setSessionExpired(false);
     const result = await login(data);
     if (result.requiresConfirmation) {
       setPendingSocial({ name, login, data });
       return;
     }
-    if (!result.success) setError(result.error || `Не удалось войти через ${name}. Попробуйте ещё раз или войдите по почте.`);
+    if (!result.success) setError(result.error || `Не удалось войти через ${name}. Попробуйте ещё раз.`);
   }, []);
   const handleTelegramAuth = useCallback((data) => finishSocialLogin('Telegram', telegramLogin, data), [finishSocialLogin, telegramLogin]);
   const handleVkAuth = useCallback((data) => finishSocialLogin('ВКонтакте', vkLogin, data), [finishSocialLogin, vkLogin]);
@@ -50,102 +36,6 @@ export default function Auth() {
     setPendingSocial(null);
     await finishSocialLogin(name, login, { ...data, createAccount: true });
   };
-  const chooseEmailLogin = () => {
-    setPendingSocial(null);
-    setIsLogin(true);
-    setIsVerification(false);
-    setIsForgotPassword(false);
-  };
-
-  const handlePhoneChange = (e) => {
-    const val = e.target.value.replace(/\D/g, '');
-    if (!val) { setPhone(''); return; }
-    if (val.startsWith('7') || val.startsWith('8')) {
-      const p = val.substring(1, 11);
-      setPhone(`+7 ${p.slice(0,3)} ${p.slice(3,6)} ${p.slice(6,8)} ${p.slice(8,10)}`.trim());
-    } else {
-      setPhone(`+${val.slice(0,11)}`);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccessMsg('');
-    setIsLoading(true);
-    setSessionExpired(false);
-
-    try {
-     
-      if (isForgotPassword) {
-        const res = await fetch('/api/auth/forgot-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setSuccessMsg('Ссылка для сброса пароля отправлена на вашу почту!');
-          setTimeout(() => setIsForgotPassword(false), 3000);
-        } else {
-          setError(data.error || 'Ошибка при восстановлении');
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      
-      if (isVerification) {
-        const res = await fetch('/api/auth/verify-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, code })
-        });
-        const data = await res.json();
-        if (res.ok) {
-           localStorage.setItem('token', data.token);
-           useStore.setState({ user: data.user, token: data.token });
-           navigate('/profile');
-        } else {
-           setError(data.error || 'Неверный код');
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      
-      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-      const body = isLogin ? { email, password } : { email, password, name, phone };
-      
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        if (isLogin) {
-          localStorage.setItem('token', data.token);
-          useStore.setState({ user: data.user, token: data.token });
-          navigate('/profile');
-        } else {
-          setIsVerification(true);
-          setSuccessMsg('Код подтверждения отправлен на почту!');
-        }
-      } else {
-        if (data.error === 'EMAIL_NOT_VERIFIED') {
-          setIsVerification(true);
-          setSuccessMsg('На вашу почту отправлен новый код подтверждения.');
-        } else {
-          setError(data.error || 'Произошла ошибка');
-        }
-      }
-    } catch (err) {
-      setError('Ошибка соединения с сервером');
-    }
-    setIsLoading(false);
-  };
 
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 relative overflow-hidden">
@@ -154,11 +44,11 @@ export default function Auth() {
           <div role="dialog" aria-modal="true" className="w-full max-w-sm bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 shadow-2xl">
             <h3 className="text-white font-bold text-lg mb-3">Аккаунт с этим профилем {pendingSocial.name} не найден</h3>
             <p className="text-gray-400 text-sm mb-5">
-              Если вы уже регистрировались по почте, войдите по почте и привяжите {pendingSocial.name} в профиле, в разделе «Настройки». Так у вас останутся тариф, аккаунты и посты. Новый аккаунт будет пустым.
+              Если вы уже заходили на сайт через другую соцсеть, войдите через неё и привяжите {pendingSocial.name} в профиле, в разделе «Настройки». Так у вас останутся тариф, аккаунты и посты. Новый аккаунт будет пустым.
             </p>
             <div className="space-y-3">
-              <button type="button" onClick={chooseEmailLogin} className="w-full py-3 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-colors">
-                Войти по почте
+              <button type="button" onClick={() => setPendingSocial(null)} className="w-full py-3 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-colors">
+                Войти через другую соцсеть
               </button>
               <button type="button" onClick={createSocialAccount} className="w-full py-3 rounded-xl font-bold text-sm text-gray-300 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors">
                 Создать новый аккаунт
@@ -167,6 +57,7 @@ export default function Auth() {
           </div>
         </div>
       )}
+
       {/* Декоративный фон */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-blue-600/10 blur-[120px]"></div>
@@ -174,135 +65,36 @@ export default function Auth() {
       </div>
 
       <div className="w-full max-w-md bg-[#0d0f13] border border-gray-800 rounded-2xl sm:rounded-3xl p-6 sm:p-10 shadow-2xl relative z-10 animate-in slide-in-from-bottom-4 duration-500">
-        
-        {/* Кнопка "Назад" */}
-        {(isVerification || isForgotPassword) && (
-          <button 
-            onClick={() => { setIsVerification(false); setIsForgotPassword(false); setError(''); setSuccessMsg(''); }} 
-            className="flex items-center gap-2 text-gray-500 hover:text-white transition-colors mb-5 sm:mb-6"
-          >
-            <ArrowLeft size={18} /> <span className="text-sm font-medium">Назад</span>
-          </button>
-        )}
-
         <div className="text-center mb-6 sm:mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-blue-500/10 text-blue-500 mb-4 border border-blue-500/20">
-            {isForgotPassword ? <KeyRound size={24} className="sm:w-7 sm:h-7" /> : isVerification ? <ShieldCheck size={24} className="sm:w-7 sm:h-7" /> : <User size={24} className="sm:w-7 sm:h-7" />}
+            <User size={24} className="sm:w-7 sm:h-7" />
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-white mb-2">
-            {isForgotPassword ? 'Сброс пароля' : isVerification ? 'Подтверждение почты' : isLogin ? 'С возвращением' : 'Создать аккаунт'}
-          </h1>
-          <p className="text-gray-400 text-xs sm:text-sm">
-            {isForgotPassword 
-              ? 'Введите email, и мы отправим ссылку для сброса.'
-              : isVerification 
-              ? `Введите 6-значный код, отправленный на ${email}` 
-              : isLogin 
-              ? 'Войдите в свой аккаунт для продолжения' 
-              : 'Заполните данные для начала работы'}
-          </p>
+          <h1 className="text-xl sm:text-2xl font-bold text-white mb-2">Вход в SADOVODPS</h1>
+          <p className="text-gray-400 text-xs sm:text-sm">Войдите или зарегистрируйтесь через Telegram или ВКонтакте</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
-          
-          {isVerification && (
-            <div className="relative">
-              <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-              <input 
-                type="text" 
-                placeholder="000000" 
-                value={code} 
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-12 pr-4 py-3 sm:py-4 text-white text-center tracking-[0.5em] text-lg sm:text-xl focus:border-blue-500 transition-colors focus:outline-none"
-                required 
-              />
-            </div>
-          )}
+        <div className="flex justify-center gap-4">
+          <CustomTelegramButton onAuthCallback={handleTelegramAuth} />
+          <CustomVkButton onAuth={handleVkAuth} onError={setError} />
+        </div>
 
-          {!isVerification && (
-            <>
-              {!isLogin && !isForgotPassword && (
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <input type="text" placeholder="Имя профиля" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-11 pr-4 py-3 sm:py-4 text-white text-sm sm:text-base placeholder-gray-500 focus:border-blue-500 transition-colors focus:outline-none" required />
-                </div>
-              )}
-              
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                <input type="email" placeholder="Email адрес" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-11 pr-4 py-3 sm:py-4 text-white text-sm sm:text-base placeholder-gray-500 focus:border-blue-500 transition-colors focus:outline-none" required />
-              </div>
-
-              {!isLogin && !isForgotPassword && (
-                <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <input type="text" placeholder="Телефон (необязательно)" value={phone} onChange={handlePhoneChange} className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-11 pr-4 py-3 sm:py-4 text-white text-sm sm:text-base placeholder-gray-500 focus:border-blue-500 transition-colors focus:outline-none" />
-                </div>
-              )}
-
-              {!isForgotPassword && (
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                  <input type={showPassword ? 'text' : 'password'} placeholder="Пароль" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-11 pr-12 py-3 sm:py-4 text-white text-sm sm:text-base placeholder-gray-500 focus:border-blue-500 transition-colors focus:outline-none" required />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors">
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              )}
-
-              {isLogin && !isForgotPassword && (
-                <div className="flex justify-end">
-                  <button type="button" onClick={() => setIsForgotPassword(true)} className="text-xs sm:text-sm text-blue-500 hover:text-blue-400 transition-colors">
-                    Забыли пароль?
-                  </button>
-                </div>
-              )}
-
-              {!isLogin && !isForgotPassword && (
-                <div className="flex items-start gap-2 sm:gap-3 mt-3 sm:mt-4">
-                  <input type="checkbox" checked={isAccepted} onChange={(e) => setIsAccepted(e.target.checked)} className="w-4 h-4 sm:w-5 sm:h-5 mt-1 accent-blue-600 rounded shrink-0 cursor-pointer" />
-                  <label className="text-xs sm:text-sm text-gray-400 leading-relaxed">Согласен(на) с <Link to="/privacy" className="text-blue-500 hover:underline">Пользовательским соглашением и Политикой конфиденциальности</Link>.</label>
-                </div>
-              )}
-            </>
-          )}
-
-          <div className="min-h-[32px] sm:min-h-[40px] pt-1">
-            {sessionExpired && !error && <div className="text-amber-400 text-xs text-center bg-amber-500/10 py-2 sm:py-3 rounded-xl border border-amber-500/20 mb-2">Время входа истекло. Войдите снова.</div>}
-            {error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-2 sm:py-3 rounded-xl border border-red-500/20">{error}</div>}
-            {successMsg && <div className="text-green-500 text-xs text-center bg-green-500/10 py-2 sm:py-3 rounded-xl border border-green-500/20">{successMsg}</div>}
+        {(sessionExpired || error) && (
+          <div className="mt-6">
+            {sessionExpired && !error && <div className="text-amber-400 text-xs text-center bg-amber-500/10 py-2 sm:py-3 px-3 rounded-xl border border-amber-500/20">Время входа истекло. Войдите снова.</div>}
+            {error && <div className="text-red-500 text-xs text-center bg-red-500/10 py-2 sm:py-3 px-3 rounded-xl border border-red-500/20">{error}</div>}
           </div>
-          
-          <button type="submit" disabled={isLoading || (!isLogin && !isVerification && !isForgotPassword && !isAccepted)} className="w-full font-bold py-3 sm:py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm sm:text-base disabled:opacity-50 transition-colors shadow-lg shadow-blue-500/20">
-            {isLoading ? <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin" size={18}/></div> : 
-              <span>{isForgotPassword ? 'Отправить ссылку' : isVerification ? 'Подтвердить' : isLogin ? 'Войти' : 'Создать аккаунт'}</span>
-            }
-          </button>
-        </form>
-
-        {/* Блок социальных сетей (скрыт при вводе кода или сбросе пароля) */}
-        {!isVerification && !isForgotPassword && (
-          <>
-            <div className="mt-8 pt-6 border-t border-gray-800">
-              <p className="text-center text-[10px] text-gray-500 mb-3 leading-tight px-4">
-                Продолжая авторизацию через соцсети, вы принимаете <Link to="/privacy" className="text-blue-500 hover:underline">Пользовательское соглашение и Политику конфиденциальности</Link>.
-              </p>
-              <p className="text-center text-xs text-gray-500 mb-5 font-medium uppercase tracking-wider">Быстрый вход через соцсети</p>
-              <div className="flex justify-center gap-4">
-                <CustomTelegramButton onAuthCallback={handleTelegramAuth} />
-                <CustomVkButton onAuth={handleVkAuth} onError={setError} />
-              </div>
-            </div>
-
-            <div className="mt-8 text-center text-sm text-gray-400">
-              {isLogin ? "Нет аккаунта? " : "Уже есть аккаунт? "}
-              <button onClick={() => { setIsLogin(!isLogin); setError(''); setSuccessMsg(''); }} className="text-blue-500 font-bold hover:text-blue-400 transition-colors">
-                {isLogin ? 'Зарегистрироваться' : 'Войти'}
-              </button>
-            </div>
-          </>
         )}
 
+        <p className="text-center text-[10px] sm:text-xs text-gray-500 mt-6 leading-relaxed">
+          Продолжая, вы принимаете <Link to="/privacy" className="text-blue-500 hover:underline">Пользовательское соглашение и Политику конфиденциальности</Link>.
+        </p>
+
+        <div className="mt-6 pt-6 border-t border-gray-800 text-center text-sm text-gray-400">
+          Потеряли доступ к соцсетям?{' '}
+          <a href={`https://t.me/${SUPPORT_TELEGRAM}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:text-blue-400 transition-colors">
+            Напишите в поддержку
+          </a>
+        </div>
       </div>
     </div>
   );

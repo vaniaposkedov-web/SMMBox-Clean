@@ -36,7 +36,9 @@ async function main() {
   const passwordData = password ? { password: await bcrypt.hash(password, 10) } : {};
 
   if (user) {
-    await prisma.user.update({ where: { id: user.id }, data: { role: 'ADMIN', isEmailVerified: true, ...passwordData } });
+    // При смене пароля закрываются все прежние входы администратора.
+    const closeSessions = wantsNewPassword ? { tokenVersion: { increment: 1 } } : {};
+    await prisma.user.update({ where: { id: user.id }, data: { role: 'ADMIN', isEmailVerified: true, ...passwordData, ...closeSessions } });
     console.log(user.role === 'ADMIN' ? `${email} уже администратор.` : `${email} теперь администратор.`);
   } else {
     await prisma.user.create({

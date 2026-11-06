@@ -1,15 +1,15 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
-import { 
-  User, Mail, Shield, Edit2, X, Hash, Camera, 
-  Check, Copy, CalendarClock, CheckCircle2, AlertCircle, 
-  Settings as SettingsIcon, LayoutDashboard, Lock, 
+import {
+  User, Shield, Edit2, X, Hash, Camera,
+  Check, Copy, CalendarClock, CheckCircle2, AlertCircle,
+  Settings as SettingsIcon, LayoutDashboard,
   Phone, Key, Users, Send, Loader2, Plus, Crown, MessageCircle
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import CustomTelegramButton from '../components/CustomTelegramButton';
 import CustomVkButton from '../components/CustomVkButton';
-import EmailLinkForm from '../components/settings/EmailLinkForm';
+import { SUPPORT_TELEGRAM } from '../telegramBot';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -27,7 +27,7 @@ export default function Profile() {
 
   const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
 
-  const PRO_MANAGER_TG = 'bnbslow'; 
+  const PRO_MANAGER_TG = SUPPORT_TELEGRAM;
   const [showProModal, setShowProModal] = useState(false);
   const [selectedPlanModal, setSelectedPlanModal] = useState('PRO'); // 'BASIC' или 'PRO'
 
@@ -42,9 +42,6 @@ export default function Profile() {
   const [phone, setPhone] = useState(user?.phone || ''); 
   const [avatarFile, setAvatarFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(user?.avatarUrl || null);
-
-  const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const [passwordResetSent, setPasswordResetSent] = useState(false);
 
   const location = useLocation();
   const [highlightForm, setHighlightForm] = useState(false);
@@ -68,6 +65,20 @@ export default function Profile() {
     showLinkResult('ВКонтакте', await linkVkLogin(data));
   }, [linkVkLogin, showLinkResult]);
   const handleVkLinkError = useCallback((text) => setLinkNotice(text ? { ok: false, text } : null), []);
+
+  const unlinkSocialLogin = useStore((state) => state.unlinkSocialLogin);
+  const [isUnlinking, setIsUnlinking] = useState(false);
+  const handleUnlink = async (provider, name) => {
+    const channelsNote = provider === 'telegram' ? ' Каналы останутся в аккаунте.' : '';
+    if (!window.confirm(`Отвязать ${name}? Входить через него больше не получится, а на других устройствах сайт попросит войти заново.${channelsNote}`)) return;
+    setIsUnlinking(true);
+    setLinkNotice(null);
+    const result = await unlinkSocialLogin(provider);
+    setIsUnlinking(false);
+    setLinkNotice(result.success
+      ? { ok: true, text: `${name} отвязан. Вы можете привязать другой профиль.` }
+      : { ok: false, text: result.error || `Не удалось отвязать ${name}. Попробуйте ещё раз.` });
+  };
 
   useEffect(() => {
     if (user?.id) {
@@ -122,8 +133,14 @@ export default function Profile() {
   }, [scheduledPostsRaw, accounts]);
 
   if (!user) return null;
-  const isVulnerable = user?.email?.includes('.local') || !user?.phone || !user?.pavilion;
-  const hasRealEmail = Boolean(user.email) && !user.email.includes('.local');
+  const isVulnerable = !user?.phone || !user?.pavilion;
+  const isRecovered = new URLSearchParams(location.search).get('recovered') === '1';
+  const linkedLogins = [user.telegramId, user.vkId].filter(Boolean).length;
+  const renderLinkedLogin = (provider, name) => (linkedLogins > 1 ? (
+    <button type="button" onClick={() => handleUnlink(provider, name)} disabled={isUnlinking} className="shrink-0 text-xs font-bold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-3 py-2 rounded-xl transition-colors disabled:opacity-50">
+      Отвязать
+    </button>
+  ) : <CheckCircle2 size={22} className="text-green-500 shrink-0" />);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -181,29 +198,6 @@ export default function Profile() {
     setPreviewUrl(user?.avatarUrl || null);
   };
 
-  const handlePasswordReset = async () => {
-    if (!hasRealEmail) {
-      return alert('Сначала укажите почту в блоке «Личные данные».');
-    }
-    setIsResettingPassword(true);
-    try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email }),
-      });
-      if (response.ok) {
-        setPasswordResetSent(true);
-        setTimeout(() => setPasswordResetSent(false), 5000);
-      } else {
-        alert('Ошибка при отправке ссылки сброса');
-      }
-    } catch (e) {
-      alert('Ошибка сети');
-    }
-    setIsResettingPassword(false);
-  };
-
   const handleOpenProModal = () => {
     setShowProModal(true);
   };
@@ -226,10 +220,9 @@ export default function Profile() {
 
   const getRegMethod = () => {
     const ways = [];
-    if (hasRealEmail && user.hasPassword !== false) ways.push('почта');
     if (user?.telegramId) ways.push('Telegram');
     if (user?.vkId) ways.push('ВКонтакте');
-    return ways.join(', ') || 'почта';
+    return ways.join(', ') || 'соцсеть не привязана';
   };
 
   // --- ЛОГИКА ТИПА ТАРИФА ---
@@ -251,7 +244,7 @@ export default function Profile() {
               </div>
               <div>
                 <h3 className="text-white font-bold text-base sm:text-lg mb-0.5">Заполните профиль!</h3>
-                <p className="text-red-200/80 text-xs sm:text-sm">Для доступа к публикациям укажите почту, телефон и павильон.</p>
+                <p className="text-red-200/80 text-xs sm:text-sm">Для доступа к публикациям укажите телефон и павильон.</p>
               </div>
             </div>
             
@@ -302,12 +295,6 @@ export default function Profile() {
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight mb-3 truncate">{user.name || 'Пользователь'}</h1>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-4 max-w-xl mx-auto sm:mx-0 bg-gray-900/50 p-4 rounded-2xl border border-gray-800/50 text-left">
-            <p className="text-gray-400 text-sm flex items-center gap-2 min-w-0">
-              <Mail size={14} className="text-gray-500 shrink-0" /> 
-              <span className={`truncate ${hasRealEmail ? "text-gray-300" : "text-red-400 font-medium"}`}>
-                {hasRealEmail ? user.email : 'Не указан'}
-              </span>
-            </p>
             <p className="text-gray-400 text-sm flex items-center gap-2 min-w-0">
               <Phone size={14} className="text-gray-500 shrink-0" /> 
               <span className={`truncate ${!user.phone ? "text-red-400 font-medium" : "text-gray-300"}`}>
@@ -467,8 +454,6 @@ export default function Profile() {
                     </button>
                   </div>
                 )}
-
-                <EmailLinkForm />
               </div>
             </div>
 
@@ -478,7 +463,12 @@ export default function Profile() {
                 <h2 className="text-lg sm:text-xl font-bold text-white mb-2 flex items-center gap-2">
                   <Key size={20} className="text-blue-500" /> Вход через соцсети
                 </h2>
-                <p className="text-gray-500 text-xs sm:text-sm mb-4">Привяжите Telegram или ВКонтакте, чтобы входить через них в этот же аккаунт.</p>
+                <p className="text-gray-500 text-xs sm:text-sm mb-4">Привяжите Telegram и ВКонтакте: если потеряете доступ к одной соцсети, войдёте через другую.</p>
+                {isRecovered && linkedLogins === 0 && (
+                  <p role="status" className="text-xs mb-3 px-3 py-2 rounded-xl border text-blue-300 bg-blue-500/10 border-blue-500/20">
+                    Вы вошли по ссылке поддержки. Привяжите Telegram или ВКонтакте, чтобы дальше входить самостоятельно.
+                  </p>
+                )}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3 p-3 bg-gray-900 border border-gray-800 rounded-2xl">
                     <div className="min-w-0">
@@ -486,7 +476,7 @@ export default function Profile() {
                       <p className={`text-xs mt-0.5 ${user.telegramId ? 'text-green-500' : 'text-gray-500'}`}>{user.telegramId ? 'Привязан' : 'Не привязан'}</p>
                     </div>
                     {user.telegramId
-                      ? <CheckCircle2 size={22} className="text-green-500 shrink-0" />
+                      ? renderLinkedLogin('telegram', 'Telegram')
                       : <CustomTelegramButton onAuthCallback={handleLinkTelegram} />}
                   </div>
                   <div className="flex items-center justify-between gap-3 p-3 bg-gray-900 border border-gray-800 rounded-2xl">
@@ -495,10 +485,13 @@ export default function Profile() {
                       <p className={`text-xs mt-0.5 ${user.vkId ? 'text-green-500' : 'text-gray-500'}`}>{user.vkId ? 'Привязан' : 'Не привязан'}</p>
                     </div>
                     {user.vkId
-                      ? <CheckCircle2 size={22} className="text-green-500 shrink-0" />
+                      ? renderLinkedLogin('vk', 'ВКонтакте')
                       : <CustomVkButton onAuth={handleLinkVk} onError={handleVkLinkError} failureText="Не удалось привязать ВКонтакте. Попробуйте ещё раз." />}
                   </div>
                 </div>
+                {linkedLogins === 1 && (
+                  <p className="text-gray-500 text-xs mt-3">Это ваш единственный способ входа. Чтобы его отвязать, сначала привяжите вторую соцсеть.</p>
+                )}
                 {linkNotice && (
                   <p role="status" className={`text-xs mt-3 px-3 py-2 rounded-xl border ${linkNotice.ok ? 'text-green-500 bg-green-500/10 border-green-500/20' : 'text-red-500 bg-red-500/10 border-red-500/20'}`}>
                     {linkNotice.text}
@@ -508,29 +501,10 @@ export default function Profile() {
 
               <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-8 shadow-xl">
                 <h2 className="text-lg sm:text-xl font-bold text-white mb-5 sm:mb-6 flex items-center gap-2">
-                  <Shield size={20} className="text-emerald-500" /> Безопасность
+                  <Shield size={20} className="text-emerald-500" /> Документы
                 </h2>
                 
                 <div className="space-y-3">
-                  <button 
-                    onClick={handlePasswordReset}
-                    disabled={isResettingPassword || passwordResetSent}
-                    className="w-full flex items-center justify-between p-4 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-2xl transition-all text-left group disabled:opacity-70 active:scale-95 min-h-[64px]"
-                  >
-                    <div className="flex items-center gap-4 min-w-0 pr-2">
-                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 transition-colors ${passwordResetSent ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800 group-hover:bg-gray-700 text-gray-400'}`}>
-                        {passwordResetSent ? <CheckCircle2 size={20} /> : <Lock size={20} />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-white text-sm sm:text-base font-bold truncate">{passwordResetSent ? 'Письмо отправлено!' : (user.hasPassword === false ? 'Задать пароль' : 'Изменить пароль')}</p>
-                        <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 truncate">{passwordResetSent ? 'Проверьте вашу почту' : 'Получить ссылку на почту'}</p>
-                      </div>
-                    </div>
-                    {!passwordResetSent && (
-                      isResettingPassword ? <Loader2 size={18} className="text-gray-500 animate-spin shrink-0" /> : <SettingsIcon size={18} className="text-gray-600 group-hover:text-white transition-colors shrink-0" />
-                    )}
-                  </button>
-
                   <div className="flex items-center justify-between p-4 bg-gray-900 border border-gray-800 rounded-2xl">
                     <div className="flex items-center gap-4 min-w-0 pr-2">
                       <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 bg-green-500/10 text-green-500">

@@ -14,7 +14,7 @@ module.exports = async (req, res, next) => {
         // Жесткая проверка в БД
         const user = await prisma.user.findUnique({ where: { id: decoded.id || decoded.userId } });
         
-        if (!user || user.role !== 'ADMIN') {
+        if (!user || user.role !== 'ADMIN' || (decoded.tv ?? 0) !== user.tokenVersion) {
             return res.status(403).json({ error: 'Недостаточно прав' });
         }
 

@@ -142,33 +142,6 @@ export const useStore = create(
         }
       },
 
-      login: async (email, password) => {
-        try {
-          const res = await fetch('/api/auth/login', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password })
-          });
-          const data = await res.json();
-          if (res.ok) {
-            set({ user: data.user, token: data.token });
-            localStorage.setItem('token', data.token);
-            get().fetchProfiles(data.user.id);
-            return { success: true };
-          }
-          return { success: false, error: data.error };
-        } catch (error) { return { success: false, error: 'Ошибка сервера' }; }
-      },
-
-      register: async (email, password, name, phone) => {
-        try {
-          const res = await fetch('/api/auth/register', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, name, phone })
-          });
-          const data = await res.json();
-          if (res.ok) return { success: true };
-          return { success: false, error: data.error };
-        } catch (error) { return { success: false, error: 'Ошибка сервера' }; }
-      },
-
       vkLogin: async (vkData) => {
         try {
           const res = await fetch('/api/auth/vk', {
@@ -177,7 +150,6 @@ export const useStore = create(
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
           if (data.requiresConfirmation) return { success: false, requiresConfirmation: true };
-          if (data.requiresEmailVerification) return { success: true, requiresEmailVerification: true, userId: data.userId };
           set({ user: data.user, token: data.token });
           localStorage.setItem('token', data.token);
           get().fetchProfiles(data.user.id);
@@ -222,13 +194,33 @@ export const useStore = create(
       linkTelegramLogin: (data) => get().linkSocialLogin('/api/auth/link/telegram', data),
       linkVkLogin: (data) => get().linkSocialLogin('/api/auth/link/vk', data),
 
-      requestEmailLink: async (email) => {
+      unlinkSocialLogin: async (provider) => {
         try {
-          const res = await fetch('/api/auth/request-link-email', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` }, body: JSON.stringify({ email }),
+          const res = await fetch(`/api/auth/unlink/${provider}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` },
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
+          // Сервер закрыл все прежние входы, поэтому этот браузер получает новый.
+          localStorage.setItem('token', data.token);
+          set({ user: data.user, token: data.token });
+          get().fetchProfiles(data.user.id);
+          return { success: true };
+        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
+      },
+
+      recoverAccess: async (code) => {
+        try {
+          const res = await fetch('/api/auth/recover', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+          });
+          const data = await res.json();
+          if (!res.ok) return { success: false, error: data.error };
+          localStorage.setItem('token', data.token);
+          set({ user: data.user, token: data.token });
           return { success: true };
         } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
@@ -254,29 +246,6 @@ export const useStore = create(
           // ДОБАВЛЕН await для синхронизации анимации
           if (res.ok) await get().fetchAccounts(user.id); 
         } catch (error) {}
-      },
-
-      verifyEmailLink: async (email, code) => {
-        try {
-          const res = await fetch('/api/auth/verify-link-email', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` }, body: JSON.stringify({ email, code }),
-          });
-          const data = await res.json();
-          if (!res.ok) return { success: false, error: data.error };
-          set({ user: data.user });
-          return { success: true };
-        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
-      },
-
-      resetPasswordAction: async (token, newPassword) => {
-        try {
-          const res = await fetch(`/api/auth/reset-password/${token}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: newPassword })
-          });
-          const data = await res.json();
-          if (res.ok) return { success: true };
-          return { success: false, error: data.error };
-        } catch (error) { return { success: false, error: 'Ошибка соединения' }; }
       },
 
       updateUser: async (formData) => {

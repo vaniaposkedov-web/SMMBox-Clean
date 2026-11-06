@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as VKID from '@vkid/sdk';
 
-const VK_LOGIN_FAILED = 'Не удалось войти через ВКонтакте. Попробуйте ещё раз или войдите по почте.';
+const VK_LOGIN_FAILED = 'Не удалось войти через ВКонтакте. Попробуйте ещё раз.';
 
 export default function CustomVkButton({ onAuth, onError, failureText = VK_LOGIN_FAILED }) {
   const handledCodes = useRef(new Set());

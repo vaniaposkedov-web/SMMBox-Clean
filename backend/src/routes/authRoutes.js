@@ -15,20 +15,13 @@ const limiter = (max) => rateLimit({
 const loginLimiter = limiter(30);
 const codeLimiter = limiter(10);
 
-router.post('/register', loginLimiter, authController.register);
-router.post('/verify-email', codeLimiter, authController.verifyEmail);
-router.post('/login', loginLimiter, authController.login);
-
 router.post('/telegram', loginLimiter, authController.telegramAuth);
 router.post('/vk', loginLimiter, authController.vkAuth);
 router.post('/link/telegram', authMiddleware, loginLimiter, authController.linkTelegramLogin);
 router.post('/link/vk', authMiddleware, loginLimiter, authController.linkVkLogin);
+router.post('/unlink/:provider', authMiddleware, loginLimiter, authController.unlinkSocial);
+router.post('/recover', codeLimiter, authController.recoverAccess);
 
-router.post('/request-link-email', authMiddleware, codeLimiter, authController.requestLinkEmail);
-router.post('/verify-link-email', authMiddleware, codeLimiter, authController.verifyLinkEmail);
-
-router.post('/forgot-password', codeLimiter, authController.forgotPassword);
-router.post('/reset-password/:token', codeLimiter, authController.resetPassword);
 router.get('/me', authMiddleware, authController.getMe);
 
 router.put('/profile', authMiddleware, upload.single('avatar'), authController.updateProfile);

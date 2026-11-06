@@ -421,7 +421,7 @@ const toggleAllAccounts = () => {
 
 const handlePublish = async () => {
     // === 1. БАЗОВЫЕ ПРОВЕРКИ (оставляем как было) ===
-    const isVulnerable = user?.email?.includes('.local') || !user?.phone;
+    const isVulnerable = !user?.phone;
     if (isVulnerable) {
       setToastMessage('Заполните оставшиеся данные в профиле!');
       setTimeout(() => setToastMessage(null), 3000);
@@ -571,7 +571,7 @@ const handlePublish = async () => {
     if (saveTempDraft) saveTempDraft(null);
   };
 
-  const isVulnerable = user?.email?.includes('.local') || !user?.phone || !user?.pavilion;
+  const isVulnerable = !user?.phone || !user?.pavilion;
 
   if (isVulnerable) {
     return (
@@ -582,7 +582,7 @@ const handlePublish = async () => {
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-white mb-3">Публикация недоступна</h2>
           <p className="text-gray-400 text-sm sm:text-base mb-6 sm:mb-8 leading-relaxed">
-            Для создания постов необходимо заполнить профиль: укажите настоящую почту, номер телефона и ваш рабочий павильон.
+            Для создания постов необходимо заполнить профиль: укажите номер телефона и ваш рабочий павильон.
           </p>
           <button 
             onClick={() => navigate('/profile?tab=settings&highlight=true')} 

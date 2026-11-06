@@ -18,6 +18,8 @@ router.put('/plans/:id', adminAuth, adminController.updatePlan);
 
 // Выдача подписки и фиксация финансов
 router.post('/users/:id/grant-pro', adminAuth, adminController.grantProStatus);
+router.post('/users/:id/login-link', adminAuth, adminController.createLoginLink);
+router.post('/users/:id/unlink', adminAuth, adminController.unlinkClientSocial);
 
 // === РОУТЫ НАСТРОЕК НЕЙРОСЕТИ ===
 router.get('/settings/ai', adminAuth, adminController.getAiSettings);
