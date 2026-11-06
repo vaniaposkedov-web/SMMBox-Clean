@@ -1,4 +1,5 @@
-const axios = require('axios'); 
+const axios = require('axios');
+const crypto = require('crypto');
 const prisma = require('../utils/prisma'); // Подключаем единый инстанс
 // В начало файла accountController.js
 // В начало файла accountController.js
@@ -6,9 +7,10 @@ const KOMOD_TOKEN = process.env.KOMOD_TOKEN;
 const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 const { logEvent } = require('../utils/logger');
 const { getUserLimits, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
-const { getBotToken } = require('../utils/security');
+const { getBotToken, sha256, safeEqual } = require('../utils/security');
 
 const GATEWAY_NOT_CONFIGURED = 'Шлюз ВК не настроен на сервере';
+const TELEGRAM_BIND_LIFETIME_MS = 15 * 60 * 1000;
 
 
 // --- УНИВЕРСАЛЬНЫЙ ПАРСЕР ПО СТРУКТУРЕ АЛЕКСЕЯ ---
@@ -582,42 +584,18 @@ exports.confirmVkKomod = async (req, res) => {
   }
 };
 
-exports.saveTgAccounts = async (req, res) => {
-  const userId = req.userId;
-  const { channels } = req.body;
+// Одноразовый код для ссылки на бота: только его владелец может привязать Telegram к этому аккаунту.
+// В базе хранится хеш кода, новый код отменяет прежний.
+exports.createTelegramBindCode = async (req, res) => {
   try {
-    if (!Array.isArray(channels) || channels.length === 0) return res.status(400).json({ error: 'Нет данных' });
-
-    const currentUser = await prisma.user.findUnique({ where: { id: userId } });
-    const limits = getUserLimits(currentUser);
-    if (!limits.active) return res.status(403).json({ error: NO_SUBSCRIPTION_ERROR });
-
-    for (const channel of channels) {
-      const isTaken = await prisma.account.findFirst({ where: { provider: 'TELEGRAM', providerId: String(channel.chatId) } });
-      if (isTaken && isTaken.userId !== userId) return res.status(400).json({ error: 'Канал уже привязан к другому пользователю!' });
-    }
-
-    const existing = await prisma.account.findMany({ where: { userId, provider: 'TELEGRAM' }, select: { providerId: true } });
-    const existingIds = new Set(existing.map((a) => a.providerId));
-    const newCount = channels.filter((c) => !existingIds.has(String(c.chatId))).length;
-    const totalCount = await prisma.account.count({ where: { userId } });
-    if (existing.length + newCount > limits.tg || totalCount + newCount > limits.total) {
-      return res.status(403).json({ error: `Лимит Telegram каналов для вашего тарифа: ${limits.tg}. У вас уже ${existing.length}.` });
-    }
-
-    let tgProfile = await prisma.socialProfile.findFirst({ where: { userId, provider: 'TELEGRAM' } });
-    if (!tgProfile) {
-      tgProfile = await prisma.socialProfile.create({ data: { userId, provider: 'TELEGRAM', providerAccountId: `site_${userId}`, name: 'Telegram Профиль' } });
-    }
-
-    const savedAccounts = await Promise.all(channels.map((channel) => prisma.account.upsert({
-      where: { provider_providerId: { provider: 'TELEGRAM', providerId: String(channel.chatId) } },
-      update: { avatarUrl: channel.avatar || null, name: channel.title || 'Без названия', profileId: tgProfile.id },
-      create: { userId, provider: 'TELEGRAM', providerId: String(channel.chatId), name: channel.title || 'Без названия', avatarUrl: channel.avatar || null, accessToken: '', profileId: tgProfile.id },
-    })));
-    res.json({ success: true, count: savedAccounts.length });
+    const code = crypto.randomBytes(18).toString('base64url');
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { telegramBindCode: sha256(code), telegramBindExpires: new Date(Date.now() + TELEGRAM_BIND_LIFETIME_MS) },
+    });
+    res.json({ success: true, code });
   } catch (error) {
-    console.error('Ошибка сохранения каналов:', error.message);
+    console.error('Ошибка создания кода привязки Telegram:', error.message);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
@@ -885,8 +863,9 @@ exports.addVkKomodProfile = async (req, res) => {
 
 exports.telegramWebhook = async (req, res) => {
   try {
+    // Без секрета сообщение «от Telegram» мог бы подделать кто угодно, поэтому такие запросы не принимаем.
     const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-    if (webhookSecret && req.headers['x-telegram-bot-api-secret-token'] !== webhookSecret) {
+    if (!webhookSecret || !safeEqual(req.headers['x-telegram-bot-api-secret-token'] || '', webhookSecret)) {
       return res.sendStatus(403);
     }
     const update = req.body;
@@ -895,14 +874,50 @@ exports.telegramWebhook = async (req, res) => {
     res.sendStatus(200);
 
     if (update.message && update.message.text && update.message.text.startsWith('/start bind_')) {
-      const userId = update.message.text.split('bind_')[1]; 
+      const code = update.message.text.split('bind_')[1].trim();
       const tgUser = update.message.from;
-      const botToken = process.env.TELEGRAM_BOT_TOKEN;
-      
+      const botToken = getBotToken();
+      const replyToUser = async (text) => {
+        if (!botToken) return;
+        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, { chat_id: tgUser.id, text })
+          .catch(() => console.log('Не удалось отправить сообщение пользователю Telegram'));
+      };
+
+      // Аккаунт определяется только по одноразовому коду, который сайт выдал его владельцу.
+      const owner = await prisma.user.findFirst({
+        where: { telegramBindCode: sha256(code), telegramBindExpires: { gt: new Date() } },
+        select: { id: true, name: true },
+      });
+      if (!owner) {
+        await replyToUser('❌ Ссылка устарела или уже использована. Откройте сайт и снова нажмите «Привязать профиль».');
+        return;
+      }
+      const userId = owner.id;
+
       const providerAccountId = String(tgUser.id);
       const name = `${tgUser.first_name} ${tgUser.last_name || ''}`.trim();
+
+      const existingProfile = await prisma.socialProfile.findUnique({
+        where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: providerAccountId } }
+      });
+
+      if (existingProfile && existingProfile.userId !== userId) {
+        await replyToUser('❌ Ошибка: Этот Telegram-аккаунт уже привязан к другому профилю на сайте.');
+        return;
+      }
+
+      // Код срабатывает один раз, даже если бот получит два сообщения одновременно.
+      const { count: usedCodes } = await prisma.user.updateMany({
+        where: { id: userId, telegramBindCode: sha256(code) },
+        data: { telegramBindCode: null, telegramBindExpires: null },
+      });
+      if (usedCodes === 0) {
+        await replyToUser('❌ Ссылка устарела или уже использована. Откройте сайт и снова нажмите «Привязать профиль».');
+        return;
+      }
+
       let avatarUrl = '';
-      
+
       // === ИСПРАВЛЕНИЕ: БЕЗОПАСНАЯ ЗАГРУЗКА АВАТАРКИ ПОЛЬЗОВАТЕЛЯ ТГ ===
       if (botToken) {
         try {
@@ -921,39 +936,20 @@ exports.telegramWebhook = async (req, res) => {
         }
       }
 
-      const existingProfile = await prisma.socialProfile.findUnique({
-        where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: providerAccountId } }
-      });
-
-      if (existingProfile && existingProfile.userId !== String(userId)) {
-        if (botToken) {
-          await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-            chat_id: tgUser.id,
-            text: '❌ Ошибка: Этот Telegram-аккаунт уже привязан к другому профилю на сайте.'
-          }).catch(e => console.log('Не удалось отправить сообщение об ошибке'));
-        }
-        return; 
-      }
-
       await prisma.socialProfile.upsert({
         where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: providerAccountId } },
-        update: { name, avatarUrl: avatarUrl || undefined, userId: String(userId) }, 
-        create: { 
-          userId: String(userId), 
-          provider: 'TELEGRAM', 
-          providerAccountId: providerAccountId, 
-          name, 
-          avatarUrl, 
-          accessToken: '' 
+        update: { name, avatarUrl: avatarUrl || undefined },
+        create: {
+          userId,
+          provider: 'TELEGRAM',
+          providerAccountId: providerAccountId,
+          name,
+          avatarUrl,
+          accessToken: ''
         }
       });
 
-      if (botToken) {
-        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-          chat_id: tgUser.id,
-          text: '✅ Ваш аккаунт Telegram успешно привязан! Вернитесь на сайт и нажмите кнопку "Обновить".'
-        }).catch(e => console.log('Не удалось отправить сообщение об успехе'));
-      }
+      await replyToUser(`✅ Telegram привязан к аккаунту «${owner.name || 'без имени'}» на сайте SADOVODPS. Вернитесь на сайт и выберите канал. Если это не ваш аккаунт, напишите в поддержку.`);
 
       if (req.app.get('io') && global.userSockets) {
          const connectedSockets = global.userSockets.get(String(userId));

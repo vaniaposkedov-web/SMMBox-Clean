@@ -38,6 +38,8 @@ model User {
   
   resetPasswordToken       String?
   resetPasswordExpires     DateTime?
+  telegramBindCode         String?
+  telegramBindExpires      DateTime?
   
   profiles                 SocialProfile[]
   accounts                 Account[]

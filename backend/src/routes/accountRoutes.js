@@ -12,7 +12,7 @@ router.get('/', authMiddleware, accountController.getAccounts);
 router.get('/global/settings', authMiddleware, accountController.getGlobalSettings);
 router.put('/global/settings', authMiddleware, accountController.saveGlobalSettings);
 
-router.post('/tg/save', authMiddleware, accountController.saveTgAccounts);
+router.post('/tg/bind-code', authMiddleware, accountController.createTelegramBindCode);
 router.post('/tg/verify-status', authMiddleware, accountController.verifyTgAccountsStatus);
 
 router.post('/vk/verify-status', authMiddleware, accountController.verifyVkAccountsStatus);

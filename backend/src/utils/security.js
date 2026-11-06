@@ -17,6 +17,8 @@ const PRIVATE_USER_FIELDS = [
   'emailVerificationExpires',
   'resetPasswordToken',
   'resetPasswordExpires',
+  'telegramBindCode',
+  'telegramBindExpires',
 ];
 
 const sanitizeUser = (user) => {

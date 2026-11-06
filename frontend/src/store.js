@@ -322,17 +322,13 @@ export const useStore = create(
         } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },
 
-      saveTgAccounts: async (userId, channels) => {
+      createTelegramBindCode: async () => {
         try {
-          const res = await fetch('/api/accounts/tg/save', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${get().token}` }, body: JSON.stringify({ userId, channels })
+          const res = await fetch('/api/accounts/tg/bind-code', {
+            method: 'POST', headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` }
           });
           const data = await res.json();
-          if (res.ok && data.success) {
-            get().fetchAccounts(userId);
-            get().fetchProfiles(userId);
-            return { success: true };
-          }
+          if (res.ok && data.code) return { success: true, code: data.code };
           return { success: false, error: data.error };
         } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },

@@ -75,6 +75,8 @@ export default function AccountsManager() {
 
   const [designModal, setDesignModal] = useState({ isOpen: false, account: null });
   const [showTgHelperModal, setShowTgHelperModal] = useState(false);
+  const [tgBindLink, setTgBindLink] = useState(null);
+  const [tgBindFailed, setTgBindFailed] = useState(false);
   
   const [watermarkTab, setWatermarkTab] = useState('simple'); 
   const [localWatermark, setLocalWatermark] = useState({});
@@ -607,6 +609,16 @@ const handleSaveKomodGroups = async () => {
     setInputs(prev => ({ ...prev, [`${profileId}_${field}`]: value }));
   };
 
+  // Ссылка на бота содержит одноразовый код: только так Telegram привяжется именно к этому аккаунту.
+  const openTgHelper = async () => {
+    setShowTgHelperModal(true);
+    setTgBindLink(null);
+    setTgBindFailed(false);
+    const result = await useStore.getState().createTelegramBindCode();
+    if (result.success) setTgBindLink(`https://t.me/${TELEGRAM_BOT_NAME}?start=bind_${result.code}`);
+    else setTgBindFailed(true);
+  };
+
   const copyBotName = (e) => {
     e.stopPropagation(); navigator.clipboard.writeText(`@${TELEGRAM_BOT_NAME}`);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
@@ -824,41 +836,6 @@ const handleSaveKomodGroups = async () => {
         </div>
       </div>
     );
-  };
-
-  const handleAddTgChannel = async (profileId) => {
-    if (isLimitReached) return alert('Лимит аккаунтов исчерпан! Оформите PRO.');
-    const link = inputs[`${profileId}_tgLink`];
-    if (!link?.trim()) return alert('Введите ссылку канала!');
-    
-    setLoadingStates(prev => ({...prev, [profileId]: true}));
-    try {
-      const infoRes = await fetch(`/api/auth/tg-chat-info`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: link })
-      });
-      const infoData = await infoRes.json();
-
-      if (!infoData.success) {
-        alert(infoData.error || 'Канал не найден. Бот назначен администратором?');
-        setLoadingStates(prev => ({...prev, [profileId]: false})); return;
-      }
-
-      const saveRes = await fetch(`/api/accounts/tg/save`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ userId: user.id, socialProfileId: profileId, channels: [{ chatId: infoData.chatId || infoData.username, title: infoData.title, avatar: infoData.avatar }] })
-      });
-      const saveData = await saveRes.json();
-
-      if (saveData.success) {
-        handleInputChange(profileId, 'tgLink', '');
-        await fetchProfiles(user.id); 
-        await fetchAccounts(user.id); 
-        if (verifyAccountsStatus) verifyAccountsStatus(); 
-      } else {
-        alert(saveData.error || 'Ошибка сохранения аккаунта');
-      }
-    } catch (error) { alert('Ошибка соединения с сервером'); }
-    setLoadingStates(prev => ({...prev, [profileId]: false}));
   };
 
   const handleAddVkGroup = async (profileId) => {
@@ -1173,7 +1150,7 @@ const handleSaveKomodGroups = async () => {
           onClick={() => {
             if (!isPaid) return; // Если нет подписки - игнорируем
             if (!isLimitReached) {
-              selectedNetwork === 'VK' ? handleConnectVkOAuth() : setShowTgHelperModal(true);
+              selectedNetwork === 'VK' ? handleConnectVkOAuth() : openTgHelper();
             }
           }}
           disabled={!isPaid || isLimitReached}
@@ -1437,14 +1414,27 @@ const handleSaveKomodGroups = async () => {
                     <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-white shrink-0 mt-0.5">1</div>
                     <p className="text-sm text-gray-400">Привяжите личный ТГ-аккаунт (нажмите <b className="text-white">Запустить</b> в боте)</p>
                   </div>
-                  <a
-                    href={`https://t.me/${TELEGRAM_BOT_NAME}?start=bind_${user?.id || ''}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-2.5 rounded-lg font-bold text-white transition-all flex justify-center items-center gap-2 bg-gray-800 hover:bg-gray-700 text-sm border border-gray-700 mt-2"
-                  >
-                    Привязать профиль
-                  </a>
+                  {tgBindLink && (
+                    <a
+                      href={tgBindLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2.5 rounded-lg font-bold text-white transition-all flex justify-center items-center gap-2 bg-gray-800 hover:bg-gray-700 text-sm border border-gray-700 mt-2"
+                    >
+                      Привязать профиль
+                    </a>
+                  )}
+                  {!tgBindLink && !tgBindFailed && (
+                    <div className="w-full py-2.5 rounded-lg font-bold text-gray-400 flex justify-center items-center gap-2 bg-gray-800 text-sm border border-gray-700 mt-2">
+                      <Loader2 size={16} className="animate-spin" /> Готовим ссылку...
+                    </div>
+                  )}
+                  {tgBindFailed && (
+                    <button onClick={openTgHelper} className="w-full py-2.5 rounded-lg font-bold text-red-300 transition-all flex justify-center items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-sm border border-red-500/30 mt-2">
+                      Не удалось подготовить ссылку. Повторить
+                    </button>
+                  )}
+                  <p className="text-xs text-gray-500 mt-2">Ссылка одноразовая и действует 15 минут. Не пересылайте её другим.</p>
                 </div>
 
                 <div className="w-full h-px bg-gray-800"></div>
