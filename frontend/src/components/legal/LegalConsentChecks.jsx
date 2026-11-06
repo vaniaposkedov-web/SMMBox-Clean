@@ -15,7 +15,7 @@ export default function LegalConsentChecks({ value, onChange }) {
         <input type="checkbox" checked={value.personalDataConsent} onChange={toggle('personalDataConsent')} className="mt-0.5 w-4 h-4 shrink-0 accent-blue-500" />
         <span>Даю <a href="/personal-data-consent" target="_blank" rel="noopener noreferrer" className={linkClass}>согласие на обработку персональных данных</a>.</span>
       </label>
-      <p className="text-gray-500">Как мы обращаемся с данными, описано в <a href="/privacy" target="_blank" rel="noopener noreferrer" className={linkClass}>Политике обработки персональных данных</a>.</p>
+      <p className="text-gray-500">Как мы обращаемся с данными, описано в <a href="/privacy" target="_blank" rel="noopener noreferrer" className={linkClass}>Политике конфиденциальности</a>.</p>
     </div>
   );
 }

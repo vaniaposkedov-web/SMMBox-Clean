@@ -1,15 +1,10 @@
+import { useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
-import { LEGAL_DATE, OPERATOR, SITE_ADDRESS } from '../../legal/details';
+import { LEGAL_DATE, LEGAL_DOCUMENTS, OPERATOR, SITE_ADDRESS } from '../../legal/details';
 import { SUPPORT_TELEGRAM } from '../../telegramBot';
 
-const DOCUMENTS = [
-  { to: '/terms', label: 'Соглашение' },
-  { to: '/privacy', label: 'Политика' },
-  { to: '/personal-data-consent', label: 'Согласие' },
-];
-
-const tabClass = ({ isActive }) => `px-4 py-2 rounded-xl text-sm font-bold transition-colors ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-900 text-gray-400 hover:text-white border border-gray-800'}`;
+const tabClass = ({ isActive }) => `px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-900 text-gray-400 hover:text-white border border-gray-800'}`;
 
 // Незаполненное значение видно сразу, чтобы документ случайно не вышел с пропуском.
 export function Fill({ value, label }) {
@@ -43,6 +38,10 @@ export function OperatorDetails({ title }) {
 export default function LegalLayout({ title, children }) {
   const navigate = useNavigate();
 
+  useEffect(() => {
+    document.title = `SADOVODPS | ${title}`;
+  }, [title]);
+
   const handleBack = () => {
     if (window.history.length > 2) {
       navigate(-1);
@@ -61,7 +60,7 @@ export default function LegalLayout({ title, children }) {
         </button>
 
         <nav aria-label="Документы" className="flex flex-wrap gap-2 mb-4 sm:mb-6">
-          {DOCUMENTS.map((document) => <NavLink key={document.to} to={document.to} className={tabClass}>{document.label}</NavLink>)}
+          {LEGAL_DOCUMENTS.map(({ path, title: name }) => <NavLink key={path} to={path} className={tabClass}>{name}</NavLink>)}
         </nav>
 
         <article className="bg-admin-card border border-gray-800 rounded-2xl sm:rounded-3xl p-5 sm:p-12 shadow-2xl">

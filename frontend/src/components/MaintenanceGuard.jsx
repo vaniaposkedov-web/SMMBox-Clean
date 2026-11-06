@@ -4,6 +4,7 @@ import {
   Wrench, Loader2, X, Bell
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
+import { LEGAL_DOCUMENTS } from '../legal/details';
 import io from 'socket.io-client'; // Не забудьте установить: npm install socket.io-client
 
 export default function MaintenanceGuard({ children }) {
@@ -45,11 +46,13 @@ export default function MaintenanceGuard({ children }) {
 
     const isAdminRoute = location.pathname.includes('/boss') || location.pathname.includes('/admin');
     const hasAdminToken = localStorage.getItem('adminToken');
+    // Документы должны быть доступны всегда, в том числе во время технических работ.
+    const isLegalPage = LEGAL_DOCUMENTS.some((document) => document.path === location.pathname);
 
     if (isLoading) return null;
 
     // Если идут работы и это не админ — блокируем всё
-    if (isMaintenance && !isAdminRoute && !hasAdminToken) {
+    if (isMaintenance && !isAdminRoute && !hasAdminToken && !isLegalPage) {
         return (
             <div className="fixed inset-0 z-[9999] bg-[#0a0a0a] flex flex-col items-center justify-center p-6 animate-in fade-in duration-500">
                 <div className="bg-[#111318] border border-red-500/30 p-8 md:p-12 rounded-[2rem] max-w-lg w-full text-center shadow-[0_0_80px_rgba(239,68,68,0.15)]">

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { User } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 import CustomTelegramButton from '../components/CustomTelegramButton';
 import CustomVkButton from '../components/CustomVkButton';
@@ -9,6 +8,7 @@ import { SUPPORT_TELEGRAM } from '../telegramBot';
 import LegalConsentChecks from '../components/legal/LegalConsentChecks';
 
 const NO_CHECKS = { acceptTerms: false, personalDataConsent: false };
+const LEGAL_LINK = 'text-blue-500 hover:underline';
 
 export default function Auth() {
   const telegramLogin = useStore((state) => state.telegramLogin);
@@ -93,14 +93,9 @@ export default function Auth() {
           </div>
         )}
 
-        <div className="text-center text-[10px] sm:text-xs text-gray-500 mt-6 leading-relaxed space-y-2">
-          <p>Перед созданием аккаунта мы попросим принять соглашение и дать согласие на обработку персональных данных.</p>
-          <p className="flex flex-wrap justify-center gap-x-3 gap-y-1">
-            <Link to="/terms" className="text-blue-500 hover:underline">Соглашение</Link>
-            <Link to="/privacy" className="text-blue-500 hover:underline">Политика</Link>
-            <Link to="/personal-data-consent" className="text-blue-500 hover:underline">Согласие</Link>
-          </p>
-        </div>
+        <p className="text-center text-[11px] sm:text-xs text-gray-500 mt-6 leading-relaxed">
+          Перед созданием аккаунта мы попросим принять <a href="/terms" target="_blank" rel="noopener noreferrer" className={LEGAL_LINK}>Пользовательское соглашение</a> и дать <a href="/personal-data-consent" target="_blank" rel="noopener noreferrer" className={LEGAL_LINK}>Согласие на обработку персональных данных</a>. Как мы защищаем данные, описано в <a href="/privacy" target="_blank" rel="noopener noreferrer" className={LEGAL_LINK}>Политике конфиденциальности</a>.
+        </p>
 
         <div className="mt-6 pt-6 border-t border-gray-800 text-center text-sm text-gray-400">
           Потеряли доступ к соцсетям?{' '}

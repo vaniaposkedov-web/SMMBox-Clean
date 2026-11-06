@@ -19,6 +19,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import Terms from './pages/Terms';
 import PersonalDataConsent from './pages/PersonalDataConsent';
 import ConsentGate from './components/legal/ConsentGate';
+import LegalLinks from './components/legal/LegalLinks';
  
 import PartnersManager from './components/settings/PartnersManager';
 import PostsHistory from './pages/PostsHistory';
@@ -45,9 +46,6 @@ const getPageTitle = (pathname) => {
     '/signatures': 'Управление подписями',
     '/settings': 'Настройки системы',
     '/analytics': 'Аналитика',
-    '/terms': 'Пользовательское соглашение',
-    '/privacy': 'Политика обработки данных',
-    '/personal-data-consent': 'Согласие на обработку данных',
   };
   return titles[pathname] || 'Панель управления';
 };
@@ -146,7 +144,6 @@ function Sidebar() {
               <NavLink to="/analytics" className={subLinkClass}><BarChart2 size={16} /> Аналитика</NavLink>
               <NavLink to="/watermark" className={subLinkClass}><Droplet size={16} /> Водяной знак</NavLink>
               <NavLink to="/signatures" className={subLinkClass}><PenTool size={16} /> Подписи к постам</NavLink>
-              <NavLink to="/privacy" className={subLinkClass}><Scale size={16} /> Документы</NavLink>
             </div>
           )}
         </div>
@@ -156,6 +153,7 @@ function Sidebar() {
         <button onClick={() => logout()} className="flex items-center gap-3 w-full p-3 rounded-xl text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all font-medium">
           <LogOut size={20} /> Выйти
         </button>
+        <LegalLinks className="px-3 pt-2 text-[11px] leading-snug text-gray-500 space-y-1.5" />
       </div>
     </aside>
   );
@@ -210,10 +208,10 @@ function BottomNav() {
                 <PenTool size={22} className="mb-2" />
                 <span className="text-[10px] text-center leading-tight">Подписи к<br/>постам</span>
               </NavLink>
-              <NavLink to="/privacy" onClick={() => setIsMoreMenuOpen(false)} className={popoverLinkClass}>
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" onClick={() => setIsMoreMenuOpen(false)} className={popoverLinkClass({ isActive: false })}>
                 <Scale size={22} className="mb-2" />
                 <span className="text-[10px] text-center leading-tight">Документы</span>
-              </NavLink>
+              </a>
             </div>
           </div>
         </div>
@@ -352,9 +350,6 @@ function App() {
             <Route path="/requests" element={<Requests />} />
             <Route path="/partners" element={<PartnersManager />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/privacy" element={<PrivacyPolicy />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/personal-data-consent" element={<PersonalDataConsent />} />
             
             {/* === НАШИ НОВЫЕ РОУТЫ ИЗ ВКЛАДКИ "ЕЩЕ" === */}
             <Route path="/accounts" element={<AccountsManager />} />
@@ -364,6 +359,10 @@ function App() {
             <Route path="/signatures" element={<SignatureConstructor />} />
           </Route>
 
+          {/* Документы открываются отдельными страницами, без меню сайта и без окна согласия. */}
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/personal-data-consent" element={<PersonalDataConsent />} />
           <Route path="/recover/:code" element={<RecoverAccess />} />
           <Route path="/boss-login" element={<AdminLogin />} />
           <Route path="/system-core-dashboard" element={<AdminDashboard />} />

@@ -10,6 +10,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import CustomTelegramButton from '../components/CustomTelegramButton';
 import CustomVkButton from '../components/CustomVkButton';
 import { SUPPORT_TELEGRAM } from '../telegramBot';
+import { LEGAL_DOCUMENTS } from '../legal/details';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -520,15 +521,11 @@ export default function Profile() {
                 </h2>
                 
                 <div className="space-y-3">
-                  {[
-                    ['/terms', 'Пользовательское соглашение и оферта'],
-                    ['/privacy', 'Политика обработки персональных данных'],
-                    ['/personal-data-consent', 'Согласие на обработку персональных данных'],
-                  ].map(([path, title]) => (
-                    <button key={path} type="button" onClick={() => navigate(path)} className="w-full flex items-center justify-between gap-3 p-4 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-2xl text-left transition-colors">
+                  {LEGAL_DOCUMENTS.map(({ path: documentPath, title }) => (
+                    <a key={documentPath} href={documentPath} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-between gap-3 p-4 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-2xl text-left transition-colors">
                       <span className="text-white text-sm font-bold min-w-0">{title}</span>
                       <span className="text-blue-500 text-sm font-bold shrink-0">Читать</span>
-                    </button>
+                    </a>
                   ))}
                 </div>
               </div>
@@ -625,6 +622,10 @@ export default function Profile() {
                 </p>
               </div>
             </div>
+
+            <p className="text-center text-xs text-gray-500 mb-4">
+              Оформляя тариф, вы принимаете условия <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Пользовательского соглашения</a>, включая публичную оферту.
+            </p>
 
             <button onClick={handleBuyPro} className="w-full bg-[#229ED9] hover:bg-[#1C87BA] text-white py-4 sm:py-5 rounded-2xl font-bold transition-all flex justify-center items-center gap-2 shadow-[0_4px_20px_rgba(34,158,217,0.3)] active:scale-95 text-base sm:text-lg">
               <Send size={22} className="shrink-0 -ml-1" /> Написать менеджеру

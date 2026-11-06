@@ -1,13 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import { useStore } from '../../store';
 import LegalConsentChecks from './LegalConsentChecks';
 
-const LEGAL_PAGES = ['/terms', '/privacy', '/personal-data-consent'];
-
 // Клиент, который ещё не принимал документы или должен принять их новую редакцию, не может продолжить без согласия.
 export default function ConsentGate() {
-  const { pathname } = useLocation();
   const consentRequired = useStore((state) => state.user?.consentRequired);
   const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
   const acceptLegalDocuments = useStore((state) => state.acceptLegalDocuments);
@@ -18,8 +14,7 @@ export default function ConsentGate() {
 
   useEffect(() => { fetchCurrentUser(); }, [fetchCurrentUser]);
 
-  // Документы должны открываться в новой вкладке, пока окно согласия ждёт ответа.
-  if (!consentRequired || LEGAL_PAGES.includes(pathname)) return null;
+  if (!consentRequired) return null;
 
   const handleAccept = async () => {
     setIsSaving(true);
