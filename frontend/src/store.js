@@ -265,6 +265,7 @@ export const useStore = create(
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
+          if (data.requiresConfirmation) return { success: false, requiresConfirmation: true };
           if (data.requiresEmailVerification) return { success: true, requiresEmailVerification: true, userId: data.userId };
           set({ user: data.user, token: data.token });
           localStorage.setItem('token', data.token);
@@ -279,6 +280,7 @@ export const useStore = create(
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(telegramData)
           });
           const data = await res.json();
+          if (data.requiresConfirmation) return { success: false, requiresConfirmation: true };
           if (res.ok) {
             set({ user: data.user, token: data.token });
             localStorage.setItem('token', data.token);
@@ -291,6 +293,23 @@ export const useStore = create(
           return { success: false, error: data.error };
         } catch (error) { return { success: false, error: 'Ошибка сервера' }; }
       },
+
+      linkSocialLogin: async (url, data) => {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` },
+            body: JSON.stringify(data),
+          });
+          const result = await res.json();
+          if (!res.ok) return { success: false, error: result.error };
+          set({ user: result.user });
+          get().fetchProfiles(result.user.id);
+          return { success: true };
+        } catch (error) { return { success: false, error: 'Ошибка сети' }; }
+      },
+      linkTelegramLogin: (data) => get().linkSocialLogin('/api/auth/link/telegram', data),
+      linkVkLogin: (data) => get().linkSocialLogin('/api/auth/link/vk', data),
 
       requestEmailLink: async (userId, email) => {
         try {

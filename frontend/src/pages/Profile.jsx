@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { 
   User, Mail, Shield, Edit2, X, Hash, Camera, 
@@ -7,6 +7,8 @@ import {
   Phone, Key, Users, Send, Loader2, Plus, Crown, MessageCircle
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import CustomTelegramButton from '../components/CustomTelegramButton';
+import CustomVkButton from '../components/CustomVkButton';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -47,6 +49,26 @@ export default function Profile() {
 
   const location = useLocation();
   const [highlightForm, setHighlightForm] = useState(false);
+
+  // Привязка входа через соцсети к этому аккаунту
+  const linkTelegramLogin = useStore((state) => state.linkTelegramLogin);
+  const linkVkLogin = useStore((state) => state.linkVkLogin);
+  const [linkNotice, setLinkNotice] = useState(null);
+
+  const showLinkResult = useCallback((name, result) => {
+    setLinkNotice(result.success
+      ? { ok: true, text: `${name} привязан. Теперь вы можете входить через него в этот аккаунт.` }
+      : { ok: false, text: result.error || `Не удалось привязать ${name}. Попробуйте ещё раз.` });
+  }, []);
+  const handleLinkTelegram = useCallback(async (data) => {
+    setLinkNotice(null);
+    showLinkResult('Telegram', await linkTelegramLogin(data));
+  }, [linkTelegramLogin, showLinkResult]);
+  const handleLinkVk = useCallback(async (data) => {
+    setLinkNotice(null);
+    showLinkResult('ВКонтакте', await linkVkLogin(data));
+  }, [linkVkLogin, showLinkResult]);
+  const handleVkLinkError = useCallback((text) => setLinkNotice(text ? { ok: false, text } : null), []);
 
   useEffect(() => {
     if (user?.id) {
@@ -203,9 +225,11 @@ export default function Profile() {
   };
 
   const getRegMethod = () => {
-    if (user?.telegramId) return 'Telegram';
-    if (user?.vkId) return 'ВКонтакте';
-    return 'Почта';
+    const ways = [];
+    if (user?.email && !user.email.includes('.local')) ways.push('почта');
+    if (user?.telegramId) ways.push('Telegram');
+    if (user?.vkId) ways.push('ВКонтакте');
+    return ways.join(', ') || 'почта';
   };
 
   // --- ЛОГИКА ТИПА ТАРИФА ---
@@ -448,6 +472,38 @@ export default function Profile() {
 
             {/* Безопасность и выход */}
             <div className="space-y-4 sm:space-y-6 flex flex-col">
+              <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-8 shadow-xl">
+                <h2 className="text-lg sm:text-xl font-bold text-white mb-2 flex items-center gap-2">
+                  <Key size={20} className="text-blue-500" /> Вход через соцсети
+                </h2>
+                <p className="text-gray-500 text-xs sm:text-sm mb-4">Привяжите Telegram или ВКонтакте, чтобы входить через них в этот же аккаунт.</p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 p-3 bg-gray-900 border border-gray-800 rounded-2xl">
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-bold">Telegram</p>
+                      <p className={`text-xs mt-0.5 ${user.telegramId ? 'text-green-500' : 'text-gray-500'}`}>{user.telegramId ? 'Привязан' : 'Не привязан'}</p>
+                    </div>
+                    {user.telegramId
+                      ? <CheckCircle2 size={22} className="text-green-500 shrink-0" />
+                      : <CustomTelegramButton onAuthCallback={handleLinkTelegram} />}
+                  </div>
+                  <div className="flex items-center justify-between gap-3 p-3 bg-gray-900 border border-gray-800 rounded-2xl">
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-bold">ВКонтакте</p>
+                      <p className={`text-xs mt-0.5 ${user.vkId ? 'text-green-500' : 'text-gray-500'}`}>{user.vkId ? 'Привязан' : 'Не привязан'}</p>
+                    </div>
+                    {user.vkId
+                      ? <CheckCircle2 size={22} className="text-green-500 shrink-0" />
+                      : <CustomVkButton onAuth={handleLinkVk} onError={handleVkLinkError} failureText="Не удалось привязать ВКонтакте. Попробуйте ещё раз." />}
+                  </div>
+                </div>
+                {linkNotice && (
+                  <p role="status" className={`text-xs mt-3 px-3 py-2 rounded-xl border ${linkNotice.ok ? 'text-green-500 bg-green-500/10 border-green-500/20' : 'text-red-500 bg-red-500/10 border-red-500/20'}`}>
+                    {linkNotice.text}
+                  </p>
+                )}
+              </div>
+
               <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 sm:p-8 shadow-xl">
                 <h2 className="text-lg sm:text-xl font-bold text-white mb-5 sm:mb-6 flex items-center gap-2">
                   <Shield size={20} className="text-emerald-500" /> Безопасность

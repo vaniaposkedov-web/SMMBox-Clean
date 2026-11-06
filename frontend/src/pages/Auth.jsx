@@ -29,18 +29,33 @@ export default function Auth() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
 
-  // При отказе во входе через соцсеть человек должен увидеть причину на странице.
-  const handleTelegramAuth = useCallback(async (data) => {
-    setError('');
-    const result = await telegramLogin(data);
-    if (!result.success) setError(result.error || 'Не удалось войти через Telegram. Попробуйте ещё раз или войдите по почте.');
-  }, [telegramLogin]);
+  const [pendingSocial, setPendingSocial] = useState(null);
 
-  const handleVkAuth = useCallback(async (data) => {
+  // При отказе во входе через соцсеть человек должен увидеть причину на странице,
+  // а новый аккаунт создаётся только после его согласия.
+  const finishSocialLogin = useCallback(async (name, login, data) => {
     setError('');
-    const result = await vkLogin(data);
-    if (!result.success) setError(result.error || 'Не удалось войти через ВКонтакте. Попробуйте ещё раз или войдите по почте.');
-  }, [vkLogin]);
+    const result = await login(data);
+    if (result.requiresConfirmation) {
+      setPendingSocial({ name, login, data });
+      return;
+    }
+    if (!result.success) setError(result.error || `Не удалось войти через ${name}. Попробуйте ещё раз или войдите по почте.`);
+  }, []);
+  const handleTelegramAuth = useCallback((data) => finishSocialLogin('Telegram', telegramLogin, data), [finishSocialLogin, telegramLogin]);
+  const handleVkAuth = useCallback((data) => finishSocialLogin('ВКонтакте', vkLogin, data), [finishSocialLogin, vkLogin]);
+
+  const createSocialAccount = async () => {
+    const { name, login, data } = pendingSocial;
+    setPendingSocial(null);
+    await finishSocialLogin(name, login, { ...data, createAccount: true });
+  };
+  const chooseEmailLogin = () => {
+    setPendingSocial(null);
+    setIsLogin(true);
+    setIsVerification(false);
+    setIsForgotPassword(false);
+  };
 
   const handlePhoneChange = (e) => {
     const val = e.target.value.replace(/\D/g, '');
@@ -134,6 +149,24 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 relative overflow-hidden">
+      {pendingSocial && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div role="dialog" aria-modal="true" className="w-full max-w-sm bg-[#0d0f13] border border-gray-800 rounded-3xl p-6 shadow-2xl">
+            <h3 className="text-white font-bold text-lg mb-3">Аккаунт с этим профилем {pendingSocial.name} не найден</h3>
+            <p className="text-gray-400 text-sm mb-5">
+              Если вы уже регистрировались по почте, войдите по почте и привяжите {pendingSocial.name} в профиле, в разделе «Настройки». Так у вас останутся тариф, аккаунты и посты. Новый аккаунт будет пустым.
+            </p>
+            <div className="space-y-3">
+              <button type="button" onClick={chooseEmailLogin} className="w-full py-3 rounded-xl font-bold text-sm text-white bg-blue-600 hover:bg-blue-500 transition-colors">
+                Войти по почте
+              </button>
+              <button type="button" onClick={createSocialAccount} className="w-full py-3 rounded-xl font-bold text-sm text-gray-300 bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors">
+                Создать новый аккаунт
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Декоративный фон */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-blue-600/10 blur-[120px]"></div>

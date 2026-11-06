@@ -134,15 +134,19 @@ exports.login = async (req, res) => {
 
 exports.telegramAuth = async (req, res) => {
   try {
-    if (!verifyTelegramLogin(req.body, getBotToken())) {
+    // createAccount добавляет сайт, в подписи Telegram этого поля нет.
+    const { createAccount, ...telegramData } = req.body;
+    if (!verifyTelegramLogin(telegramData, getBotToken())) {
       return res.status(401).json({ error: 'Не удалось подтвердить вход через Telegram' });
     }
-    const { id, first_name, last_name, username, photo_url } = req.body;
+    const { id, first_name, last_name, username, photo_url } = telegramData;
 
     let user = await prisma.user.findUnique({ where: { telegramId: String(id) } });
     let isNewUser = false;
 
     if (!user) {
+      // Новый аккаунт создаётся только с согласия человека: возможно, он уже регистрировался по почте.
+      if (!createAccount) return res.json({ requiresConfirmation: true });
       isNewUser = true;
       const fullName = [first_name, last_name].filter(Boolean).join(' ') || username || 'TG Юзер';
       user = await prisma.user.create({
@@ -182,6 +186,8 @@ exports.vkAuth = async (req, res) => {
     let isNewUser = false;
 
     if (!user) {
+      // Новый аккаунт создаётся только с согласия человека: возможно, он уже регистрировался по почте.
+      if (!req.body.createAccount) return res.json({ requiresConfirmation: true });
       isNewUser = true;
       const email = normalizeEmail(vkUser.email) || null;
       // An account with this email is never joined automatically: its owner links VK from the profile.
@@ -227,6 +233,67 @@ exports.getTgChatInfo = async (req, res) => {
     res.json({ success: true, chatId: String(chat.id), title: chat.title, username: chat.username ? `@${chat.username}` : '', avatar });
   } catch (error) {
     res.status(400).json({ success: false, error: 'Бот не админ или канал неверен' });
+  }
+};
+
+// Привязка входа через соцсеть к аккаунту, в который человек уже вошёл.
+// Неудача отвечает кодом 400, а не 401: 401 означает, что истёк сам вход на сайт.
+exports.linkTelegramLogin = async (req, res) => {
+  try {
+    if (!verifyTelegramLogin(req.body, getBotToken())) {
+      return res.status(400).json({ error: 'Не удалось подтвердить Telegram. Попробуйте ещё раз.' });
+    }
+    const telegramId = String(req.body.id);
+    const owner = await prisma.user.findUnique({ where: { telegramId } });
+    if (owner && owner.id !== req.userId) {
+      return res.status(409).json({ error: 'Этот Telegram уже привязан к другому аккаунту на сайте.' });
+    }
+    const current = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (current.telegramId && current.telegramId !== telegramId) {
+      return res.status(409).json({ error: 'К вашему аккаунту уже привязан другой Telegram.' });
+    }
+    const name = [req.body.first_name, req.body.last_name].filter(Boolean).join(' ') || req.body.username || 'Telegram';
+    const photo = req.body.photo_url || null;
+    const updated = await prisma.user.update({
+      where: { id: req.userId },
+      data: { telegramId, ...(photo && !current.avatarUrl ? { avatarUrl: photo } : {}) },
+    });
+    await prisma.socialProfile.upsert({
+      where: { provider_providerAccountId: { provider: 'TELEGRAM', providerAccountId: telegramId } },
+      update: {},
+      create: { userId: req.userId, provider: 'TELEGRAM', providerAccountId: telegramId, name, avatarUrl: photo, accessToken: '' },
+    });
+    res.json({ success: true, user: sanitizeUser(updated) });
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(409).json({ error: 'Этот Telegram уже привязан к другому аккаунту на сайте.' });
+    console.error('Ошибка привязки Telegram:', error.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+};
+
+exports.linkVkLogin = async (req, res) => {
+  try {
+    const vkUser = await fetchVkIdUser(req.body.access_token);
+    if (!vkUser) return res.status(400).json({ error: 'Не удалось подтвердить ВКонтакте. Попробуйте ещё раз.' });
+
+    const vkId = String(vkUser.user_id);
+    const owner = await prisma.user.findUnique({ where: { vkId } });
+    if (owner && owner.id !== req.userId) {
+      return res.status(409).json({ error: 'Этот профиль ВКонтакте уже привязан к другому аккаунту на сайте.' });
+    }
+    const current = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (current.vkId && current.vkId !== vkId) {
+      return res.status(409).json({ error: 'К вашему аккаунту уже привязан другой профиль ВКонтакте.' });
+    }
+    const updated = await prisma.user.update({
+      where: { id: req.userId },
+      data: { vkId, ...(vkUser.avatar && !current.avatarUrl ? { avatarUrl: vkUser.avatar } : {}) },
+    });
+    res.json({ success: true, user: sanitizeUser(updated) });
+  } catch (error) {
+    if (error.code === 'P2002') return res.status(409).json({ error: 'Этот профиль ВКонтакте уже привязан к другому аккаунту на сайте.' });
+    console.error('Ошибка привязки ВКонтакте:', error.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 };
 

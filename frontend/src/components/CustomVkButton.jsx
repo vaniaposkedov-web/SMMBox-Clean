@@ -3,7 +3,7 @@ import * as VKID from '@vkid/sdk';
 
 const VK_LOGIN_FAILED = 'Не удалось войти через ВКонтакте. Попробуйте ещё раз или войдите по почте.';
 
-export default function CustomVkButton({ onAuth, onError }) {
+export default function CustomVkButton({ onAuth, onError, failureText = VK_LOGIN_FAILED }) {
   const handledCodes = useRef(new Set());
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export default function CustomVkButton({ onAuth, onError }) {
       if (onAuth) await onAuth({ access_token: tokens.access_token });
     } catch (error) {
       console.error('Ошибка авторизации ВК:', error);
-      if (onError) onError(VK_LOGIN_FAILED);
+      if (onError) onError(failureText);
     }
   };
 
@@ -80,7 +80,7 @@ export default function CustomVkButton({ onAuth, onError }) {
       const code = res?.code || res?.payload?.code;
       const deviceId = res?.device_id || res?.payload?.device_id;
       if (code && deviceId) processTokens(code, deviceId);
-      else if (onError) onError(VK_LOGIN_FAILED);
+      else if (onError) onError(failureText);
     }).catch((err) => {
       // Человек просто закрыл окно ВК: это не ошибка.
       if (err?.code === VKID.AuthErrorCode.NewTabHasBeenClosed) return;
@@ -88,7 +88,7 @@ export default function CustomVkButton({ onAuth, onError }) {
       if (!onError) return;
       onError(err?.code === VKID.AuthErrorCode.CannotCreateNewTab
         ? 'Браузер заблокировал окно входа. Разрешите всплывающие окна для этого сайта и нажмите кнопку ещё раз.'
-        : VK_LOGIN_FAILED);
+        : failureText);
     });
   };
 
