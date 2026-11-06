@@ -5,10 +5,11 @@ const { signUserToken, sanitizeUser } = require('../utils/security');
 const { DEFAULT_AI_PROMPT } = require('./aiController');
 
 exports.adminLogin = async (req, res) => {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
     try {
         const user = await prisma.user.findUnique({ where: { email } });
-        if (!user || user.role !== 'ADMIN') return res.status(401).json({ error: 'Неверные учетные данные' }); 
+        if (!user || user.role !== 'ADMIN') return res.status(401).json({ error: 'Неверные учетные данные' });
 
         const isMatch = user.password ? await bcrypt.compare(String(password), user.password) : false;
         if (!isMatch) return res.status(401).json({ error: 'Неверные учетные данные' });
