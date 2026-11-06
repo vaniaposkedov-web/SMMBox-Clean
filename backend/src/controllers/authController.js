@@ -21,6 +21,7 @@ const {
 
 const CODE_LIFETIME_MS = 15 * 60 * 1000;
 const MIN_PASSWORD_LENGTH = 6;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 const codeExpiry = () => new Date(Date.now() + CODE_LIFETIME_MS);
@@ -300,10 +301,10 @@ exports.linkVkLogin = async (req, res) => {
 exports.requestLinkEmail = async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
-    if (!email) return res.status(400).json({ error: 'Укажите email' });
+    if (!EMAIL_PATTERN.test(email)) return res.status(400).json({ error: 'Укажите настоящий адрес почты' });
 
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing && existing.id !== req.userId) return res.status(400).json({ error: 'Email занят' });
+    if (existing && existing.id !== req.userId) return res.status(400).json({ error: 'Эта почта уже используется другим аккаунтом' });
 
     const code = generateVerificationCode();
     // The code is tied to this address, so it cannot confirm a different one.
@@ -328,7 +329,7 @@ exports.verifyLinkEmail = async (req, res) => {
     const { code, phone } = req.body;
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!user || !isCodeFresh(user) || !user.emailVerificationCode || !safeEqual(user.emailVerificationCode, `link:${email}:${code}`)) {
-      return res.status(400).json({ error: 'Неверный код' });
+      return res.status(400).json({ error: 'Неверный или просроченный код' });
     }
     const updated = await prisma.user.update({
       where: { id: req.userId },

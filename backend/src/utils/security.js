@@ -21,7 +21,7 @@ const PRIVATE_USER_FIELDS = [
 
 const sanitizeUser = (user) => {
   if (!user) return user;
-  const safe = { ...user };
+  const safe = { ...user, hasPassword: Boolean(user.password) };
   for (const field of PRIVATE_USER_FIELDS) delete safe[field];
   return safe;
 };

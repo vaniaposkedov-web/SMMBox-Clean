@@ -311,7 +311,7 @@ export const useStore = create(
       linkTelegramLogin: (data) => get().linkSocialLogin('/api/auth/link/telegram', data),
       linkVkLogin: (data) => get().linkSocialLogin('/api/auth/link/vk', data),
 
-      requestEmailLink: async (userId, email) => {
+      requestEmailLink: async (email) => {
         try {
           const res = await fetch('/api/auth/request-link-email', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` }, body: JSON.stringify({ email }),
@@ -349,13 +349,14 @@ export const useStore = create(
         } catch (error) {}
       },
 
-      verifyEmailLink: async (userId, email, code, phone) => { 
+      verifyEmailLink: async (email, code) => {
         try {
           const res = await fetch('/api/auth/verify-link-email', {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` }, body: JSON.stringify({ email, code, phone }), 
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || get().token}` }, body: JSON.stringify({ email, code }),
           });
           const data = await res.json();
           if (!res.ok) return { success: false, error: data.error };
+          set({ user: data.user });
           return { success: true };
         } catch (error) { return { success: false, error: 'Ошибка сети' }; }
       },

@@ -9,14 +9,13 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom';
 import CustomTelegramButton from '../components/CustomTelegramButton';
 import CustomVkButton from '../components/CustomVkButton';
+import EmailLinkForm from '../components/settings/EmailLinkForm';
 
 export default function Profile() {
   const navigate = useNavigate();
   const user = useStore((state) => state.user);
   const logout = useStore((state) => state.logout);
   const updateUser = useStore((state) => state.updateUser);
-  const requestEmailLink = useStore((state) => state.requestEmailLink);
-  const verifyEmailLink = useStore((state) => state.verifyEmailLink);
 
   const accounts = useStore((state) => state.accounts) || [];
   const fetchAccounts = useStore((state) => state.fetchAccounts);
@@ -124,6 +123,7 @@ export default function Profile() {
 
   if (!user) return null;
   const isVulnerable = user?.email?.includes('.local') || !user?.phone || !user?.pavilion;
+  const hasRealEmail = Boolean(user.email) && !user.email.includes('.local');
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -182,8 +182,8 @@ export default function Profile() {
   };
 
   const handlePasswordReset = async () => {
-    if (!user.email || user.email.includes('.local')) {
-      return alert('Сначала привяжите настоящий Email!');
+    if (!hasRealEmail) {
+      return alert('Сначала укажите почту в блоке «Личные данные».');
     }
     setIsResettingPassword(true);
     try {
@@ -226,7 +226,7 @@ export default function Profile() {
 
   const getRegMethod = () => {
     const ways = [];
-    if (user?.email && !user.email.includes('.local')) ways.push('почта');
+    if (hasRealEmail && user.hasPassword !== false) ways.push('почта');
     if (user?.telegramId) ways.push('Telegram');
     if (user?.vkId) ways.push('ВКонтакте');
     return ways.join(', ') || 'почта';
@@ -304,8 +304,8 @@ export default function Profile() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-y-2 gap-x-4 max-w-xl mx-auto sm:mx-0 bg-gray-900/50 p-4 rounded-2xl border border-gray-800/50 text-left">
             <p className="text-gray-400 text-sm flex items-center gap-2 min-w-0">
               <Mail size={14} className="text-gray-500 shrink-0" /> 
-              <span className={`truncate ${user.email?.includes('.local') ? "text-red-400 font-medium" : "text-gray-300"}`}>
-                {user.email?.includes('.local') ? 'Не указан' : user.email}
+              <span className={`truncate ${hasRealEmail ? "text-gray-300" : "text-red-400 font-medium"}`}>
+                {hasRealEmail ? user.email : 'Не указан'}
               </span>
             </p>
             <p className="text-gray-400 text-sm flex items-center gap-2 min-w-0">
@@ -467,6 +467,8 @@ export default function Profile() {
                     </button>
                   </div>
                 )}
+
+                <EmailLinkForm />
               </div>
             </div>
 
@@ -520,8 +522,8 @@ export default function Profile() {
                         {passwordResetSent ? <CheckCircle2 size={20} /> : <Lock size={20} />}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-white text-sm sm:text-base font-bold truncate">{passwordResetSent ? 'Письмо отправлено!' : 'Изменить пароль'}</p>
-                        <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 truncate">{passwordResetSent ? 'Проверьте вашу почту' : 'Получить ссылку на сброс'}</p>
+                        <p className="text-white text-sm sm:text-base font-bold truncate">{passwordResetSent ? 'Письмо отправлено!' : (user.hasPassword === false ? 'Задать пароль' : 'Изменить пароль')}</p>
+                        <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 truncate">{passwordResetSent ? 'Проверьте вашу почту' : 'Получить ссылку на почту'}</p>
                       </div>
                     </div>
                     {!passwordResetSent && (
