@@ -79,6 +79,7 @@ io.on('connection', (socket) => {
 
 // Передаем io внутрь Express, чтобы контроллеры могли отправлять сигналы
 app.set('io', io);
+require('./utils/telegramPolling').startTelegramPolling(io);
 
 // Перед приложением стоят два nginx: на хосте и в контейнере фронтенда.
 app.set('trust proxy', Number(process.env.TRUST_PROXY || 2));

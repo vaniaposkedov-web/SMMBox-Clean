@@ -8,6 +8,7 @@ const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
 const { logEvent } = require('../utils/logger');
 const { getUserLimits, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
 const { getBotToken, sha256, safeEqual } = require('../utils/security');
+const { telegramHttp } = require('../utils/telegramClient');
 
 const GATEWAY_NOT_CONFIGURED = 'Шлюз ВК не настроен на сервере';
 const TELEGRAM_BIND_LIFETIME_MS = 15 * 60 * 1000;
@@ -664,7 +665,7 @@ exports.verifyTgAccountsStatus = async (req, res) => {
     const updates = await Promise.all(tgAccounts.map(async (acc) => {
       try {
         if (!acc.providerId) throw new Error('Фантомный аккаунт');
-        const tgRes = await axios.get(`https://api.telegram.org/bot${botToken}/getChatMember`, { params: { chat_id: acc.providerId, user_id: botId } });
+        const tgRes = await telegramHttp.get(`https://api.telegram.org/bot${botToken}/getChatMember`, { params: { chat_id: acc.providerId, user_id: botId } });
         const member = tgRes.data.result;
         const isWorking = member.status === 'administrator' || member.status === 'creator';
         return await prisma.account.update({ where: { id: acc.id }, data: { isValid: isWorking, errorMsg: isWorking ? null : 'Бот должен быть администратором' } });
@@ -862,24 +863,27 @@ exports.addVkKomodProfile = async (req, res) => {
 };
 
 exports.telegramWebhook = async (req, res) => {
-  try {
-    // Без секрета сообщение «от Telegram» мог бы подделать кто угодно, поэтому такие запросы не принимаем.
-    const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-    if (!webhookSecret || !safeEqual(req.headers['x-telegram-bot-api-secret-token'] || '', webhookSecret)) {
-      return res.sendStatus(403);
-    }
-    const update = req.body;
-    
-    // 1. МГНОВЕННО отвечаем Telegram, что всё ок, чтобы он не спамил запросами
-    res.sendStatus(200);
+  // Без секрета сообщение «от Telegram» мог бы подделать кто угодно, поэтому такие запросы не принимаем.
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!webhookSecret || !safeEqual(req.headers['x-telegram-bot-api-secret-token'] || '', webhookSecret)) {
+    return res.sendStatus(403);
+  }
 
+  // МГНОВЕННО отвечаем Telegram, что всё ок, чтобы он не спамил запросами
+  res.sendStatus(200);
+  await exports.processTelegramUpdate(req.body, req.app.get('io'));
+};
+
+// Одно событие бота. Оно приходит либо через webhook, либо через опрос (utils/telegramPolling.js).
+exports.processTelegramUpdate = async (update, io) => {
+  try {
     if (update.message && update.message.text && update.message.text.startsWith('/start bind_')) {
       const code = update.message.text.split('bind_')[1].trim();
       const tgUser = update.message.from;
       const botToken = getBotToken();
       const replyToUser = async (text) => {
         if (!botToken) return;
-        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, { chat_id: tgUser.id, text })
+        await telegramHttp.post(`https://api.telegram.org/bot${botToken}/sendMessage`, { chat_id: tgUser.id, text })
           .catch(() => console.log('Не удалось отправить сообщение пользователю Telegram'));
       };
 
@@ -921,14 +925,14 @@ exports.telegramWebhook = async (req, res) => {
       // === ИСПРАВЛЕНИЕ: БЕЗОПАСНАЯ ЗАГРУЗКА АВАТАРКИ ПОЛЬЗОВАТЕЛЯ ТГ ===
       if (botToken) {
         try {
-          const photosRes = await axios.get(`https://api.telegram.org/bot${botToken}/getUserProfilePhotos?user_id=${tgUser.id}&limit=1`);
+          const photosRes = await telegramHttp.get(`https://api.telegram.org/bot${botToken}/getUserProfilePhotos?user_id=${tgUser.id}&limit=1`);
           if (photosRes.data.result.total_count > 0) {
             const fileId = photosRes.data.result.photos[0][0].file_id;
-            const fileRes = await axios.get(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
+            const fileRes = await telegramHttp.get(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
             const tgFileUrl = `https://api.telegram.org/file/bot${botToken}/${fileRes.data.result.file_path}`;
-            
+
             // Скачиваем картинку и переводим в формат base64
-            const imageReq = await axios.get(tgFileUrl, { responseType: 'arraybuffer' });
+            const imageReq = await telegramHttp.get(tgFileUrl, { responseType: 'arraybuffer' });
             avatarUrl = `data:image/jpeg;base64,${Buffer.from(imageReq.data).toString('base64')}`;
           }
         } catch (e) {
@@ -951,15 +955,15 @@ exports.telegramWebhook = async (req, res) => {
 
       await replyToUser(`✅ Telegram привязан к аккаунту «${owner.name || 'без имени'}» на сайте SADOVODPS. Вернитесь на сайт и выберите канал. Если это не ваш аккаунт, напишите в поддержку.`);
 
-      if (req.app.get('io') && global.userSockets) {
+      if (io && global.userSockets) {
          const connectedSockets = global.userSockets.get(String(userId));
          if (connectedSockets) {
            connectedSockets.forEach(socketId => {
-             req.app.get('io').to(socketId).emit('ACCOUNTS_UPDATED');
+             io.to(socketId).emit('ACCOUNTS_UPDATED');
            });
          }
       }
-      return; 
+      return;
     }
 
     if (update.my_chat_member) {
@@ -991,13 +995,13 @@ exports.telegramWebhook = async (req, res) => {
           // === ИСПРАВЛЕНИЕ: БЕЗОПАСНАЯ ЗАГРУЗКА АВАТАРКИ КАНАЛА ТГ ===
           try {
             const token = getBotToken();
-            const chatRes = await axios.get(`https://api.telegram.org/bot${token}/getChat?chat_id=${chatId}`);
+            const chatRes = await telegramHttp.get(`https://api.telegram.org/bot${token}/getChat?chat_id=${chatId}`);
             if (chatRes.data.result.photo?.small_file_id) {
-              const fileRes = await axios.get(`https://api.telegram.org/bot${token}/getFile?file_id=${chatRes.data.result.photo.small_file_id}`);
+              const fileRes = await telegramHttp.get(`https://api.telegram.org/bot${token}/getFile?file_id=${chatRes.data.result.photo.small_file_id}`);
               const tgFileUrl = `https://api.telegram.org/file/bot${token}/${fileRes.data.result.file_path}`;
-              
+
               // Скачиваем картинку и переводим в формат base64
-              const imageReq = await axios.get(tgFileUrl, { responseType: 'arraybuffer' });
+              const imageReq = await telegramHttp.get(tgFileUrl, { responseType: 'arraybuffer' });
               avatarUrl = `data:image/jpeg;base64,${Buffer.from(imageReq.data).toString('base64')}`;
             }
           } catch (e) { /* Игнорируем ошибку загрузки фото */ }
@@ -1024,11 +1028,11 @@ exports.telegramWebhook = async (req, res) => {
           });
 
           // ⚡ МОМЕНТАЛЬНОЕ ОБНОВЛЕНИЕ ФРОНТЕНДА ПРИ ДОБАВЛЕНИИ ⚡
-          if (req.app.get('io') && global.userSockets) {
+          if (io && global.userSockets) {
              const connectedSockets = global.userSockets.get(String(tgProfile.userId));
              if (connectedSockets) {
                connectedSockets.forEach(socketId => {
-                 req.app.get('io').to(socketId).emit('ACCOUNTS_UPDATED');
+                 io.to(socketId).emit('ACCOUNTS_UPDATED');
                });
              }
           }
@@ -1043,18 +1047,19 @@ exports.telegramWebhook = async (req, res) => {
         });
 
         // ⚡ МОМЕНТАЛЬНОЕ ОБНОВЛЕНИЕ ПРИ УДАЛЕНИИ БОТА ИЗ КАНАЛА ⚡
-        if (chatAccount && req.app.get('io') && global.userSockets) {
+        if (chatAccount && io && global.userSockets) {
            const connectedSockets = global.userSockets.get(String(chatAccount.userId));
            if (connectedSockets) {
              connectedSockets.forEach(socketId => {
-               req.app.get('io').to(socketId).emit('ACCOUNTS_UPDATED');
+               io.to(socketId).emit('ACCOUNTS_UPDATED');
              });
            }
         }
       }
     }
   } catch (error) {
-    console.error('Ошибка в Webhook Telegram:', error);
+    // Только текст ошибки: в полном объекте может быть адрес запроса с ключом бота.
+    console.error('Ошибка при обработке события Telegram:', error.message);
 
     await logEvent(
       null, // ID юзера неизвестен, если бот упал на системном уровне
