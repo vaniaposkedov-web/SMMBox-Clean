@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, Send, CheckCircle2, Share2, Users,
   LayoutTemplate, Search, CalendarClock, Clock, Loader2, Settings, PenTool, Check, Trash2,
-  Plus, AlertCircle
+  Plus, AlertCircle, Crown
 } from 'lucide-react';
 import { useStore } from '../store';
 import SendingNotice from '../components/SendingNotice';
@@ -36,6 +36,12 @@ export default function Publish() {
     tempDraft, saveTempDraft, createPostAction,
     myPartners, sharePostAction, fetchPartnerData
   } = useStore();
+  const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
+
+  // Тариф мог появиться только что: без свежих данных клиент увидел бы плашку «без тарифа».
+  useEffect(() => {
+    fetchCurrentUser();
+  }, [fetchCurrentUser]);
   const isRestored = useRef(false);
 
   const [view, setView] = useState('start'); 
@@ -602,6 +608,29 @@ const handlePublish = async () => {
             className="w-full bg-red-600 hover:bg-red-500 text-white py-3.5 sm:py-4 rounded-xl font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
           >
             Перейти к заполнению
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Без тарифа сервер всё равно не примет пост, поэтому вместо выбора каналов сразу объясняем, что делать.
+  if (!limitsData.isActive) {
+    return (
+      <div className="min-h-[100dvh] bg-admin-bg px-4 py-8 flex flex-col items-center justify-center animate-fade-in relative pb-24 md:pb-8">
+        <div className="bg-gradient-to-br from-purple-900 to-indigo-900 border border-purple-500/30 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center shadow-xl">
+          <div className="w-16 h-16 bg-yellow-500/10 text-yellow-400 rounded-full flex items-center justify-center mx-auto mb-5 border border-yellow-500/20">
+            <Crown size={32} />
+          </div>
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-3">Без тарифа публиковать нельзя</h2>
+          <p className="text-gray-300 text-sm sm:text-base mb-6 sm:mb-8 leading-relaxed">
+            Купите тариф и расширьте свои возможности: посты сразу и по расписанию, до 20 аккаунтов ВКонтакте и 8 каналов Telegram.
+          </p>
+          <button
+            onClick={() => navigate('/profile?tariff=open')}
+            className="w-full bg-yellow-500 hover:bg-yellow-400 text-black py-3.5 sm:py-4 rounded-xl font-extrabold transition-all active:scale-95 min-h-[48px]"
+          >
+            Выбрать тариф
           </button>
         </div>
       </div>

@@ -110,6 +110,9 @@ export default function Profile() {
     if (searchParams.get('tab') === 'settings') {
       setActiveTab('settings');
     }
+    if (searchParams.get('tariff') === 'open') {
+      setShowProModal(true);
+    }
     if (searchParams.get('highlight') === 'true') {
       setHighlightForm(true);
       setTimeout(() => {
@@ -232,6 +235,30 @@ export default function Profile() {
   const isAdvanced = planType?.includes('РАСШИРЕН') || planType === 'PRO';
   const isBasic = planType?.includes('БАЗОВ') || planType === 'BASIC';
 
+  const tariffBanner = (
+    <div className="lg:col-span-3 bg-gradient-to-r from-purple-900 to-indigo-900 border border-purple-500/30 rounded-2xl sm:rounded-3xl p-5 sm:p-8 shadow-xl relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-5 sm:gap-6">
+      <div className="absolute -right-10 -top-10 w-32 h-32 sm:w-40 sm:h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="relative z-10 text-center sm:text-left min-w-0">
+        <h3 className="text-lg sm:text-2xl font-extrabold text-white mb-2 flex items-center justify-center sm:justify-start gap-2">
+          <Crown className={isSubscriptionActive ? "text-yellow-400" : "text-purple-400"} size={24} />
+          {isAdvanced ? 'У вас активен Расширенный тариф!' : isBasic ? 'У вас активен Базовый тариф!' : 'Выберите тариф, чтобы публиковать посты'}
+        </h3>
+        <p className="text-gray-300 text-xs sm:text-base max-w-2xl leading-relaxed">
+          {isAdvanced
+            ? 'Вам доступны максимальные лимиты (20 ВК / 8 ТГ), автопостинг и все премиум функции платформы.'
+            : isBasic
+            ? 'Вам доступны лимиты (15 ВК / 5 ТГ). Хотите больше? Подключите Расширенный тариф (20 ВК / 8 ТГ) и снимите все ограничения!'
+            : 'Без тарифа публикации недоступны. Подключите Базовый или Расширенный тариф и управляйте до 20 аккаунтами ВК и 8 каналами Telegram!'}
+        </p>
+      </div>
+      {!isAdvanced && (
+        <button onClick={handleOpenProModal} className="relative z-10 shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-sm sm:text-base font-extrabold transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] active:scale-95 w-full sm:w-auto min-h-[48px]">
+          {isBasic ? 'Улучшить тариф' : 'Выбрать тариф'}
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="w-full pt-6 lg:pt-10 pb-[calc(100px+env(safe-area-inset-bottom))] md:pb-12 px-4 md:px-8 font-sans">
       
@@ -263,6 +290,9 @@ export default function Profile() {
           </div>
         </div>
       )}
+
+      {/* Без тарифа предложение стоит первым: на телефоне до нижней части страницы нужно долго листать */}
+      {!isSubscriptionActive && <div className="mb-6">{tariffBanner}</div>}
 
       {/* ШАПКА ПРОФИЛЯ */}
       <div className="bg-admin-card border border-gray-800 rounded-3xl p-5 pt-10 sm:p-8 shadow-xl relative overflow-hidden mb-6 flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
@@ -387,27 +417,7 @@ export default function Profile() {
             </div>
 
             {/* Баннер Тарифов */}
-            <div className="lg:col-span-3 bg-gradient-to-r from-purple-900 to-indigo-900 border border-purple-500/30 rounded-2xl sm:rounded-3xl p-5 sm:p-8 shadow-xl relative overflow-hidden mt-2 flex flex-col sm:flex-row items-center justify-between gap-5 sm:gap-6">
-              <div className="absolute -right-10 -top-10 w-32 h-32 sm:w-40 sm:h-40 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
-              <div className="relative z-10 text-center sm:text-left min-w-0">
-                <h3 className="text-lg sm:text-2xl font-extrabold text-white mb-2 flex items-center justify-center sm:justify-start gap-2">
-                  <Crown className={isSubscriptionActive ? "text-yellow-400" : "text-purple-400"} size={24} /> 
-                  {isAdvanced ? 'У вас активен Расширенный тариф!' : isBasic ? 'У вас активен Базовый тариф!' : 'Расширьте лимиты с новыми тарифами'}
-                </h3>
-                <p className="text-gray-300 text-xs sm:text-base max-w-2xl leading-relaxed">
-                  {isAdvanced 
-                    ? 'Вам доступны максимальные лимиты (20 ВК / 8 ТГ), автопостинг и все премиум функции платформы.' 
-                    : isBasic
-                    ? 'Вам доступны лимиты (15 ВК / 5 ТГ). Хотите больше? Подключите Расширенный тариф (20 ВК / 8 ТГ) и снимите все ограничения!'
-                    : 'Не хватает лимитов? Подключите Базовый или Расширенный тариф и управляйте до 20 аккаунтами ВК и 8 каналами Telegram!'}
-                </p>
-              </div>
-              {!isAdvanced && (
-                <button onClick={handleOpenProModal} className="relative z-10 shrink-0 bg-yellow-500 hover:bg-yellow-400 text-black px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl text-sm sm:text-base font-extrabold transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_30px_rgba(234,179,8,0.5)] active:scale-95 w-full sm:w-auto min-h-[48px]">
-                  {isBasic ? 'Улучшить тариф' : 'Выбрать тариф'}
-                </button>
-              )}
-            </div>
+            {isSubscriptionActive && tariffBanner}
           </div>
         )}
 
