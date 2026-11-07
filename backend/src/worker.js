@@ -4,8 +4,11 @@ const prisma = require('./utils/prisma');
 const fs = require('fs');
 const sharp = require('sharp');
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const NETWORK_ERROR_CODES = new Set(['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH']);
 const describeError = (error) => {
     const data = error.response?.data;
+    // Клиент видит эту причину на сайте: технический текст на английском ему ничего не скажет.
+    if (!data && NETWORK_ERROR_CODES.has(error.code)) return 'Нет связи с сервисом публикации. Попробуйте отправить пост ещё раз позже.';
     return String(data?.description || data?.message || error.message || 'Неизвестная ошибка').slice(0, 300);
 };
 

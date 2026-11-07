@@ -1,36 +1,22 @@
 #!/bin/bash
+# Устанавливает на сервер последний сохранённый коммит. Настройки .env, база и фото на сервере не меняются.
+# Ничего не отправляет на GitHub. Запуск: bash deploy.sh
+set -euo pipefail
 
-# Останавливаем скрипт, если какая-то команда завершится с ошибкой
-set -e
+SERVER="root@201.24.121.150"
+KEY="$HOME/.ssh/sadovodps_server"
+DIR="/opt/sadovodps"
 
-# --- ШАГ 1: Локальный Git ---
-echo "🚀 [1/3] Подготовка к отправке на GitHub..."
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Есть несохранённые изменения. Сначала сделайте коммит: на сервер уходит только сохранённая версия."
+  exit 1
+fi
 
-# Запрашиваем текст коммита. Если просто нажать Enter, будет "Автоматическое обновление"
-read -p "Введите описание коммита (по умолчанию 'Автоматическое обновление'): " COMMIT_MSG
-COMMIT_MSG=${COMMIT_MSG:-"Автоматическое обновление"}
+COMMIT=$(git rev-parse --short HEAD)
+echo "Загружаю версию $COMMIT..."
+git -c core.autocrlf=false -c core.eol=lf archive --format=tar.gz HEAD | ssh -i "$KEY" "$SERVER" "tar xz -C $DIR && echo $COMMIT > $DIR/DEPLOYED_COMMIT"
 
-git add .
-git commit -m "$COMMIT_MSG" || true
-git push origin main
-echo "✅ Код успешно отправлен на GitHub!"
+echo "Пересобираю и перезапускаю сайт..."
+ssh -i "$KEY" "$SERVER" "cd $DIR && docker compose up -d --build && docker compose ps --format '{{.Name}}: {{.Status}}'"
 
-
-# --- ШАГ 2: Подключение к серверу и обновление ---
-echo "🌍 [2/3] Подключение к серверу и деплой..."
-
-# Команды между << 'EOF' и EOF будут выполнены на удаленном сервере
-ssh root@5.42.127.159 << 'EOF'
-    set -e # Останавливать при ошибках на сервере
-    
-    echo "Переход в директорию проекта..."
-    cd /root/SMMBox/smmbox-clean || { echo "❌ Директория не найдена!"; exit 1; }
-    
-    echo "Получение свежего кода из репозитория..."
-    git pull origin main
-    
-    echo "Пересборка и запуск Docker-контейнеров..."
-    docker-compose up -d --build
-    
-    echo "🎉 Деплой на сервере успешно завершен!"
-EOF
+echo "Готово: на сервере версия $COMMIT."

@@ -2,8 +2,11 @@
 // Если задан TELEGRAM_PROXY_URL, запросы уходят по зашифрованному каналу через промежуточный сервер.
 // Шифрование идёт от сайта до самого Telegram, поэтому тот сервер видит только адрес Telegram:
 // ни ключа бота, ни постов он прочитать не может. Другие сервисы через него не ходят.
+// Адрес https:// шифрует ещё и связь с самим прокси. У обычного купленного прокси адрес http://:
+// его логин и пароль передаются без шифрования, но ключ бота и посты всё равно зашифрованы.
 const axios = require('axios');
 const https = require('https');
+const net = require('net');
 const tls = require('tls');
 
 const TUNNEL_TIMEOUT_MS = 30 * 1000;
@@ -19,13 +22,15 @@ const parseProxyUrl = (value) => {
     // В тексте исходной ошибки был бы весь адрес вместе с паролем.
     url = null;
   }
-  if (!url || url.protocol !== 'https:') {
-    throw new Error('TELEGRAM_PROXY_URL указан неверно: нужен адрес вида https://имя:пароль@сервер');
+  if (!url || !['https:', 'http:'].includes(url.protocol)) {
+    throw new Error('TELEGRAM_PROXY_URL указан неверно: нужен адрес вида http://имя:пароль@сервер:порт');
   }
+  const secure = url.protocol === 'https:';
   const credentials = `${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`;
   return {
+    secure,
     host: url.hostname,
-    port: Number(url.port) || 443,
+    port: Number(url.port) || (secure ? 443 : 80),
     authorization: url.username ? `Proxy-Authorization: Basic ${Buffer.from(credentials).toString('base64')}\r\n` : '',
   };
 };
@@ -37,9 +42,11 @@ class TelegramTunnelAgent extends https.Agent {
   }
 
   createConnection(options, callback) {
-    const { host, port, authorization } = this.proxy;
+    const { secure, host, port, authorization } = this.proxy;
     const target = `${options.host}:${options.port}`;
-    const outer = tls.connect({ host, port, servername: host, ALPNProtocols: ['http/1.1'] });
+    const outer = secure
+      ? tls.connect({ host, port, servername: host, ALPNProtocols: ['http/1.1'] })
+      : net.connect({ host, port });
     let answer = Buffer.alloc(0);
     let finished = false;
 
@@ -83,7 +90,7 @@ class TelegramTunnelAgent extends https.Agent {
     outer.once('error', fail);
     outer.once('close', fail);
     outer.on('readable', onReadable);
-    outer.once('secureConnect', () => {
+    outer.once(secure ? 'secureConnect' : 'connect', () => {
       outer.write(`CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n${authorization}\r\n`);
     });
   }
