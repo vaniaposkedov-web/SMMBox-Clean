@@ -7,7 +7,9 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store';
 import SendingNotice from '../components/SendingNotice';
+import ScheduleTimePicker from '../components/ScheduleTimePicker';
 import { estimateShareSeconds, getDeliveryMessage } from '../sendingTime';
+import { MIN_SCHEDULE_AHEAD_MINUTES, fromKeys, getEarliestScheduleTime, toDateKey, toTimeKey } from '../scheduleTime';
 
 const IconVK = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full">
@@ -176,17 +178,14 @@ export default function Publish() {
 
     return scheduledPostsRaw.map(p => {
       const d = new Date(p.publishAt || p.createdAt);
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      const localISODate = `${year}-${month}-${day}`;
-      
+
       const prov = (p.account?.provider || '').toUpperCase();
-      
+
       return {
         id: p.id,
-        date: localISODate,
-        time: d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        batchId: p.batchId,
+        date: toDateKey(d),
+        time: toTimeKey(d),
         text: p.text || 'Без текста',
         network: prov === 'VK' ? 'VK' : 'TG',
         color: prov === 'VK' ? 'bg-blue-500' : 'bg-sky-500',
@@ -197,6 +196,30 @@ export default function Publish() {
       };
     });
   }, [scheduledPostsRaw]);
+
+  // Раз в полминуты список доступного времени пересчитывается: то, что уже прошло, из него исчезает.
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setClockTick((tick) => tick + 1), 30 * 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Занятое время на дату. Другие каналы той же публикации его не занимают.
+  const getBusyTimes = (dateKey, ownPost = null) => [...new Set(
+    realScheduledPosts
+      .filter((p) => p.status === 'SCHEDULED' && p.date === dateKey && p.id !== ownPost?.id && !(ownPost?.batchId && p.batchId === ownPost.batchId))
+      .map((p) => p.time)
+  )].sort();
+
+  const getScheduleProblem = (dateKey, timeKey, ownPost = null) => {
+    if (fromKeys(dateKey, timeKey) < getEarliestScheduleTime()) {
+      return `Это время уже прошло или наступит слишком скоро. Выберите время минимум на ${MIN_SCHEDULE_AHEAD_MINUTES} минут вперёд.`;
+    }
+    if (getBusyTimes(dateKey, ownPost).includes(timeKey)) {
+      return `На ${timeKey} уже запланирована публикация. Выберите другое время.`;
+    }
+    return null;
+  };
 
   const calendarDays = useMemo(() => {
     return Array.from({length: 14}).map((_, i) => {
@@ -268,7 +291,8 @@ export default function Publish() {
       if (tempDraft.view) setView(tempDraft.view);
       if (tempDraft.publishMode) setPublishMode(tempDraft.publishMode);
       if (tempDraft.scheduleTime) setScheduleTime(tempDraft.scheduleTime);
-      if (tempDraft.selectedCalendarDate) setSelectedCalendarDate(tempDraft.selectedCalendarDate);
+      // Дата из старого черновика могла уже пройти: тогда остаётся сегодняшняя.
+      if (tempDraft.selectedCalendarDate && tempDraft.selectedCalendarDate >= toDateKey(new Date())) setSelectedCalendarDate(tempDraft.selectedCalendarDate);
       if (tempDraft.sharedPostId) setSharedPostId(tempDraft.sharedPostId);
     }
     isRestored.current = true;
@@ -436,21 +460,10 @@ const handlePublish = async () => {
     if (publishMode === 'schedule') {
       if (!scheduleTime) return setTimeout(() => alert('Укажите время публикации!'), 10);
       
-      const baseDate = selectedCalendarDate || new Date().toLocaleDateString('en-CA'); 
-      const [year, month, day] = baseDate.split('-');
-      const [hours, minutes] = scheduleTime.split(':');
-      
-      const selectedDateTime = new Date();
-      selectedDateTime.setFullYear(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
-      selectedDateTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+      const problem = getScheduleProblem(selectedCalendarDate, scheduleTime);
+      if (problem) return setTimeout(() => alert(problem), 10);
 
-      const minAllowedTime = new Date();
-      minAllowedTime.setMinutes(minAllowedTime.getMinutes() + 5);
-
-      if (selectedDateTime < minAllowedTime) {
-        return setTimeout(() => alert('Запланировать пост можно минимум на 5 минут вперед от текущего времени!'), 10);
-      }
-      publishAt = selectedDateTime.toISOString(); 
+      publishAt = fromKeys(selectedCalendarDate, scheduleTime).toISOString();
     }
     
     // Пока фото загружаются, закрытие вкладки может потерять пост
@@ -487,6 +500,8 @@ const handlePublish = async () => {
         if (saveTempDraft) saveTempDraft(null);
         fetchScheduledPosts();
       } else {
+        // Время могли занять с другого устройства: список занятого нужно обновить.
+        if (publishAt) fetchScheduledPosts();
         alert(result.error || 'Сервер не принял пост. Попробуйте ещё раз.');
       }
     } catch (error) {
@@ -504,47 +519,45 @@ const handlePublish = async () => {
     setEditText(post.text);
     
     const d = new Date(post.rawPublishAt);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    
-    setEditDate(`${year}-${month}-${day}`);
-    setEditTime(`${hours}:${minutes}`);
+    setEditDate(toDateKey(d));
+    setEditTime(toTimeKey(d));
   };
 
   const handleUpdatePost = async () => {
+    if (!editDate || !editTime) {
+      setEditTab('settings');
+      return alert('Укажите дату и время публикации!');
+    }
+
     setIsUpdatingPost(true);
     try {
       const token = localStorage.getItem('token');
-      const [year, month, day] = editDate.split('-');
-      const [hours, minutes] = editTime.split(':');
-      const localDate = new Date(year, month - 1, day, hours, minutes);
-      
-      // === ПРОВЕРКА ВРЕМЕНИ ПРИ РЕДАКТИРОВАНИИ ===
-      // === ПРОВЕРКА ВРЕМЕНИ ПРИ РЕДАКТИРОВАНИИ ===
-      const minAllowedTime = new Date();
-      minAllowedTime.setMinutes(minAllowedTime.getMinutes() + 5); // Сдвигаем текущее время на 5 минут вперед
-      if (localDate < minAllowedTime) {
-         setIsUpdatingPost(false);
-         return alert('Запланировать пост можно минимум на 5 минут вперед от текущего времени!');
+      const original = new Date(editPost.rawPublishAt);
+
+      // Время проверяется, только если его меняют: текст можно поправить и у поста, который скоро выйдет.
+      if (editDate !== toDateKey(original) || editTime !== toTimeKey(original)) {
+        const problem = getScheduleProblem(editDate, editTime, editPost);
+        if (problem) {
+          setIsUpdatingPost(false);
+          return alert(problem);
+        }
       }
 
-      const newIsoDate = localDate.toISOString();
+      const newIsoDate = fromKeys(editDate, editTime).toISOString();
 
       const res = await fetch(`/api/posts/scheduled/${editPost.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ text: editText, publishAt: newIsoDate })
       });
-      
+
       if (res.ok) {
          await fetchScheduledPosts();
          setEditPost(null);
       } else {
-         alert('Ошибка при обновлении поста на сервере');
+         const data = await res.json().catch(() => ({}));
+         await fetchScheduledPosts();
+         alert(data.error || 'Ошибка при обновлении поста на сервере');
       }
     } catch (e) {
       alert('Ошибка соединения с сервером');
@@ -765,13 +778,27 @@ const handlePublish = async () => {
                     <div className="grid grid-cols-2 gap-3 sm:gap-4">
                       <div className="flex flex-col min-w-0">
                         <label className="text-xs font-bold text-gray-500 uppercase mb-1">Дата</label>
-                        <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[48px]" />
+                        <input type="date" min={toDateKey(new Date())} value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[50px]" />
                       </div>
                       <div className="flex flex-col min-w-0">
                         <label className="text-xs font-bold text-gray-500 uppercase mb-1">Время</label>
-                        <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[48px]" />
+                        {/^\d{4}-\d{2}-\d{2}$/.test(editDate) && editDate >= toDateKey(new Date()) ? (
+                          <ScheduleTimePicker
+                            dateKey={editDate}
+                            value={editTime}
+                            onChange={setEditTime}
+                            busyTimes={getBusyTimes(editDate, editPost)}
+                            keepTime={editDate === toDateKey(new Date(editPost.rawPublishAt)) ? toTimeKey(new Date(editPost.rawPublishAt)) : null}
+                          />
+                        ) : (
+                          <p className="text-sm text-red-400">Выберите сегодняшнюю или будущую дату.</p>
+                        )}
                       </div>
                     </div>
+                    <p className="text-xs text-gray-500">
+                      Прошедшее и занятое время выбрать нельзя.
+                      {getBusyTimes(editDate, editPost).length > 0 && ` Занято: ${getBusyTimes(editDate, editPost).join(', ')}.`}
+                    </p>
                     <div className="bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl mt-2">
                       <p className="text-xs sm:text-sm text-blue-400 font-medium flex items-start gap-2 leading-snug"><Settings size={18} className="shrink-0 mt-0.5" /> Для изменения знака, подписи или фото, отмените эту публикацию и создайте новую.</p>
                     </div>
@@ -905,36 +932,42 @@ const handlePublish = async () => {
             
             {/* === НОВЫЙ БЛОК ВРЕМЕНИ СВЕРХУ (только если выбран отложенный постинг) === */}
             {publishMode === 'schedule' && (
-              <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500 shrink-0">
-                    <Clock size={24} />
+              <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500 shrink-0">
+                      <Clock size={24} />
+                    </div>
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Время публикации</h2>
+                      <p className="text-xs sm:text-sm text-gray-400">
+                        {fromKeys(selectedCalendarDate, '00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}. Укажите точное время
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Время публикации</h2>
-                    <p className="text-xs sm:text-sm text-gray-400">
-                      Укажите точное время
-                    </p>
+
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <ScheduleTimePicker
+                      dateKey={selectedCalendarDate}
+                      value={scheduleTime}
+                      onChange={setScheduleTime}
+                      busyTimes={getBusyTimes(selectedCalendarDate)}
+                    />
+                    {scheduleTime && (
+                      <button
+                        onClick={() => setScheduleTime('')}
+                        className="w-[50px] h-[50px] flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20 shrink-0"
+                        title="Очистить время"
+                      >
+                        <X size={20} />
+                      </button>
+                    )}
                   </div>
                 </div>
-                
-                <div className="flex items-center gap-3 w-full sm:w-auto">
-                  <input 
-                    type="time" 
-                    value={scheduleTime} 
-                    onChange={(e) => setScheduleTime(e.target.value)} 
-                    className="flex-1 sm:w-auto min-w-[120px] appearance-none bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-lg font-medium text-white outline-none focus:border-purple-500 transition-colors h-[50px] cursor-pointer" 
-                  />
-                  {scheduleTime && (
-                    <button 
-                      onClick={() => setScheduleTime('')} 
-                      className="w-[50px] h-[50px] flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20 shrink-0"
-                      title="Очистить время"
-                    >
-                      <X size={20} />
-                    </button>
-                  )}
-                </div>
+                <p className="text-xs text-gray-500">
+                  Прошедшее и занятое время выбрать нельзя. Ближайшее время: через {MIN_SCHEDULE_AHEAD_MINUTES} минут.
+                  {getBusyTimes(selectedCalendarDate).length > 0 && ` Занято: ${getBusyTimes(selectedCalendarDate).join(', ')}.`}
+                </p>
               </div>
             )}
 

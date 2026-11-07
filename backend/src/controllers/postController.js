@@ -1,4 +1,5 @@
 const prisma = require('../utils/prisma');
+const crypto = require('crypto');
 const axios = require('axios');
 const FormData = require('form-data');
 const sharp = require('sharp');
@@ -9,8 +10,8 @@ const path = require('path');
 const { postQueue, WORKER_CONCURRENCY } = require('../queue');
 const { getUserLimits, getAllowedAccountIds, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
 const { escapeXml } = require('../utils/security');
-
 const { telegramHttp } = require('../utils/telegramClient');
+
 // === ЛОГИКА ОТПРАВКИ В TELEGRAM ===В общем
 async function sendToTelegram(token, chatId, text, imageBuffers) {
     const baseUrl = `https://api.telegram.org/bot${token}`;
@@ -340,26 +341,64 @@ async function applyWatermark(imageBuffer, wmConfig) {
     }
 }
 
+// === ПРАВИЛА ОТЛОЖЕННЫХ ПОСТОВ ===
+// Запланировать можно только на будущее время. У одного человека на одну минуту приходится одна публикация.
+// Один пост сразу в несколько каналов считается одной публикацией: его записи связаны общим batchId.
+const SCHEDULE_INVALID_ERROR = 'Неверная дата или время публикации.';
+const SCHEDULE_PAST_ERROR = 'Это время уже прошло. Выберите время в будущем.';
+const SCHEDULE_BUSY_ERROR = 'На это время у вас уже запланирована публикация. Выберите другое время.';
+const ONE_MINUTE_MS = 60 * 1000;
+
+const toScheduleMinute = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setSeconds(0, 0);
+    return date;
+};
+
+// own: пост, который переносят. Он сам и другие каналы той же публикации время не занимают.
+const findScheduleConflict = (client, userId, minute, own = null) => client.post.findFirst({
+    where: {
+        status: 'SCHEDULED',
+        publishAt: { gte: minute, lt: new Date(minute.getTime() + ONE_MINUTE_MS) },
+        account: { userId },
+        ...(own ? { id: { not: own.id } } : {}),
+        ...(own?.batchId ? { OR: [{ batchId: null }, { batchId: { not: own.batchId } }] } : {}),
+    },
+    select: { id: true },
+});
+
+// Запросы одного человека выполняются по очереди, иначе два одновременных запроса заняли бы одно время.
+const withScheduleLock = (userId, work) => prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${String(userId)}))`;
+    return work(tx);
+}, { maxWait: 5000, timeout: 15000 });
+
 exports.createPost = async (req, res) => {
     try {
         const { text, accountsData, publishAt } = req.body;
-        
+
         let accounts = [];
         if (accountsData) {
             accounts = typeof accountsData === 'string' ? JSON.parse(accountsData) : accountsData;
         }
-        
+
         let parsedPublishAt = null;
         let isScheduled = false;
 
         if (publishAt && publishAt !== 'null' && String(publishAt).trim() !== "") {
-            const tempDate = new Date(publishAt);
-            if (!isNaN(tempDate.getTime())) {
-                parsedPublishAt = tempDate;
-                isScheduled = true;
+            parsedPublishAt = toScheduleMinute(publishAt);
+            if (!parsedPublishAt) {
+                await removeUploadedFiles(req);
+                return res.status(400).json({ success: false, error: SCHEDULE_INVALID_ERROR });
             }
+            if (parsedPublishAt.getTime() <= Date.now()) {
+                await removeUploadedFiles(req);
+                return res.status(400).json({ success: false, error: SCHEDULE_PAST_ERROR });
+            }
+            isScheduled = true;
         }
-        
+
         if (!accounts || accounts.length === 0) {
             await removeUploadedFiles(req);
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
@@ -378,6 +417,11 @@ exports.createPost = async (req, res) => {
         if (accounts.some((item) => !allowedIds.has(item.accountId))) {
             await removeUploadedFiles(req);
             return res.status(403).json({ success: false, error: 'Один из выбранных аккаунтов недоступен для публикации' });
+        }
+
+        if (isScheduled && await findScheduleConflict(prisma, userId, parsedPublishAt)) {
+            await removeUploadedFiles(req);
+            return res.status(409).json({ success: false, error: SCHEDULE_BUSY_ERROR });
         }
 
         // БЫСТРЫЙ ШАГ 1: Надежно сохраняем файлы и генерируем два вида путей
@@ -409,31 +453,50 @@ exports.createPost = async (req, res) => {
             : null;
 
         // Создаём записи в базе. Оформление сохраняется вместе с постом: оно нужно и отложенным постам, и повторной отправке.
+        const batchId = isScheduled ? crypto.randomUUID() : null;
+        const createRows = async (client) => {
+            const rows = [];
+            for (const accData of accounts) {
+                const account = await client.account.findUnique({
+                    where: { id: accData.accountId },
+                    include: { watermark: true }
+                });
+                if (!account) continue;
+
+                const watermarkConfig = accData.applyWatermark ? (accData.watermarkConfig || account.watermark) : null;
+                const signatureText = accData.applySignature ? (accData.signatureText !== undefined ? accData.signatureText : account.signature) : null;
+
+                const post = await client.post.create({
+                    data: {
+                        accountId: account.id,
+                        text: text || '',
+                        mediaUrls: JSON.stringify(dbFilePaths),
+                        originalMediaUrls: JSON.stringify(dbFilePaths),
+                        watermarkConfig: watermarkConfig ? JSON.stringify(watermarkConfig) : null,
+                        signatureText: signatureText || null,
+                        publishAt: parsedPublishAt,
+                        status: isScheduled ? 'SCHEDULED' : 'PROCESSING',
+                        sharedPostId: sharedPost?.id,
+                        batchId
+                    }
+                });
+                rows.push({ post, account, watermarkConfig, signatureText });
+            }
+            return rows;
+        };
+
+        // Проверка повторяется под блокировкой: это же время мог занять запрос, пришедший одновременно с этим.
+        const rows = isScheduled
+            ? await withScheduleLock(userId, async (tx) => (await findScheduleConflict(tx, userId, parsedPublishAt) ? null : createRows(tx)))
+            : await createRows(prisma);
+
+        if (!rows) {
+            await Promise.all(workerFilePaths.map((file) => fs.promises.unlink(file).catch(() => {})));
+            return res.status(409).json({ success: false, error: SCHEDULE_BUSY_ERROR });
+        }
+
         const createdPosts = [];
-        for (const accData of accounts) {
-            const account = await prisma.account.findUnique({
-                where: { id: accData.accountId },
-                include: { watermark: true }
-            });
-            if (!account) continue;
-
-            const watermarkConfig = accData.applyWatermark ? (accData.watermarkConfig || account.watermark) : null;
-            const signatureText = accData.applySignature ? (accData.signatureText !== undefined ? accData.signatureText : account.signature) : null;
-
-            const post = await prisma.post.create({
-                data: {
-                    accountId: account.id,
-                    text: text || '',
-                    mediaUrls: JSON.stringify(dbFilePaths),
-                    originalMediaUrls: JSON.stringify(dbFilePaths),
-                    watermarkConfig: watermarkConfig ? JSON.stringify(watermarkConfig) : null,
-                    signatureText: signatureText || null,
-                    publishAt: parsedPublishAt,
-                    status: isScheduled ? 'SCHEDULED' : 'PROCESSING',
-                    sharedPostId: sharedPost?.id
-                }
-            });
-
+        for (const { post, account, watermarkConfig, signatureText } of rows) {
             const created = { id: post.id, status: post.status, errorMessage: null, accountName: account.name, provider: account.provider };
 
             if (!isScheduled) {
@@ -603,19 +666,34 @@ exports.updateScheduledPost = async (req, res) => {
     try {
         const { id } = req.params;
         const { text, publishAt } = req.body;
-        
-        const post = await prisma.post.findFirst({ where: { id, account: { userId: getUserId(req) } } });
+        const userId = getUserId(req);
+
+        const post = await prisma.post.findFirst({ where: { id, account: { userId } } });
         if (!post) return res.status(404).json({ success: false, error: 'Пост не найден' });
         if (post.status !== 'SCHEDULED') return res.status(400).json({ success: false, error: 'Этот пост уже опубликован' });
-        
-        const updated = await prisma.post.update({
-            where: { id },
-            data: {
-                text: text !== undefined ? text : post.text,
-                publishAt: publishAt ? new Date(publishAt) : post.publishAt
-            }
+
+        const requested = publishAt ? toScheduleMinute(publishAt) : null;
+        if (publishAt && !requested) return res.status(400).json({ success: false, error: SCHEDULE_INVALID_ERROR });
+
+        // Время проверяется, только если его меняют: текст можно поправить и у поста, который скоро выйдет.
+        const isMoved = Boolean(requested) && requested.getTime() !== toScheduleMinute(post.publishAt).getTime();
+        if (isMoved && requested.getTime() <= Date.now()) return res.status(400).json({ success: false, error: SCHEDULE_PAST_ERROR });
+
+        const changed = await withScheduleLock(userId, async (tx) => {
+            if (isMoved && await findScheduleConflict(tx, userId, requested, post)) return null;
+            const { count } = await tx.post.updateMany({
+                where: { id, status: 'SCHEDULED' },
+                data: {
+                    text: text !== undefined ? text : post.text,
+                    ...(isMoved ? { publishAt: requested } : {})
+                }
+            });
+            return count;
         });
-        res.json({ success: true, post: updated });
+        if (changed === null) return res.status(409).json({ success: false, error: SCHEDULE_BUSY_ERROR });
+        if (changed === 0) return res.status(400).json({ success: false, error: 'Этот пост уже опубликован' });
+
+        res.json({ success: true, post: await prisma.post.findUnique({ where: { id } }) });
     } catch (error) {
         res.status(500).json({ success: false });
     }

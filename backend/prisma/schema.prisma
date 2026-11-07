@@ -190,6 +190,7 @@ model Post {
   errorMessage      String?
   sharedPostId      String?
   sharedPost        SharedPost? @relation(fields: [sharedPostId], references: [id], onDelete: SetNull)
+  batchId           String?
   @@index([accountId])
   @@index([status, publishAt])
   @@index([createdAt])
