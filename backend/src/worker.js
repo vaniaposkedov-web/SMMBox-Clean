@@ -48,7 +48,13 @@ const worker = new Worker('posts_v2', async (job) => {
         const providerType = account.provider.toLowerCase(); 
         if (providerType === 'telegram') {
             const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
-            await sendToTelegram(botToken, account.providerId, finalText, processedBuffers);
+            await sendToTelegram(botToken, account.providerId, finalText, processedBuffers, {
+                mediaAlreadySent: Boolean(job.data.telegramMediaSent),
+                // Отметка хранится в очереди: при повторной попытке фото не уйдут в канал второй раз.
+                onMediaSent: () => job.updateData({ ...job.data, telegramMediaSent: true }).catch((error) => {
+                    console.error(`[WORKER] Отметка об отправке фото поста ${postId} не сохранена:`, error.message);
+                }),
+            });
             await sleep(2000); // 🟢 АНТИ-СПАМ: Задержка 2 секунды после отправки в ТГ
         } else if (providerType === 'vk') {
             await sendToKomodVK(process.env.KOMOD_TOKEN, account.providerId, finalText, processedBuffers, null, account.userId);

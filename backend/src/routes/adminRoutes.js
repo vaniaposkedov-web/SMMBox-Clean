@@ -26,6 +26,7 @@ router.delete('/users/:id', adminAuth, adminController.eraseClient);
 router.get('/settings/ai', adminAuth, adminController.getAiSettings);
 router.post('/settings/ai', adminAuth, adminController.updateAiSettings);
 router.get('/settings/ai/logs', adminAuth, adminController.getAiLogs);
+router.get('/logs', adminAuth, adminController.getSystemLogs);
 router.post('/settings/maintenance', adminAuth, adminController.updateMaintenance);
 router.get('/db/export', adminAuth, adminController.exportDatabase);
 

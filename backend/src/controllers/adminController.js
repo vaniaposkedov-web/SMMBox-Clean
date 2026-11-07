@@ -370,6 +370,23 @@ exports.updateAiSettings = async (req, res) => {
     } catch (error) { res.status(500).json({ error: 'Ошибка сохранения настроек ИИ' }); }
 };
 
+// Журнал сбоев сервера: новые записи сверху. Старше 90 дней записи удаляются автоматически.
+exports.getSystemLogs = async (req, res) => {
+    try {
+        const take = 50;
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const skip = (page - 1) * take;
+
+        const logs = await prisma.systemLog.findMany({ orderBy: { createdAt: 'desc' }, take, skip });
+        const total = await prisma.systemLog.count();
+
+        res.json({ success: true, logs, hasMore: skip + take < total });
+    } catch (error) {
+        console.error('Ошибка загрузки журнала сбоев:', error.message);
+        res.status(500).json({ error: 'Ошибка загрузки журнала' });
+    }
+};
+
 exports.getAiLogs = async (req, res) => {
     try {
         const { page = 1, search = '' } = req.query;

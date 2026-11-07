@@ -80,6 +80,32 @@ const [proModal, setProModal] = useState({ isOpen: false, user: null });
     if (activeTab === 'prompts') loadAiLogs(1, '', false);
   }, [activeTab]);
 
+  const [systemLogs, setSystemLogs] = useState([]);
+  const [systemLogsPage, setSystemLogsPage] = useState(1);
+  const [hasMoreSystemLogs, setHasMoreSystemLogs] = useState(false);
+  const [systemLogsState, setSystemLogsState] = useState('loading');
+
+  const loadSystemLogs = async (page = 1) => {
+    setSystemLogsState('loading');
+    try {
+      const res = await fetch(`/api/admin/logs?page=${page}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('adminToken')}` }
+      });
+      const result = await res.json();
+      if (!result?.success) throw new Error('Журнал не загрузился');
+      setSystemLogs((prev) => (page === 1 ? result.logs : [...prev, ...result.logs]));
+      setHasMoreSystemLogs(result.hasMore);
+      setSystemLogsPage(page);
+      setSystemLogsState('ready');
+    } catch (e) {
+      setSystemLogsState('failed');
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'errors') loadSystemLogs(1);
+  }, [activeTab]);
+
   const [isDark, setIsDark] = useState(() => localStorage.getItem('adminTheme') !== 'light');
 
   useEffect(() => {
@@ -939,18 +965,46 @@ const submitProGrant = async (isRevoke = false) => {
           </button>
         </div>
 
-        <div className="p-6 bg-gray-900/40 border border-gray-800 rounded-2xl opacity-50">
-          <h3 className="font-bold mb-2">Очистка логов</h3>
-          <p className="text-xs text-gray-500 mb-6">Удалить старые логи ИИ и системные ошибки (старше 30 дней).</p>
-          <button disabled className="px-6 py-3 bg-gray-800 text-gray-500 rounded-xl font-bold cursor-not-allowed">
-            В разработке
-          </button>
+        <div className="p-6 bg-gray-900/40 border border-gray-800 rounded-2xl">
+          <h3 className="font-bold mb-2">Очистка журналов</h3>
+          <p className="text-xs text-gray-500">Журналы ИИ и сбоев старше 90 дней удаляются автоматически каждую ночь.</p>
         </div>
       </div>
     </div>
   </div>
 )}
-          {activeTab === 'errors' && (<div className={`${theme.card} border border-red-500/20 rounded-2xl p-6`}><h2>Логи и ошибки (UI Готов)</h2></div>)}
+          {activeTab === 'errors' && (
+            <div className={`${theme.card} border border-red-500/20 rounded-2xl p-6`}>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                <h2 className="text-xl font-bold">Журнал сбоев</h2>
+                <button onClick={() => loadSystemLogs(1)} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition-all">Обновить</button>
+              </div>
+              <p className="text-sm text-gray-500 mb-5">Сбои на сервере: например, потеря связи с Telegram. Новые записи сверху, записи хранятся 90 дней.</p>
+
+              {systemLogsState === 'failed' && <p className="text-sm text-red-400">Не удалось загрузить журнал. Нажмите «Обновить».</p>}
+              {systemLogsState === 'loading' && systemLogs.length === 0 && <p className="text-sm text-gray-500">Загрузка...</p>}
+              {systemLogsState === 'ready' && systemLogs.length === 0 && <p className="text-sm text-gray-500">Сбоев пока нет.</p>}
+
+              <div className="space-y-3">
+                {systemLogs.map((log) => (
+                  <div key={log.id} className="border border-gray-800 rounded-xl p-4 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs mb-2">
+                      <span className={`px-2 py-0.5 rounded-md font-bold ${log.level === 'ERROR' ? 'bg-red-500/10 text-red-400' : 'bg-gray-800 text-gray-400'}`}>{log.level}</span>
+                      <span className="text-gray-500">{new Date(log.createdAt).toLocaleString('ru-RU')}</span>
+                      <span className="text-gray-500">{log.module}</span>
+                      {log.userId && <span className="text-gray-500">Клиент: {log.userId}</span>}
+                    </div>
+                    <p className="text-sm font-medium break-words">{log.message}</p>
+                    {log.details && log.details !== 'null' && <p className="text-xs text-gray-500 mt-2 whitespace-pre-wrap break-words">{log.details}</p>}
+                  </div>
+                ))}
+              </div>
+
+              {hasMoreSystemLogs && (
+                <button onClick={() => loadSystemLogs(systemLogsPage + 1)} disabled={systemLogsState === 'loading'} className="mt-4 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50">Показать ещё</button>
+              )}
+            </div>
+          )}
           {activeTab === 'partner-api' && (<div className={`${theme.card} border rounded-2xl p-6 max-w-3xl`}><h2>API для партнеров (UI Готов)</h2></div>)}
         </div>
       </main>

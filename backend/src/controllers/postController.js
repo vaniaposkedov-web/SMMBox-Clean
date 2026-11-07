@@ -12,34 +12,62 @@ const { getUserLimits, getAllowedAccountIds, NO_SUBSCRIPTION_ERROR } = require('
 const { escapeXml } = require('../utils/security');
 const { telegramHttp } = require('../utils/telegramClient');
 
-// === ЛОГИКА ОТПРАВКИ В TELEGRAM ===В общем
-async function sendToTelegram(token, chatId, text, imageBuffers) {
-    const baseUrl = `https://api.telegram.org/bot${token}`;
+// === ЛОГИКА ОТПРАВКИ В TELEGRAM ===
+// Telegram принимает до 1024 символов под фото и до 4096 в одном сообщении.
+const TELEGRAM_CAPTION_LIMIT = 1024;
+const TELEGRAM_MESSAGE_LIMIT = 4096;
 
-    if (imageBuffers.length === 0) {
-        await telegramHttp.post(`${baseUrl}/sendMessage`, { chat_id: chatId, text: text });
-    } else if (imageBuffers.length === 1) {
+const splitTelegramText = (text) => {
+    const parts = [];
+    let rest = String(text || '');
+    while (rest.length > TELEGRAM_MESSAGE_LIMIT) {
+        const chunk = rest.slice(0, TELEGRAM_MESSAGE_LIMIT);
+        const lastBreak = Math.max(chunk.lastIndexOf('\n'), chunk.lastIndexOf(' '));
+        const end = lastBreak > 0 ? lastBreak : TELEGRAM_MESSAGE_LIMIT;
+        parts.push(rest.slice(0, end));
+        rest = rest.slice(end).trimStart();
+    }
+    parts.push(rest);
+    return parts;
+};
+
+// Длинный текст не помещается под фото: сначала уходят фото, затем текст отдельным сообщением.
+// mediaAlreadySent и onMediaSent нужны для повторной попытки: фото не должны выйти в канал второй раз.
+async function sendToTelegram(token, chatId, text, imageBuffers, { mediaAlreadySent = false, onMediaSent = null } = {}) {
+    const baseUrl = `https://api.telegram.org/bot${token}`;
+    const hasPhotos = imageBuffers.length > 0;
+    const caption = hasPhotos && text && text.length <= TELEGRAM_CAPTION_LIMIT ? text : '';
+
+    if (hasPhotos && !mediaAlreadySent) {
         const form = new FormData();
         form.append('chat_id', chatId);
-        if (text) form.append('caption', text);
-        form.append('photo', imageBuffers[0], { filename: 'image.jpg', contentType: 'image/jpeg', knownLength: imageBuffers[0].length });
-        await telegramHttp.post(`${baseUrl}/sendPhoto`, form, { headers: form.getHeaders() });
-    } else {
-        const form = new FormData();
-        form.append('chat_id', chatId);
-        
-        const media = imageBuffers.map((buf, i) => ({
-            type: 'photo',
-            media: `attach://photo${i}`,
-            caption: i === 0 ? text : '' 
-        }));
-        
-        form.append('media', JSON.stringify(media));
-        imageBuffers.forEach((buf, i) => {
-            form.append(`photo${i}`, buf, { filename: `photo${i}.jpg`, contentType: 'image/jpeg', knownLength: buf.length });
-        });
-        
-        await telegramHttp.post(`${baseUrl}/sendMediaGroup`, form, { headers: form.getHeaders() });
+
+        if (imageBuffers.length === 1) {
+            if (caption) form.append('caption', caption);
+            form.append('photo', imageBuffers[0], { filename: 'image.jpg', contentType: 'image/jpeg', knownLength: imageBuffers[0].length });
+            await telegramHttp.post(`${baseUrl}/sendPhoto`, form, { headers: form.getHeaders() });
+        } else {
+            const media = imageBuffers.map((buf, i) => ({
+                type: 'photo',
+                media: `attach://photo${i}`,
+                caption: i === 0 ? caption : ''
+            }));
+
+            form.append('media', JSON.stringify(media));
+            imageBuffers.forEach((buf, i) => {
+                form.append(`photo${i}`, buf, { filename: `photo${i}.jpg`, contentType: 'image/jpeg', knownLength: buf.length });
+            });
+
+            await telegramHttp.post(`${baseUrl}/sendMediaGroup`, form, { headers: form.getHeaders() });
+        }
+
+        if (onMediaSent) await onMediaSent();
+    }
+
+    if (!hasPhotos || (text && !caption)) {
+        for (const part of splitTelegramText(text)) {
+            await telegramHttp.post(`${baseUrl}/sendMessage`, { chat_id: chatId, text: part });
+        }
     }
 }
 
