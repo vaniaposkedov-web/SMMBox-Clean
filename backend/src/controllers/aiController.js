@@ -4,6 +4,9 @@ const { getUserLimits, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
 
 const DEFAULT_AI_PROMPT = 'Ты профессиональный SMM-маркетолог. Твоя задача: улучшить предоставленный текст поста. Исправь ошибки, сделай текст более вовлекающим, разбей на удобные абзацы и добавь 2-3 подходящих эмодзи. Не выдумывай факты и цены, которых нет в оригинале.';
 const MAX_TEXT_LENGTH = 5000;
+const MAX_ANSWER_TOKENS = 2000; // Ограничивает расходы на один запрос: пост на сайте короче 1000 символов.
+const REQUEST_TIMEOUT_MS = 60 * 1000;
+const NOT_CONNECTED_ERROR = 'Улучшение текста пока не подключено.';
 
 exports.DEFAULT_AI_PROMPT = DEFAULT_AI_PROMPT;
 
@@ -22,21 +25,26 @@ exports.generateText = async (req, res) => {
         const settings = await prisma.systemSettings.findUnique({ where: { id: 'global' } });
         const systemPrompt = settings?.aiPrompt || DEFAULT_AI_PROMPT;
 
-        const apiKey = process.env.KIE_API_KEY;
-        const modelName = 'gpt-5-2';
-        const apiUrl = `https://api.kie.ai/${modelName}/v1/chat/completions`;
+        // Подойдёт любой сервис с запросами в формате OpenAI: адрес и модель задаются в настройках сервера.
+        const apiKey = String(process.env.AI_API_KEY || '').trim();
+        if (!apiKey) return res.status(503).json({ success: false, error: NOT_CONNECTED_ERROR });
+        const apiUrl = process.env.AI_API_URL || 'https://api.zveno.ai/v1/chat/completions';
+        const modelName = process.env.AI_MODEL || 'openai/gpt-4o-mini';
 
         const response = await axios.post(apiUrl, {
+            model: modelName,
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: text }
             ],
-            temperature: 0.7
+            temperature: 0.7,
+            max_tokens: MAX_ANSWER_TOKENS
         }, {
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             },
+            timeout: REQUEST_TIMEOUT_MS,
             validateStatus: function (status) { return status < 500; }
         });
 
@@ -60,20 +68,15 @@ exports.generateText = async (req, res) => {
             return res.json({ success: true, text: generatedText });
         } 
         
-        // 2. Обработка ошибки формата "msg" (как раз та, что у тебя вылезла)
-        if (response.data && response.data.msg) {
-            throw new Error(`Kie.ai: ${response.data.msg}`);
-        }
-
-        // 3. Обработка стандартной ошибки формата "error"
+        // 2. Ошибка сервиса: например, неверный ключ или закончился баланс
         if (response.data && response.data.error) {
-            throw new Error(`Kie.ai: ${response.data.error.message || response.data.error}`);
+            throw new Error(`Сервис ИИ: ${response.data.error.message || response.data.error}`);
         }
 
-        throw new Error("Неверный формат ответа от KIE API");
+        throw new Error(`Сервис ИИ вернул неожиданный ответ, код ${response.status}`);
 
     } catch (error) {
-        console.error('[KIE API ERROR]:', error.message);
+        console.error('[AI API ERROR]:', error.message);
         res.status(500).json({ success: false, error: 'Сервера пока что заняты' });
     }
 };
