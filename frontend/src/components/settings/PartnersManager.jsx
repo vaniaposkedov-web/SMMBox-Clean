@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../../store';
+import { CardGridSkeleton } from '../Skeleton';
 import { Search, UserPlus, UserCheck, UserX, Loader2, Check, Trash2, Users, Inbox, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -22,6 +23,8 @@ export default function PartnersManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  const loaded = useStore((state) => state.loaded);
 
   // Фильтруем непрочитанные уведомления, которые являются ответами на наши заявки
   const requestResponses = notifications.filter(n => 
@@ -98,7 +101,9 @@ export default function PartnersManager() {
         {activeTab === 'partners' && (
           <div className="space-y-4">
             <h2 className="text-xs sm:text-sm font-black text-gray-500 uppercase tracking-[0.2em] px-2 sm:px-4 mb-4">Активные партнеры</h2>
-            {myPartners.length === 0 ? (
+            {!loaded.partners && myPartners.length === 0 ? (
+              <CardGridSkeleton />
+            ) : myPartners.length === 0 ? (
               <div className="bg-admin-card border border-gray-800 border-dashed p-10 rounded-[2rem] text-center flex flex-col items-center">
                 <Users className="text-gray-700 mb-4" size={48} />
                 <p className="text-gray-500 font-bold">У вас пока нет добавленных партнеров.</p>
@@ -112,7 +117,7 @@ export default function PartnersManager() {
                   <div key={partner.id} className="bg-admin-card border border-gray-800 p-5 rounded-[1.5rem] sm:rounded-[2rem] flex flex-col justify-between shadow-lg hover:border-gray-600 transition-all group">
                     <div className="flex items-center gap-4 mb-5">
                       <div className="w-14 h-14 rounded-[1.2rem] bg-gray-900 border border-gray-700 overflow-hidden shrink-0 flex items-center justify-center font-bold text-gray-400">
-                         {partner.avatarUrl ? <img src={partner.avatarUrl} className="w-full h-full object-cover"/> : partner.name?.substring(0,2).toUpperCase() || '??'}
+                         {partner.avatarUrl ? <img loading="lazy" decoding="async" src={partner.avatarUrl} className="w-full h-full object-cover"/> : partner.name?.substring(0,2).toUpperCase() || '??'}
                       </div>
                       <div className="min-w-0 flex-1">
                          <h4 className="text-white font-bold text-lg truncate pr-2">{partner.name || 'Без имени'}</h4>
@@ -168,7 +173,7 @@ export default function PartnersManager() {
                   <div key={id} className="bg-admin-card border border-gray-800 p-5 rounded-[1.5rem] sm:rounded-[2rem] flex flex-col justify-between shadow-lg hover:border-gray-600 transition-all">
                     <div className="flex items-center gap-4 mb-5">
                       <div className="w-14 h-14 rounded-[1.2rem] bg-gray-900 border border-gray-700 overflow-hidden shrink-0 flex items-center justify-center font-bold text-gray-400">
-                         {avatarUrl ? <img src={avatarUrl} className="w-full h-full object-cover"/> : name?.substring(0,2).toUpperCase() || '??'}
+                         {avatarUrl ? <img loading="lazy" decoding="async" src={avatarUrl} className="w-full h-full object-cover"/> : name?.substring(0,2).toUpperCase() || '??'}
                       </div>
                       <div className="min-w-0 flex-1">
                          <h4 className="text-white font-bold text-lg truncate pr-2">{name || 'Без имени'}</h4>
@@ -239,7 +244,7 @@ export default function PartnersManager() {
                         <div key={req.id} className="bg-admin-card border border-gray-800 p-5 rounded-[1.5rem] sm:rounded-[2rem] flex flex-col justify-between shadow-lg">
                           <div className="flex items-center gap-4 mb-5">
                             <div className="w-14 h-14 rounded-[1.2rem] bg-gray-900 border border-gray-700 overflow-hidden shrink-0 flex items-center justify-center font-bold text-gray-400">
-                               {req.receiver?.avatarUrl ? <img src={req.receiver.avatarUrl} className="w-full h-full object-cover"/> : req.receiver?.name?.substring(0,2).toUpperCase() || '??'}
+                               {req.receiver?.avatarUrl ? <img loading="lazy" decoding="async" src={req.receiver.avatarUrl} className="w-full h-full object-cover"/> : req.receiver?.name?.substring(0,2).toUpperCase() || '??'}
                             </div>
                             <div className="min-w-0 flex-1">
                                <h4 className="text-white font-bold text-lg truncate pr-2">{req.receiver?.name || 'Без имени'}</h4>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Component, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import {
   Plus, User, Users, Box, LogOut, MoreHorizontal, ChevronDown, ChevronUp, Layers,
@@ -6,32 +6,67 @@ import {
 } from 'lucide-react';
 import { useStore } from './store'; 
 
-import AdminLogin from './pages/admin/AdminLogin';
-import AdminDashboard from './pages/admin/AdminDashboard';
 import MaintenanceGuard from './components/MaintenanceGuard';
-
-// --- СТРАНИЦЫ ДЛЯ АВТОРИЗОВАННЫХ ---
-import Publish from './pages/Publish';
-import Requests from './pages/Requests';
-import Settings from './pages/Settings';
-import Profile from './pages/Profile';
-import PrivacyPolicy from './pages/PrivacyPolicy';
-import Terms from './pages/Terms';
-import PersonalDataConsent from './pages/PersonalDataConsent';
 import ConsentGate from './components/legal/ConsentGate';
 import LegalLinks from './components/legal/LegalLinks';
- 
-import PartnersManager from './components/settings/PartnersManager';
-import PostsHistory from './pages/PostsHistory';
-import SignatureConstructor from './pages/SignatureConstructor';
+import OfflineNotice from './components/OfflineNotice';
+import { RouteSkeleton } from './components/Skeleton';
+import { lazyPage } from './lazyPage';
 
-// === НАШИ НОВЫЕ ПОДКЛЮЧЕННЫЕ РАЗДЕЛЫ ===
-import AccountsManager from './components/settings/AccountsManager';
-import WatermarkConstructor from './components/settings/WatermarkConstructor';
+// Каждая страница загружается отдельным файлом и только тогда, когда её открывают.
+// Человеку на телефоне не нужно скачивать админку и графики, чтобы посмотреть профиль.
+const AdminLogin = lazyPage(() => import('./pages/admin/AdminLogin'));
+const AdminDashboard = lazyPage(() => import('./pages/admin/AdminDashboard'));
+const Publish = lazyPage(() => import('./pages/Publish'));
+const Requests = lazyPage(() => import('./pages/Requests'));
+const Settings = lazyPage(() => import('./pages/Settings'));
+const Profile = lazyPage(() => import('./pages/Profile'));
+const PrivacyPolicy = lazyPage(() => import('./pages/PrivacyPolicy'));
+const Terms = lazyPage(() => import('./pages/Terms'));
+const PersonalDataConsent = lazyPage(() => import('./pages/PersonalDataConsent'));
+const PartnersManager = lazyPage(() => import('./components/settings/PartnersManager'));
+const PostsHistory = lazyPage(() => import('./pages/PostsHistory'));
+const SignatureConstructor = lazyPage(() => import('./pages/SignatureConstructor'));
+const AccountsManager = lazyPage(() => import('./components/settings/AccountsManager'));
+const WatermarkConstructor = lazyPage(() => import('./components/settings/WatermarkConstructor'));
+const Auth = lazyPage(() => import('./pages/Auth'));
+const RecoverAccess = lazyPage(() => import('./pages/RecoverAccess'));
 
-// --- СТРАНИЦЫ АВТОРИЗАЦИИ И ВОССТАНОВЛЕНИЯ ---
-import Auth from './pages/Auth'; 
-import RecoverAccess from './pages/RecoverAccess';
+// Главные страницы подгружаются заранее, когда браузер свободен: переход по меню становится мгновенным.
+const preloadMainPages = () => {
+  // На медленном интернете и в режиме экономии трафик не тратим: страница загрузится, когда её откроют.
+  const connection = navigator.connection;
+  if (connection?.saveData || (connection?.effectiveType && connection.effectiveType !== '4g')) return;
+  const ignoreFailure = () => {};
+  import('./pages/Publish').catch(ignoreFailure);
+  import('./pages/Profile').catch(ignoreFailure);
+  import('./pages/PostsHistory').catch(ignoreFailure);
+  import('./pages/Requests').catch(ignoreFailure);
+};
+
+// Сбой на странице не оставляет белый экран: человек видит, что случилось, и может перезагрузить.
+class PageErrorBoundary extends Component {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error) {
+    console.error('Ошибка страницы:', error);
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div className="max-w-md mx-auto mt-16 bg-admin-card border border-gray-800 rounded-2xl p-6 text-center">
+        <h2 className="text-lg font-bold text-white mb-2">Не удалось открыть страницу</h2>
+        <p className="text-sm text-gray-400 mb-5">Проверьте интернет и попробуйте ещё раз.</p>
+        <button onClick={() => window.location.reload()} className="w-full bg-admin-accent hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-colors">Перезагрузить</button>
+      </div>
+    );
+  }
+}
 
 // === СЛОВАРЬ НАЗВАНИЙ ВКЛАДОК ===
 const getPageTitle = (pathname) => {
@@ -267,18 +302,38 @@ function UserLayout() {
   const location = useLocation();
 
   useEffect(() => {
-    if (user?.id) {
+    if (!user?.id) return undefined;
+
+    const refresh = () => {
       fetchPartnerData(user.id);
       fetchSharedPosts();
+    };
+    refresh();
 
-      const interval = setInterval(() => {
-        fetchPartnerData(user.id);
-        fetchSharedPosts();
-      }, 15000);
-      
-      return () => clearInterval(interval);
-    }
+    // Скрытая вкладка и пропавшая связь не расходуют трафик и батарею. Вернулись на вкладку или появилась связь: обновляем сразу.
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false) refresh();
+    }, 15000);
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', handleVisible);
+    window.addEventListener('online', refresh);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisible);
+      window.removeEventListener('online', refresh);
+    };
   }, [user?.id, fetchPartnerData, fetchSharedPosts]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (window.requestIdleCallback) window.requestIdleCallback(preloadMainPages);
+      else preloadMainPages();
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // ⚡ МЕНЯЕМ ТОЛЬКО НАЗВАНИЕ ВКЛАДКИ В БРАУЗЕРЕ ⚡
   useEffect(() => {
@@ -290,11 +345,16 @@ function UserLayout() {
       <Sidebar />
       <main className="flex-1 w-full pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-0 overflow-y-auto">
         <div className="max-w-5xl mx-auto w-full p-4 md:p-8">
-          <Outlet />
+          <PageErrorBoundary key={location.pathname}>
+            <Suspense fallback={<RouteSkeleton />}>
+              <Outlet />
+            </Suspense>
+          </PageErrorBoundary>
         </div>
       </main>
       <BottomNav />
       <ConsentGate />
+      <OfflineNotice />
     </div>
   );
 }
@@ -321,6 +381,8 @@ function App() {
       <BrowserRouter>
         {/* Обернули в MaintenanceGuard ЗДЕСЬ */}
         <MaintenanceGuard>
+          <PageErrorBoundary>
+          <Suspense fallback={<RouteSkeleton />}>
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/recover/:code" element={<RecoverAccess />} />
@@ -331,6 +393,8 @@ function App() {
             <Route path="/system-core-dashboard" element={<AdminDashboard />} />
             <Route path="*" element={<Navigate to="/auth" replace />} />
           </Routes>
+          </Suspense>
+          </PageErrorBoundary>
         </MaintenanceGuard>
       </BrowserRouter>
     );
@@ -341,6 +405,8 @@ function App() {
     <BrowserRouter>
       {/* И обернули в MaintenanceGuard ЗДЕСЬ */}
       <MaintenanceGuard>
+        <PageErrorBoundary>
+        <Suspense fallback={<RouteSkeleton />}>
         <Routes>
 
           <Route element={<UserLayout />}>
@@ -369,6 +435,8 @@ function App() {
 
           <Route path="*" element={<Navigate to="/profile" replace />} />
         </Routes>
+        </Suspense>
+        </PageErrorBoundary>
       </MaintenanceGuard>
     </BrowserRouter>
   );

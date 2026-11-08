@@ -72,7 +72,7 @@ async function sendToTelegram(token, chatId, text, imageBuffers, { mediaAlreadyS
 }
 
 
-async function saveImageToFile(buffer, prefix = 'img') {
+async function saveImageToFile(buffer, prefix = 'img', extension = 'jpg') {
     // Путь к папке backend/uploads/posts
     const uploadsDir = path.join(__dirname, '../../uploads/posts');
     
@@ -82,7 +82,7 @@ async function saveImageToFile(buffer, prefix = 'img') {
     }
     
     // Генерируем уникальное имя файла
-    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+    const fileName = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(7)}.${extension}`;
     const filePath = path.join(uploadsDir, fileName);
     
     // Сохраняем физический файл на диск
@@ -180,6 +180,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         const postRes = await axios.post(`${KOMOD_BASE_URL}/post`, form, {
             headers: { ...form.getHeaders(), 'Access-Token': token },
             maxBodyLength: Infinity,
+            timeout: 120 * 1000,
             validateStatus: status => status < 500
         });
 
@@ -198,6 +199,26 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 }
 
 const getUserId = (req) => req.userId;
+
+// Метка одного нажатия «Опубликовать»: повтор запроса при плохой связи не создаёт вторую публикацию.
+const parseRequestKey = (value) => {
+    const key = String(value || '');
+    return /^[A-Za-z0-9-]{8,64}$/.test(key) ? key : null;
+};
+
+// Несколько задач сразу, но не больше limit одновременно: обработка фото сильно нагружает процессор.
+const mapLimit = async (items, limit, work) => {
+    const results = new Array(items.length);
+    let next = 0;
+    const runner = async () => {
+        while (next < items.length) {
+            const index = next++;
+            results[index] = await work(items[index], index);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runner));
+    return results;
+};
 
 const JOB_OPTIONS = { attempts: 3, backoff: { type: 'exponential', delay: 5000 } };
 const TEMP_QUEUE_DIR = path.join(__dirname, '../../uploads/temp_queue');
@@ -365,7 +386,7 @@ async function applyWatermark(imageBuffer, wmConfig) {
             
     } catch (err) {
         console.error('[WATERMARK ERROR]:', err);
-        return imageBuffer; 
+        throw new Error('Не удалось применить водяной знак. Пост не отправлен.', { cause: err });
     }
 }
 
@@ -402,13 +423,25 @@ const withScheduleLock = (userId, work) => prisma.$transaction(async (tx) => {
     return work(tx);
 }, { maxWait: 5000, timeout: 15000 });
 
+const findPostsByRequest = (client, userId, requestKey) => client.post.findMany({
+    where: { batchId: requestKey, account: { userId } },
+    select: { id: true, status: true, errorMessage: true, account: { select: { name: true, provider: true } } },
+});
+
+const toCreatedPost = (post) => ({ id: post.id, status: post.status, errorMessage: post.errorMessage, accountName: post.account.name, provider: post.account.provider });
+
 exports.createPost = async (req, res) => {
     try {
         const { text, accountsData, publishAt } = req.body;
+        const requestKey = parseRequestKey(req.body.requestKey);
 
         let accounts = [];
         if (accountsData) {
             accounts = typeof accountsData === 'string' ? JSON.parse(accountsData) : accountsData;
+        }
+        // Один канал дважды в одном запросе дал бы два одинаковых поста
+        if (Array.isArray(accounts)) {
+            accounts = accounts.filter((item, index) => accounts.findIndex((other) => other.accountId === item.accountId) === index);
         }
 
         let parsedPublishAt = null;
@@ -432,6 +465,12 @@ exports.createPost = async (req, res) => {
             return res.status(400).json({ success: false, error: 'Нет аккаунтов для отправки' });
         }
 
+        const postText = typeof text === 'string' ? text : '';
+        if (!postText.trim() && !(req.files || []).length) {
+            await removeUploadedFiles(req);
+            return res.status(400).json({ success: false, error: 'Добавьте текст или хотя бы одно фото' });
+        }
+
         // Публиковать можно только в свои аккаунты, при активной подписке и в пределах тарифа
         const userId = getUserId(req);
         const currentUser = await prisma.user.findUnique({ where: { id: userId } });
@@ -445,6 +484,14 @@ exports.createPost = async (req, res) => {
         if (accounts.some((item) => !allowedIds.has(item.accountId))) {
             await removeUploadedFiles(req);
             return res.status(403).json({ success: false, error: 'Один из выбранных аккаунтов недоступен для публикации' });
+        }
+
+        if (requestKey) {
+            const repeated = await findPostsByRequest(prisma, userId, requestKey);
+            if (repeated.length > 0) {
+                await removeUploadedFiles(req);
+                return res.status(200).json({ success: true, message: 'Этот пост уже принят', posts: repeated.map(toCreatedPost), estimatedSeconds: isScheduled ? null : await estimatePublishSeconds() });
+            }
         }
 
         if (isScheduled && await findScheduleConflict(prisma, userId, parsedPublishAt)) {
@@ -481,14 +528,17 @@ exports.createPost = async (req, res) => {
             : null;
 
         // Создаём записи в базе. Оформление сохраняется вместе с постом: оно нужно и отложенным постам, и повторной отправке.
-        const batchId = isScheduled ? crypto.randomUUID() : null;
+        const batchId = requestKey || (isScheduled ? crypto.randomUUID() : null);
+        // Все каналы одним запросом, а не по одному: при 28 каналах это 28 лишних обращений к базе.
+        const accountRecords = await prisma.account.findMany({
+            where: { id: { in: accounts.map((item) => item.accountId) }, userId },
+            include: { watermark: true }
+        });
+        const accountById = new Map(accountRecords.map((account) => [account.id, account]));
         const createRows = async (client) => {
             const rows = [];
             for (const accData of accounts) {
-                const account = await client.account.findUnique({
-                    where: { id: accData.accountId },
-                    include: { watermark: true }
-                });
+                const account = accountById.get(accData.accountId);
                 if (!account) continue;
 
                 const watermarkConfig = accData.applyWatermark ? (accData.watermarkConfig || account.watermark) : null;
@@ -497,7 +547,7 @@ exports.createPost = async (req, res) => {
                 const post = await client.post.create({
                     data: {
                         accountId: account.id,
-                        text: text || '',
+                        text: postText,
                         mediaUrls: JSON.stringify(dbFilePaths),
                         originalMediaUrls: JSON.stringify(dbFilePaths),
                         watermarkConfig: watermarkConfig ? JSON.stringify(watermarkConfig) : null,
@@ -514,12 +564,21 @@ exports.createPost = async (req, res) => {
         };
 
         // Проверка повторяется под блокировкой: это же время мог занять запрос, пришедший одновременно с этим.
-        const rows = isScheduled
-            ? await withScheduleLock(userId, async (tx) => (await findScheduleConflict(tx, userId, parsedPublishAt) ? null : createRows(tx)))
+        const rows = (isScheduled || requestKey)
+            ? await withScheduleLock(userId, async (tx) => {
+                // Два одинаковых запроса могли прийти одновременно: под блокировкой второй увидит записи первого.
+                if (requestKey) {
+                    const repeated = await findPostsByRequest(tx, userId, requestKey);
+                    if (repeated.length > 0) return { repeated };
+                }
+                if (isScheduled && await findScheduleConflict(tx, userId, parsedPublishAt)) return null;
+                return createRows(tx);
+            })
             : await createRows(prisma);
 
-        if (!rows) {
+        if (!rows || rows.repeated) {
             await Promise.all(workerFilePaths.map((file) => fs.promises.unlink(file).catch(() => {})));
+            if (rows?.repeated) return res.status(200).json({ success: true, message: 'Этот пост уже принят', posts: rows.repeated.map(toCreatedPost), estimatedSeconds: isScheduled ? null : await estimatePublishSeconds() });
             return res.status(409).json({ success: false, error: SCHEDULE_BUSY_ERROR });
         }
 
@@ -532,7 +591,7 @@ exports.createPost = async (req, res) => {
                     await postQueue.add('publish-job', {
                         postId: post.id,
                         accountId: account.id,
-                        text: text || '',
+                        text: postText,
                         filePaths: workerFilePaths,
                         watermarkConfig,
                         signatureText
@@ -567,7 +626,7 @@ exports.getPostStatuses = async (req, res) => {
         res.json({
             success: true,
             posts: posts.map((p) => ({ id: p.id, status: p.status, errorMessage: p.errorMessage, accountName: p.account.name, provider: p.account.provider })),
-            estimatedSeconds: posts.some((p) => p.status === 'PROCESSING') ? await estimatePublishSeconds() : null
+            estimatedSeconds: posts.some((p) => ['PROCESSING', 'DELIVERING'].includes(p.status)) ? await estimatePublishSeconds() : null
         });
     } catch (error) {
         res.status(500).json({ success: false, error: 'Ошибка загрузки статуса' });
@@ -620,13 +679,33 @@ const enqueueDuePosts = async () => {
     }
 };
 
+// Если данные очереди потерялись (например, сбой Redis), пост навсегда остался бы «В работе».
+// Такой пост становится «Ошибка» и его можно отправить ещё раз. Пока в очереди что-то есть, посты не трогаем.
+const STUCK_AFTER_MS = 15 * 60 * 1000;
+exports.failStuckPosts = async () => {
+    const { waiting = 0, active = 0, delayed = 0 } = await postQueue.getJobCounts('waiting', 'active', 'delayed');
+    if (waiting + active + delayed > 0) return { failed: 0 };
+    const cutoff = new Date(Date.now() - STUCK_AFTER_MS);
+    const { count } = await prisma.post.updateMany({
+        where: { status: 'PROCESSING', createdAt: { lt: cutoff }, OR: [{ publishAt: null }, { publishAt: { lt: cutoff } }] },
+        data: { status: 'FAILED', errorMessage: 'Публикация прервалась из-за сбоя на сервере. Отправьте пост ещё раз.' }
+    });
+    const unknown = await prisma.post.updateMany({
+        where: { status: 'DELIVERING', createdAt: { lt: cutoff }, OR: [{ publishAt: null }, { publishAt: { lt: cutoff } }] },
+        data: { status: 'DELIVERY_UNKNOWN', errorMessage: 'Связь прервалась во время отправки. Проверьте канал перед повторной публикацией.' }
+    });
+    if (count > 0) console.error(`[CRON] Зависшие посты отмечены как ошибка: ${count}`);
+    if (unknown.count > 0) console.error(`[CRON] Результат отправки неизвестен: ${unknown.count}`);
+    return { failed: count, unknown: unknown.count };
+};
+
 // Исходные фото хранятся 30 дней: они нужны для отправки партнёрам и повторной публикации.
 // Фото постов, которые ещё ждут отправки, не удаляются, сколько бы они ни ждали.
 exports.cleanupTempQueue = async () => {
     if (!fs.existsSync(TEMP_QUEUE_DIR)) return { removed: 0 };
 
     const pending = await prisma.post.findMany({
-        where: { status: { in: ['SCHEDULED', 'PROCESSING'] } },
+        where: { status: { in: ['SCHEDULED', 'PROCESSING', 'DELIVERING', 'DELIVERY_UNKNOWN'] } },
         select: { mediaUrls: true, originalMediaUrls: true }
     });
     const inUse = new Set();
@@ -659,6 +738,14 @@ exports.initCron = () => {
         }
     });
 
+    cron.schedule('*/5 * * * *', async () => {
+        try {
+            await exports.failStuckPosts();
+        } catch (e) {
+            console.error('[CRON] Ошибка проверки зависших постов', e.message);
+        }
+    });
+
     cron.schedule('0 3 * * *', async () => {
         try {
             await exports.cleanupTempQueue();
@@ -675,16 +762,18 @@ exports.getScheduledPosts = async (req, res) => {
         const userId = getUserId(req);
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
-        const posts = await prisma.post.findMany({
-            where: { account: { userId: userId } },
-            omit: { watermarkConfig: true },
+        // Запланированные посты отдаются все: при 75 более новых постах будущий выпадал бы из плана,
+        // а с ним и занятое время. Фото плану не нужны, поэтому ответ намного меньше.
+        const fields = {
+            omit: { watermarkConfig: true, mediaUrls: true, originalMediaUrls: true, signatureText: true },
             include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
-            orderBy: [{ createdAt: 'desc' }],
-            take: 75 // 🟢 ИСПРАВЛЕНИЕ: Загружаем 75 постов вместо 500
-        });
+        };
+        const [scheduled, others] = await Promise.all([
+            prisma.post.findMany({ where: { status: 'SCHEDULED', account: { userId } }, ...fields, orderBy: { publishAt: 'asc' } }),
+            prisma.post.findMany({ where: { status: { not: 'SCHEDULED' }, account: { userId } }, ...fields, orderBy: { createdAt: 'desc' }, take: 75 }),
+        ]);
 
-        // 🟢 ИСПРАВЛЕНИЕ: БОЛЬШЕ НИКАКОЙ ОБРЕЗКИ. Отдаем массив mediaUrls целиком!
-        res.json({ success: true, posts: posts });
+        res.json({ success: true, posts: [...scheduled, ...others] });
     } catch (error) {
         res.status(500).json({ success: false });
     }
@@ -740,6 +829,7 @@ exports.shareWithPartners = async (req, res) => {
         }
 
         const senderId = getUserId(req);
+        const requestKey = parseRequestKey(req.body.requestKey);
 
         if (!senderId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
         if (!Array.isArray(partnerIds) || partnerIds.length === 0) {
@@ -754,10 +844,22 @@ exports.shareWithPartners = async (req, res) => {
         });
         const myPartnerIds = new Set(accepted.map((p) => (p.requesterId === senderId ? p.receiverId : p.requesterId)));
         const notPartners = partnerIds.map(String).filter((id) => !myPartnerIds.has(id));
-        partnerIds = partnerIds.map(String).filter((id) => myPartnerIds.has(id));
+        partnerIds = [...new Set(partnerIds.map(String))].filter((id) => myPartnerIds.has(id));
         if (partnerIds.length === 0) {
             await removeUploadedFiles(req);
             return res.status(403).json({ success: false, error: 'Выбранные пользователи не являются вашими партнёрами' });
+        }
+
+        // Повтор того же нажатия при плохой связи: партнёр не должен получить пост второй раз.
+        let alreadyDelivered = [];
+        if (requestKey) {
+            const sent = await prisma.sharedPost.findMany({ where: { senderId, requestKey, receiverId: { in: partnerIds } }, select: { receiverId: true } });
+            alreadyDelivered = sent.map((item) => item.receiverId);
+            partnerIds = partnerIds.filter((id) => !alreadyDelivered.includes(id));
+            if (partnerIds.length === 0) {
+                await removeUploadedFiles(req);
+                return res.json({ success: true, delivered: alreadyDelivered, failed: notPartners });
+            }
         }
 
         const sender = await prisma.user.findUnique({ where: { id: senderId } });
@@ -769,23 +871,25 @@ exports.shareWithPartners = async (req, res) => {
 
         if (req.files && req.files.length > 0) {
             // ВЕТКА А: Если фронтенд прислал файлы через FormData
-            for (const file of req.files) {
+            // Фото обрабатываются параллельно, порядок сохраняется.
+            const processed = await mapLimit(req.files, 3, async (file) => {
                 try {
                     const buffer = await fs.promises.readFile(file.path);
                     fs.promises.unlink(file.path).catch(() => {});
-                    
+
                     const optimizedBuf = await sharp(buffer)
                         .resize({ width: 2000, fit: 'inside', withoutEnlargement: true })
                         .jpeg({ quality: 85 })
                         .toBuffer();
-                        
-                    const url = await saveImageToFile(optimizedBuf, 'shared');
-                    if (url) savedImageUrls.push(url);
+
+                    return await saveImageToFile(optimizedBuf, 'shared');
                 } catch (e) {
                     failedPhotos += 1;
                     console.error('Ошибка обработки фото партнера (файл):', e);
+                    return null;
                 }
-            }
+            });
+            savedImageUrls = processed.filter(Boolean);
         } else if (req.body.mediaUrls) {
             // ВЕТКА Б: Если фронтенд прислал Base64 JSON (Защита от 502 ошибки!)
             let urls = [];
@@ -829,34 +933,46 @@ exports.shareWithPartners = async (req, res) => {
         const mediaString = JSON.stringify(savedImageUrls);
         const postText = req.body.text || '';
 
-        // 🛡️ 3. ПОСЛЕДОВАТЕЛЬНАЯ ЗАПИСЬ В БАЗУ ДАННЫХ. Пост дошёл до партнёра, когда он появился в его входящих.
-        const delivered = [];
-        const failed = [...notPartners];
-        for (const receiverId of partnerIds) {
-            try {
-                await prisma.sharedPost.create({
-                    data: { senderId: sender.id, receiverId, text: postText, mediaUrls: mediaString }
+        // 🛡️ 3. ЗАПИСЬ В БАЗУ ДАННЫХ. Пост дошёл до партнёра, когда он появился в его входящих.
+        // Партнёры обрабатываются параллельно: сбой у одного не мешает остальным.
+        const deliveredSet = new Set(alreadyDelivered);
+        const newSharedPosts = await withScheduleLock(senderId, async (tx) => {
+            if (requestKey) {
+                const existing = await tx.sharedPost.findMany({
+                    where: { senderId, requestKey, receiverId: { in: partnerIds } },
+                    select: { receiverId: true }
                 });
-                delivered.push(receiverId);
-            } catch (dbError) {
-                console.error(`Ошибка записи в БД для партнера ${receiverId}:`, dbError.message);
-                failed.push(receiverId);
-                continue;
+                existing.forEach((item) => deliveredSet.add(item.receiverId));
             }
+
+            const created = [];
+            for (const receiverId of partnerIds) {
+                if (deliveredSet.has(receiverId)) continue;
+                created.push(await tx.sharedPost.create({
+                    data: { senderId: sender.id, receiverId, text: postText, mediaUrls: mediaString, requestKey }
+                }));
+                deliveredSet.add(receiverId);
+            }
+            return created;
+        });
+
+        const failed = [...notPartners];
+        await mapLimit(newSharedPosts, 5, async (sharedPost) => {
             try {
                 await prisma.notification.create({
                     data: {
-                        userId: receiverId,
+                        userId: sharedPost.receiverId,
                         type: 'INFO',
                         text: `Партнер ${sender?.name || 'Без имени'} поделился с вами новой публикацией.`,
                         metadata: JSON.stringify({ text: postText, mediaUrls: savedImageUrls })
                     }
                 });
             } catch (dbError) {
-                console.error(`Уведомление партнеру ${receiverId} не сохранено:`, dbError.message);
+                console.error(`Уведомление партнеру ${sharedPost.receiverId} не сохранено:`, dbError.message);
             }
-        }
+        });
 
+        const delivered = [...deliveredSet];
         if (delivered.length === 0) {
             return res.status(500).json({ success: false, error: 'Не удалось доставить пост партнёрам. Попробуйте ещё раз.' });
         }
@@ -864,7 +980,7 @@ exports.shareWithPartners = async (req, res) => {
         res.json({ success: true, delivered, failed });
     } catch (error) {
         console.error('ФАТАЛЬНАЯ ОШИБКА ШЕРИНГА:', error);
-        res.status(500).json({ success: false, error: `Внутренняя ошибка сервера: ${error.message}` });
+        res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера. Попробуйте ещё раз.' });
     }
 };
 
@@ -873,19 +989,24 @@ exports.getSharedPosts = async (req, res) => {
         const userId = getUserId(req);
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
-        const incoming = await prisma.sharedPost.findMany({
-            where: { receiverId: userId },
-            include: {
-                sender: { select: { id: true, name: true, pavilion: true, avatarUrl: true } },
-                posts: { select: { id: true, status: true, publishAt: true } }
-            },
-            orderBy: { createdAt: 'desc' }
-        });
-        const outgoing = await prisma.sharedPost.findMany({
-            where: { senderId: userId },
-            include: { receiver: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
-            orderBy: { createdAt: 'desc' }
-        });
+        // Этот запрос повторяется каждые 15 секунд, поэтому объём ответа ограничен.
+        const [incoming, outgoing] = await Promise.all([
+            prisma.sharedPost.findMany({
+                where: { receiverId: userId },
+                include: {
+                    sender: { select: { id: true, name: true, pavilion: true, avatarUrl: true } },
+                    posts: { select: { id: true, status: true, publishAt: true } }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 100
+            }),
+            prisma.sharedPost.findMany({
+                where: { senderId: userId },
+                include: { receiver: { select: { id: true, name: true, pavilion: true, avatarUrl: true } } },
+                orderBy: { createdAt: 'desc' },
+                take: 100
+            }),
+        ]);
         res.json({ success: true, incoming, outgoing });
     } catch (error) {
         res.status(500).json({ success: false });
@@ -937,21 +1058,22 @@ exports.getPostsHistory = async (req, res) => {
         if (!userId) return res.status(401).json({ success: false, error: 'Ошибка авторизации' });
 
         // 1. Берем обычные посты (VK / Telegram)
-        const posts = await prisma.post.findMany({
-            where: { account: { userId: userId } },
-            omit: { watermarkConfig: true },
-            include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
-            orderBy: [{ createdAt: 'desc' }],
-            take: 500 
-        });
-
-        // 2. Берем посты, отправленные партнерам
-        const sharedPosts = await prisma.sharedPost.findMany({
-            where: { senderId: userId },
-            include: { receiver: { select: { name: true, avatarUrl: true, pavilion: true } } },
-            orderBy: [{ createdAt: 'desc' }],
-            take: 75 // 🟢 ИСПРАВЛЕНИЕ: Загружаем 75 постов вместо 500
-        });
+        // 2. Берем посты, отправленные партнерам. Оба запроса идут одновременно.
+        const [posts, sharedPosts] = await Promise.all([
+            prisma.post.findMany({
+                where: { account: { userId: userId } },
+                omit: { watermarkConfig: true },
+                include: { account: { select: { name: true, provider: true, avatarUrl: true } } },
+                orderBy: [{ createdAt: 'desc' }],
+                take: 500
+            }),
+            prisma.sharedPost.findMany({
+                where: { senderId: userId },
+                include: { receiver: { select: { name: true, avatarUrl: true, pavilion: true } } },
+                orderBy: [{ createdAt: 'desc' }],
+                take: 75 // 🟢 ИСПРАВЛЕНИЕ: Загружаем 75 постов вместо 500
+            }),
+        ]);
 
         // 3. Форматируем отправленные партнерам под единый стандарт истории
         const formattedShared = sharedPosts.map(sp => ({
@@ -993,16 +1115,18 @@ exports.retryPost = async (req, res) => {
         if (post.account.userId !== userId) return res.status(403).json({ success: false, error: 'Нет доступа' });
         if (post.status !== 'FAILED') return res.status(400).json({ success: false, error: 'Можно переотправлять только посты с ошибкой' });
 
-        // Переводим пост обратно в статус SCHEDULED и ставим время на "сейчас", 
-        // чтобы твой CRON-планировщик подхватил его в следующую минуту
-        const updatedPost = await prisma.post.update({
-            where: { id },
-            data: { 
+        // Условие по статусу защищает от двойного нажатия. Планировщик не ждём: пост уходит в очередь сразу.
+        const { count } = await prisma.post.updateMany({
+            where: { id, status: 'FAILED' },
+            data: {
                 status: 'SCHEDULED',
                 errorMessage: null,
-                publishAt: new Date() 
+                publishAt: new Date()
             }
         });
+        if (count === 0) return res.status(400).json({ success: false, error: 'Можно переотправлять только посты с ошибкой' });
+
+        enqueueDuePosts().catch((error) => console.error('[RETRY] Планировщик подхватит пост позже:', error.message));
 
         res.json({ success: true, message: 'Пост отправлен в очередь на публикацию' });
     } catch (error) {

@@ -2,7 +2,7 @@
   "name": "smmbox-root",
   "version": "1.0.0",
   "scripts": {
-    "build": "cd frontend && npm install && npm run build",
+    "build": "npm ci --prefix frontend && npm run build --prefix frontend",
     "postinstall": "npx prisma generate --schema=backend/prisma/schema.prisma"
   },
   "dependencies": {
@@ -19,5 +19,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-basic-ssl": "^2.1.4"
+  },
+  "overrides": {
+    "qs": "^6.17.1"
   }
 }

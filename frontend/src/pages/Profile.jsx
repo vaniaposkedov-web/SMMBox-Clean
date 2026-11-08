@@ -1,5 +1,6 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
+import { Skeleton } from '../components/Skeleton';
 import {
   User, Shield, Edit2, X, Hash, Camera,
   Check, Copy, CalendarClock, CheckCircle2, AlertCircle,
@@ -26,6 +27,7 @@ export default function Profile() {
   const fileInputRef = useRef(null);
 
   const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
+  const loaded = useStore((state) => state.loaded);
 
   const PRO_MANAGER_TG = SUPPORT_TELEGRAM;
   const [showProModal, setShowProModal] = useState(false);
@@ -387,7 +389,7 @@ export default function Profile() {
                   <h3 className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5 sm:gap-2">
                     <CheckCircle2 size={16} className="text-green-500 shrink-0" /> <span className="truncate">Опубликовано</span>
                   </h3>
-                  <span className="text-3xl sm:text-5xl font-extrabold text-white">{stats.published}</span>
+                  <span className="text-3xl sm:text-5xl font-extrabold text-white">{loaded.scheduled ? stats.published : <Skeleton className="inline-block w-12 h-9 sm:h-12 rounded-lg align-middle" />}</span>
                </div>
 
                <div className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xl relative overflow-hidden group">
@@ -395,7 +397,7 @@ export default function Profile() {
                   <h3 className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5 sm:gap-2">
                     <CalendarClock size={16} className="text-purple-500 shrink-0" /> <span className="truncate">В очереди</span>
                   </h3>
-                  <span className="text-3xl sm:text-5xl font-extrabold text-white">{stats.scheduled}</span>
+                  <span className="text-3xl sm:text-5xl font-extrabold text-white">{loaded.scheduled ? stats.scheduled : <Skeleton className="inline-block w-12 h-9 sm:h-12 rounded-lg align-middle" />}</span>
                </div>
             </div>
 
@@ -406,7 +408,7 @@ export default function Profile() {
                    <Users size={16} className="text-blue-500" /> Мои аккаунты
                  </h3>
                  <div className="flex items-end gap-3 mb-6">
-                    <span className="text-4xl sm:text-5xl font-extrabold text-white leading-none">{stats.accountsCount}</span>
+                    <span className="text-4xl sm:text-5xl font-extrabold text-white leading-none">{loaded.accounts ? stats.accountsCount : <Skeleton className="inline-block w-12 h-9 sm:h-12 rounded-lg align-middle" />}</span>
                     <span className="text-gray-500 font-medium mb-1 text-sm sm:text-base">подключено</span>
                  </div>
                </div>

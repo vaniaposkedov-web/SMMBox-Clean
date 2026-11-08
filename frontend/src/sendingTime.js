@@ -15,3 +15,6 @@ export const getDeliveryMessage = (result, partners) => {
   const names = failed.map((id) => partners.find((partner) => partner.id === id)?.name || 'партнёр').join(', ');
   return `Дошло: ${result.delivered?.length || 0} из ${(result.delivered?.length || 0) + failed.length}. Не удалось отправить: ${names}.`;
 };
+
+// Зелёным с галочкой показывается только настоящий успех.
+export const isSuccessNotice = (message) => String(message || '').startsWith('Пост дошёл');

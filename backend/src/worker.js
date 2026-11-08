@@ -1,4 +1,4 @@
-const { Worker } = require('bullmq');
+const { Worker, UnrecoverableError } = require('bullmq');
 const { connection, WORKER_CONCURRENCY } = require('./queue');
 const prisma = require('./utils/prisma');
 const fs = require('fs');
@@ -16,24 +16,74 @@ const describeError = (error) => {
 // ВАЖНО: Тебе нужно зайти в postController.js и убедиться, что ты экспортируешь эти функции (напиши exports.applyWatermark = applyWatermark и т.д.)
 const { sendToTelegram, sendToKomodVK, applyWatermark, saveImageToFile, confirmSharedPostPublished } = require('./controllers/postController');
 
+// Ответ сервиса «так нельзя» (нет прав, канал удалён) не изменится от повтора: ошибка показывается сразу.
+const isPermanentError = (error) => error instanceof UnrecoverableError || [400, 401, 403, 404].includes(error.response?.status);
+
+// Telegram просит подождать: ждём столько, сколько он сказал, и только потом занимаем следующую попытку.
+const waitIfRateLimited = async (error) => {
+    if (error.response?.status !== 429) return;
+    const seconds = Number(error.response.data?.parameters?.retry_after) || 5;
+    await sleep(Math.min(seconds, 60) * 1000);
+};
+
+// Основа фото готовится один раз на публикацию: при 28 каналах это 28 одинаковых сжатий одних и тех же файлов.
+const BASE_SUFFIX = '.base.jpg';
+const getOptimizedBase = async (filePath) => {
+    const cached = filePath + BASE_SUFFIX;
+    try {
+        return await fs.promises.readFile(cached);
+    } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+    }
+    const buffer = await sharp(await fs.promises.readFile(filePath))
+        .resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+    // Запись через временное имя: соседняя задача не прочитает файл наполовину.
+    const temporary = `${cached}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+    await fs.promises.writeFile(temporary, buffer);
+    try {
+        await fs.promises.rename(temporary, cached);
+    } catch (error) {
+        await fs.promises.unlink(temporary).catch((cleanupError) => console.error('[WORKER] Временный файл кэша не удалён:', cleanupError.message));
+        if (!['EEXIST', 'EPERM'].includes(error.code)) throw error;
+    }
+    return buffer;
+};
+
 const worker = new Worker('posts_v2', async (job) => {
     const { postId, accountId, text, filePaths, watermarkConfig, signatureText } = job.data;
+    let dispatchStarted = false;
+    let providerDelivered = false;
     
     console.log(`[WORKER] Начал обработку поста ${postId}`);
 
     try {
+        // Пост удалили, пока он ждал очереди, или он уже вышел: публиковать нельзя.
+        const currentPost = await prisma.post.findUnique({ where: { id: postId }, select: { status: true, sharedPostId: true } });
+        if (!currentPost) {
+            console.log(`[WORKER] Пост ${postId} удалён, публикация отменена`);
+            return;
+        }
+        if (currentPost.status === 'PUBLISHED') {
+            console.log(`[WORKER] Пост ${postId} уже опубликован, повтор пропущен`);
+            return;
+        }
+        if (currentPost.status === 'DELIVERING') {
+            await prisma.post.updateMany({
+                where: { id: postId, status: 'DELIVERING' },
+                data: { status: 'DELIVERY_UNKNOWN', errorMessage: 'Связь прервалась во время отправки. Проверьте канал перед повторной публикацией.' }
+            });
+            console.error(`[WORKER] Результат отправки поста ${postId} неизвестен; автоматический повтор запрещён`);
+            return;
+        }
+        if (currentPost.status === 'DELIVERY_UNKNOWN') return;
+
         const account = await prisma.account.findUnique({ where: { id: accountId } });
         if (!account) throw new Error('Аккаунт не найден');
 
-        // 1. Читаем файлы с диска
-        const rawImageBuffers = await Promise.all(filePaths.map(async (fp) => {
-            return await fs.promises.readFile(fp);
-        }));
-
-        // 2. Сжимаем базово
-        const optimizedBaseBuffers = await Promise.all(rawImageBuffers.map(async (buf) => {
-            return await sharp(buf).resize({ width: 2500, height: 2500, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
-        }));
+        // 1-2. Читаем файлы и готовим основу фото (один раз на публикацию)
+        const optimizedBaseBuffers = await Promise.all(filePaths.map(getOptimizedBase));
 
         // 3. Водяной знак
         let processedBuffers = [...optimizedBaseBuffers];
@@ -48,38 +98,60 @@ const worker = new Worker('posts_v2', async (job) => {
         }
 
         // 5. Отправка в соцсети
-        const providerType = account.provider.toLowerCase(); 
-        if (providerType === 'telegram') {
-            const botToken = process.env.TELEGRAM_BOT_TOKEN.replace(/['"]/g, '').trim();
+        const providerType = account.provider.toLowerCase();
+        if (!['telegram', 'vk'].includes(providerType)) {
+            throw new UnrecoverableError(`Неизвестный канал публикации: ${account.provider}`);
+        }
+
+        const dispatch = await prisma.post.updateMany({
+            where: { id: postId, status: 'PROCESSING' },
+            data: { status: 'DELIVERING', errorMessage: null }
+        });
+        if (dispatch.count === 0) throw new UnrecoverableError('Статус публикации изменился до отправки');
+        dispatchStarted = true;
+        // Пост уже ушёл в канал, а следующий шаг сорвался: повторная попытка не должна опубликовать его второй раз.
+        if (job.data.delivered) {
+            providerDelivered = true;
+            console.log(`[WORKER] Пост ${postId} уже отправлен, повтор только сохраняет результат`);
+        } else if (providerType === 'telegram') {
+            const botToken = String(process.env.TELEGRAM_BOT_TOKEN || '').replace(/['"]/g, '').trim();
+            if (!botToken) throw new UnrecoverableError('TELEGRAM_BOT_TOKEN не настроен');
             await sendToTelegram(botToken, account.providerId, finalText, processedBuffers, {
                 mediaAlreadySent: Boolean(job.data.telegramMediaSent),
-                // Отметка хранится в очереди: при повторной попытке фото не уйдут в канал второй раз.
-                onMediaSent: () => job.updateData({ ...job.data, telegramMediaSent: true }).catch((error) => {
-                    console.error(`[WORKER] Отметка об отправке фото поста ${postId} не сохранена:`, error.message);
-                }),
+                onMediaSent: async () => {
+                    await job.updateData({ ...job.data, telegramMediaSent: true });
+                },
             });
+            providerDelivered = true;
             await sleep(2000); // 🟢 АНТИ-СПАМ: Задержка 2 секунды после отправки в ТГ
         } else if (providerType === 'vk') {
+            if (!process.env.KOMOD_TOKEN) throw new UnrecoverableError('KOMOD_TOKEN не настроен');
             await sendToKomodVK(process.env.KOMOD_TOKEN, account.providerId, finalText, processedBuffers, null, account.userId);
+            providerDelivered = true;
             await sleep(1000); // 🟢 АНТИ-СПАМ: Задержка 1 секунда для ВК
         }
+
+        const publishedPost = await prisma.post.update({
+            where: { id: postId },
+            data: { status: 'PUBLISHED', errorMessage: null }
+        });
+        if (!job.data.delivered) await job.updateData({ ...job.data, delivered: true });
 
         // 6. Сохраняем миниатюры для истории. Пост уже отправлен: сбой здесь не должен вызвать повторную публикацию.
         let thumbnailsUrls = null;
         try {
             thumbnailsUrls = await Promise.all(processedBuffers.map(async (buf) => {
                 const thumbBuf = await sharp(buf).resize({ width: 400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 65 }).toBuffer();
-                return await saveImageToFile(thumbBuf, 'history');
+                return await saveImageToFile(thumbBuf, 'history', 'webp');
             }));
         } catch (thumbnailError) {
             console.error(`[WORKER] Миниатюры поста ${postId} не сохранены:`, thumbnailError.message);
         }
 
         // 7. ОБНОВЛЯЕМ БАЗУ - УСПЕХ!
-        const publishedPost = await prisma.post.update({
-            where: { id: postId },
-            data: { status: 'PUBLISHED', errorMessage: null, ...(thumbnailsUrls ? { mediaUrls: JSON.stringify(thumbnailsUrls) } : {}) }
-        });
+        if (thumbnailsUrls?.length) {
+            await prisma.post.updateMany({ where: { id: postId, status: 'PUBLISHED' }, data: { mediaUrls: JSON.stringify(thumbnailsUrls) } });
+        }
 
         // 8. Пост от партнёра: только теперь он считается опубликованным. Сбой здесь не должен вызвать повторную публикацию.
         if (publishedPost.sharedPostId) {
@@ -95,13 +167,38 @@ const worker = new Worker('posts_v2', async (job) => {
     } catch (error) {
         console.error(`[WORKER ERROR] Ошибка поста ${postId}:`, error.message);
         
-        // Очередь повторит отправку сама, поэтому ошибкой считается только последняя попытка
-        const isLastAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
-        await prisma.post.update({
-            where: { id: postId },
-            data: isLastAttempt ? { status: 'FAILED', errorMessage: describeError(error) } : { errorMessage: describeError(error) }
+        await waitIfRateLimited(error);
+
+        const isPermanent = isPermanentError(error);
+        const isRateLimited = error.response?.status === 429;
+        const isLastAttempt = isPermanent || job.attemptsMade + 1 >= (job.opts.attempts || 1);
+        const postState = await prisma.post.findUnique({ where: { id: postId }, select: { status: true } }).catch((stateError) => {
+            console.error(`[WORKER ERROR] Не удалось проверить статус поста ${postId}:`, stateError.message);
+            return null;
         });
-        
+        if (postState?.status === 'PUBLISHED') {
+            throw new UnrecoverableError('Пост уже опубликован; повторная отправка отменена.');
+        }
+
+        let update = {};
+        if (dispatchStarted || postState?.status === 'DELIVERING') {
+            if (isRateLimited && !providerDelivered) {
+                update = { status: 'PROCESSING', errorMessage: describeError(error) };
+            } else if (job.data.telegramMediaSent || providerDelivered || !postState) {
+                update = { status: 'DELIVERY_UNKNOWN', errorMessage: 'Ответ сервиса публикации не получен. Проверьте канал перед повторной публикацией.' };
+            } else if (isPermanent) {
+                update = { status: 'FAILED', errorMessage: describeError(error) };
+            } else {
+                update = { status: 'DELIVERY_UNKNOWN', errorMessage: 'Ответ сервиса публикации не получен. Проверьте канал перед повторной публикацией.' };
+            }
+        } else {
+            update = isLastAttempt ? { status: 'FAILED', errorMessage: describeError(error) } : { errorMessage: describeError(error) };
+        }
+        await prisma.post.updateMany({ where: { id: postId }, data: update }).catch((updateError) => console.error(`[WORKER ERROR] Статус поста ${postId} не сохранён:`, updateError.message));
+
+        if (isPermanent || ((dispatchStarted || postState?.status === 'DELIVERING') && (!isRateLimited || providerDelivered))) {
+            throw new UnrecoverableError(error.message);
+        }
         throw error; // Чтобы BullMQ знал, что задача провалилась
     }
 }, { 

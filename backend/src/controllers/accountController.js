@@ -9,6 +9,7 @@ const { logEvent } = require('../utils/logger');
 const { getUserLimits, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
 const { getBotToken, sha256, safeEqual } = require('../utils/security');
 const { telegramHttp } = require('../utils/telegramClient');
+const { saveAvatarFile } = require('../utils/avatarFiles');
 
 const GATEWAY_NOT_CONFIGURED = 'Шлюз ВК не настроен на сервере';
 const TELEGRAM_BIND_LIFETIME_MS = 15 * 60 * 1000;
@@ -669,7 +670,12 @@ exports.verifyTgAccountsStatus = async (req, res) => {
         const member = tgRes.data.result;
         const isWorking = member.status === 'administrator' || member.status === 'creator';
         return await prisma.account.update({ where: { id: acc.id }, data: { isValid: isWorking, errorMsg: isWorking ? null : 'Бот должен быть администратором' } });
-      } catch (error) { return await prisma.account.update({ where: { id: acc.id }, data: { isValid: false, errorMsg: 'Ошибка связи с Telegram' } }); }
+      } catch (error) {
+        // Канал считается нерабочим, только если так ответил сам Telegram. Сбой связи ничего не говорит о канале.
+        const status = error.response?.status;
+        if (status !== 400 && status !== 403) return acc;
+        return await prisma.account.update({ where: { id: acc.id }, data: { isValid: false, errorMsg: 'Бот не имеет доступа к каналу' } });
+      }
     }));
     res.json({ success: true, updated: updates.length });
   } catch (error) { res.status(500).json({ error: 'Ошибка сервера' }); }
@@ -931,9 +937,9 @@ exports.processTelegramUpdate = async (update, io) => {
             const fileRes = await telegramHttp.get(`https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`);
             const tgFileUrl = `https://api.telegram.org/file/bot${botToken}/${fileRes.data.result.file_path}`;
 
-            // Скачиваем картинку и переводим в формат base64
+            // Скачиваем картинку и сохраняем файлом
             const imageReq = await telegramHttp.get(tgFileUrl, { responseType: 'arraybuffer' });
-            avatarUrl = `data:image/jpeg;base64,${Buffer.from(imageReq.data).toString('base64')}`;
+            avatarUrl = await saveAvatarFile(Buffer.from(imageReq.data));
           }
         } catch (e) {
           console.log('Не удалось загрузить аватарку пользователя ТГ');
@@ -1000,9 +1006,9 @@ exports.processTelegramUpdate = async (update, io) => {
               const fileRes = await telegramHttp.get(`https://api.telegram.org/bot${token}/getFile?file_id=${chatRes.data.result.photo.small_file_id}`);
               const tgFileUrl = `https://api.telegram.org/file/bot${token}/${fileRes.data.result.file_path}`;
 
-              // Скачиваем картинку и переводим в формат base64
+              // Скачиваем картинку и сохраняем файлом
               const imageReq = await telegramHttp.get(tgFileUrl, { responseType: 'arraybuffer' });
-              avatarUrl = `data:image/jpeg;base64,${Buffer.from(imageReq.data).toString('base64')}`;
+              avatarUrl = await saveAvatarFile(Buffer.from(imageReq.data));
             }
           } catch (e) { /* Игнорируем ошибку загрузки фото */ }
 

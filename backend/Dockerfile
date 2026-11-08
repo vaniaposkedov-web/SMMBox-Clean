@@ -1,5 +1,5 @@
 # Используем полноценную (но облегченную) версию Debian, а не Alpine
-FROM node:18-slim
+FROM node:24-bookworm-slim
 
 # Устанавливаем системные пакеты и нормальные шрифты с поддержкой русского языка
 RUN apt-get update && apt-get install -y \
@@ -20,7 +20,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Устанавливаем библиотеки
-RUN npm install
+RUN npm ci
 
 # Копируем весь остальной код
 COPY . .

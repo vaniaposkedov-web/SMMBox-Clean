@@ -7,10 +7,11 @@ import {
 } from 'lucide-react';
 import { DEFAULT_WATERMARK, PREVIEW_CONTAINER_STYLE, compressLogo, getWatermarkPreviewStyle, getWatermarkProblem } from './watermarkTools';
 
-const SAMPLE_IMAGES = [
-  "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?q=80&w=1000&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1000&auto=format&fit=crop"
+const SAMPLE_IMAGE = '/images/watermark-preview-dress.webp';
+const PREVIEW_ASPECTS = [
+  { id: 'portrait', label: 'Вертикальное', className: 'aspect-[9/16] max-w-[320px]' },
+  { id: 'square', label: 'Квадрат', className: 'aspect-square max-w-[420px]' },
+  { id: 'landscape', label: 'Горизонтальное', className: 'aspect-video max-w-none' },
 ];
 
 const FONTS = [
@@ -35,7 +36,7 @@ export default function WatermarkConstructor() {
   const [settings, setSettings] = useState(DEFAULT_WATERMARK);
   
   const [previewFilter, setPreviewFilter] = useState('dark'); 
-  const [imgIdx, setImgIdx] = useState(0);
+  const [previewAspect, setPreviewAspect] = useState('portrait');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   
@@ -48,17 +49,6 @@ export default function WatermarkConstructor() {
   useEffect(() => {
     if (user?.id) fetchAccounts(user.id);
   }, [user?.id, fetchAccounts]);
-
-  // --- АВТОМАТИЧЕСКИЙ СЛАЙДЕР КАРТИНОК ---
-  useEffect(() => {
-    let interval;
-    if (view === 'editor') {
-      interval = setInterval(() => {
-        setImgIdx((prev) => (prev + 1) % SAMPLE_IMAGES.length);
-      }, 3500); 
-    }
-    return () => clearInterval(interval);
-  }, [view]);
 
   // Фильтрация настроенных аккаунтов по поиску
   const configuredAccounts = accounts.filter(acc => acc.watermark);
@@ -189,7 +179,7 @@ export default function WatermarkConstructor() {
                       <div className="flex items-center gap-3 p-3">
                         <div className="relative shrink-0">
                           {acc.avatarUrl ? (
-                            <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700 object-cover" alt="" />
+                            <img loading="lazy" decoding="async" src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700 object-cover" alt="" />
                           ) : (
                             <div className="w-8 h-8 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400">
                               {acc.name?.substring(0, 2).toUpperCase()}
@@ -257,7 +247,7 @@ export default function WatermarkConstructor() {
                       className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-800 transition-all text-left border border-transparent hover:border-gray-700"
                     >
                       {acc.avatarUrl ? (
-                        <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-800 object-cover shrink-0" alt="" />
+                        <img loading="lazy" decoding="async" src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-800 object-cover shrink-0" alt="" />
                       ) : (
                         <div className="w-8 h-8 rounded-full border border-gray-800 bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400 shrink-0">
                           {acc.name?.substring(0, 2).toUpperCase()}
@@ -292,7 +282,7 @@ export default function WatermarkConstructor() {
           <div className="h-5 w-px bg-gray-800 hidden sm:block" />
           <div className="flex items-center gap-2">
              {selectedAccount?.avatarUrl ? (
-               <img src={selectedAccount.avatarUrl} className="w-6 h-6 rounded-full border border-gray-700 object-cover shrink-0" alt="" />
+               <img loading="lazy" decoding="async" src={selectedAccount.avatarUrl} className="w-6 h-6 rounded-full border border-gray-700 object-cover shrink-0" alt="" />
              ) : (
                <div className="w-6 h-6 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center text-[8px] font-bold text-gray-400 shrink-0">
                  {selectedAccount?.name?.substring(0, 2).toUpperCase()}
@@ -319,15 +309,31 @@ export default function WatermarkConstructor() {
         
         {/* === ЛЕВАЯ ПАНЕЛЬ: ПРЕДПРОСМОТР === */}
         <div className="lg:col-span-7">
-          <div style={PREVIEW_CONTAINER_STYLE} className={`relative w-full aspect-video rounded-xl overflow-hidden border-2 transition-all duration-500 shadow-md ${previewFilter === 'dark' ? 'border-gray-800 bg-gray-950' : 'border-gray-300 bg-white'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Формат фото</span>
+            <div className="inline-flex rounded-lg border border-gray-800 bg-gray-950 p-1" role="group" aria-label="Формат фотографии для предпросмотра">
+              {PREVIEW_ASPECTS.map((aspect) => (
+                <button
+                  key={aspect.id}
+                  type="button"
+                  aria-pressed={previewAspect === aspect.id}
+                  onClick={() => setPreviewAspect(aspect.id)}
+                  className={`min-h-9 rounded-md px-2.5 text-[9px] sm:text-[10px] font-bold transition-colors ${previewAspect === aspect.id ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  {aspect.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={PREVIEW_CONTAINER_STYLE} className={`relative w-full ${PREVIEW_ASPECTS.find((aspect) => aspect.id === previewAspect)?.className || 'aspect-[9/16] max-w-[320px]'} mx-auto rounded-xl overflow-hidden border-2 transition-all duration-500 shadow-md ${previewFilter === 'dark' ? 'border-gray-800 bg-gray-950' : 'border-gray-300 bg-white'}`}>
              
-             {/* Фоновое изображение (Автоматически листается) */}
-             <div 
-               className="absolute inset-0 bg-cover bg-center transition-all duration-500"
-               style={{ 
-                 backgroundImage: `url('${SAMPLE_IMAGES[imgIdx]}')`,
-                 filter: previewFilter === 'dark' ? 'brightness(0.5)' : 'brightness(1.1)' 
-               }}
+             <img
+               src={SAMPLE_IMAGE}
+               alt="Вертикальное фото одежды для предпросмотра водяного знака"
+               loading="eager"
+               decoding="async"
+               className="absolute inset-0 h-full w-full object-cover object-center transition-all duration-500"
+               style={{ filter: previewFilter === 'dark' ? 'brightness(0.62)' : 'brightness(1.08)' }}
              />
 
              {/* СЕТКА (Секции позиционирования) */}
@@ -343,7 +349,7 @@ export default function WatermarkConstructor() {
 
              {/* Адаптивный Водяной знак */}
              {settings.type === 'image' && settings.image && (
-               <img src={settings.image} style={watermarkStyle} alt="Watermark" />
+               <img loading="lazy" decoding="async" src={settings.image} style={watermarkStyle} alt="Watermark" />
              )}
              {settings.type === 'text' && settings.text?.trim() && (
                <div style={watermarkStyle}>{settings.text}</div>
@@ -483,7 +489,7 @@ export default function WatermarkConstructor() {
                       <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleImageUpload} />
                       {settings.image ? (
                         <div className="relative inline-block">
-                          <img src={settings.image} className="h-10 object-contain rounded-md" alt="" />
+                          <img loading="lazy" decoding="async" src={settings.image} className="h-10 object-contain rounded-md" alt="" />
                           <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-0.5 rounded-full shadow-md"><Edit3 size={10}/></div>
                         </div>
                       ) : (

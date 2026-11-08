@@ -9,6 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area // <--- ДОБАВИТЬ СЮДА
 } from 'recharts';
+import { ListSkeleton } from '../../components/Skeleton';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -344,7 +345,7 @@ const submitProGrant = async (isRevoke = false) => {
     { id: 'partner-api', label: '9. API Партнеров', icon: Network },
   ];
 
-  if (loading) return <div className={`min-h-[100dvh] ${theme.bg} flex justify-center items-center`}><Loader2 className="animate-spin text-blue-500" size={40}/></div>;
+  if (loading) return <div className={`min-h-[100dvh] ${theme.bg} p-6 md:p-10`}><ListSkeleton count={6} /></div>;
 
   return (
     <div translate="no" className={`min-h-[100dvh] ${theme.bg} ${theme.text} font-sans flex flex-col md:flex-row transition-colors`}>

@@ -6,30 +6,31 @@ const PUBLIC_FIELDS = { id: true, name: true, pavilion: true, avatarUrl: true };
 exports.getPartnerData = async (req, res) => {
   const userId = req.userId;
   try {
-    const incomingRequests = await prisma.partnership.findMany({
-      where: { receiverId: userId, status: 'PENDING' },
-      include: { requester: { select: PUBLIC_FIELDS } },
-    });
-
-    const outgoingRequests = await prisma.partnership.findMany({
-      where: { requesterId: userId, status: 'PENDING' },
-      include: { receiver: { select: PUBLIC_FIELDS } },
-    });
-
-    const acceptedPartnerships = await prisma.partnership.findMany({
-      where: { OR: [{ requesterId: userId }, { receiverId: userId }], status: 'ACCEPTED' },
-      include: {
-        requester: { select: { ...PUBLIC_FIELDS, phone: true } },
-        receiver: { select: { ...PUBLIC_FIELDS, phone: true } },
-      },
-    });
+    // Запрос повторяется каждые 15 секунд: четыре чтения идут одновременно, а уведомлений отдаётся не больше 100.
+    const [incomingRequests, outgoingRequests, acceptedPartnerships, notifications] = await Promise.all([
+      prisma.partnership.findMany({
+        where: { receiverId: userId, status: 'PENDING' },
+        include: { requester: { select: PUBLIC_FIELDS } },
+      }),
+      prisma.partnership.findMany({
+        where: { requesterId: userId, status: 'PENDING' },
+        include: { receiver: { select: PUBLIC_FIELDS } },
+      }),
+      prisma.partnership.findMany({
+        where: { OR: [{ requesterId: userId }, { receiverId: userId }], status: 'ACCEPTED' },
+        include: {
+          requester: { select: { ...PUBLIC_FIELDS, phone: true } },
+          receiver: { select: { ...PUBLIC_FIELDS, phone: true } },
+        },
+      }),
+      prisma.notification.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+    ]);
 
     const partners = acceptedPartnerships.map((p) => (p.requesterId === userId ? p.receiver : p.requester));
-
-    const notifications = await prisma.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
 
     res.json({ incomingRequests, outgoingRequests, partners, notifications });
   } catch (error) {

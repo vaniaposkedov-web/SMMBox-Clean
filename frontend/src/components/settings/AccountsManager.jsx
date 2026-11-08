@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useStore } from '../../store';
+import { ChannelGridSkeleton } from '../Skeleton';
 import { useNavigate } from 'react-router-dom';
 import {
   Send, Plus, ShieldAlert, Check, Type, X, Loader2, CheckCircle2, Users
@@ -14,6 +15,7 @@ export default function AccountsManager() {
   const user = useStore((state) => state.user);
   const accounts = useStore((state) => state.accounts) || [];
   const fetchAccounts = useStore((state) => state.fetchAccounts);
+  const loaded = useStore((state) => state.loaded);
   const fetchProfiles = useStore((state) => state.fetchProfiles);
   const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
   
@@ -69,6 +71,7 @@ export default function AccountsManager() {
   const [addedGroupsCount, setAddedGroupsCount] = useState(0);
   const [isWaitingForTg, setIsWaitingForTg] = useState(false); // Для Telegram
   const [tgCountBeforeWait, setTgCountBeforeWait] = useState(0);
+  const isTgWaitActive = isWaitingForTg && tgCount <= tgCountBeforeWait;
   const processingHash = useRef(null);
 
   
@@ -218,14 +221,6 @@ const handleSaveKomodGroups = async () => {
     setVkConnectStatus(addedCount > 0 ? 'groups_success' : 'idle');
     if (addErrors.length > 0) alert(`Не удалось подключить:\n${addErrors.join('\n')}`);
   };
-
-
-  useEffect(() => {
-    // Если включен режим ожидания и количество каналов стало больше, чем до ухода
-    if (isWaitingForTg && tgCount > tgCountBeforeWait) {
-      setIsWaitingForTg(false);
-    }
-  }, [tgCount, isWaitingForTg, tgCountBeforeWait]);
 
 
  // --- WEB SOCKETS: АВТО-ОБНОВЛЕНИЕ ДАННЫХ БЕЗ НАГРУЗКИ ---
@@ -396,7 +391,8 @@ const handleSaveKomodGroups = async () => {
         if (verifyVkAccountsStatus) verifyVkAccountsStatus();
       });
     }
-  }, [user]);
+    // Зависимость только от id: иначе каждое обновление пользователя заново проверяло все каналы в Telegram.
+  }, [user?.id]);
 
  
 
@@ -488,7 +484,7 @@ const handleSaveKomodGroups = async () => {
               selectedNetwork === 'VK' ? 'border-[#0077FF] bg-[#0077FF]/10 scale-[1.02]' : 'border-gray-800 bg-gray-900/50 opacity-60'
             }`}
           >
-            <img src="/icons8-vk.svg" alt="VK" className="w-8 h-8 object-contain" />
+            <img loading="lazy" decoding="async" src="/icons8-vk.svg" alt="VK" className="w-8 h-8 object-contain" />
             <h3 className="font-bold text-white text-lg">ВК</h3>
             {selectedNetwork === 'VK' && <div className="absolute top-1.5 right-2 text-[#0077FF]"><Check size={14} strokeWidth={4} /></div>}
           </div>
@@ -499,7 +495,7 @@ const handleSaveKomodGroups = async () => {
               selectedNetwork === 'TG' ? 'border-[#2AABEE] bg-[#2AABEE]/10 scale-[1.02]' : 'border-gray-800 bg-gray-900/50 opacity-60'
             }`}
           >
-            <img src="/icons8-телеграм.svg" alt="TG" className="w-8 h-8 object-contain" />
+            <img loading="lazy" decoding="async" src="/icons8-телеграм.svg" alt="TG" className="w-8 h-8 object-contain" />
             <h3 className="font-bold text-white text-lg">ТГ</h3>
             {selectedNetwork === 'TG' && <div className="absolute top-1.5 right-2 text-[#2AABEE]"><Check size={14} strokeWidth={4} /></div>}
           </div>
@@ -534,7 +530,9 @@ const handleSaveKomodGroups = async () => {
       <div className="max-w-md mx-auto w-full mt-8 mb-4 px-1">
         <h2 className="text-[10px] font-bold text-gray-500 mb-3 uppercase tracking-[0.2em] text-center">Подключено</h2>
         
-        {(connectedVk.length === 0 && connectedTg.length === 0) ? (
+        {(!loaded.accounts && connectedVk.length === 0 && connectedTg.length === 0) ? (
+          <ChannelGridSkeleton />
+        ) : (connectedVk.length === 0 && connectedTg.length === 0) ? (
           <div className="text-center p-4 bg-[#0d0f13] border border-gray-800 border-dashed rounded-xl text-gray-500 text-sm">
             Платформы не добавлены
           </div>
@@ -570,7 +568,7 @@ const handleSaveKomodGroups = async () => {
                   <div className="flex items-center gap-2.5 min-w-0">
                     
                     <div className="relative shrink-0">
-                      <img 
+                      <img loading="lazy" decoding="async"
                         src={avatar} 
                         onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, accountName); }}
                         className="w-9 h-9 rounded-full object-cover border border-gray-800" 
@@ -807,7 +805,7 @@ const handleSaveKomodGroups = async () => {
                       </div>
                     )}
                     
-                    <img 
+                    <img loading="lazy" decoding="async"
                       src={avatar} 
                       onError={(e) => { e.target.onerror = null; e.target.src = getValidAvatar(null, groupName); }} 
                       className="w-12 h-12 rounded-full object-cover border border-gray-700 shrink-0" 
@@ -896,7 +894,7 @@ const handleSaveKomodGroups = async () => {
 
 
       {/* ЭКРАН ОЖИДАНИЯ TELEGRAM */}
-      {isWaitingForTg && (
+      {isTgWaitActive && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
            <div className="absolute inset-0 bg-[#121212]/90 backdrop-blur-sm"></div>
            <div className="relative bg-[#1e1e1e] border border-gray-800 rounded-2xl p-8 shadow-2xl flex flex-col items-center max-w-sm w-full animate-in zoom-in-95 duration-200">

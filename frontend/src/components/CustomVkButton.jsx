@@ -1,10 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import * as VKID from '@vkid/sdk';
 
 const VK_LOGIN_FAILED = 'Не удалось войти через ВКонтакте. Попробуйте ещё раз.';
 
 export default function CustomVkButton({ onAuth, onError, failureText = VK_LOGIN_FAILED }) {
   const handledCodes = useRef(new Set());
+  const processTokens = useCallback(async (code, deviceId) => {
+    if (!code || !deviceId || handledCodes.current.has(code)) return;
+    handledCodes.current.add(code);
+
+    try {
+      const tokens = await VKID.Auth.exchangeCode(code, deviceId);
+      if (onAuth) await onAuth({ access_token: tokens.access_token });
+    } catch (error) {
+      console.error('Ошибка авторизации ВК:', error);
+      if (onError) onError(failureText);
+    }
+  }, [failureText, onAuth, onError]);
 
   useEffect(() => {
     VKID.Config.init({
@@ -31,7 +43,10 @@ export default function CustomVkButton({ onAuth, onError, failureText = VK_LOGIN
           const payload = JSON.parse(payloadStr);
           code = payload.code || code;
           deviceId = payload.device_id || deviceId;
-        } catch (e) {}
+        } catch (error) {
+          console.error('Некорректный ответ авторизации ВК:', error);
+          if (onError) onError(failureText);
+        }
       }
 
       if (code && deviceId) {
@@ -57,22 +72,7 @@ export default function CustomVkButton({ onAuth, onError, failureText = VK_LOGIN
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [onAuth]);
-
-  const processTokens = async (code, deviceId) => {
-    // Код обменивается только один раз, а прийти может двумя путями: из библиотеки ВК и из окна входа.
-    if (handledCodes.current.has(code)) return;
-    handledCodes.current.add(code);
-
-    try {
-      const tokens = await VKID.Auth.exchangeCode(code, deviceId);
-      // Кто вошёл, сервер сам спрашивает у ВК по этому токену.
-      if (onAuth) await onAuth({ access_token: tokens.access_token });
-    } catch (error) {
-      console.error('Ошибка авторизации ВК:', error);
-      if (onError) onError(failureText);
-    }
-  };
+  }, [failureText, onError, processTokens]);
 
   const handleVkLogin = () => {
     if (onError) onError('');

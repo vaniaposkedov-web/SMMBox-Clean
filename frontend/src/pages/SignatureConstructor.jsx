@@ -138,7 +138,7 @@ export default function SignatureConstructor() {
                       <div className="flex items-center gap-3 p-3">
                         <div className="relative shrink-0">
                           {acc.avatarUrl ? (
-                            <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700 object-cover" alt="" />
+                            <img loading="lazy" decoding="async" src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-700 object-cover" alt="" />
                           ) : (
                             <div className="w-8 h-8 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400">
                               {acc.name?.substring(0, 2).toUpperCase()}
@@ -200,7 +200,7 @@ export default function SignatureConstructor() {
                       className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-800 transition-all text-left border border-transparent hover:border-gray-700"
                     >
                       {acc.avatarUrl ? (
-                        <img src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-800 object-cover shrink-0" alt="" />
+                        <img loading="lazy" decoding="async" src={acc.avatarUrl} className="w-8 h-8 rounded-full border border-gray-800 object-cover shrink-0" alt="" />
                       ) : (
                         <div className="w-8 h-8 rounded-full border border-gray-800 bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400 shrink-0">
                           {acc.name?.substring(0, 2).toUpperCase()}
@@ -232,7 +232,7 @@ export default function SignatureConstructor() {
           <div className="h-5 w-px bg-gray-800 hidden sm:block" />
           <div className="flex items-center gap-2">
              {selectedAccount?.avatarUrl ? (
-               <img src={selectedAccount.avatarUrl} className="w-6 h-6 rounded-full border border-gray-700 object-cover shrink-0" alt="" />
+               <img loading="lazy" decoding="async" src={selectedAccount.avatarUrl} className="w-6 h-6 rounded-full border border-gray-700 object-cover shrink-0" alt="" />
              ) : (
                <div className="w-6 h-6 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center text-[8px] font-bold text-gray-400 shrink-0">
                  {selectedAccount?.name?.substring(0, 2).toUpperCase()}
@@ -267,7 +267,7 @@ export default function SignatureConstructor() {
                  <div className="flex items-center gap-3 mb-2">
                    <div className="w-10 h-10 rounded-full bg-gray-800 shrink-0 border border-gray-700 flex items-center justify-center text-xs font-bold text-gray-400 overflow-hidden">
                      {selectedAccount?.avatarUrl ? (
-                       <img src={selectedAccount.avatarUrl} className="w-full h-full object-cover" alt=""/>
+                       <img loading="lazy" decoding="async" src={selectedAccount.avatarUrl} className="w-full h-full object-cover" alt=""/>
                      ) : (
                        selectedAccount?.name?.substring(0, 2).toUpperCase()
                      )}
@@ -279,7 +279,7 @@ export default function SignatureConstructor() {
                  </div>
                  
                  <div className="w-full aspect-video bg-gray-800 rounded-xl flex items-center justify-center relative overflow-hidden">
-                   <img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover opacity-80" alt="post demo" />
+                   <div className="w-full h-full bg-gradient-to-br from-gray-700 to-gray-900" aria-hidden="true" />
                  </div>
                  
                  <div className="text-sm text-gray-300 space-y-1">

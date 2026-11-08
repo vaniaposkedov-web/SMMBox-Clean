@@ -6,16 +6,21 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
 
+// Любой внешний запрос без своего срока прервётся через 30 секунд, а не будет висеть бесконечно.
+require('axios').defaults.timeout = 30 * 1000;
+
 const jwt = require('jsonwebtoken');
 const { getJwtSecret } = require('./utils/security');
 getJwtSecret(); // Без секрета входа сервер не запускается
 const prisma = require('./utils/prisma');
+const { postQueue } = require('./queue');
 
 // Запускаем планировщик постов
 require('./controllers/postController').initCron();
 require('./controllers/partnerController').initPartnerCron();
 require('./utils/logger').initLogCleanup();
-require('./worker'); // Запускаем фонового воркера
+const worker = require('./worker'); // Запускаем фонового воркера
+require('./utils/avatarFiles').migrateInlineAvatars().catch((error) => console.error('Аватары не перенесены:', error.message));
 
 const authRoutes = require('./routes/authRoutes');
 const partnerRoutes = require('./routes/partnerRoutes');
@@ -93,8 +98,10 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 // Правильный путь к папке uploads
 // Правильный путь к папке uploads (раздаем по обоим путям для 100% совместимости)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
+// Имя файла уникально и никогда не перезаписывается, поэтому браузер может хранить фото долго и не спрашивать снова.
+const UPLOADS_CACHE = { maxAge: '30d', immutable: true };
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), UPLOADS_CACHE));
+app.use('/api/uploads', express.static(path.join(__dirname, '../uploads'), UPLOADS_CACHE));
 
 
 // Базовые роуты
@@ -137,6 +144,39 @@ app.use((err, req, res, next) => {
     const isUploadError = err.name === 'MulterError' || err.message === 'Разрешены только изображения!';
     res.status(isUploadError ? 400 : 500).json({ success: false, error: isUploadError ? err.message : 'Внутренняя ошибка сервера' });
 });
+
+// Сбой в фоновой задаче не должен останавливать весь сайт.
+process.on('unhandledRejection', (reason) => {
+    console.error('[НЕОБРАБОТАННАЯ ОШИБКА]', reason?.message || reason);
+});
+
+// При перезапуске даём очереди закончить текущие посты: иначе пост, прерванный на отправке, мог бы выйти дважды.
+let isShuttingDown = false;
+const shutdown = async (signal) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`Получен ${signal}: завершаем текущие публикации`);
+    const shutdownTimeout = setTimeout(() => {
+        console.error('Не удалось завершить текущие публикации за 210 секунд');
+        process.exit(1);
+    }, 210 * 1000);
+    shutdownTimeout.unref();
+    try {
+        await Promise.all([
+            new Promise((resolve) => io.close(resolve)),
+            worker.close(),
+        ]);
+        await postQueue.close();
+        await prisma.$disconnect();
+        clearTimeout(shutdownTimeout);
+        process.exit(0);
+    } catch (error) {
+        console.error('Ошибка штатного завершения сервера:', error.message);
+        process.exit(1);
+    }
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 // Запуск сервера (ВАЖНО: теперь server.listen, а не app.listen)
 if (process.env.VERCEL) {

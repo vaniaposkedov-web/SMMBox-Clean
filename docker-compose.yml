@@ -17,6 +17,8 @@ services:
     image: redis:7-alpine
     container_name: smmbox_redis
     restart: always
+    # Очередь записывается на диск раз в минуту, если что-то изменилось: при сбое теряется меньше постов.
+    command: redis-server --save 60 1
     # Порт наружу не открываем: очередь без пароля, а серверу она доступна по внутренней сети Docker.
     volumes:
       - redisdata:/data
@@ -25,6 +27,8 @@ services:
     build: ./backend
     container_name: smmbox_backend
     restart: always
+    # При обновлении сайта есть время закончить посты, которые уже отправляются.
+    stop_grace_period: 240s
     environment:
       - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD}@db:5432/smmbox?schema=public
       - REDIS_URL=redis://redis:6379

@@ -5,14 +5,12 @@ import {
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { LEGAL_DOCUMENTS } from '../legal/details';
-import io from 'socket.io-client'; // Не забудьте установить: npm install socket.io-client
 
 export default function MaintenanceGuard({ children }) {
     const [isMaintenance, setIsMaintenance] = useState(false);
     const [message, setMessage] = useState('');
     const [showWarning, setShowWarning] = useState(false);
     const [warningMsg, setWarningMsg] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
     const location = useLocation();
 
     useEffect(() => {
@@ -24,32 +22,38 @@ export default function MaintenanceGuard({ children }) {
                 setIsMaintenance(data.isMaintenance);
                 setMessage(data.message);
             } catch (e) {}
-            setIsLoading(false);
         };
         checkStatus();
 
         // 2. Настройка Socket.io для мгновенных обновлений
-        const socket = io(window.location.origin); // Подключаемся к нашему серверу
+        // Библиотека соединения загружается отдельно и не задерживает показ страницы.
+        let socket = null;
+        let isClosed = false;
+        import('socket.io-client').then(({ default: io }) => {
+            if (isClosed) return;
+            socket = io(window.location.origin); // Подключаемся к нашему серверу
 
-        socket.on('maintenance_update', (data) => {
-            setIsMaintenance(data.isMaintenance);
-            if (data.message) setMessage(data.message);
-        });
+            socket.on('maintenance_update', (data) => {
+                setIsMaintenance(data.isMaintenance);
+                if (data.message) setMessage(data.message);
+            });
 
-        socket.on('system_warning', (data) => {
-            setWarningMsg(data.message);
-            setShowWarning(true);
-        });
+            socket.on('system_warning', (data) => {
+                setWarningMsg(data.message);
+                setShowWarning(true);
+            });
+        }).catch(() => {});
 
-        return () => socket.disconnect();
+        return () => {
+            isClosed = true;
+            socket?.disconnect();
+        };
     }, []);
 
     const isAdminRoute = location.pathname.includes('/boss') || location.pathname.includes('/admin');
     const hasAdminToken = localStorage.getItem('adminToken');
     // Документы должны быть доступны всегда, в том числе во время технических работ.
     const isLegalPage = LEGAL_DOCUMENTS.some((document) => document.path === location.pathname);
-
-    if (isLoading) return null;
 
     // Если идут работы и это не админ — блокируем всё
     if (isMaintenance && !isAdminRoute && !hasAdminToken && !isLegalPage) {

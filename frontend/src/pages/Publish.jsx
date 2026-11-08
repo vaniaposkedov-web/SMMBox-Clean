@@ -8,7 +8,9 @@ import {
 import { useStore } from '../store';
 import SendingNotice from '../components/SendingNotice';
 import ScheduleTimePicker from '../components/ScheduleTimePicker';
-import { estimateShareSeconds, getDeliveryMessage } from '../sendingTime';
+import { estimateShareSeconds, getDeliveryMessage, isSuccessNotice } from '../sendingTime';
+import { compressImages, newRequestKey } from '../imageTools';
+import { ChannelPickerSkeleton, ListSkeleton } from '../components/Skeleton';
 import { MIN_SCHEDULE_AHEAD_MINUTES, fromKeys, getEarliestScheduleTime, toDateKey, toTimeKey } from '../scheduleTime';
 
 const IconVK = () => (
@@ -37,6 +39,12 @@ export default function Publish() {
     myPartners, sharePostAction, fetchPartnerData
   } = useStore();
   const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
+  const loaded = useStore((state) => state.loaded);
+  // Метка одного нажатия: если связь оборвалась и человек нажал ещё раз, второй публикации не будет.
+  const publishKeyRef = useRef(null);
+  const shareKeyRef = useRef(null);
+  // Состояние кнопки обновляется не мгновенно: двойное нажатие успело бы отправить два запроса.
+  const isSendingRef = useRef(false);
 
   // Тариф мог появиться только что: без свежих данных клиент увидел бы плашку «без тарифа».
   useEffect(() => {
@@ -132,7 +140,8 @@ export default function Publish() {
     return () => clearInterval(timer);
   }, [step, publishMode, publishIds]);
  const handleShareToPartners = async () => {
-    if (selectedPartners.length === 0) return;
+    if (selectedPartners.length === 0 || isSendingRef.current) return;
+    isSendingRef.current = true;
     
     setIsSharing(true);
     setShareEta(estimateShareSeconds(photos.length, selectedPartners.length));
@@ -141,11 +150,13 @@ export default function Publish() {
     // Даем React 50мс на отрисовку спиннера "Отправка..."
     setTimeout(async () => {
         try {
-          const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
+          const webpBlobs = await compressImages(photos.map(p => p.file));
+          if (!shareKeyRef.current) shareKeyRef.current = newRequestKey();
           // Как видишь, сюда передается только чистый text и чистые webpBlobs. Партнер получает исходники!
-          const res = await sharePostAction(text, webpBlobs, selectedPartners);
+          const res = await sharePostAction(text, webpBlobs, selectedPartners, shareKeyRef.current);
           
           if (res?.success) {
+            shareKeyRef.current = null;
             // ⚡ УЛУЧШЕНИЕ UX: Показываем статус успеха ПЕРЕД закрытием окна
             setPartnerStatus('sent');
             setIsSharing(false);
@@ -170,6 +181,8 @@ export default function Publish() {
           setPartnerStatus('idle');
           setToastMessage('Ошибка соединения при отправке');
           setTimeout(() => setToastMessage(null), 3000);
+        } finally {
+          isSendingRef.current = false;
         }
     }, 50);
   };
@@ -308,12 +321,18 @@ export default function Publish() {
     if (!isRestored.current || !saveTempDraft || step === 4) return; 
     const timer = setTimeout(() => {
       saveTempDraft({ 
-        text, selectedAccounts, applyWatermark, applySignature,
+        text, photos, selectedAccounts, applyWatermark, applySignature,
         step, view, publishMode, scheduleTime, selectedCalendarDate, sharedPostId
       });
     }, 500); 
     return () => clearTimeout(timer);
-  }, [text, selectedAccounts, applyWatermark, applySignature, step, view, publishMode, scheduleTime, selectedCalendarDate, sharedPostId, saveTempDraft]);
+  }, [text, photos, selectedAccounts, applyWatermark, applySignature, step, view, publishMode, scheduleTime, selectedCalendarDate, sharedPostId, saveTempDraft]);
+
+  // Человек что-то изменил: следующее нажатие считается новой публикацией, а не повтором.
+  useEffect(() => {
+    publishKeyRef.current = null;
+    shareKeyRef.current = null;
+  }, [text, photos, selectedAccounts, scheduleTime, selectedCalendarDate, selectedPartners]);
 
   const toggleAccount = (id) => {
     setSelectedAccounts(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
@@ -360,49 +379,18 @@ const toggleAllAccounts = () => {
     });
   };
 
-  const removePhoto = (idToRemove) => {
-    setPhotos(prev => prev.filter(p => p.id !== idToRemove));
+  // Предпросмотр занимает память, пока адрес не освобождён.
+  const releasePhoto = (photo) => {
+    if (String(photo?.url || '').startsWith('blob:')) URL.revokeObjectURL(photo.url);
   };
 
-
-  const compressImageToWebP = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          // Разрешение можно сделать больше, WebP жмет очень эффективно
-          const MAX_WIDTH = 1920; 
-          const MAX_HEIGHT = 1920;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height && width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          } else if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          
-          // Конвертируем в WebP с качеством 85% — экономия веса до 5-10 раз!
-          canvas.toBlob((blob) => {
-            resolve(blob);
-          }, 'image/webp', 0.85); 
-        };
-        img.onerror = error => reject(error);
-      };
-      reader.onerror = error => reject(error);
+  const removePhoto = (idToRemove) => {
+    setPhotos(prev => {
+      releasePhoto(prev.find(p => p.id === idToRemove));
+      return prev.filter(p => p.id !== idToRemove);
     });
   };
+
 
   // Найди старую функцию handleAiAction и замени её на эту:
   const handleAiAction = async () => {
@@ -472,6 +460,9 @@ const handlePublish = async () => {
       publishAt = fromKeys(selectedCalendarDate, scheduleTime).toISOString();
     }
     
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
+
     // Пока фото загружаются, закрытие вкладки может потерять пост
     const handleBeforeUnload = (e) => {
       e.preventDefault();
@@ -482,7 +473,7 @@ const handlePublish = async () => {
     setPublishTimedOut(false);
 
     try {
-      const webpBlobs = await Promise.all(photos.map(p => compressImageToWebP(p.file)));
+      const webpBlobs = await compressImages(photos.map(p => p.file));
 
       const accountsData = selectedAccounts.map(id => {
         const acc = accounts.find(a => a.id === id);
@@ -497,9 +488,11 @@ const handlePublish = async () => {
         return { accountId: id, applyWatermark: !!wmConfig, applySignature: !!sigText, watermarkConfig: acc?.watermark ? undefined : wmConfig, signatureText: sigText };
       });
 
-      const result = await createPostAction(text, webpBlobs, accountsData, publishAt, sharedPostId);
+      if (!publishKeyRef.current) publishKeyRef.current = newRequestKey();
+      const result = await createPostAction(text, webpBlobs, accountsData, publishAt, sharedPostId, publishKeyRef.current);
 
       if (result.success) {
+        publishKeyRef.current = null;
         setPublishResults(result.posts || []);
         setPublishEta(result.estimatedSeconds);
         setStep(4);
@@ -515,6 +508,7 @@ const handlePublish = async () => {
       alert('Не удалось отправить пост. Проверьте интернет и попробуйте ещё раз.');
     } finally {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      isSendingRef.current = false;
       setIsPublishing(false);
     }
   };
@@ -574,6 +568,7 @@ const handlePublish = async () => {
     
 
   const resetForm = () => {
+    photos.forEach(releasePhoto);
     setPhotos([]);
     setText('');
     setSelectedAccounts([]);
@@ -673,7 +668,9 @@ const handlePublish = async () => {
 
   if (view === 'calendar') {
     const selectedDateObj = new Date(selectedCalendarDate);
-    const postsForSelectedDate = realScheduledPosts.filter(p => p.date === selectedCalendarDate);
+    const postsForSelectedDate = realScheduledPosts
+      .filter(p => p.date === selectedCalendarDate)
+      .sort((a, b) => a.time.localeCompare(b.time));
 
     return (
       // Добавлен key="calendar-view"
@@ -720,13 +717,15 @@ const handlePublish = async () => {
             </h3>
             
             <div className="space-y-3">
-              {postsForSelectedDate.length > 0 ? (
+              {!loaded.scheduled && postsForSelectedDate.length === 0 ? (
+                <ListSkeleton count={3} />
+              ) : postsForSelectedDate.length > 0 ? (
                 postsForSelectedDate.map(post => (
                   <div key={post.id} className={`bg-admin-card border border-gray-800 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:bg-gray-900/80 group ${post.status === 'PUBLISHED' ? 'opacity-80 grayscale-[30%] bg-gray-900/50' : ''}`}>
                     <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
                       <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl shrink-0 bg-gray-800 flex items-center justify-center text-white border border-gray-700/50">
                         {post.accountAvatar ? (
-                          <img src={post.accountAvatar} alt={post.accountName} className="w-full h-full object-cover rounded-xl" />
+                          <img loading="lazy" decoding="async" src={post.accountAvatar} alt={post.accountName} className="w-full h-full object-cover rounded-xl" />
                         ) : (
                           <span className="text-xs font-bold text-gray-400">{post.accountName.substring(0, 2).toUpperCase()}</span>
                         )}
@@ -749,6 +748,16 @@ const handlePublish = async () => {
                           {post.status === 'PUBLISHED' && (
                             <span className="text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
                               <CheckCircle2 size={10} /> Отправлен
+                            </span>
+                          )}
+                          {post.status === 'FAILED' && (
+                            <span className="text-red-400 bg-red-500/10 border border-red-500/20 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <AlertCircle size={10} /> Ошибка
+                            </span>
+                          )}
+                          {post.status === 'PROCESSING' && (
+                            <span className="text-blue-400 bg-blue-500/10 border border-blue-500/20 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <Loader2 size={10} className="animate-spin" /> Отправляется
                             </span>
                           )}
                         </div>
@@ -787,7 +796,7 @@ const handlePublish = async () => {
 
         {/* === ИСПРАВЛЕНИЕ: ВЕРСТКА ДАТЫ И ВРЕМЕНИ В РЕДАКТИРОВАНИИ === */}
         {editPost && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
+          <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
             <div className="bg-admin-card w-full max-w-lg border-t sm:border border-gray-800 rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl relative flex flex-col max-h-[90vh] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-6">
               <button onClick={() => setEditPost(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white bg-gray-900 w-10 h-10 rounded-full flex items-center justify-center transition-colors z-10"><X size={20} /></button>
               <h3 className="text-xl font-bold text-white mb-4 pr-12">Редактирование</h3>
@@ -803,8 +812,8 @@ const handlePublish = async () => {
                 )}
                 {editTab === 'settings' && (
                   <div className="space-y-4">
-                    {/* ДОБАВЛЕНО min-w-0 для предотвращения разрыва сетки */}
-                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                    {/* На телефоне дата и время идут друг под другом: в один ряд поля времени вылезали за край окна. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       <div className="flex flex-col min-w-0">
                         <label className="text-xs font-bold text-gray-500 uppercase mb-1">Дата</label>
                         <input type="date" min={toDateKey(new Date())} value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full min-w-0 appearance-none bg-gray-900 border border-gray-700 rounded-xl px-3 sm:px-4 py-3 text-base sm:text-sm text-white outline-none focus:border-purple-500 transition-colors h-[50px]" />
@@ -886,7 +895,7 @@ const handlePublish = async () => {
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3">
                   {photos.map((photo) => (
                     <div key={photo.id} className="relative aspect-square rounded-2xl overflow-hidden group border border-gray-800">
-                      <img src={photo.url || photo.preview} alt="Preview" className="w-full h-full object-cover" />
+                      <img loading="lazy" decoding="async" src={photo.url || photo.preview} alt="Preview" className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:block"></div>
                       <button onClick={() => removePhoto(photo.id)} className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 bg-red-500/90 text-white w-8 h-8 sm:w-auto sm:h-auto sm:p-1.5 rounded-xl flex items-center justify-center hover:bg-red-500 active:scale-90 transition-all z-10">
                         <X size={16} />
@@ -1019,7 +1028,9 @@ const handlePublish = async () => {
               </div>
 
               <div className="pr-1 sm:pr-2 space-y-4">
-                {Object.keys(groupedAccounts).length === 0 ? (
+                {!loaded.accounts && accounts.length === 0 ? (
+                  <ChannelPickerSkeleton />
+                ) : Object.keys(groupedAccounts).length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-500 text-sm mb-2">Аккаунты не найдены</p>
                   </div>
@@ -1068,7 +1079,7 @@ const handlePublish = async () => {
                               )}
                               <div className={`flex items-center gap-2.5 p-2.5 w-full text-left min-h-[48px] ${isBlocked ? 'pt-4' : ''}`}>
                                 <div className="relative w-8 h-8 rounded-lg shrink-0 bg-gray-800 flex items-center justify-center font-bold text-gray-400 border border-gray-700">
-                                  {avatarSrc ? <img src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-lg" /> : <span className="text-[10px] sm:text-xs">{acc.name.substring(0, 2).toUpperCase()}</span>}
+                                  {avatarSrc ? <img loading="lazy" decoding="async" src={avatarSrc} alt={acc.name} className="w-full h-full object-cover rounded-lg" /> : <span className="text-[10px] sm:text-xs">{acc.name.substring(0, 2).toUpperCase()}</span>}
                                   <div className={`absolute -bottom-1 -right-1 w-4 h-4 bg-gray-900 rounded-full border-2 border-gray-800 flex items-center justify-center ${iconColor}`}>
                                     <div className="w-2.5 h-2.5 flex items-center justify-center">
                                       {provider.toLowerCase() === 'vk' ? <IconVK /> : <IconTG />}
@@ -1243,7 +1254,7 @@ const handlePublish = async () => {
                       </div>
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-full bg-gray-800 shrink-0 overflow-hidden border border-gray-700 flex justify-center items-center text-xs font-bold text-gray-400">
-                          {partner.avatarUrl ? <img src={partner.avatarUrl} className="w-full h-full object-cover"/> : partner.name?.substring(0,2).toUpperCase()}
+                          {partner.avatarUrl ? <img loading="lazy" decoding="async" src={partner.avatarUrl} className="w-full h-full object-cover"/> : partner.name?.substring(0,2).toUpperCase()}
                         </div>
                         <div className="truncate">
                           <p className="text-sm font-bold text-white truncate">{partner.name}</p>
@@ -1294,8 +1305,8 @@ const handlePublish = async () => {
       
       {/* === КАСТОМНОЕ УВЕДОМЛЕНИЕ (TOAST) === */}
       {toastMessage && (
-        <div className="fixed top-4 sm:top-6 left-1/2 -translate-x-1/2 z-[200] bg-emerald-500/95 backdrop-blur-md text-white px-4 py-3 sm:px-6 sm:py-3.5 rounded-2xl shadow-[0_10px_40px_rgba(16,185,129,0.3)] flex items-center justify-center gap-2 sm:gap-3 animate-in slide-in-from-top-4 fade-in duration-300 font-bold border border-emerald-400/50 w-[90vw] max-w-sm sm:max-w-md text-sm sm:text-base text-center leading-snug">
-          <CheckCircle2 size={20} className="shrink-0" />
+        <div className={`fixed top-4 sm:top-6 left-1/2 -translate-x-1/2 z-[200] ${isSuccessNotice(toastMessage) ? 'bg-emerald-500/95 border-emerald-400/50' : 'bg-red-600/95 border-red-400/50'} backdrop-blur-md text-white px-4 py-3 sm:px-6 sm:py-3.5 rounded-2xl flex items-center justify-center gap-2 sm:gap-3 animate-in slide-in-from-top-4 fade-in duration-300 font-bold border  w-[90vw] max-w-sm sm:max-w-md text-sm sm:text-base text-center leading-snug`}>
+          {isSuccessNotice(toastMessage) ? <CheckCircle2 size={20} className="shrink-0" /> : <AlertCircle size={20} className="shrink-0" />}
           <span>{toastMessage}</span>
         </div>
       )}

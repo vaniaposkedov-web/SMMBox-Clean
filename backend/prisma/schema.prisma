@@ -81,6 +81,7 @@ model SocialProfile {
   updatedAt         DateTime  @updatedAt
 
   @@unique([provider, providerAccountId]) 
+  @@index([userId])
 }
 
 model SubscriptionPlan {
@@ -116,6 +117,7 @@ model Account {
   watermark   Watermark?
   
   @@unique([provider, providerId]) 
+  @@index([userId])
 }
 
 model Watermark {
@@ -192,6 +194,8 @@ model Post {
   sharedPost        SharedPost? @relation(fields: [sharedPostId], references: [id], onDelete: SetNull)
   batchId           String?
   @@index([accountId])
+  @@index([accountId, createdAt])
+  @@index([batchId])
   @@index([status, publishAt])
   @@index([createdAt])
   @@index([sharedPostId])
@@ -208,6 +212,7 @@ model Partnership {
   receiver    User     @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@unique([requesterId, receiverId]) 
+  @@index([receiverId])
 }
 
 model Notification {
@@ -221,6 +226,8 @@ model Notification {
   
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model SharedPost {
@@ -232,12 +239,14 @@ model SharedPost {
   isPublished Boolean  @default(false) // Отслеживаем, опубликовал ли партнер пост
   isRead      Boolean  @default(false)
   createdAt   DateTime @default(now())
+  requestKey  String?  // Метка одного нажатия «Отправить»: повторный запрос не создаёт вторую копию
 
   sender      User     @relation("SentSharedPosts", fields: [senderId], references: [id], onDelete: Cascade)
   receiver    User     @relation("ReceivedSharedPosts", fields: [receiverId], references: [id], onDelete: Cascade)
   posts       Post[]   // Публикации этого поста в соцсетях партнёра
 
   @@index([senderId])
+  @@index([senderId, requestKey])
   @@index([receiverId])
   @@index([createdAt])
 }

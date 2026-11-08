@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useStore } from '../store';
+import { CardGridSkeleton, ListSkeleton, PostGridSkeleton } from '../components/Skeleton';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell, Inbox, X, Send, UserPlus, UserCheck, UserX, CheckCircle2, Image as ImageIcon,
@@ -106,6 +107,7 @@ export default function Requests() {
 
   const [previewPost, setPreviewPost] = useState(null);
   const [previewNotification, setPreviewNotification] = useState(null);
+  const loaded = useStore((state) => state.loaded);
   const [fsImageIndex, setFsImageIndex] = useState(null);
   const [isPreparing, setIsPreparing] = useState(false);
   const [showRetryMenu, setShowRetryMenu] = useState(false);
@@ -116,10 +118,11 @@ export default function Requests() {
     return () => { document.body.style.overflow = 'unset'; };
   }, [previewPost, previewNotification, fsImageIndex]);
 
+  // Зависимость только от id: объект пользователя обновляется и без смены пользователя.
   useEffect(() => {
     if (user?.id) fetchPartnerData(user.id);
     fetchSharedPosts();
-  }, [user, fetchPartnerData, fetchSharedPosts]);
+  }, [user?.id, fetchPartnerData, fetchSharedPosts]);
 
   const handleAcceptPartner = async (reqId) => {
     await acceptPartnership(reqId);
@@ -237,7 +240,9 @@ export default function Requests() {
       {/* === 1. ОТВЕТЫ === */}
       {activeTab === 'notifications' && (
         <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-           {activeNotifications.length === 0 ? (
+           {!loaded.partners && activeNotifications.length === 0 ? (
+             <ListSkeleton />
+           ) : activeNotifications.length === 0 ? (
              <div className="bg-admin-card border border-gray-800 border-dashed p-10 rounded-[2rem] text-center flex flex-col items-center">
                 <Bell className="text-gray-700 mb-4" size={48} />
                 <p className="text-gray-500 font-bold">Ответов от партнеров пока нет</p>
@@ -288,7 +293,9 @@ export default function Requests() {
       {/* === 2. ЗАЯВКИ === */}
       {activeTab === 'partners' && (
         <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-           {incomingRequests.length === 0 ? (
+           {!loaded.partners && incomingRequests.length === 0 ? (
+             <CardGridSkeleton className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" />
+           ) : incomingRequests.length === 0 ? (
              <div className="bg-admin-card border border-gray-800 border-dashed p-10 rounded-[2rem] text-center flex flex-col items-center">
                 <UserPlus className="text-gray-700 mb-4" size={48} />
                 <p className="text-gray-500 font-bold">Заявок в партнеры пока нет</p>
@@ -300,7 +307,7 @@ export default function Requests() {
                      <div className="flex items-center gap-4 mb-5">
                         <div className="w-14 h-14 rounded-[1.2rem] bg-gray-900 border border-gray-700 flex items-center justify-center shrink-0 overflow-hidden text-gray-400 font-bold text-lg">
                            {req.requester?.avatarUrl ? (
-                             <img src={getImageUrl(req.requester.avatarUrl)} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}/>
+                             <img loading="lazy" decoding="async" src={getImageUrl(req.requester.avatarUrl)} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}/>
                            ) : null}
                            <span className={req.requester?.avatarUrl ? "hidden w-full h-full items-center justify-center" : "w-full h-full flex items-center justify-center"}>
                               {req.requester?.name?.substring(0,2).toUpperCase() || '??'}
@@ -325,7 +332,9 @@ export default function Requests() {
       {/* === 3. КОНТЕНТ === */}
       {activeTab === 'posts' && (
         <section className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-           {incomingPosts.length === 0 ? (
+           {!loaded.shared && incomingPosts.length === 0 ? (
+             <PostGridSkeleton count={3} />
+           ) : incomingPosts.length === 0 ? (
              <div className="bg-admin-card border border-gray-800 border-dashed p-10 rounded-[2rem] text-center flex flex-col items-center">
                 <Inbox className="text-gray-700 mb-4" size={48} />
                 <p className="text-gray-500 font-bold">Новых постов от партнеров пока нет</p>
@@ -342,7 +351,7 @@ export default function Requests() {
                        <div className="flex items-center gap-3 mb-4 sm:mb-5">
                           <div className="w-8 h-8 rounded-lg bg-gray-900 border border-gray-700 flex items-center justify-center shrink-0 overflow-hidden text-xs font-bold text-gray-400">
                             {post.sender?.avatarUrl ? (
-                              <img src={getImageUrl(post.sender.avatarUrl)} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}/>
+                              <img loading="lazy" decoding="async" src={getImageUrl(post.sender.avatarUrl)} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}/>
                             ) : null}
                             <span className={post.sender?.avatarUrl ? "hidden w-full h-full items-center justify-center" : "w-full h-full flex items-center justify-center"}>
                               {post.sender?.name?.substring(0,2).toUpperCase() || '??'}
@@ -356,7 +365,7 @@ export default function Requests() {
                           {/* Контейнер картинки с защитой */}
                           <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-[1.2rem] bg-gray-900 border border-gray-800 shrink-0 relative flex items-center justify-center overflow-hidden">
                              {firstImage ? (
-                               <img src={firstImage} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
+                               <img loading="lazy" decoding="async" src={firstImage} className="w-full h-full object-cover" onLoad={(e) => e.currentTarget.parentElement.classList.remove('skeleton')} onError={(e) => { e.target.parentElement.classList.remove('skeleton'); e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
                              ) : null}
                              <ImageIcon className={`text-gray-700 w-8 h-8 absolute ${firstImage ? 'hidden' : 'block'}`} />
                           </div>
@@ -403,7 +412,7 @@ export default function Requests() {
                 <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 mb-4 -mx-1 px-1">
                    {currentMediaList.map((img, i) => (
                       <div key={i} onClick={() => setFsImageIndex(i)} className="relative w-[100px] h-[100px] sm:w-[120px] sm:h-[120px] rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer group">
-                        <img src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
+                        <img loading="lazy" decoding="async" src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
                         <ImageIcon className="text-gray-700 w-8 h-8 hidden absolute" />
                         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <Maximize2 className="text-white" size={20} />
@@ -491,7 +500,7 @@ export default function Requests() {
                 <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 mb-4 -mx-1 px-1">
                    {currentMediaList.map((img, i) => (
                       <div key={i} onClick={() => setFsImageIndex(i)} className="relative w-[100px] h-[100px] sm:w-[120px] sm:h-[120px] rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer group">
-                        <img src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
+                        <img loading="lazy" decoding="async" src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
                         <ImageIcon className="text-gray-700 w-8 h-8 hidden absolute" />
                         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <Maximize2 className="text-white" size={20} />
@@ -546,7 +555,7 @@ export default function Requests() {
           </button>
 
           <div className="w-full h-full flex items-center justify-center p-12 select-none">
-            <img 
+            <img loading="lazy" decoding="async"
               key={fsImageIndex} 
               src={getImageUrl(currentMediaList[fsImageIndex])} 
               className="max-w-full max-h-[85vh] object-contain rounded-3xl shadow-[0_0_80px_rgba(0,119,255,0.15)] animate-in zoom-in-95 duration-300" 

@@ -1,5 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { blobFileName } from './imageTools';
+import { once, writesCount } from './requestState';
+
+// Если данные не изменились, экран не перерисовывается. Важно для опроса каждые 15 секунд.
+const isSame = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// Данные пользователя просят сразу несколько страниц при открытии: свежий ответ используется повторно несколько секунд.
+const ME_FRESH_MS = 5000;
+let meFetchedAt = 0;
+let meFetchedAtWrite = -1;
+
+const EMPTY_GLOBAL_SETTINGS = { signature: '', watermark: null };
 
 export const useStore = create(
   persist(
@@ -17,6 +29,9 @@ export const useStore = create(
       sharedOutgoing: [],
       scheduledPosts: [],
       postsHistory: [],
+      // Какие данные уже приходили с сервера: до этого показывается скелетон, а не надпись «пока пусто».
+      loaded: {},
+      markLoaded: (key) => { if (!get().loaded[key]) set({ loaded: { ...get().loaded, [key]: true } }); },
 
       watermarkSettings: {
         type: 'text',
@@ -43,7 +58,7 @@ export const useStore = create(
         { id: 'minimal', name: 'Минимализм', watermark: false, signature: false }
       ],
 
-      fetchProfiles: async (userId) => {
+      fetchProfiles: (userId) => once('profiles', async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
@@ -53,16 +68,18 @@ export const useStore = create(
           });
           if (res.ok) {
             const data = await res.json();
-            if (data.success) set({ profiles: data.profiles });
+            if (data.success && !isSame(data.profiles, get().profiles)) set({ profiles: data.profiles });
           }
         } catch (error) {
           console.error("Ошибка загрузки профилей:", error);
+        } finally {
+          get().markLoaded('profiles');
         }
-      },
+      }),
 
 
       // === ФУНКЦИЯ УДАЛЕНИЯ ПРОФИЛЯ ===
-      fetchPostsHistory: async () => {
+      fetchPostsHistory: () => once('history', async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token) return;
@@ -73,12 +90,12 @@ export const useStore = create(
           
           if (res.ok) {
             const data = await res.json();
-            set({ postsHistory: data.posts || [] });
+            if (!isSame(data.posts || [], get().postsHistory)) set({ postsHistory: data.posts || [] });
           }
         } catch (error) {
           console.error("Ошибка загрузки истории:", error);
         }
-      },
+      }),
 
       // Метод для переотправки поста с ошибкой
       retryFailedPost: async (postId) => {
@@ -102,16 +119,20 @@ export const useStore = create(
       },
 
       
-      fetchScheduledPosts: async () => {
+      fetchScheduledPosts: () => once('scheduled', async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
           const res = await fetch('/api/posts/scheduled', { headers: { 'Authorization': `Bearer ${token}` } });
           if (!res.ok) return;
           const data = await res.json(); 
-          set({ scheduledPosts: data.posts || data.scheduledPosts || [] }); 
-        } catch (error) {}
-      },
+          const posts = data.posts || data.scheduledPosts || [];
+          if (!isSame(posts, get().scheduledPosts)) set({ scheduledPosts: posts });
+        } catch (error) {
+        } finally {
+          get().markLoaded('scheduled');
+        }
+      }),
 
       deleteScheduledPostAction: async (id) => {
         try {
@@ -122,7 +143,8 @@ export const useStore = create(
         } catch (error) {}
       },
 
-      fetchCurrentUser: async () => {
+      fetchCurrentUser: () => once('me', async () => {
+        if (Date.now() - meFetchedAt < ME_FRESH_MS && meFetchedAtWrite === writesCount()) return;
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
@@ -134,14 +156,18 @@ export const useStore = create(
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.user) {
-              // Тихо обновляем пользователя в стейте (Zustand сам перезапишет localStorage)
-              set({ user: { ...get().user, ...data.user } });
+              // Тихо обновляем пользователя в стейте (Zustand сам перезапишет localStorage).
+              // Без изменений объект не заменяется: иначе зависящие от него страницы повторяют свои запросы.
+              const nextUser = { ...get().user, ...data.user };
+              meFetchedAt = Date.now();
+              meFetchedAtWrite = writesCount();
+              if (!isSame(nextUser, get().user)) set({ user: nextUser });
             }
           }
         } catch (error) {
           console.error("Ошибка обновления данных юзера:", error);
         }
-      },
+      }),
 
       vkLogin: async (vkData) => {
         try {
@@ -271,22 +297,34 @@ export const useStore = create(
 
       logout: () => {
         localStorage.removeItem('token');
+        meFetchedAt = 0;
         set({ 
-          user: null, token: null, accounts: [], profiles: [], myPartners: [], incomingRequests: [], notifications: [], sharedIncoming: [], sharedOutgoing: []
+          user: null, token: null, accounts: [], profiles: [], myPartners: [], incomingRequests: [], outgoingRequests: [], notifications: [], sharedIncoming: [], sharedOutgoing: [],
+          // Иначе следующий человек на этом устройстве увидел бы черновик и посты предыдущего.
+          scheduledPosts: [], postsHistory: [], tempDraft: null, globalSettings: EMPTY_GLOBAL_SETTINGS, loaded: {}
         });
       },
 
-      fetchPartnerData: async (userId) => {
+      fetchPartnerData: (userId) => once('partners', async () => {
         try {
           const res = await fetch(`/api/partners/data?userId=${userId}`, {
             headers: { 'Authorization': `Bearer ${get().token}` }
           });
           if (res.ok) {
             const data = await res.json();
-            set({ myPartners: data.partners, incomingRequests: data.incomingRequests, outgoingRequests: data.outgoingRequests, notifications: data.notifications });
+            const current = get();
+            const next = {};
+            if (!isSame(data.partners, current.myPartners)) next.myPartners = data.partners;
+            if (!isSame(data.incomingRequests, current.incomingRequests)) next.incomingRequests = data.incomingRequests;
+            if (!isSame(data.outgoingRequests, current.outgoingRequests)) next.outgoingRequests = data.outgoingRequests;
+            if (!isSame(data.notifications, current.notifications)) next.notifications = data.notifications;
+            if (Object.keys(next).length > 0) set(next);
           }
-        } catch (error) {}
-      },
+        } catch (error) {
+        } finally {
+          get().markLoaded('partners');
+        }
+      }),
 
       searchUsersFromApi: async (query, userId) => {
         try {
@@ -372,7 +410,7 @@ export const useStore = create(
         } catch (e) {}
       },
 
-      fetchAccounts: async (userId) => {
+      fetchAccounts: (userId) => once('accounts', async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
@@ -382,24 +420,27 @@ export const useStore = create(
           });
           if (res.ok) {
             const data = await res.json();
-            set({ accounts: data });
+            if (!isSame(data, get().accounts)) set({ accounts: data });
           }
         } catch (error) {
           console.error("Ошибка загрузки аккаунтов:", error);
+        } finally {
+          get().markLoaded('accounts');
         }
-      },
+      }),
 
-      globalSettings: { signature: '', watermark: null },
+      globalSettings: EMPTY_GLOBAL_SETTINGS,
       
-      fetchGlobalSettings: async () => {
+      fetchGlobalSettings: () => once('settings', async () => {
         try {
           const res = await fetch('/api/accounts/global/settings', { headers: { 'Authorization': `Bearer ${get().token}` } });
           if (res.ok) {
             const data = await res.json();
-            set({ globalSettings: { signature: data.signature, watermark: data.watermark } });
+            const next = { signature: data.signature, watermark: data.watermark };
+            if (!isSame(next, get().globalSettings)) set({ globalSettings: next });
           }
         } catch (error) {}
-      },
+      }),
 
       addVkKomodGroup: async (url, title, profileId, avatarUrl) => {
         try {
@@ -523,7 +564,7 @@ export const useStore = create(
 
      // ... предыдущий код стора
 
-      createPostAction: async (text, mediaBlobs, accountsData, publishAt, sharedPostId) => {
+      createPostAction: async (text, mediaBlobs, accountsData, publishAt, sharedPostId, requestKey) => {
         try {
           const state = get();
           
@@ -533,6 +574,8 @@ export const useStore = create(
           if (text) formData.append('text', text);
           if (publishAt) formData.append('publishAt', publishAt);
           if (sharedPostId) formData.append('sharedPostId', sharedPostId);
+          // Поля идут до файлов: сервер должен увидеть метку запроса сразу.
+          if (requestKey) formData.append('requestKey', requestKey);
           
           // Аккаунты передаем как строку
           formData.append('accountsData', JSON.stringify(accountsData));
@@ -540,7 +583,7 @@ export const useStore = create(
           // Добавляем бинарные файлы
           if (mediaBlobs && mediaBlobs.length > 0) {
             mediaBlobs.forEach((blob, index) => {
-              formData.append('media', blob, `image_${index}.webp`);
+              formData.append('media', blob, blobFileName(blob, index));
             });
           }
 
@@ -567,21 +610,28 @@ export const useStore = create(
       },
       // ... следующий код стора
 
-      fetchSharedPosts: async () => {
+      fetchSharedPosts: () => once('shared', async () => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
           const res = await fetch('/api/posts/shared', { headers: { 'Authorization': `Bearer ${token}` } });
           if (res.ok) {
             const data = await res.json();
-            set({ sharedIncoming: data.incoming, sharedOutgoing: data.outgoing });
+            const current = get();
+            const next = {};
+            if (!isSame(data.incoming, current.sharedIncoming)) next.sharedIncoming = data.incoming;
+            if (!isSame(data.outgoing, current.sharedOutgoing)) next.sharedOutgoing = data.outgoing;
+            if (Object.keys(next).length > 0) set(next);
           }
-        } catch (error) {}
-      },
+        } catch (error) {
+        } finally {
+          get().markLoaded('shared');
+        }
+      }),
 
       
 
-      sharePostAction: async (text, mediaBlobs, partnerIds) => {
+      sharePostAction: async (text, mediaBlobs, partnerIds, requestKey) => {
         try {
           const token = localStorage.getItem('token') || get().token;
           if (!token || token === 'null') return;
@@ -591,10 +641,11 @@ export const useStore = create(
           
           if (text) formData.append('text', text);
           formData.append('partnerIds', JSON.stringify(partnerIds));
+          if (requestKey) formData.append('requestKey', requestKey);
           
           if (mediaBlobs && mediaBlobs.length > 0) {
             mediaBlobs.forEach((blob, index) => {
-              formData.append('media', blob, `image_${index}.webp`);
+              formData.append('media', blob, blobFileName(blob, index));
             });
           }
 

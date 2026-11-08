@@ -24,12 +24,14 @@ const toUploadedFile = (url) => {
 
 const isFileStillUsed = async (file) => {
   const name = path.basename(file);
-  const [posts, sharedPosts, avatars] = await Promise.all([
+  const [posts, sharedPosts, avatars, channels, profiles] = await Promise.all([
     prisma.post.count({ where: { OR: [{ mediaUrls: { contains: name } }, { originalMediaUrls: { contains: name } }] } }),
     prisma.sharedPost.count({ where: { mediaUrls: { contains: name } } }),
     prisma.user.count({ where: { avatarUrl: { contains: name } } }),
+    prisma.account.count({ where: { avatarUrl: { contains: name } } }),
+    prisma.socialProfile.count({ where: { avatarUrl: { contains: name } } }),
   ]);
-  return posts + sharedPosts + avatars > 0;
+  return posts + sharedPosts + avatars + channels + profiles > 0;
 };
 
 // Удаляет аккаунт и все данные клиента. Остаются только запись об отзыве согласия и суммы оплат без связи с человеком:
@@ -38,9 +40,13 @@ const eraseUser = async (userId) => {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { avatarUrl: true } });
   const posts = await prisma.post.findMany({ where: { account: { userId } }, select: { mediaUrls: true, originalMediaUrls: true } });
   const sharedPosts = await prisma.sharedPost.findMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] }, select: { mediaUrls: true } });
+  const channels = await prisma.account.findMany({ where: { userId }, select: { avatarUrl: true } });
+  const profiles = await prisma.socialProfile.findMany({ where: { userId }, select: { avatarUrl: true } });
 
   const urls = [
     user?.avatarUrl,
+    ...channels.map((channel) => channel.avatarUrl),
+    ...profiles.map((profile) => profile.avatarUrl),
     ...posts.flatMap((post) => [...parseUrls(post.mediaUrls), ...parseUrls(post.originalMediaUrls)]),
     ...sharedPosts.flatMap((post) => parseUrls(post.mediaUrls)),
   ];
@@ -54,7 +60,10 @@ const eraseUser = async (userId) => {
   // Записи в базе уже удалены. Если файл не удалится сейчас, фото постов уберёт ночная очистка.
   for (const file of files) {
     try {
-      if (!(await isFileStillUsed(file))) await fs.promises.rm(file, { force: true });
+      if (!(await isFileStillUsed(file))) {
+        await fs.promises.rm(file, { force: true });
+        await fs.promises.rm(`${file}.base.jpg`, { force: true }); // Копия, которую готовит очередь публикаций
+      }
     } catch (error) {
       console.error('Не удалось удалить файл клиента:', error.message);
     }

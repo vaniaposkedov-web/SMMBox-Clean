@@ -5,7 +5,7 @@ const { getUserLimits, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
 const DEFAULT_AI_PROMPT = 'Ты профессиональный SMM-маркетолог. Твоя задача: улучшить предоставленный текст поста. Исправь ошибки, сделай текст более вовлекающим, разбей на удобные абзацы и добавь 2-3 подходящих эмодзи. Не выдумывай факты и цены, которых нет в оригинале.';
 const MAX_TEXT_LENGTH = 5000;
 const MAX_ANSWER_TOKENS = 2000; // Ограничивает расходы на один запрос: пост на сайте короче 1000 символов.
-const REQUEST_TIMEOUT_MS = 60 * 1000;
+const REQUEST_TIMEOUT_MS = 50 * 1000; // Меньше 60 секунд ожидания у nginx: клиент получит понятный ответ, а не сбой шлюза.
 const NOT_CONNECTED_ERROR = 'Улучшение текста пока не подключено.';
 
 exports.DEFAULT_AI_PROMPT = DEFAULT_AI_PROMPT;

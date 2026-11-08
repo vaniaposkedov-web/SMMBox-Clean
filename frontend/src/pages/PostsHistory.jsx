@@ -1,7 +1,9 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { PostGridSkeleton } from '../components/Skeleton';
+import { newRequestKey } from '../imageTools';
 import { useStore } from '../store';
 import SendingNotice from '../components/SendingNotice';
-import { estimateShareSeconds, getDeliveryMessage } from '../sendingTime';
+import { estimateShareSeconds, getDeliveryMessage, isSuccessNotice } from '../sendingTime';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, Clock, AlertCircle, Search, Calendar, Image as ImageIcon, Send, Trash2, X,
@@ -123,6 +125,12 @@ export default function PostsHistory() {
   const [isSharing, setIsSharing] = useState(false);
   const [shareEta, setShareEta] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
+  // Метка одного нажатия: повтор при плохой связи не отправит пост партнёру второй раз.
+  const shareKeyRef = useRef(null);
+
+  useEffect(() => {
+    shareKeyRef.current = null;
+  }, [selectedPost, selectedPartners]);
 
   useEffect(() => {
     if (selectedPost || fsImageIndex !== null || showPartnerModal) {
@@ -150,9 +158,9 @@ export default function PostsHistory() {
   const filteredPosts = useMemo(() => {
     let base = postsHistory || [];
     if (activeTab === 'published') base = base.filter(p => p.status === 'PUBLISHED');
-    if (activeTab === 'processing') base = base.filter(p => p.status === 'PROCESSING'); // ДОБАВИЛИ ЭТУ СТРОКУ
+    if (activeTab === 'processing') base = base.filter(p => ['PROCESSING', 'DELIVERING'].includes(p.status));
     if (activeTab === 'scheduled') base = base.filter(p => p.status === 'SCHEDULED');
-    if (activeTab === 'errors') base = base.filter(p => p.status === 'FAILED');
+    if (activeTab === 'errors') base = base.filter(p => ['FAILED', 'DELIVERY_UNKNOWN'].includes(p.status));
 
     if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -275,7 +283,8 @@ export default function PostsHistory() {
         return;
       }
       
-      const res = await sharePostAction(selectedPost.text, validBlobs, selectedPartners);
+      if (!shareKeyRef.current) shareKeyRef.current = newRequestKey();
+      const res = await sharePostAction(selectedPost.text, validBlobs, selectedPartners, shareKeyRef.current);
       
       if (res?.success) {
         setPartnerStatus('sent');
@@ -355,13 +364,7 @@ export default function PostsHistory() {
 
       {/* CONTENT AREA */}
       {isInitialLoading ? (
-        <div className="bg-admin-card border border-gray-800 p-16 rounded-[2.5rem] flex flex-col items-center justify-center min-h-[300px]">
-          <Loader2 className="w-12 h-12 text-[#0077FF] animate-spin mb-4" />
-          <div className="w-48 h-1.5 bg-gray-900 rounded-full overflow-hidden mb-4">
-             <div className="h-full bg-gradient-to-r from-[#0077FF] to-purple-500 animate-pulse w-full"></div>
-          </div>
-          <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px]">Загрузка архива...</p>
-        </div>
+        <PostGridSkeleton />
       ) : filteredPosts.length === 0 ? (
         <div className="bg-admin-card border border-gray-800 border-dashed p-10 rounded-[2.5rem] text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
           <LayoutPanelLeft className="text-gray-700 mb-4" size={48} />
@@ -369,7 +372,7 @@ export default function PostsHistory() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 animate-in fade-in duration-500">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 content-appear">
             {visiblePosts.map(post => {
               const mediaArr = parseMediaUrls(post.mediaUrls);
               const firstImage = mediaArr.length > 0 ? getImageUrl(mediaArr[0]) : null;
@@ -381,13 +384,15 @@ export default function PostsHistory() {
                   className="bg-admin-card border border-gray-800 rounded-[1.5rem] sm:rounded-[2rem] p-5 sm:p-6 hover:border-gray-600 transition-all cursor-pointer group shadow-lg flex flex-col h-full active:scale-[0.98]"
                 >
                   <div className="flex gap-4 sm:gap-5 mb-4 sm:mb-5">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-[1.2rem] bg-gray-900 border border-gray-800 shrink-0 flex items-center justify-center overflow-hidden relative">
+                    <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-[1.2rem] bg-gray-900 border border-gray-800 shrink-0 flex items-center justify-center overflow-hidden relative ${firstImage ? 'skeleton' : ''}`}>
                        {firstImage ? (
                          <img 
                           src={firstImage} 
                           loading="lazy" /* 🟢 ИСПРАВЛЕНИЕ: Добавляем ленивую загрузку */
+                          decoding="async"
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
-                          onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} 
+                          onLoad={(e) => e.currentTarget.parentElement.classList.remove('skeleton')}
+                          onError={(e) => { e.target.parentElement.classList.remove('skeleton'); e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
                           alt="preview" 
                         />
                        ) : null}
@@ -398,7 +403,7 @@ export default function PostsHistory() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
                         <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg bg-gray-800 overflow-hidden border border-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-500 shrink-0">
-                          {post.account?.avatarUrl ? <img src={getImageUrl(post.account?.avatarUrl)} className="w-full h-full object-cover"/> : post.account?.name?.substring(0,2).toUpperCase()}
+                          {post.account?.avatarUrl ? <img loading="lazy" decoding="async" src={getImageUrl(post.account?.avatarUrl)} className="w-full h-full object-cover"/> : post.account?.name?.substring(0,2).toUpperCase()}
                         </div>
                         <span className="text-[10px] sm:text-xs font-black text-gray-500 truncate uppercase tracking-widest">{post.account?.name}</span>
                       </div>
@@ -407,12 +412,14 @@ export default function PostsHistory() {
                   </div>
                   <div className="mt-auto pt-4 sm:pt-5 border-t border-gray-800 flex items-center justify-between">
                     <span className="text-[10px] sm:text-[11px] font-black text-gray-500 flex items-center gap-1.5 sm:gap-2 bg-gray-900 px-2.5 sm:px-3 py-1.5 rounded-xl border border-gray-800">
-                      {post.status === 'PROCESSING' ? (
+                      {['PROCESSING', 'DELIVERING'].includes(post.status) ? (
                         <Loader2 size={12} className="text-[#0077FF] animate-spin" />
+                      ) : post.status === 'DELIVERY_UNKNOWN' ? (
+                        <AlertCircle size={12} className="text-amber-400" />
                       ) : (
                         <Calendar size={12} className="text-[#0077FF]"/>
                       )}
-                      {new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      {post.status === 'DELIVERY_UNKNOWN' ? 'Проверьте публикацию' : new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <ChevronRight className="text-gray-700 group-hover:text-[#0077FF] transition-all group-hover:translate-x-1" size={20}/>
                   </div>
@@ -468,9 +475,9 @@ export default function PostsHistory() {
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-6 bg-[#0f1115]">
-              {selectedPost.status === 'FAILED' && selectedPost.errorMessage && (
+              {['FAILED', 'DELIVERY_UNKNOWN'].includes(selectedPost.status) && selectedPost.errorMessage && (
                 <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 break-words">
-                  Причина ошибки: {selectedPost.errorMessage}
+                  {selectedPost.status === 'DELIVERY_UNKNOWN' ? 'Результат отправки неизвестен: ' : 'Причина ошибки: '}{selectedPost.errorMessage}
                 </div>
               )}
               {currentMediaList.length > 0 && (
@@ -481,7 +488,7 @@ export default function PostsHistory() {
                         onClick={() => setFsImageIndex(i)}
                         className="relative w-[110px] h-[110px] rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer group"
                       >
-                        <img src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                        <img loading="lazy" decoding="async" src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <Maximize2 className="text-white" size={20} />
                         </div>
@@ -493,7 +500,7 @@ export default function PostsHistory() {
               <div className="bg-[#181a20] rounded-[2rem] p-5 border border-gray-800/60">
                  <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-700 shrink-0 text-xs font-bold text-gray-400">
-                       {selectedPost.account?.avatarUrl ? <img src={getImageUrl(selectedPost.account.avatarUrl)} className="w-full h-full object-cover"/> : selectedPost.account?.name?.substring(0,2).toUpperCase()}
+                       {selectedPost.account?.avatarUrl ? <img loading="lazy" decoding="async" src={getImageUrl(selectedPost.account.avatarUrl)} className="w-full h-full object-cover"/> : selectedPost.account?.name?.substring(0,2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
                        <p className="text-white font-bold text-sm truncate">{selectedPost.account?.name}</p>
@@ -571,7 +578,7 @@ export default function PostsHistory() {
                       </div>
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-xl bg-gray-800 shrink-0 overflow-hidden border border-gray-700 flex justify-center items-center text-xs font-bold text-gray-400">
-                          {partner.avatarUrl ? <img src={getImageUrl(partner.avatarUrl)} className="w-full h-full object-cover"/> : partner.name?.substring(0,2).toUpperCase()}
+                          {partner.avatarUrl ? <img loading="lazy" decoding="async" src={getImageUrl(partner.avatarUrl)} className="w-full h-full object-cover"/> : partner.name?.substring(0,2).toUpperCase()}
                         </div>
                         <div className="truncate">
                           <p className="text-sm font-bold text-white truncate">{partner.name}</p>
@@ -608,8 +615,8 @@ export default function PostsHistory() {
 
       {/* TOAST NOTIFICATION */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[400] bg-emerald-500/95 backdrop-blur-md text-white px-8 py-4 rounded-3xl shadow-2xl flex items-center justify-center gap-3 animate-in slide-in-from-top-4 duration-300 font-black text-xs uppercase tracking-widest border border-emerald-400/50">
-          <CheckCircle2 size={18} />
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[400] ${isSuccessNotice(toastMessage) ? 'bg-emerald-500/95 border-emerald-400/50' : 'bg-red-600/95 border-red-400/50'} backdrop-blur-md text-white px-8 py-4 rounded-3xl shadow-2xl flex items-center justify-center gap-3 animate-in slide-in-from-top-4 duration-300 font-black text-xs uppercase tracking-widest border `}>
+          {isSuccessNotice(toastMessage) ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
           <span>{toastMessage}</span>
         </div>
       )}
@@ -638,7 +645,7 @@ export default function PostsHistory() {
           </button>
 
           <div className="w-full h-full flex items-center justify-center p-12 select-none">
-            <img 
+            <img loading="lazy" decoding="async"
               key={fsImageIndex} 
               src={getImageUrl(currentMediaList[fsImageIndex])} 
               className="max-w-full max-h-[85vh] object-contain rounded-3xl shadow-[0_0_80px_rgba(0,119,255,0.15)] animate-in zoom-in-95 duration-300" 

@@ -4,10 +4,86 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230077FF'/><text x='50%' y='50%' font-family='Arial, sans-serif' font-size='60' font-weight='bold' font-style='italic' fill='white' dominant-baseline='central' text-anchor='middle'>S</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#121212" />
     <title>SADOVODPS</title>
+    <style>
+      html, body { margin: 0; background: #121212; }
+      .boot { display: flex; min-height: 100vh; box-sizing: border-box; }
+      .boot-side { display: none; width: 256px; flex-shrink: 0; background: #1e1e1e; border-right: 1px solid #1f2937; }
+      .boot-main { flex: 1; min-width: 0; max-width: 1024px; margin: 0 auto; padding: 16px; box-sizing: border-box; }
+      .boot-nav { position: fixed; left: 0; right: 0; bottom: 0; height: 72px; background: #1e1e1e; border-top: 1px solid #1f2937; }
+      .boot-v { display: none; }
+      .boot-b { position: relative; overflow: hidden; background: #2b2b2b; border-radius: 24px; margin-bottom: 16px; }
+      .boot-b::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent); animation: boot-shimmer 1.4s ease-in-out infinite; }
+      .boot-row { display: flex; gap: 16px; }
+      .boot-row .boot-b { flex: 1; }
+      .boot-center { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(100vh - 32px); padding-bottom: 72px; box-sizing: border-box; }
+      .boot-center .boot-b { width: 100%; max-width: 640px; }
+      .boot-profile .boot-v-profile, .boot-publish .boot-v-publish, .boot-list .boot-v-list, .boot-text .boot-v-text, .boot-auth .boot-v-auth { display: block; }
+      .boot-publish .boot-v-publish, .boot-auth .boot-v-auth { display: flex; }
+      .boot-plain .boot-side, .boot-plain .boot-nav { display: none; }
+      .boot-plain .boot-center { padding-bottom: 0; }
+      @keyframes boot-shimmer { 100% { transform: translateX(100%); } }
+      @media (min-width: 768px) { .boot-side { display: block; } .boot-nav { display: none; } .boot-main { padding: 32px; } .boot-center { padding-bottom: 0; } .boot-tall { height: 220px !important; } }
+      @media (prefers-reduced-motion: reduce) { .boot-b::after { animation: none; } }
+    </style>
+    <script>
+      // Первый кадр сразу показывает форму открываемой страницы. Без входа и на документах меню нет.
+      try {
+        var path = location.pathname;
+        var isDocument = /^\/(privacy|terms|personal-data-consent)/.test(path);
+        var isEntry = /^\/(auth|recover|boss-login|system-core-dashboard)/.test(path) || !localStorage.getItem('token');
+        var view = 'boot-profile';
+        if (/^\/publish/.test(path)) view = 'boot-publish';
+        else if (/^\/(posts|requests|partners|accounts|watermark|signatures)/.test(path)) view = 'boot-list';
+        if (isEntry) view = 'boot-auth boot-plain';
+        if (isDocument) view = 'boot-text boot-plain';
+        document.documentElement.className = view;
+      } catch (e) {
+        document.documentElement.className = 'boot-profile';
+      }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" data-skeleton aria-busy="true">
+        <div class="boot-side"></div>
+        <div class="boot-main">
+          <div class="boot-v boot-v-profile">
+            <div class="boot-b boot-tall" style="height: 392px"></div>
+            <div class="boot-row"><div class="boot-b" style="height: 44px; border-radius: 12px"></div><div class="boot-b" style="height: 44px; border-radius: 12px"></div></div>
+            <div class="boot-row"><div class="boot-b" style="height: 96px"></div><div class="boot-b" style="height: 96px"></div></div>
+            <div class="boot-b" style="height: 96px"></div>
+          </div>
+          <div class="boot-v boot-v-publish boot-center">
+            <div class="boot-b" style="width: 64px; height: 64px; border-radius: 24px"></div>
+            <div class="boot-b" style="width: 240px; height: 28px; border-radius: 8px"></div>
+            <div class="boot-b" style="width: 300px; height: 36px; border-radius: 8px; margin-bottom: 32px"></div>
+            <div class="boot-b" style="height: 176px"></div>
+            <div class="boot-b" style="height: 176px"></div>
+          </div>
+          <div class="boot-v boot-v-list">
+            <div class="boot-b" style="height: 140px"></div>
+            <div class="boot-b" style="height: 56px; border-radius: 20px"></div>
+            <div class="boot-b" style="height: 150px"></div>
+            <div class="boot-b" style="height: 150px"></div>
+            <div class="boot-b" style="height: 150px"></div>
+          </div>
+          <div class="boot-v boot-v-text" style="max-width: 768px; margin: 0 auto">
+            <div class="boot-b" style="width: 66%; height: 32px; border-radius: 8px"></div>
+            <div class="boot-b" style="height: 14px; border-radius: 6px"></div>
+            <div class="boot-b" style="height: 14px; border-radius: 6px"></div>
+            <div class="boot-b" style="width: 60%; height: 14px; border-radius: 6px"></div>
+            <div class="boot-b" style="height: 14px; border-radius: 6px"></div>
+            <div class="boot-b" style="height: 14px; border-radius: 6px"></div>
+          </div>
+          <div class="boot-v boot-v-auth boot-center">
+            <div class="boot-b" style="max-width: 420px; height: 360px"></div>
+          </div>
+        </div>
+        <div class="boot-nav"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
