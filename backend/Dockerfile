@@ -31,4 +31,4 @@ RUN npx prisma generate
 EXPOSE 5000
 
 # Запуск сервера
-CMD npx prisma db push && npm run start
+CMD ["sh", "-c", "npx prisma db push && exec node src/index.js"]
