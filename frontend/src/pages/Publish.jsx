@@ -128,7 +128,7 @@ export default function Publish() {
           const latest = data.posts || [];
           setPublishResults(latest);
           setPublishEta(data.estimatedSeconds ?? null);
-          if (latest.every((p) => p.status !== 'PROCESSING')) clearInterval(timer);
+          if (latest.length > 0 && latest.every((p) => ['PUBLISHED', 'FAILED', 'DELIVERY_UNKNOWN'].includes(p.status))) clearInterval(timer);
         }
       } catch (e) { /* следующая попытка через пару секунд */ }
       if (Date.now() - startedAt > 120000) {
@@ -1107,15 +1107,18 @@ const handlePublish = async () => {
 
         {step === 4 && (() => {
           const isSchedule = publishMode === 'schedule';
-          const isSending = !isSchedule && !publishTimedOut && publishResults.some((p) => p.status === 'PROCESSING');
+          const isSending = !isSchedule && !publishTimedOut && publishResults.some((p) => ['PROCESSING', 'DELIVERING'].includes(p.status));
+          const isUnconfirmed = publishResults.some((p) => p.status === 'DELIVERY_UNKNOWN');
           const failed = publishResults.filter((p) => p.status === 'FAILED');
           const hasFailures = failed.length > 0 && !isSending;
           const title = isSchedule
             ? 'Пост запланирован!'
             : isSending
               ? 'Публикуем пост...'
-              : publishTimedOut && publishResults.some((p) => p.status === 'PROCESSING')
+              : publishTimedOut && publishResults.some((p) => ['PROCESSING', 'DELIVERING'].includes(p.status))
                 ? 'Публикация идёт дольше обычного'
+                : isUnconfirmed
+                  ? 'Проверьте результат в канале'
                 : failed.length === publishResults.length && failed.length > 0
                   ? 'Не удалось опубликовать'
                   : failed.length > 0
@@ -1125,12 +1128,15 @@ const handlePublish = async () => {
             ? 'bg-blue-500/20 text-blue-400'
             : hasFailures
               ? 'bg-red-500/20 text-red-500'
-              : 'bg-green-500/20 text-green-500';
+              : isUnconfirmed
+                ? 'bg-amber-500/20 text-amber-400'
+                : 'bg-green-500/20 text-green-500';
+          const allPublished = publishResults.length > 0 && publishResults.every((p) => p.status === 'PUBLISHED');
 
           return (
             <div className="bg-admin-card border border-gray-800 rounded-3xl p-6 sm:p-8 shadow-xl text-center animate-fade-in relative overflow-hidden">
               <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center mx-auto mb-5 sm:mb-6 ${accent}`}>
-                {isSending ? <Loader2 size={40} className="animate-spin sm:w-12 sm:h-12" /> : hasFailures ? <AlertCircle size={40} className="sm:w-12 sm:h-12" /> : <CheckCircle2 size={40} className="sm:w-12 sm:h-12" />}
+                {isSending ? <Loader2 size={40} className="animate-spin sm:w-12 sm:h-12" /> : hasFailures || isUnconfirmed ? <AlertCircle size={40} className="sm:w-12 sm:h-12" /> : allPublished ? <CheckCircle2 size={40} className="sm:w-12 sm:h-12" /> : <Loader2 size={40} className="sm:w-12 sm:h-12" />}
               </div>
               <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">{title}</h2>
 
@@ -1140,11 +1146,12 @@ const handlePublish = async () => {
                     <div key={item.id} className="bg-gray-900/60 border border-gray-800 rounded-xl px-3 py-2.5">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm text-gray-200 truncate">{item.accountName}</span>
-                        {item.status === 'PROCESSING' && <Loader2 size={16} className="text-blue-400 animate-spin shrink-0" />}
+                        {['PROCESSING', 'DELIVERING'].includes(item.status) && <Loader2 size={16} className="text-blue-400 animate-spin shrink-0" />}
                         {item.status === 'PUBLISHED' && <CheckCircle2 size={16} className="text-green-500 shrink-0" />}
                         {item.status === 'FAILED' && <AlertCircle size={16} className="text-red-500 shrink-0" />}
+                        {item.status === 'DELIVERY_UNKNOWN' && <AlertCircle size={16} className="text-amber-400 shrink-0" />}
                       </div>
-                      {item.status === 'FAILED' && item.errorMessage && <p className="text-xs text-red-400 mt-1 break-words">{item.errorMessage}</p>}
+                      {['FAILED', 'DELIVERY_UNKNOWN'].includes(item.status) && item.errorMessage && <p className={`text-xs mt-1 break-words ${item.status === 'DELIVERY_UNKNOWN' ? 'text-amber-400' : 'text-red-400'}`}>{item.errorMessage}</p>}
                     </div>
                   ))}
                 </div>

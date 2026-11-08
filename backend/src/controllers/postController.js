@@ -149,7 +149,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('group_id', targetGroupId);
     
     // 🔥 ПАРАМЕТРЫ ПОСТИНГА
-    form.append('via_api', '0'); // ВАЖНО: 0 включает веб-эмуляцию, в которой ВК собирает фото в сетку
+    form.append('via_api', '1'); // Для ВК используем API-публикацию, включая пакет нескольких фотографий.
     form.append('post_images_as_grid', '1'); // Дублируем в тело поста для верности
 
     let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
@@ -189,6 +189,16 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             const details = postRes.data?.errors || postRes.data?.message || `код ${postRes.status}`;
             throw new Error('Ошибка шлюза: ' + (typeof details === 'string' ? details : JSON.stringify(details)));
         }
+
+        const responseData = postRes.data;
+        logPost(userId, 'VK', 'API_RESPONSE', 'Kom-OD принял запрос публикации', {
+            httpStatus: postRes.status,
+            success: responseData?.success ?? null,
+            responseKeys: responseData && typeof responseData === 'object' ? Object.keys(responseData) : [],
+            dataKeys: responseData?.data && typeof responseData.data === 'object' ? Object.keys(responseData.data) : [],
+            postId: responseData?.post_id || responseData?.data?.post_id || responseData?.data?.id || null,
+            hasError: Boolean(responseData?.error || responseData?.errors)
+        });
 
         logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
 
