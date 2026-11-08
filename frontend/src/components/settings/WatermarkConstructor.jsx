@@ -7,8 +7,8 @@ import {
 } from 'lucide-react';
 import { DEFAULT_WATERMARK, PREVIEW_CONTAINER_STYLE, compressLogo, getWatermarkPreviewStyle, getWatermarkProblem } from './watermarkTools';
 
-const sampleScene = (from, to, dress) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1600" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="900" height="1600" fill="url(#g)"/>${dress}</svg>`)}`;
-const DRESS = (color) => `<path d="M380 260h140l34 95-34 330 175 710H205l175-710-34-330z" fill="${color}"/>`;
+const sampleScene = (from, to, dress) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1125" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="900" height="1125" fill="url(#g)"/>${dress}</svg>`)}`;
+const DRESS = (color) => `<path d="M380 180h140l34 68-34 230 126 525H254l126-525-34-230z" fill="${color}"/>`;
 const SAMPLE_IMAGES = [
   sampleScene('#efe7da', '#c9bda9', DRESS('#b5534a')),
   sampleScene('#c98a5a', '#7a3f2f', DRESS('#f0e6d6')),
@@ -316,7 +316,7 @@ export default function WatermarkConstructor() {
         
         {/* === ЛЕВАЯ ПАНЕЛЬ: ПРЕДПРОСМОТР === */}
         <div className="lg:col-span-7">
-          <div style={PREVIEW_CONTAINER_STYLE} className={`relative mx-auto aspect-[9/16] w-full max-w-[320px] overflow-hidden rounded-xl border-2 transition-all duration-500 shadow-md ${previewFilter === 'dark' ? 'border-gray-800 bg-gray-950' : 'border-gray-300 bg-white'}`}>
+          <div style={PREVIEW_CONTAINER_STYLE} className={`relative mx-auto aspect-[4/5] w-full max-w-[400px] overflow-hidden rounded-xl border-2 transition-all duration-500 shadow-md ${previewFilter === 'dark' ? 'border-gray-800 bg-gray-950' : 'border-gray-300 bg-white'}`}>
              <div className="absolute inset-0 bg-cover bg-center transition-all duration-500" style={{ backgroundImage: `url('${SAMPLE_IMAGES[imgIdx]}')`, filter: previewFilter === 'dark' ? 'brightness(0.5)' : 'brightness(1.1)' }} />
 
              {/* СЕТКА (Секции позиционирования) */}
