@@ -334,8 +334,8 @@ const parseJson = (value, fallback) => { try { return value ? JSON.parse(value) 
 
 const removeUploadedFiles = (req) => Promise.all((req.files || []).map((file) => fs.promises.unlink(file.path).catch(() => {})));
 
-// Сколько примерно ждать отправки: посты идут по очереди, один пост занимает около 10 секунд.
-const SECONDS_PER_POST = 10;
+// Kom-OD обычно публикует пост примерно за минуту.
+const SECONDS_PER_POST = 60;
 const estimatePublishSeconds = async () => {
     try {
         const { waiting = 0, active = 0, delayed = 0 } = await postQueue.getJobCounts('waiting', 'active', 'delayed');
