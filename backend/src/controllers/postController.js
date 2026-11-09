@@ -589,15 +589,34 @@ exports.createPost = async (req, res) => {
             if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
             for (const file of req.files) {
-                const ext = path.extname(file.originalname) || '.jpg';
-                const fileName = `task_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
+                const fileName = `task_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
                 const safePath = path.join(tempDir, fileName);
-                
-                // Копируем файл в надежную папку
-                await fs.promises.copyFile(file.path, safePath);
-                // Удаляем исходный мусорный файл от multer из /tmp/
-                await fs.promises.unlink(file.path).catch(() => {}); 
-                
+
+                try {
+                    const metadata = await sharp(file.path, { failOn: 'none' }).metadata();
+                    console.info(`[UPLOAD] Фото format=${metadata.format || 'unknown'} ${metadata.width || 0}x${metadata.height || 0}, bytes=${file.size || 0}`);
+
+                    await sharp(file.path, { failOn: 'none' })
+                        .rotate()
+                        .resize({ width: 4000, height: 4000, fit: 'inside', withoutEnlargement: true })
+                        .jpeg({ quality: 90 })
+                        .toFile(safePath);
+                } catch (error) {
+                    await Promise.all([
+                        ...req.files.map((uploadedFile) => fs.promises.unlink(uploadedFile.path).catch(() => {})),
+                        ...workerFilePaths.map((filePath) => fs.promises.unlink(filePath).catch(() => {})),
+                        fs.promises.unlink(safePath).catch(() => {})
+                    ]);
+                    const originalName = path.basename(file.originalname || 'photo');
+                    console.error(`[UPLOAD] Не удалось обработать фото ${originalName}:`, error.message);
+                    return res.status(400).json({
+                        success: false,
+                        error: `Файл ${originalName} не удалось обработать. Сохраните его как JPG или PNG.`
+                    });
+                } finally {
+                    await fs.promises.unlink(file.path).catch(() => {});
+                }
+
                 workerFilePaths.push(safePath);
                 dbFilePaths.push(`/uploads/temp_queue/${fileName}`); // Этот путь поймет браузер
             }
