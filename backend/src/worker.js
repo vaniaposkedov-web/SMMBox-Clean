@@ -1,7 +1,9 @@
-const { Worker, UnrecoverableError } = require('bullmq');
+const { Worker, UnrecoverableError, DelayedError } = require('bullmq');
+const IORedis = require('ioredis');
 const { connection, WORKER_CONCURRENCY } = require('./queue');
 const prisma = require('./utils/prisma');
 const fs = require('fs');
+const crypto = require('crypto');
 const sharp = require('sharp');
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const NETWORK_ERROR_CODES = new Set(['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH']);
@@ -51,11 +53,31 @@ const getOptimizedBase = async (filePath) => {
     return buffer;
 };
 
-const worker = new Worker('posts_v2', async (job) => {
+// Посты в ВК от одного профиля уходят в Kom-OD строго по одному.
+// Kom-OD отдал два поста одного профиля одновременно, и у одного ВК отклонил фото
+// («Ошибка загрузки фото… One of the parameters specified…»), а второй вышел.
+// Пока профиль занят, следующий пост откладывается и проверяет снова, попытки при этом не тратятся.
+const redis = new IORedis({ ...connection, maxRetriesPerRequest: null });
+const VK_LOCK_TTL_MS = 20 * 60_000;  // Дольше самого долгого ожидания подтверждения (15 минут): замок не вечный, если сервер упадёт
+const VK_COOLDOWN_MS = 10_000;       // Пауза после поста, прежде чем этот профиль отправит следующий
+const VK_RECHECK_MS = 15_000;        // Как часто отложенный пост проверяет, освободился ли профиль
+const RELEASE_VK_LOCK = `
+if redis.call('get', KEYS[1]) == ARGV[1] then
+  return redis.call('pexpire', KEYS[1], ARGV[2])
+end
+return 0`;
+const vkLockKey = (account) => `vk-publish-lock:${account.profileId || account.userId}`;
+const takeVkLock = async (key, owner) => (await redis.set(key, owner, 'PX', VK_LOCK_TTL_MS, 'NX')) === 'OK';
+// Замок не снимается сразу, а живёт ещё паузу: следующий пост этого профиля уйдёт через 10 секунд.
+const releaseVkLock = (key, owner) => redis.eval(RELEASE_VK_LOCK, 1, key, owner, VK_COOLDOWN_MS)
+    .catch((error) => console.error(`[WORKER] Замок ${key} не снят, освободится сам через 20 минут:`, error.message));
+
+const worker = new Worker('posts_v2', async (job, token) => {
     const { postId, accountId, text, filePaths, watermarkConfig, signatureText } = job.data;
     let dispatchStarted = false;
     let providerDelivered = false;
-    
+    let vkLock = null;
+
     console.log(`[WORKER] Начал обработку поста ${postId}`);
 
     try {
@@ -81,6 +103,17 @@ const worker = new Worker('posts_v2', async (job) => {
 
         const account = await prisma.account.findUnique({ where: { id: accountId } });
         if (!account) throw new Error('Аккаунт не найден');
+
+        if (account.provider.toLowerCase() === 'vk' && !job.data.delivered) {
+            const key = vkLockKey(account);
+            const owner = `${job.id}:${crypto.randomUUID()}`;
+            if (!(await takeVkLock(key, owner))) {
+                console.log(`[WORKER] Пост ${postId} ждёт: этот профиль ВК сейчас отправляет другой пост`);
+                await job.moveToDelayed(Date.now() + VK_RECHECK_MS, token);
+                throw new DelayedError();
+            }
+            vkLock = { key, owner };
+        }
 
         // 1-2. Читаем файлы и готовим основу фото (один раз на публикацию)
         const optimizedBaseBuffers = await Promise.all(filePaths.map(getOptimizedBase));
@@ -165,6 +198,7 @@ const worker = new Worker('posts_v2', async (job) => {
         console.log(`[WORKER] Успешно завершил пост ${postId}`);
 
     } catch (error) {
+        if (error instanceof DelayedError) throw error; // Пост просто отложен до освобождения профиля ВК: это не ошибка
         console.error(`[WORKER ERROR] Ошибка поста ${postId}:`, error.message);
         
         await waitIfRateLimited(error);
@@ -200,8 +234,10 @@ const worker = new Worker('posts_v2', async (job) => {
             throw new UnrecoverableError(error.message);
         }
         throw error; // Чтобы BullMQ знал, что задача провалилась
+    } finally {
+        if (vkLock) await releaseVkLock(vkLock.key, vkLock.owner);
     }
-}, { 
+}, {
     connection, 
     concurrency: WORKER_CONCURRENCY // ВАЖНО: ограничение, чтобы не убить процессор
 });
