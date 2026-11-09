@@ -1,0 +1,75 @@
+# Автовыкладка на сервер. Делает то же, что deploy.sh, только сама и с серверов GitHub.
+# Запускается после каждой отправки кода в ветку fix/launch-preparation,
+# а ещё вручную: вкладка Actions → «Выкладка на сервер» → Run workflow.
+# Настройки .env, база и фото на сервере не меняются.
+#
+# Нужен секрет DEPLOY_SSH_KEY (Settings → Secrets and variables → Actions):
+# закрытый ключ, открытая часть которого добавлена на сервер в /root/.ssh/authorized_keys.
+name: Выкладка на сервер
+
+on:
+  push:
+    branches: [fix/launch-preparation]
+  workflow_dispatch:
+
+# Две выкладки одновременно не идут: следующая ждёт, пока закончится предыдущая.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  SERVER: root@201.24.121.150
+  DIR: /opt/sadovodps
+  SITE: https://sadovodps24.ru
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Проверка ключа
+        id: key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "::warning::Секрет DEPLOY_SSH_KEY не задан, выкладка пропущена."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          ssh-keyscan -T 15 -H "${SERVER#*@}" >> ~/.ssh/known_hosts 2>/dev/null
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.ready == 'true'
+
+      - name: Загрузка кода на сервер
+        if: steps.key.outputs.ready == 'true'
+        run: |
+          COMMIT=$(git rev-parse --short HEAD)
+          echo "Загружаю версию $COMMIT"
+          git archive --format=tar.gz HEAD | ssh -i ~/.ssh/deploy -o BatchMode=yes "$SERVER" \
+            "tar xz -C $DIR && echo $COMMIT > $DIR/DEPLOYED_COMMIT"
+
+      - name: Пересборка и перезапуск сайта
+        if: steps.key.outputs.ready == 'true'
+        run: |
+          ssh -i ~/.ssh/deploy -o BatchMode=yes -o ServerAliveInterval=30 "$SERVER" \
+            "cd $DIR && docker compose up -d --build && docker compose ps --format '{{.Name}}: {{.Status}}'"
+
+      - name: Проверка, что сайт отвечает
+        if: steps.key.outputs.ready == 'true'
+        run: |
+          # После перезапуска серверу нужно время: ждём до 3 минут.
+          for attempt in $(seq 1 18); do
+            if curl -fsS --max-time 10 "$SITE/api/system/status" > /dev/null; then
+              echo "Сайт отвечает. На сервере версия $(git rev-parse --short HEAD)."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Сайт не отвечает через 3 минуты после выкладки. Проверьте: docker compose logs backend"
+          exit 1
