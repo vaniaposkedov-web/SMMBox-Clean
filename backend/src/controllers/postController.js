@@ -243,21 +243,40 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     form.append('media', JSON.stringify(media));
 
+    logPost(userId, 'VK', 'API_REQUEST', 'Структура запроса публикации в Kom-OD', {
+        groupId: targetGroupId,
+        viaApi: '1',
+        media: media.map((item) => ({
+            type: item.type,
+            imageNames: item.images?.map((image) => image.name) || []
+        })),
+        fileParts: (imageBuffers || []).map((buffer, index) => ({
+            field: `file_${index + 1}`,
+            contentType: 'image/jpeg',
+            bytes: buffer.length
+        }))
+    });
+
     try {
         const postRes = await axios.post(`${KOMOD_BASE_URL}/post`, form, {
             headers: { ...form.getHeaders(), 'Access-Token': token },
             maxBodyLength: Infinity,
             timeout: 120 * 1000,
-            validateStatus: status => status < 500
+            validateStatus: (status) => status >= 200 && status < 300
         });
 
-        if (postRes.status >= 400 || postRes.data?.success === false) {
-            logPost(userId, 'VK', 'ERROR', `Шлюз отклонил пост: HTTP ${postRes.status}`);
-            const details = postRes.data?.errors || postRes.data?.message || `код ${postRes.status}`;
-            throw new Error('Ошибка шлюза: ' + (typeof details === 'string' ? details : JSON.stringify(details)));
+        const responseData = postRes.data;
+        const responseErrors = responseData?.errors;
+        const errorDetails = responseData?.error || responseErrors || responseData?.message;
+        const hasErrors = Array.isArray(responseErrors) ? responseErrors.length > 0 : Boolean(responseErrors);
+        if (postRes.status < 200 || postRes.status >= 300 || responseData?.success === false || responseData?.error || hasErrors) {
+            const details = errorDetails || `HTTP ${postRes.status}`;
+            const gatewayError = new Error('Ошибка шлюза: ' + (typeof details === 'string' ? details : JSON.stringify(details)));
+            gatewayError.gatewayStatus = postRes.status;
+            gatewayError.gatewayDetails = details;
+            throw gatewayError;
         }
 
-        const responseData = postRes.data;
         const postData = responseData?.data;
         logPost(userId, 'VK', 'API_RESPONSE', 'Kom-OD принял запрос публикации', {
             httpStatus: postRes.status,
@@ -274,7 +293,13 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
 
     } catch (error) {
-        logPost(userId, 'VK', 'ERROR', `Ошибка отправки`, error.message || error.response?.data);
+        const responseData = error.response?.data;
+        const errorDetails = responseData?.errors || responseData?.error || responseData?.message || error.message;
+        logPost(userId, 'VK', 'ERROR', 'Ошибка отправки', {
+            httpStatus: error.response?.status || error.gatewayStatus || null,
+            code: error.code || null,
+            error: errorDetails
+        });
         throw error;
     }
 }
