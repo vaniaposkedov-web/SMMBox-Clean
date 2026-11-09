@@ -214,7 +214,8 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('group_id', targetGroupId);
     
     // 🔥 ПАРАМЕТРЫ ПОСТИНГА
-    form.append('via_api', '0'); // Используем режим Kom-OD с веб-эмуляцией загрузки фото.
+    const viaApiMode = '1';
+    form.append('via_api', viaApiMode); // Просим Kom-OD сразу отправить пост через API.
     form.append('post_images_as_grid', '1'); // Дублируем в тело поста для верности
 
     if (publishAtDate) {
@@ -245,7 +246,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
     logPost(userId, 'VK', 'API_REQUEST', 'Структура запроса публикации в Kom-OD', {
         groupId: targetGroupId,
-        viaApi: '1',
+        viaApi: viaApiMode,
         media: media.map((item) => ({
             type: item.type,
             imageNames: item.images?.map((image) => image.name) || []
