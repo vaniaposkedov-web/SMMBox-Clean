@@ -88,7 +88,7 @@ const urlToFile = async (url, filename) => {
   } catch (e) { return null; }
 };
 
-// Для партнёров и повтора нужно исходное фото без водяного знака. Оно хранится 30 дней,
+// Для партнёров и повтора нужно исходное фото без водяного знака. Оно хранится 7 дней,
 // а если его уже нет, берём уменьшенную копию из истории.
 const loadSourceFile = async (original, thumbnail, filename) => {
   const source = original ? await urlToFile(original, filename) : null;
@@ -492,7 +492,7 @@ export default function PostsHistory() {
                         onClick={() => setFsImageIndex(i)}
                         className="relative w-[110px] h-[110px] rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer group"
                       >
-                        <img loading="lazy" decoding="async" src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                        <img loading="lazy" decoding="async" src={getImageUrl(img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
                         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <Maximize2 className="text-white" size={20} />
                         </div>

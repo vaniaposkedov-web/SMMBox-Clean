@@ -349,7 +349,11 @@ const mapLimit = async (items, limit, work) => {
 
 const JOB_OPTIONS = { attempts: 3, backoff: { type: 'exponential', delay: 5000 } };
 const TEMP_QUEUE_DIR = path.join(__dirname, '../../uploads/temp_queue');
-const ORIGINALS_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+// Фото, загруженные для постов и для партнёров, хранятся 7 дней. Срок указан в политике конфиденциальности.
+const MEDIA_RETENTION_DAYS = 7;
+const MEDIA_RETENTION_MS = MEDIA_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const POSTS_MEDIA_DIR = path.join(__dirname, '../../uploads/posts');
+const MEDIA_GONE_ERROR = `Фото этого поста уже удалены с сервера: они хранятся ${MEDIA_RETENTION_DAYS} дней. Создайте пост заново.`;
 const parseJson = (value, fallback) => { try { return value ? JSON.parse(value) : fallback; } catch (e) { return fallback; } };
 
 const removeUploadedFiles = (req) => Promise.all((req.files || []).map((file) => fs.promises.unlink(file.path).catch(() => {})));
@@ -907,11 +911,33 @@ exports.failStuckPosts = async () => {
     return { failed: count, unknown: unknown.count };
 };
 
-// Исходные фото хранятся 30 дней: они нужны для отправки партнёрам и повторной публикации.
-// Фото постов, которые ещё ждут отправки, не удаляются, сколько бы они ни ждали.
-exports.cleanupTempQueue = async () => {
-    if (!fs.existsSync(TEMP_QUEUE_DIR)) return { removed: 0 };
+// Удаляет файлы папки старше срока хранения. keep: файлы, которые ещё нужны, сколько бы им ни было.
+const removeExpiredFiles = async (dir, keep) => {
+    if (!fs.existsSync(dir)) return 0;
+    let removed = 0;
+    const now = Date.now();
+    for (const file of await fs.promises.readdir(dir)) {
+        if (keep(file)) continue;
+        const filePath = path.join(dir, file);
+        try {
+            const stats = await fs.promises.stat(filePath);
+            if (stats.isFile() && now - stats.mtimeMs > MEDIA_RETENTION_MS) {
+                await fs.promises.unlink(filePath);
+                removed += 1;
+            }
+        } catch (error) {
+            // Файл мог удалить соседний процесс: это не повод прерывать очистку.
+            if (error.code !== 'ENOENT') console.error(`[CRON] Не удалось удалить ${file}:`, error.message);
+        }
+    }
+    return removed;
+};
 
+// Раз в сутки удаляются фото старше 7 дней:
+// 1) загруженные при создании поста (папка temp_queue), кроме фото постов, которые ещё ждут отправки,
+//    сколько бы они ни ждали: запланированный на месяц вперёд пост выйдет со своими фото;
+// 2) фото, пересланные партнёрам (shared_* в папке posts). Миниатюры истории постов не удаляются.
+exports.cleanupTempQueue = async () => {
     const pending = await prisma.post.findMany({
         where: { status: { in: ['SCHEDULED', 'PROCESSING', 'DELIVERING', 'DELIVERY_UNKNOWN'] } },
         select: { mediaUrls: true, originalMediaUrls: true }
@@ -922,19 +948,13 @@ exports.cleanupTempQueue = async () => {
             inUse.add(path.basename(String(url)));
         }
     }
+    // Рядом с фото очередь кладёт его сжатую копию (.base.jpg) и временные файлы: они живут вместе с фото.
+    const sourceName = (file) => file.replace(/\.base\.jpg(\..*\.tmp)?$/, '');
 
-    let removed = 0;
-    const now = Date.now();
-    for (const file of await fs.promises.readdir(TEMP_QUEUE_DIR)) {
-        if (inUse.has(file)) continue;
-        const filePath = path.join(TEMP_QUEUE_DIR, file);
-        const stats = await fs.promises.stat(filePath);
-        if (now - stats.mtimeMs > ORIGINALS_RETENTION_MS) {
-            await fs.promises.unlink(filePath).catch(() => {});
-            removed += 1;
-        }
-    }
-    return { removed };
+    const removed = await removeExpiredFiles(TEMP_QUEUE_DIR, (file) => inUse.has(sourceName(file)));
+    const removedShared = await removeExpiredFiles(POSTS_MEDIA_DIR, (file) => !file.startsWith('shared_'));
+    if (removed + removedShared > 0) console.log(`[CRON] Удалено старых фото: ${removed} постов, ${removedShared} для партнёров`);
+    return { removed, removedShared };
 };
 
 exports.initCron = () => {
@@ -1322,6 +1342,15 @@ exports.retryPost = async (req, res) => {
         if (!post) return res.status(404).json({ success: false, error: 'Пост не найден' });
         if (post.account.userId !== userId) return res.status(403).json({ success: false, error: 'Нет доступа' });
         if (post.status !== 'FAILED') return res.status(400).json({ success: false, error: 'Можно переотправлять только посты с ошибкой' });
+
+        // Через 7 дней фото удаляются с сервера: без них пост ушёл бы без картинок или упал с непонятной ошибкой.
+        const sourceUrls = parseJson(post.originalMediaUrls, null) || parseJson(post.mediaUrls, []);
+        for (const url of sourceUrls) {
+            if (String(url).startsWith('data:')) continue;
+            if (!fs.existsSync(path.join(__dirname, '../..', String(url)))) {
+                return res.status(400).json({ success: false, error: MEDIA_GONE_ERROR });
+            }
+        }
 
         // Условие по статусу защищает от двойного нажатия. Планировщик не ждём: пост уходит в очередь сразу.
         const { count } = await prisma.post.updateMany({

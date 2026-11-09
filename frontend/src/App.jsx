@@ -10,6 +10,7 @@ import MaintenanceGuard from './components/MaintenanceGuard';
 import ConsentGate from './components/legal/ConsentGate';
 import LegalLinks from './components/legal/LegalLinks';
 import OfflineNotice from './components/OfflineNotice';
+import VpnNotice from './components/VpnNotice';
 import { RouteSkeleton } from './components/Skeleton';
 import { lazyPage } from './lazyPage';
 
@@ -396,6 +397,7 @@ function App() {
           </Suspense>
           </PageErrorBoundary>
         </MaintenanceGuard>
+        <VpnNotice />
       </BrowserRouter>
     );
   }
@@ -438,6 +440,7 @@ function App() {
         </Suspense>
         </PageErrorBoundary>
       </MaintenanceGuard>
+      <VpnNotice />
     </BrowserRouter>
   );
 }

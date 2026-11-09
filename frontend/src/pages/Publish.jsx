@@ -97,10 +97,12 @@ export default function Publish() {
 
   const fileInputRef = useRef(null);
   const uploadingPhotosRef = useRef(new Set());
+  const [uploadSlotsFreed, setUploadSlotsFreed] = useState(0);
 
   const MAX_PHOTOS = 10;
   const MAX_CHARS = 1000;
-  const arePhotosReady = photos.length > 0 && photos.every(photo => photo.uploadState === 'uploaded' && photo.mediaId);
+  // Пост может быть и без фото, только с текстом. Если фото есть, все они должны лежать на сервере.
+  const arePhotosReady = photos.every(photo => photo.uploadState === 'uploaded' && photo.mediaId);
 
  
 
@@ -387,19 +389,38 @@ const toggleAllAccounts = () => {
       setPhotos(prev => prev.map(item => item.id === photo.id ? { ...item, uploadState: 'failed', mediaId: null, uploadError: error.message || 'Ошибка загрузки' } : item));
     } finally {
       uploadingPhotosRef.current.delete(photo.id);
+      setUploadSlotsFreed(count => count + 1); // Место освободилось: можно брать следующее фото
     }
   };
 
-  const uploadSelectedPhotos = async (items) => {
-    let next = 0;
-    const worker = async () => {
-      while (next < items.length) {
-        const photo = items[next++];
-        await uploadPhoto(photo);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(2, items.length) }, worker));
-  };
+  // Единственное место, откуда фото уходят на сервер, не больше двух одновременно.
+  // Оно же подхватывает фото, пришедшие не через выбор файлов: пост партнёра, повтор из истории,
+  // возврат на страницу, когда прежняя загрузка оборвалась. Без этого кнопка «Далее» ждала бы вечно.
+  // Фото с ошибкой не трогаем: их повторяет сам человек кнопкой «Повторить».
+  useEffect(() => {
+    const waiting = photos.filter(photo => (
+      !(photo.uploadState === 'uploaded' && photo.mediaId) &&
+      photo.uploadState !== 'failed' &&
+      !uploadingPhotosRef.current.has(photo.id)
+    ));
+    if (waiting.length === 0) return;
+
+    const withoutFile = waiting.filter(photo => !photo.file);
+    if (withoutFile.length > 0) {
+      const ids = new Set(withoutFile.map(photo => photo.id));
+      setPhotos(prev => prev.map(item => ids.has(item.id) ? { ...item, uploadState: 'failed', mediaId: null, uploadError: 'Фото недоступно. Удалите его и добавьте снова.' } : item));
+      return;
+    }
+
+    const freeSlots = Math.max(0, 2 - uploadingPhotosRef.current.size);
+    waiting.slice(0, freeSlots).forEach(photo => { uploadPhoto(photo); });
+
+    // Остальные ждут своей очереди: на них показывается «Подготовка фото…», а не пустое превью.
+    const queuedIds = new Set(waiting.slice(freeSlots).filter(photo => photo.uploadState !== 'pending').map(photo => photo.id));
+    if (queuedIds.size > 0) {
+      setPhotos(prev => prev.map(item => queuedIds.has(item.id) ? { ...item, uploadState: 'pending', mediaId: null, uploadError: null } : item));
+    }
+  }, [photos, uploadSlotsFreed]);
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
@@ -418,8 +439,7 @@ const toggleAllAccounts = () => {
       uploadError: null
     }));
 
-    setPhotos(prev => [...prev, ...newPhotos]);
-    uploadSelectedPhotos(newPhotos);
+    setPhotos(prev => [...prev, ...newPhotos]); // Загрузку на сервер запустит слежение за фото выше
   };
 
   // Предпросмотр занимает память, пока адрес не освобождён.
@@ -924,7 +944,7 @@ const handlePublish = async () => {
         {step === 1 && (
           <div className="bg-admin-card border border-gray-800 rounded-3xl p-4 sm:p-6 shadow-xl animate-fade-in">
             <h2 className="text-lg sm:text-xl font-bold text-white mb-1">Загрузите фотографии</h2>
-            <p className="text-xs sm:text-sm text-gray-400 mb-5">От 1 до {MAX_PHOTOS} снимков.</p>
+            <p className="text-xs sm:text-sm text-gray-400 mb-5">До {MAX_PHOTOS} снимков. Пост без фото тоже можно опубликовать: просто нажмите «Далее».</p>
 
             {photos.length === 0 ? (
               <button onClick={() => fileInputRef.current?.click()} className={`w-full border-2 border-dashed border-gray-700 bg-gray-900/50 rounded-3xl p-8 sm:p-10 flex flex-col items-center justify-center gap-4 transition-all group ${publishMode === 'schedule' ? 'hover:border-purple-500 hover:bg-purple-500/5' : 'hover:border-blue-500 hover:bg-blue-500/5'}`}>

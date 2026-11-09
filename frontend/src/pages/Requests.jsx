@@ -55,6 +55,8 @@ const urlToFile = async (url, filename) => {
   }
   try {
     const res = await fetch(getImageUrl(url));
+    // Фото уже нет на сервере: вместо него пришла бы страница ошибки, и загрузка поста сорвалась бы непонятно.
+    if (!res.ok) return null;
     const blob = await res.blob();
     return new File([blob], filename, { type: blob.type || 'image/jpeg' });
   } catch (e) { return null; }
