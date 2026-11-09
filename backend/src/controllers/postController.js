@@ -214,7 +214,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('group_id', targetGroupId);
     
     // 🔥 ПАРАМЕТРЫ ПОСТИНГА
-    form.append('via_api', '1'); // Для ВК используем API-публикацию, включая пакет нескольких фотографий.
+    form.append('via_api', '0'); // Используем режим Kom-OD с веб-эмуляцией загрузки фото.
     form.append('post_images_as_grid', '1'); // Дублируем в тело поста для верности
 
     if (publishAtDate) {
