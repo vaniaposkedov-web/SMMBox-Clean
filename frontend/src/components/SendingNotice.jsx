@@ -21,6 +21,39 @@ function WaitMessage({ subject, seconds }) {
   return <p className="text-sm font-bold text-blue-100">{message}</p>;
 }
 
+// Пост в ВК подтверждается до 15 минут: столько же сервер ждёт итога, прежде чем написать «ошибка» (KOMOD_CONFIRM_MS).
+export const VK_CONFIRM_MS = 15 * 60_000;
+
+const formatClock = (ms) => {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
+
+// Плашка отправки в ВК с отсчётом. deadline: когда истекут 15 минут у последнего начатого поста (null, пока посты в очереди).
+export function VkSendingNotice({ deadline, hint }) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!deadline) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [deadline]);
+
+  const left = deadline ? deadline - now : null;
+  const title = left === null ? 'Публикуем в ВК' : left > 0 ? `Публикуем в ВК · осталось ${formatClock(left)}` : 'Публикуем в ВК · почти готово';
+
+  return (
+    <div role="status" className="flex items-start gap-3 text-left bg-blue-500/10 border border-blue-500/20 rounded-xl px-4 py-3 animate-in fade-in duration-300">
+      <Clock size={18} className="text-blue-400 shrink-0 mt-0.5" />
+      <div className="min-w-0">
+        <p className="text-sm font-bold text-blue-100 tabular-nums">{title}</p>
+        <p className="text-xs text-blue-200/70 mt-1">На отправку может уйти до 15 минут.</p>
+        {hint && <p className="text-xs text-blue-200/70 mt-1">{hint}</p>}
+      </div>
+    </div>
+  );
+}
+
 // Плашка «пост будет отправлен в течение...» с обратным отсчётом. Новая оценка времени запускает отсчёт заново.
 export default function SendingNotice({ subject, seconds, hint, keepPageOpen = false }) {
   const [isVisible, setIsVisible] = useState(false);

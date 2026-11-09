@@ -6,7 +6,10 @@ import {
   Plus, AlertCircle, Crown, RefreshCw
 } from 'lucide-react';
 import { useStore } from '../store';
-import SendingNotice from '../components/SendingNotice';
+import SendingNotice, { VkSendingNotice, VK_CONFIRM_MS } from '../components/SendingNotice';
+
+const isVkResult = (item) => ['VK', 'VKONTAKTE'].includes(String(item?.provider || '').toUpperCase());
+const isSendingStatus = (status) => ['PROCESSING', 'DELIVERING'].includes(status);
 import ScheduleTimePicker from '../components/ScheduleTimePicker';
 import { estimateShareSeconds, getDeliveryMessage, isSuccessNotice } from '../sendingTime';
 import { blobFileName, compressImages, newRequestKey } from '../imageTools';
@@ -118,6 +121,15 @@ export default function Publish() {
 
   // После отправки следим за настоящим статусом постов в очереди
   const publishIds = useMemo(() => publishResults.map((p) => p.id).join(','), [publishResults]);
+  // Когда каждый пост в ВК начал отправляться: от этого момента идёт отсчёт 15 минут.
+  const vkSendingSinceRef = useRef({});
+  useEffect(() => {
+    publishResults.forEach((item) => {
+      if (isVkResult(item) && item.status === 'DELIVERING' && !vkSendingSinceRef.current[item.id]) {
+        vkSendingSinceRef.current[item.id] = Date.now();
+      }
+    });
+  }, [publishResults]);
   useEffect(() => {
     if (step !== 4 || publishMode === 'schedule' || !publishIds) return undefined;
 
@@ -1189,7 +1201,13 @@ const handlePublish = async () => {
 
         {step === 4 && (() => {
           const isSchedule = publishMode === 'schedule';
-          const isSending = !isSchedule && !publishTimedOut && publishResults.some((p) => ['PROCESSING', 'DELIVERING'].includes(p.status));
+          // ВК подтверждает пост до 15 минут, поэтому «идёт дольше обычного» через 2 минуты показывается только для Telegram.
+          const vkSending = publishResults.filter((p) => isVkResult(p) && isSendingStatus(p.status));
+          const vkDelivering = vkSending.filter((p) => p.status === 'DELIVERING');
+          const vkStarts = vkDelivering.map((p) => vkSendingSinceRef.current[p.id]).filter(Boolean);
+          const vkDeadline = vkStarts.length ? Math.max(...vkStarts) + VK_CONFIRM_MS : null;
+          const otherSending = publishResults.some((p) => !isVkResult(p) && isSendingStatus(p.status));
+          const isSending = !isSchedule && (vkSending.length > 0 || (!publishTimedOut && otherSending));
           const isUnconfirmed = publishResults.some((p) => p.status === 'DELIVERY_UNKNOWN');
           const failed = publishResults.filter((p) => p.status === 'FAILED');
           const hasFailures = failed.length > 0 && !isSending;
@@ -1233,8 +1251,9 @@ const handlePublish = async () => {
                         {item.status === 'FAILED' && <AlertCircle size={16} className="text-red-500 shrink-0" />}
                         {item.status === 'DELIVERY_UNKNOWN' && <AlertCircle size={16} className="text-amber-400 shrink-0" />}
                       </div>
-                      {item.status === 'FAILED' && <p className="text-xs mt-1 break-words text-red-400">Не удалось опубликовать пост. Попробуйте позже.</p>}
-                      {item.status === 'DELIVERY_UNKNOWN' && <p className="text-xs mt-1 break-words text-amber-400">Проверяем результат публикации. Не отправляйте пост повторно, пока статус не обновится.</p>}
+                      {isVkResult(item) && item.status === 'PROCESSING' && vkDelivering.length > 0 && <p className="text-xs mt-1 text-gray-400">В очереди, уйдёт после предыдущего поста</p>}
+                      {item.status === 'FAILED' && <p className="text-xs mt-1 break-words text-red-400">Не удалось опубликовать. Можно отправить ещё раз.</p>}
+                      {item.status === 'DELIVERY_UNKNOWN' && <p className="text-xs mt-1 break-words text-amber-400">Нет подтверждения публикации. Проверьте канал, прежде чем отправлять снова.</p>}
                     </div>
                   ))}
                 </div>
@@ -1243,7 +1262,9 @@ const handlePublish = async () => {
               {isSchedule && <p className="text-sm sm:text-base text-gray-400 mb-8 max-w-sm mx-auto">Пост выйдет в {publishResults.length || selectedAccounts.length} аккаунт(а/ов) в выбранное время.</p>}
               {isSending && (
                 <div className="max-w-sm mx-auto mb-6">
-                  <SendingNotice subject="Пост будет отправлен" seconds={publishEta} hint="Страницу можно закрыть: пост уже в очереди. Результат будет в разделе «Посты»." />
+                  {vkSending.length > 0
+                    ? <VkSendingNotice deadline={vkDeadline} hint="Страницу можно закрыть: результат будет в разделе «Посты»." />
+                    : <SendingNotice subject="Пост будет отправлен" seconds={publishEta} hint="Страницу можно закрыть: пост уже в очереди. Результат будет в разделе «Посты»." />}
                 </div>
               )}
               {hasFailures && <p className="text-sm text-gray-400 mb-6">Посты с ошибкой сохранены в разделе «Посты» на вкладке «Ошибки».</p>}

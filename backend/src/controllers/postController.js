@@ -13,6 +13,10 @@ const { escapeXml } = require('../utils/security');
 const { telegramHttp } = require('../utils/telegramClient');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Настройки KOMOD_TEST_* нужны только проверкам на имитации: там 15 минут сокращаются до секунд. На сервере их нет.
+const KOMOD_CONFIRM_MS = Number(process.env.KOMOD_TEST_CONFIRM_MS) || 15 * 60_000;
+const KOMOD_POLL_MS = Number(process.env.KOMOD_TEST_POLL_MS) || 5000;
+
 const isKomodFlag = (value) => value === true || value === 1 || String(value) === '1';
 
 async function waitForKomodPublication(token, postData, userId, providerId, internalPostId) {
@@ -23,9 +27,13 @@ async function waitForKomodPublication(token, postData, userId, providerId, inte
         throw error;
     }
 
-    const deadline = Date.now() + 15 * 60_000;
+    // Kom-OD может записать «ошибка», а потом сам повторить и опубликовать пост: так было и через минуту, и через 13 минут.
+    // Поэтому итог ставится только через 15 минут: опубликовано — сразу успех, иначе ошибка или «нет подтверждения».
+    // Сайт обещает клиенту эти же 15 минут (VK_CONFIRM_MINUTES в Publish.jsx).
+    const deadline = Date.now() + KOMOD_CONFIRM_MS;
     let state = postData;
     let lastSnapshot = '';
+    let reportedFailure = false;
 
     while (Date.now() < deadline) {
         const task = state?.task || {};
@@ -66,15 +74,9 @@ async function waitForKomodPublication(token, postData, userId, providerId, inte
         }
 
         if (isKomodFlag(state?.published)) return postId;
-        const isCompleted = isKomodFlag(task.is_completed);
-        const hasRetry = isKomodFlag(task.allow_retry);
-        if (isCompleted || (isKomodFlag(state?.fail) && !hasRetry)) {
-            const error = new Error(`Kom-OD завершил задание ${postId} с ошибкой`);
-            error.code = 'KOMOD_POST_FAILED';
-            throw error;
-        }
+        reportedFailure = isKomodFlag(state?.fail) || isKomodFlag(task.is_completed);
 
-        await sleep(5000);
+        await sleep(KOMOD_POLL_MS);
         try {
             const statusRes = await axios.get(`https://kom-od.ru/api/v1/post/${encodeURIComponent(postId)}`, {
                 headers: { 'Access-Token': token },
@@ -92,6 +94,11 @@ async function waitForKomodPublication(token, postData, userId, providerId, inte
         }
     }
 
+    if (reportedFailure) {
+        const error = new Error(`Kom-OD завершил задание ${postId} с ошибкой и не опубликовал его за 15 минут`);
+        error.code = 'KOMOD_POST_FAILED';
+        throw error;
+    }
     const error = new Error(`Kom-OD не подтвердил публикацию задания ${postId} за 15 минут`);
     error.code = 'KOMOD_POST_UNCONFIRMED';
     throw error;

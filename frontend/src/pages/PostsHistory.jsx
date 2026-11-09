@@ -88,6 +88,8 @@ const urlToFile = async (url, filename) => {
   } catch (e) { return null; }
 };
 
+const isVkPost = (post) => ['VK', 'VKONTAKTE'].includes(String(post?.account?.provider || '').toUpperCase());
+
 // Для партнёров и повтора нужно исходное фото без водяного знака. Оно хранится 7 дней,
 // а если его уже нет, берём уменьшенную копию из истории.
 const loadSourceFile = async (original, thumbnail, filename) => {
@@ -419,7 +421,9 @@ export default function PostsHistory() {
                       ) : (
                         <Calendar size={12} className="text-[#0077FF]"/>
                       )}
-                      {post.status === 'DELIVERY_UNKNOWN' ? 'Проверьте публикацию' : new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      {post.status === 'DELIVERY_UNKNOWN' ? 'Проверьте публикацию'
+                        : ['PROCESSING', 'DELIVERING'].includes(post.status) && isVkPost(post) ? 'Отправляется, до 15 минут'
+                        : new Date(post.publishAt || post.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <ChevronRight className="text-gray-700 group-hover:text-[#0077FF] transition-all group-hover:translate-x-1" size={20}/>
                   </div>
@@ -477,10 +481,10 @@ export default function PostsHistory() {
             <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-6 bg-[#0f1115]">
               {['FAILED', 'DELIVERY_UNKNOWN'].includes(selectedPost.status) && selectedPost.errorMessage && (
                 <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 break-words">
-                  {['VK', 'VKONTAKTE'].includes(String(selectedPost.account?.provider || '').toUpperCase())
+                  {isVkPost(selectedPost)
                     ? selectedPost.status === 'DELIVERY_UNKNOWN'
-                      ? 'Не удалось получить подтверждение публикации. Проверьте канал перед повторной отправкой.'
-                      : 'Не удалось опубликовать пост. Попробуйте позже.'
+                      ? 'Нет подтверждения публикации. Проверьте группу, прежде чем отправлять снова.'
+                      : 'Не удалось опубликовать. Можно отправить ещё раз.'
                     : `${selectedPost.status === 'DELIVERY_UNKNOWN' ? 'Результат отправки неизвестен: ' : 'Причина ошибки: '}${selectedPost.errorMessage}`}
                 </div>
               )}
