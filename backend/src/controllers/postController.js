@@ -218,12 +218,11 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('via_api', viaApiMode); // Просим Kom-OD сразу отправить пост через API.
     form.append('post_images_as_grid', '1'); // Дублируем в тело поста для верности
 
-    if (publishAtDate) {
-        const targetDate = new Date(publishAtDate);
-        if (Number.isNaN(targetDate.getTime())) throw new Error('Некорректное время публикации ВК');
-        const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
-        form.append('publish_at', tzString.substring(0, 16).replace('T', ' '));
-    }
+    const targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
+    if (Number.isNaN(targetDate.getTime())) throw new Error('Некорректное время публикации ВК');
+    const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
+    const publishAt = tzString.substring(0, 16).replace('T', ' ');
+    form.append('publish_at', publishAt);
     
     const media = [];
     if (text) media.push({ type: 'text', text: text });
@@ -247,6 +246,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     logPost(userId, 'VK', 'API_REQUEST', 'Структура запроса публикации в Kom-OD', {
         groupId: targetGroupId,
         viaApi: viaApiMode,
+        publishAt,
         media: media.map((item) => ({
             type: item.type,
             imageNames: item.images?.map((image) => image.name) || []
