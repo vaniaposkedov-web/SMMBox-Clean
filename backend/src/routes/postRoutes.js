@@ -6,6 +6,7 @@ const upload = require('../middleware/upload'); // ⚡ Подключили за
 
 // ⚡ ИСПРАВЛЕНИЕ: Добавили upload.array('media', 10) чтобы сервер начал принимать файлы
 router.post('/create', authMiddleware, upload.array('media', 10), postController.createPost);
+router.post('/upload-media', authMiddleware, upload.single('media'), postController.uploadPostMedia);
 router.post('/share', authMiddleware, upload.array('media', 10), postController.shareWithPartners);
 
 router.get('/shared', authMiddleware, postController.getSharedPosts);

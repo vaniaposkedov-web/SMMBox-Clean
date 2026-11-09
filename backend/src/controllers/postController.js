@@ -334,6 +334,33 @@ const parseJson = (value, fallback) => { try { return value ? JSON.parse(value) 
 
 const removeUploadedFiles = (req) => Promise.all((req.files || []).map((file) => fs.promises.unlink(file.path).catch(() => {})));
 
+exports.uploadPostMedia = async (req, res) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ success: false, error: 'Выберите изображение' });
+
+    const userId = String(getUserId(req));
+    const fileName = `staged_${userId}_${crypto.randomUUID()}.jpg`;
+    const tempDir = TEMP_QUEUE_DIR;
+    const safePath = path.join(tempDir, fileName);
+    try {
+        await fs.promises.mkdir(tempDir, { recursive: true });
+        const metadata = await sharp(file.path, { failOn: 'none' }).metadata();
+        console.info(`[UPLOAD] Фото format=${metadata.format || 'unknown'} ${metadata.width || 0}x${metadata.height || 0}, bytes=${file.size || 0}`);
+        await sharp(file.path, { failOn: 'none' })
+            .rotate()
+            .resize({ width: 4000, height: 4000, fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 90 })
+            .toFile(safePath);
+        return res.status(201).json({ success: true, mediaId: fileName });
+    } catch (error) {
+        await fs.promises.unlink(safePath).catch(() => {});
+        console.error(`[UPLOAD] Не удалось обработать фото ${path.basename(file.originalname || 'photo')}:`, error.message);
+        return res.status(400).json({ success: false, error: 'Не удалось обработать фото. Сохраните его как JPG или PNG.' });
+    } finally {
+        await fs.promises.unlink(file.path).catch(() => {});
+    }
+};
+
 // Kom-OD обычно публикует пост примерно за минуту.
 const SECONDS_PER_POST = 60;
 const estimatePublishSeconds = async () => {
@@ -540,6 +567,21 @@ const toCreatedPost = (post) => ({ id: post.id, status: post.status, errorMessag
 exports.createPost = async (req, res) => {
     try {
         const { text, accountsData, publishAt } = req.body;
+        let mediaIds = [];
+        try {
+            mediaIds = req.body.mediaIds ? JSON.parse(req.body.mediaIds) : [];
+        } catch (error) {
+            await removeUploadedFiles(req);
+            return res.status(400).json({ success: false, error: 'Некорректный список фотографий' });
+        }
+        if (!Array.isArray(mediaIds) || mediaIds.length > 10 || mediaIds.some((id) => typeof id !== 'string') || new Set(mediaIds).size !== mediaIds.length) {
+            await removeUploadedFiles(req);
+            return res.status(400).json({ success: false, error: 'Некорректный список фотографий' });
+        }
+        if (mediaIds.length && (req.files || []).length) {
+            await removeUploadedFiles(req);
+            return res.status(400).json({ success: false, error: 'Нельзя одновременно отправлять новые и загруженные фотографии' });
+        }
         const requestKey = parseRequestKey(req.body.requestKey);
 
         let accounts = [];
@@ -573,13 +615,26 @@ exports.createPost = async (req, res) => {
         }
 
         const postText = typeof text === 'string' ? text : '';
-        if (!postText.trim() && !(req.files || []).length) {
+        if (!postText.trim() && !(req.files || []).length && mediaIds.length === 0) {
             await removeUploadedFiles(req);
             return res.status(400).json({ success: false, error: 'Добавьте текст или хотя бы одно фото' });
         }
 
         // Публиковать можно только в свои аккаунты, при активной подписке и в пределах тарифа
         const userId = getUserId(req);
+        for (const mediaId of mediaIds) {
+            const mediaName = path.basename(mediaId);
+            const ownerPrefix = `staged_${String(userId)}_`;
+            if (mediaName !== mediaId || !mediaName.startsWith(ownerPrefix) || !mediaName.endsWith('.jpg') || !/^[a-z0-9-]{36}\.jpg$/i.test(mediaName.slice(ownerPrefix.length))) {
+                return res.status(400).json({ success: false, error: 'Фотография недействительна или принадлежит другому пользователю' });
+            }
+            try {
+                const stats = await fs.promises.stat(path.join(TEMP_QUEUE_DIR, mediaName));
+                if (!stats.isFile()) throw new Error('Not a file');
+            } catch (error) {
+                return res.status(400).json({ success: false, error: 'Фотография не найдена на сервере. Загрузите её повторно.' });
+            }
+        }
         const currentUser = await prisma.user.findUnique({ where: { id: userId } });
         const limits = getUserLimits(currentUser);
         if (!limits.active) {
@@ -609,6 +664,13 @@ exports.createPost = async (req, res) => {
         // БЫСТРЫЙ ШАГ 1: Надежно сохраняем файлы и генерируем два вида путей
         const workerFilePaths = []; // Внутренние пути для Воркера (серверные)
         const dbFilePaths = [];     // Публичные пути для базы и Фронтенда (чтобы картинки грузились)
+
+        if (mediaIds.length) {
+            for (const mediaId of mediaIds) {
+                workerFilePaths.push(path.join(TEMP_QUEUE_DIR, path.basename(mediaId)));
+                dbFilePaths.push(`/uploads/temp_queue/${path.basename(mediaId)}`);
+            }
+        }
 
         if (req.files && req.files.length > 0) {
             const tempDir = path.join(__dirname, '../../uploads/temp_queue');

@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   ImagePlus, X, Sparkles, ChevronRight, ChevronLeft, Send, CheckCircle2, Share2, Users,
   LayoutTemplate, Search, CalendarClock, Clock, Loader2, Settings, PenTool, Check, Trash2,
-  Plus, AlertCircle, Crown
+  Plus, AlertCircle, Crown, RefreshCw
 } from 'lucide-react';
 import { useStore } from '../store';
 import SendingNotice from '../components/SendingNotice';
 import ScheduleTimePicker from '../components/ScheduleTimePicker';
 import { estimateShareSeconds, getDeliveryMessage, isSuccessNotice } from '../sendingTime';
-import { compressImages, newRequestKey } from '../imageTools';
+import { blobFileName, compressImages, newRequestKey } from '../imageTools';
 import { ChannelPickerSkeleton, ListSkeleton } from '../components/Skeleton';
 import { MIN_SCHEDULE_AHEAD_MINUTES, fromKeys, getEarliestScheduleTime, toDateKey, toTimeKey } from '../scheduleTime';
 
@@ -35,7 +35,7 @@ export default function Publish() {
   const [scheduleTime, setScheduleTime] = useState('');
   const { 
     user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings, 
-    tempDraft, saveTempDraft, createPostAction,
+    tempDraft, saveTempDraft, createPostAction, uploadPostMedia,
     myPartners, sharePostAction, fetchPartnerData
   } = useStore();
   const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
@@ -96,6 +96,7 @@ export default function Publish() {
   const [isUpdatingPost, setIsUpdatingPost] = useState(false);
 
   const fileInputRef = useRef(null);
+  const uploadingPhotosRef = useRef(new Set());
 
   const MAX_PHOTOS = 10;
   const MAX_CHARS = 1000;
@@ -328,6 +329,17 @@ export default function Publish() {
     return () => clearTimeout(timer);
   }, [text, photos, selectedAccounts, applyWatermark, applySignature, step, view, publishMode, scheduleTime, selectedCalendarDate, sharedPostId, saveTempDraft]);
 
+  useEffect(() => {
+    const hasActiveUploads = photos.some(photo => ['pending', 'compressing', 'uploading'].includes(photo.uploadState));
+    if (!hasActiveUploads) return;
+    const warnBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = 'Фотографии ещё загружаются на сервер.';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [photos]);
+
   // Человек что-то изменил: следующее нажатие считается новой публикацией, а не повтором.
   useEffect(() => {
     publishKeyRef.current = null;
@@ -359,24 +371,53 @@ const toggleAllAccounts = () => {
 
 
 
+  const uploadPhoto = async (photo) => {
+    if (!photo?.file || uploadingPhotosRef.current.has(photo.id)) return;
+    uploadingPhotosRef.current.add(photo.id);
+    setPhotos(prev => prev.map(item => item.id === photo.id ? { ...item, uploadState: 'compressing', uploadError: null } : item));
+    try {
+      const [blob] = await compressImages([photo.file]);
+      setPhotos(prev => prev.map(item => item.id === photo.id ? { ...item, uploadState: 'uploading' } : item));
+      const result = await uploadPostMedia(blob, blobFileName(blob, photo.id));
+      if (!result.success) throw new Error(result.error || 'Не удалось загрузить фото');
+      setPhotos(prev => prev.map(item => item.id === photo.id ? { ...item, uploadState: 'uploaded', mediaId: result.mediaId, uploadError: null } : item));
+    } catch (error) {
+      setPhotos(prev => prev.map(item => item.id === photo.id ? { ...item, uploadState: 'failed', mediaId: null, uploadError: error.message || 'Ошибка загрузки' } : item));
+    } finally {
+      uploadingPhotosRef.current.delete(photo.id);
+    }
+  };
+
+  const uploadSelectedPhotos = async (items) => {
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const photo = items[next++];
+        await uploadPhoto(photo);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(2, items.length) }, worker));
+  };
+
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
+    e.target.value = '';
     if (files.length === 0) return;
 
-    const newPhotos = files.map(file => ({
+    const remaining = Math.max(0, MAX_PHOTOS - photos.length);
+    const selectedFiles = files.slice(0, remaining);
+    if (selectedFiles.length < files.length) alert(`Максимум ${MAX_PHOTOS} фотографий!`);
+    const newPhotos = selectedFiles.map(file => ({
       id: Math.random().toString(36).substr(2, 9),
       url: URL.createObjectURL(file),
-      file
+      file,
+      uploadState: 'pending',
+      mediaId: null,
+      uploadError: null
     }));
 
-    setPhotos(prev => {
-      const combined = [...prev, ...newPhotos];
-      if (combined.length > MAX_PHOTOS) {
-        alert(`Максимум ${MAX_PHOTOS} фотографий!`);
-        return combined.slice(0, MAX_PHOTOS);
-      }
-      return combined;
-    });
+    setPhotos(prev => [...prev, ...newPhotos]);
+    uploadSelectedPhotos(newPhotos);
   };
 
   // Предпросмотр занимает память, пока адрес не освобождён.
@@ -449,6 +490,11 @@ const handlePublish = async () => {
     if (selectedAccounts.length === 0) {
       return setTimeout(() => alert('Выберите хотя бы один аккаунт!'), 10);
     }
+    if (photos.some(photo => photo.uploadState !== 'uploaded' || !photo.mediaId)) {
+      return setTimeout(() => alert(photos.some(photo => photo.uploadState === 'failed')
+        ? 'Не все фотографии загружены. Повторите загрузку отмеченных фото.'
+        : 'Дождитесь завершения загрузки фотографий.'), 10);
+    }
     
     let publishAt = null;
     if (publishMode === 'schedule') {
@@ -463,7 +509,7 @@ const handlePublish = async () => {
     if (isSendingRef.current) return;
     isSendingRef.current = true;
 
-    // Пока фото загружаются, закрытие вкладки может потерять пост
+    // Не закрывать страницу, пока сервер принимает публикацию.
     const handleBeforeUnload = (e) => {
       e.preventDefault();
       e.returnValue = 'Фотографии ещё загружаются на сервер. Если закрыть страницу, пост будет потерян.';
@@ -473,8 +519,6 @@ const handlePublish = async () => {
     setPublishTimedOut(false);
 
     try {
-      const webpBlobs = await compressImages(photos.map(p => p.file));
-
       const accountsData = selectedAccounts.map(id => {
         const acc = accounts.find(a => a.id === id);
         const wmConfig = (acc?.watermark !== null && acc?.watermark !== undefined)
@@ -489,7 +533,7 @@ const handlePublish = async () => {
       });
 
       if (!publishKeyRef.current) publishKeyRef.current = newRequestKey();
-      const result = await createPostAction(text, webpBlobs, accountsData, publishAt, sharedPostId, publishKeyRef.current);
+      const result = await createPostAction(text, photos.map(photo => photo.mediaId), accountsData, publishAt, sharedPostId, publishKeyRef.current);
 
       if (result.success) {
         publishKeyRef.current = null;
@@ -896,6 +940,22 @@ const handlePublish = async () => {
                   {photos.map((photo) => (
                     <div key={photo.id} className="relative aspect-square rounded-2xl overflow-hidden group border border-gray-800">
                       <img loading="lazy" decoding="async" src={photo.url || photo.preview} alt="Preview" className="w-full h-full object-cover" />
+                      {['pending', 'compressing', 'uploading'].includes(photo.uploadState) && (
+                        <div className="absolute inset-0 z-10 bg-black/60 flex flex-col items-center justify-center gap-2 text-white text-[10px] sm:text-xs font-semibold text-center px-2">
+                          <Loader2 size={22} className="animate-spin text-blue-400" />
+                          {photo.uploadState === 'uploading' ? 'Загрузка на сервер…' : 'Подготовка фото…'}
+                        </div>
+                      )}
+                      {photo.uploadState === 'failed' && (
+                        <div className="absolute inset-0 z-10 bg-black/75 flex flex-col items-center justify-center gap-2 text-white text-[10px] sm:text-xs font-semibold text-center px-2">
+                          <AlertCircle size={22} className="text-red-400" />
+                          <span>{photo.uploadError || 'Ошибка загрузки'}</span>
+                          <button onClick={() => uploadPhoto(photo)} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 hover:bg-blue-500">
+                            <RefreshCw size={13} /> Повторить
+                          </button>
+                        </div>
+                      )}
+                      {photo.uploadState === 'uploaded' && <CheckCircle2 size={22} className="absolute bottom-2 left-2 z-10 rounded-full bg-green-600 p-1 text-white" />}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity hidden sm:block"></div>
                       <button onClick={() => removePhoto(photo.id)} className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 bg-red-500/90 text-white w-8 h-8 sm:w-auto sm:h-auto sm:p-1.5 rounded-xl flex items-center justify-center hover:bg-red-500 active:scale-90 transition-all z-10">
                         <X size={16} />

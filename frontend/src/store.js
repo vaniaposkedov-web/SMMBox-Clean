@@ -564,7 +564,25 @@ export const useStore = create(
 
      // ... предыдущий код стора
 
-      createPostAction: async (text, mediaBlobs, accountsData, publishAt, sharedPostId, requestKey) => {
+      uploadPostMedia: async (blob, filename) => {
+        try {
+          const state = get();
+          const formData = new FormData();
+          formData.append('media', blob, filename);
+          const res = await fetch('/api/posts/upload-media', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${state.token}` },
+            body: formData
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success || !data.mediaId) return { success: false, error: data.error || 'Не удалось загрузить фото' };
+          return { success: true, mediaId: data.mediaId };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения при загрузке фото' };
+        }
+      },
+
+      createPostAction: async (text, mediaIds, accountsData, publishAt, sharedPostId, requestKey) => {
         try {
           const state = get();
           
@@ -576,16 +594,10 @@ export const useStore = create(
           if (sharedPostId) formData.append('sharedPostId', sharedPostId);
           // Поля идут до файлов: сервер должен увидеть метку запроса сразу.
           if (requestKey) formData.append('requestKey', requestKey);
+          formData.append('mediaIds', JSON.stringify(mediaIds || []));
           
           // Аккаунты передаем как строку
           formData.append('accountsData', JSON.stringify(accountsData));
-
-          // Добавляем бинарные файлы
-          if (mediaBlobs && mediaBlobs.length > 0) {
-            mediaBlobs.forEach((blob, index) => {
-              formData.append('media', blob, blobFileName(blob, index));
-            });
-          }
 
           const res = await fetch('/api/posts/create', {
               method: 'POST', 
