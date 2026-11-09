@@ -100,6 +100,7 @@ export default function Publish() {
 
   const MAX_PHOTOS = 10;
   const MAX_CHARS = 1000;
+  const arePhotosReady = photos.length > 0 && photos.every(photo => photo.uploadState === 'uploaded' && photo.mediaId);
 
  
 
@@ -1253,14 +1254,14 @@ const handlePublish = async () => {
             </button>
             <button 
               onClick={() => {
-                if (step === 1 && photos.length === 0) return setTimeout(() => alert('Добавьте хотя бы 1 фото!'), 10);
+                if (step === 1 && !arePhotosReady) return;
                 if (step === 2 && !text.trim() && !isImprovingAI) return setTimeout(() => alert('Напишите текст поста!'), 10);
                 if (step === 3) return handlePublish();
                 setStep(step + 1);
               }}
-              disabled={isPublishing}
+              disabled={isPublishing || (step === 1 && !arePhotosReady)}
               className={`flex-1 flex items-center justify-center gap-2 h-14 rounded-2xl font-bold text-base transition-all active:scale-95
-                ${step === 3 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white text-black'}`}
+                ${step === 1 && !arePhotosReady ? 'bg-gray-700 text-gray-400 cursor-not-allowed active:scale-100' : step === 3 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white text-black'}`}
             >
               <span className={`pointer-events-none items-center gap-2 ${isPublishing ? 'flex' : 'hidden'}`}><Loader2 size={20} className="animate-spin" /> Обработка...</span>
               <span className={`pointer-events-none items-center gap-2 ${(!isPublishing && step === 3) ? 'flex' : 'hidden'}`}><Send size={18}/> Опубликовать</span>
