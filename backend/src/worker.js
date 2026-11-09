@@ -1,9 +1,7 @@
-const { Worker, UnrecoverableError, DelayedError } = require('bullmq');
-const IORedis = require('ioredis');
+const { Worker, UnrecoverableError } = require('bullmq');
 const { connection, WORKER_CONCURRENCY } = require('./queue');
 const prisma = require('./utils/prisma');
 const fs = require('fs');
-const crypto = require('crypto');
 const sharp = require('sharp');
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const NETWORK_ERROR_CODES = new Set(['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH']);
@@ -16,7 +14,7 @@ const describeError = (error) => {
 
 // ИМПОРТИРУЕМ твои функции из postController. 
 // ВАЖНО: Тебе нужно зайти в postController.js и убедиться, что ты экспортируешь эти функции (напиши exports.applyWatermark = applyWatermark и т.д.)
-const { sendToTelegram, sendToKomodVK, applyWatermark, saveImageToFile, confirmSharedPostPublished } = require('./controllers/postController');
+const { sendToTelegram, sendToKomodVK, resumeKomodVK, applyWatermark, saveImageToFile, confirmSharedPostPublished } = require('./controllers/postController');
 
 // Ответ сервиса «так нельзя» (нет прав, канал удалён) не изменится от повтора: ошибка показывается сразу.
 const isPermanentError = (error) => error instanceof UnrecoverableError || error.code === 'KOMOD_POST_FAILED' || [400, 401, 403, 404].includes(error.response?.status);
@@ -53,31 +51,11 @@ const getOptimizedBase = async (filePath) => {
     return buffer;
 };
 
-// Посты в ВК от одного профиля уходят в Kom-OD строго по одному.
-// Kom-OD отдал два поста одного профиля одновременно, и у одного ВК отклонил фото
-// («Ошибка загрузки фото… One of the parameters specified…»), а второй вышел.
-// Пока профиль занят, следующий пост откладывается и проверяет снова, попытки при этом не тратятся.
-const redis = new IORedis({ ...connection, maxRetriesPerRequest: null });
-const VK_LOCK_TTL_MS = 20 * 60_000;  // Дольше самого долгого ожидания подтверждения (15 минут): замок не вечный, если сервер упадёт
-const VK_COOLDOWN_MS = 10_000;       // Пауза после поста, прежде чем этот профиль отправит следующий
-const VK_RECHECK_MS = 15_000;        // Как часто отложенный пост проверяет, освободился ли профиль
-const RELEASE_VK_LOCK = `
-if redis.call('get', KEYS[1]) == ARGV[1] then
-  return redis.call('pexpire', KEYS[1], ARGV[2])
-end
-return 0`;
-const vkLockKey = (account) => `vk-publish-lock:${account.profileId || account.userId}`;
-const takeVkLock = async (key, owner) => (await redis.set(key, owner, 'PX', VK_LOCK_TTL_MS, 'NX')) === 'OK';
-// Замок не снимается сразу, а живёт ещё паузу: следующий пост этого профиля уйдёт через 10 секунд.
-const releaseVkLock = (key, owner) => redis.eval(RELEASE_VK_LOCK, 1, key, owner, VK_COOLDOWN_MS)
-    .catch((error) => console.error(`[WORKER] Замок ${key} не снят, освободится сам через 20 минут:`, error.message));
-
-const worker = new Worker('posts_v2', async (job, token) => {
+const worker = new Worker('posts_v2', async (job) => {
     const { postId, accountId, text, filePaths, watermarkConfig, signatureText } = job.data;
     let dispatchStarted = false;
     let providerDelivered = false;
-    let vkLock = null;
-
+    
     console.log(`[WORKER] Начал обработку поста ${postId}`);
 
     try {
@@ -91,7 +69,9 @@ const worker = new Worker('posts_v2', async (job, token) => {
             console.log(`[WORKER] Пост ${postId} уже опубликован, повтор пропущен`);
             return;
         }
-        if (currentPost.status === 'DELIVERING') {
+        // Сервер перезапустился, пока пост ВК ждал ответа Kom-OD. Пост уже у Kom-OD: продолжаем следить за тем же заданием.
+        const resumeKomod = currentPost.status === 'DELIVERING' && Boolean(job.data.komodTaskId);
+        if (currentPost.status === 'DELIVERING' && !resumeKomod) {
             await prisma.post.updateMany({
                 where: { id: postId, status: 'DELIVERING' },
                 data: { status: 'DELIVERY_UNKNOWN', errorMessage: 'Связь прервалась во время отправки. Проверьте канал перед повторной публикацией.' }
@@ -103,17 +83,6 @@ const worker = new Worker('posts_v2', async (job, token) => {
 
         const account = await prisma.account.findUnique({ where: { id: accountId } });
         if (!account) throw new Error('Аккаунт не найден');
-
-        if (account.provider.toLowerCase() === 'vk' && !job.data.delivered) {
-            const key = vkLockKey(account);
-            const owner = `${job.id}:${crypto.randomUUID()}`;
-            if (!(await takeVkLock(key, owner))) {
-                console.log(`[WORKER] Пост ${postId} ждёт: этот профиль ВК сейчас отправляет другой пост`);
-                await job.moveToDelayed(Date.now() + VK_RECHECK_MS, token);
-                throw new DelayedError();
-            }
-            vkLock = { key, owner };
-        }
 
         // 1-2. Читаем файлы и готовим основу фото (один раз на публикацию)
         const optimizedBaseBuffers = await Promise.all(filePaths.map(getOptimizedBase));
@@ -136,11 +105,13 @@ const worker = new Worker('posts_v2', async (job, token) => {
             throw new UnrecoverableError(`Неизвестный канал публикации: ${account.provider}`);
         }
 
-        const dispatch = await prisma.post.updateMany({
-            where: { id: postId, status: 'PROCESSING' },
-            data: { status: 'DELIVERING', errorMessage: null }
-        });
-        if (dispatch.count === 0) throw new UnrecoverableError('Статус публикации изменился до отправки');
+        if (!resumeKomod) {
+            const dispatch = await prisma.post.updateMany({
+                where: { id: postId, status: 'PROCESSING' },
+                data: { status: 'DELIVERING', errorMessage: null }
+            });
+            if (dispatch.count === 0) throw new UnrecoverableError('Статус публикации изменился до отправки');
+        }
         dispatchStarted = true;
         // Пост уже ушёл в канал, а следующий шаг сорвался: повторная попытка не должна опубликовать его второй раз.
         if (job.data.delivered) {
@@ -159,7 +130,14 @@ const worker = new Worker('posts_v2', async (job, token) => {
             await sleep(2000); // 🟢 АНТИ-СПАМ: Задержка 2 секунды после отправки в ТГ
         } else if (providerType === 'vk') {
             if (!process.env.KOMOD_TOKEN) throw new UnrecoverableError('KOMOD_TOKEN не настроен');
-            await sendToKomodVK(process.env.KOMOD_TOKEN, account.providerId, finalText, processedBuffers, null, account.userId, postId);
+            if (resumeKomod) {
+                console.log(`[WORKER] Пост ${postId}: после перезапуска продолжаем следить за заданием Kom-OD ${job.data.komodTaskId}`);
+                await resumeKomodVK(process.env.KOMOD_TOKEN, job.data.komodTaskId, job.data.komodSentAt, account.providerId, account.userId, postId);
+            } else {
+                await sendToKomodVK(process.env.KOMOD_TOKEN, account.providerId, finalText, processedBuffers, null, account.userId, postId, async (taskId) => {
+                    await job.updateData({ ...job.data, komodTaskId: taskId, komodSentAt: Date.now() });
+                });
+            }
             providerDelivered = true;
             await sleep(1000); // 🟢 АНТИ-СПАМ: Задержка 1 секунда для ВК
         }
@@ -198,7 +176,6 @@ const worker = new Worker('posts_v2', async (job, token) => {
         console.log(`[WORKER] Успешно завершил пост ${postId}`);
 
     } catch (error) {
-        if (error instanceof DelayedError) throw error; // Пост просто отложен до освобождения профиля ВК: это не ошибка
         console.error(`[WORKER ERROR] Ошибка поста ${postId}:`, error.message);
         
         await waitIfRateLimited(error);
@@ -234,10 +211,8 @@ const worker = new Worker('posts_v2', async (job, token) => {
             throw new UnrecoverableError(error.message);
         }
         throw error; // Чтобы BullMQ знал, что задача провалилась
-    } finally {
-        if (vkLock) await releaseVkLock(vkLock.key, vkLock.owner);
     }
-}, {
+}, { 
     connection, 
     concurrency: WORKER_CONCURRENCY // ВАЖНО: ограничение, чтобы не убить процессор
 });

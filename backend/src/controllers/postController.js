@@ -19,7 +19,7 @@ const KOMOD_POLL_MS = Number(process.env.KOMOD_TEST_POLL_MS) || 5000;
 
 const isKomodFlag = (value) => value === true || value === 1 || String(value) === '1';
 
-async function waitForKomodPublication(token, postData, userId, providerId, internalPostId) {
+async function waitForKomodPublication(token, postData, userId, providerId, internalPostId, deadlineAt = null) {
     const postId = String(postData?.id || '');
     if (!postId) {
         const error = new Error('Kom-OD не вернул ID задания публикации');
@@ -30,7 +30,7 @@ async function waitForKomodPublication(token, postData, userId, providerId, inte
     // Kom-OD может записать «ошибка», а потом сам повторить и опубликовать пост: так было и через минуту, и через 13 минут.
     // Поэтому итог ставится только через 15 минут: опубликовано — сразу успех, иначе ошибка или «нет подтверждения».
     // Сайт обещает клиенту эти же 15 минут (VK_CONFIRM_MINUTES в Publish.jsx).
-    const deadline = Date.now() + KOMOD_CONFIRM_MS;
+    const deadline = deadlineAt || Date.now() + KOMOD_CONFIRM_MS;
     let state = postData;
     let lastSnapshot = '';
     let reportedFailure = false;
@@ -185,7 +185,17 @@ async function saveImageToFile(buffer, prefix = 'img', extension = 'jpg') {
 }
 
 // === ЛОГИКА ОТПРАВКИ KOM-OD (ВК) ===
-async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null, userId = 'CRON', internalPostId = null) {
+// После перезапуска сервера: пост уже передан в Kom-OD, следим за тем же заданием до конца его 15 минут, ничего не отправляя заново.
+async function resumeKomodVK(token, taskId, sentAt, providerId, userId, internalPostId) {
+    logPost(userId, 'VK', 'RESUME', `Сервер перезапустился, продолжаем следить за заданием ${taskId}`);
+    // Хотя бы одна проверка состоится, даже если сервер простоял дольше 15 минут.
+    const deadlineAt = Math.max(Number(sentAt) + KOMOD_CONFIRM_MS, Date.now() + 3 * KOMOD_POLL_MS);
+    await waitForKomodPublication(token, { id: taskId }, userId, providerId, internalPostId, deadlineAt);
+    logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
+}
+
+// onAccepted(taskId): Kom-OD принял пост. Номер задания запоминается, чтобы после перезапуска сервера продолжить слежение.
+async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null, userId = 'CRON', internalPostId = null, onAccepted = null) {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
 
@@ -317,6 +327,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             hasError: Boolean(responseData?.error || responseData?.errors)
         });
 
+        if (onAccepted && postData?.id) await onAccepted(String(postData.id));
         await waitForKomodPublication(token, postData, userId, providerId, internalPostId);
         logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
 
@@ -1406,5 +1417,6 @@ const confirmSharedPostPublished = async (id) => {
 exports.confirmSharedPostPublished = confirmSharedPostPublished;
 exports.sendToTelegram = sendToTelegram;
 exports.sendToKomodVK = sendToKomodVK;
+exports.resumeKomodVK = resumeKomodVK;
 exports.applyWatermark = applyWatermark;
 exports.saveImageToFile = saveImageToFile;
