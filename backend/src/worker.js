@@ -17,7 +17,7 @@ const describeError = (error) => {
 const { sendToTelegram, sendToKomodVK, applyWatermark, saveImageToFile, confirmSharedPostPublished } = require('./controllers/postController');
 
 // Ответ сервиса «так нельзя» (нет прав, канал удалён) не изменится от повтора: ошибка показывается сразу.
-const isPermanentError = (error) => error instanceof UnrecoverableError || [400, 401, 403, 404].includes(error.response?.status);
+const isPermanentError = (error) => error instanceof UnrecoverableError || error.code === 'KOMOD_POST_FAILED' || [400, 401, 403, 404].includes(error.response?.status);
 
 // Telegram просит подождать: ждём столько, сколько он сказал, и только потом занимаем следующую попытку.
 const waitIfRateLimited = async (error) => {

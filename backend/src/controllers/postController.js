@@ -11,6 +11,71 @@ const { postQueue, WORKER_CONCURRENCY } = require('../queue');
 const { getUserLimits, getAllowedAccountIds, NO_SUBSCRIPTION_ERROR } = require('../utils/limits');
 const { escapeXml } = require('../utils/security');
 const { telegramHttp } = require('../utils/telegramClient');
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isKomodFlag = (value) => value === true || value === 1 || String(value) === '1';
+
+async function waitForKomodPublication(token, postData, userId, providerId) {
+    const postId = String(postData?.id || '');
+    if (!postId) {
+        const error = new Error('Kom-OD не вернул ID задания публикации');
+        error.code = 'KOMOD_POST_UNCONFIRMED';
+        throw error;
+    }
+
+    const deadline = Date.now() + 120_000;
+    let state = postData;
+    let lastSnapshot = '';
+
+    while (Date.now() < deadline) {
+        const task = state?.task || {};
+        const snapshot = JSON.stringify({
+            published: state?.published ?? null,
+            fail: state?.fail ?? null,
+            runCounter: task.run_counter ?? null,
+            allowRetry: task.allow_retry ?? null
+        });
+
+        if (snapshot !== lastSnapshot) {
+            logPost(userId, 'VK', 'API_RESPONSE', 'Статус задания Kom-OD', {
+                postId,
+                published: state?.published ?? null,
+                fail: state?.fail ?? null,
+                runCounter: task.run_counter ?? null,
+                allowRetry: task.allow_retry ?? null
+            });
+            lastSnapshot = snapshot;
+        }
+
+        if (isKomodFlag(state?.published)) return postId;
+        if (isKomodFlag(state?.fail) && !isKomodFlag(task.allow_retry)) {
+            const error = new Error(`Kom-OD завершил задание ${postId} с ошибкой`);
+            error.code = 'KOMOD_POST_FAILED';
+            throw error;
+        }
+
+        await sleep(5000);
+        try {
+            const statusRes = await axios.get(`https://kom-od.ru/api/v1/post/${encodeURIComponent(postId)}`, {
+                headers: { 'Access-Token': token },
+                timeout: 15000,
+                validateStatus: () => true
+            });
+            if (statusRes.status < 400 && statusRes.data?.success !== false && statusRes.data?.data) {
+                state = statusRes.data.data;
+            }
+        } catch (error) {
+            logPost(userId, 'VK', 'API_CHECK_ERROR', `Не удалось проверить задание ${postId}`, {
+                code: error.code || null,
+                httpStatus: error.response?.status || null
+            });
+        }
+    }
+
+    const error = new Error(`Kom-OD не подтвердил публикацию задания ${postId} за 120 секунд`);
+    error.code = 'KOMOD_POST_UNCONFIRMED';
+    throw error;
+}
 
 // === ЛОГИКА ОТПРАВКИ В TELEGRAM ===
 // Telegram принимает до 1024 символов под фото и до 4096 в одном сообщении.
@@ -152,10 +217,12 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     form.append('via_api', '1'); // Для ВК используем API-публикацию, включая пакет нескольких фотографий.
     form.append('post_images_as_grid', '1'); // Дублируем в тело поста для верности
 
-    let targetDate = publishAtDate ? new Date(publishAtDate) : new Date();
-    const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
-    const formattedDate = tzString.substring(0, 16).replace('T', ' ');
-    form.append('publish_at', formattedDate);
+    if (publishAtDate) {
+        const targetDate = new Date(publishAtDate);
+        if (Number.isNaN(targetDate.getTime())) throw new Error('Некорректное время публикации ВК');
+        const tzString = targetDate.toLocaleString('sv-SE', { timeZone: 'Europe/Moscow' });
+        form.append('publish_at', tzString.substring(0, 16).replace('T', ' '));
+    }
     
     const media = [];
     if (text) media.push({ type: 'text', text: text });
@@ -191,15 +258,19 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         }
 
         const responseData = postRes.data;
+        const postData = responseData?.data;
         logPost(userId, 'VK', 'API_RESPONSE', 'Kom-OD принял запрос публикации', {
             httpStatus: postRes.status,
             success: responseData?.success ?? null,
-            responseKeys: responseData && typeof responseData === 'object' ? Object.keys(responseData) : [],
-            dataKeys: responseData?.data && typeof responseData.data === 'object' ? Object.keys(responseData.data) : [],
-            postId: responseData?.post_id || responseData?.data?.post_id || responseData?.data?.id || null,
+            postId: postData?.id || responseData?.post_id || null,
+            published: postData?.published ?? null,
+            fail: postData?.fail ?? null,
+            allowRetry: postData?.task?.allow_retry ?? null,
+            runCounter: postData?.task?.run_counter ?? null,
             hasError: Boolean(responseData?.error || responseData?.errors)
         });
 
+        await waitForKomodPublication(token, postData, userId, providerId);
         logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
 
     } catch (error) {
