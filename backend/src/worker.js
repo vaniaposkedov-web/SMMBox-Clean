@@ -126,7 +126,7 @@ const worker = new Worker('posts_v2', async (job) => {
             await sleep(2000); // 🟢 АНТИ-СПАМ: Задержка 2 секунды после отправки в ТГ
         } else if (providerType === 'vk') {
             if (!process.env.KOMOD_TOKEN) throw new UnrecoverableError('KOMOD_TOKEN не настроен');
-            await sendToKomodVK(process.env.KOMOD_TOKEN, account.providerId, finalText, processedBuffers, null, account.userId);
+            await sendToKomodVK(process.env.KOMOD_TOKEN, account.providerId, finalText, processedBuffers, null, account.userId, postId);
             providerDelivered = true;
             await sleep(1000); // 🟢 АНТИ-СПАМ: Задержка 1 секунда для ВК
         }

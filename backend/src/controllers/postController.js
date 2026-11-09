@@ -15,7 +15,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isKomodFlag = (value) => value === true || value === 1 || String(value) === '1';
 
-async function waitForKomodPublication(token, postData, userId, providerId) {
+async function waitForKomodPublication(token, postData, userId, providerId, internalPostId) {
     const postId = String(postData?.id || '');
     if (!postId) {
         const error = new Error('Kom-OD не вернул ID задания публикации');
@@ -23,7 +23,7 @@ async function waitForKomodPublication(token, postData, userId, providerId) {
         throw error;
     }
 
-    const deadline = Date.now() + 120_000;
+    const deadline = Date.now() + 15 * 60_000;
     let state = postData;
     let lastSnapshot = '';
 
@@ -33,7 +33,8 @@ async function waitForKomodPublication(token, postData, userId, providerId) {
             published: state?.published ?? null,
             fail: state?.fail ?? null,
             runCounter: task.run_counter ?? null,
-            allowRetry: task.allow_retry ?? null
+            allowRetry: task.allow_retry ?? null,
+            isCompleted: task.is_completed ?? null
         });
 
         if (snapshot !== lastSnapshot) {
@@ -42,13 +43,32 @@ async function waitForKomodPublication(token, postData, userId, providerId) {
                 published: state?.published ?? null,
                 fail: state?.fail ?? null,
                 runCounter: task.run_counter ?? null,
-                allowRetry: task.allow_retry ?? null
+                allowRetry: task.allow_retry ?? null,
+                isCompleted: task.is_completed ?? null
             });
             lastSnapshot = snapshot;
+
+            const retryMessage = isKomodFlag(state?.fail) && isKomodFlag(task.allow_retry)
+                ? `Kom-OD не подтвердил первую попытку и оставил задание на повторную обработку (задание ${postId}, попытка ${task.run_counter || 1}). Не отправляйте этот пост повторно.`
+                : (Number(task.run_counter || 0) > 0
+                    ? `Kom-OD обрабатывает публикацию (задание ${postId}, попытка ${task.run_counter}).`
+                    : null);
+            if (internalPostId) {
+                try {
+                    await prisma.post.updateMany({
+                        where: { id: internalPostId, status: 'DELIVERING' },
+                        data: { errorMessage: retryMessage }
+                    });
+                } catch (error) {
+                    console.error(`[KOMOD STATUS] Не удалось сохранить статус задания ${postId}:`, error.message);
+                }
+            }
         }
 
         if (isKomodFlag(state?.published)) return postId;
-        if (isKomodFlag(state?.fail) && !isKomodFlag(task.allow_retry)) {
+        const isCompleted = isKomodFlag(task.is_completed);
+        const hasRetry = isKomodFlag(task.allow_retry);
+        if (isCompleted || (isKomodFlag(state?.fail) && !hasRetry)) {
             const error = new Error(`Kom-OD завершил задание ${postId} с ошибкой`);
             error.code = 'KOMOD_POST_FAILED';
             throw error;
@@ -72,7 +92,7 @@ async function waitForKomodPublication(token, postData, userId, providerId) {
         }
     }
 
-    const error = new Error(`Kom-OD не подтвердил публикацию задания ${postId} за 120 секунд`);
+    const error = new Error(`Kom-OD не подтвердил публикацию задания ${postId} за 15 минут`);
     error.code = 'KOMOD_POST_UNCONFIRMED';
     throw error;
 }
@@ -158,7 +178,7 @@ async function saveImageToFile(buffer, prefix = 'img', extension = 'jpg') {
 }
 
 // === ЛОГИКА ОТПРАВКИ KOM-OD (ВК) ===
-async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null, userId = 'CRON') {
+async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null, userId = 'CRON', internalPostId = null) {
     const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
     const form = new FormData();
 
@@ -290,7 +310,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             hasError: Boolean(responseData?.error || responseData?.errors)
         });
 
-        await waitForKomodPublication(token, postData, userId, providerId);
+        await waitForKomodPublication(token, postData, userId, providerId, internalPostId);
         logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
 
     } catch (error) {

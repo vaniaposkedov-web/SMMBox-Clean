@@ -119,6 +119,7 @@ export default function Publish() {
     if (step !== 4 || publishMode === 'schedule' || !publishIds) return undefined;
 
     const startedAt = Date.now();
+    let timeoutShown = false;
     const timer = setInterval(async () => {
       try {
         const res = await fetch(`/api/posts/status?ids=${encodeURIComponent(publishIds)}`, {
@@ -132,9 +133,9 @@ export default function Publish() {
           if (latest.length > 0 && latest.every((p) => ['PUBLISHED', 'FAILED', 'DELIVERY_UNKNOWN'].includes(p.status))) clearInterval(timer);
         }
       } catch (e) { /* следующая попытка через пару секунд */ }
-      if (Date.now() - startedAt > 120000) {
+      if (!timeoutShown && Date.now() - startedAt > 120000) {
+        timeoutShown = true;
         setPublishTimedOut(true);
-        clearInterval(timer);
       }
     }, 1500);
 
@@ -1211,7 +1212,7 @@ const handlePublish = async () => {
                         {item.status === 'FAILED' && <AlertCircle size={16} className="text-red-500 shrink-0" />}
                         {item.status === 'DELIVERY_UNKNOWN' && <AlertCircle size={16} className="text-amber-400 shrink-0" />}
                       </div>
-                      {['FAILED', 'DELIVERY_UNKNOWN'].includes(item.status) && item.errorMessage && <p className={`text-xs mt-1 break-words ${item.status === 'DELIVERY_UNKNOWN' ? 'text-amber-400' : 'text-red-400'}`}>{item.errorMessage}</p>}
+                      {['DELIVERING', 'FAILED', 'DELIVERY_UNKNOWN'].includes(item.status) && item.errorMessage && <p className={`text-xs mt-1 break-words ${item.status === 'DELIVERING' ? 'text-blue-300' : item.status === 'DELIVERY_UNKNOWN' ? 'text-amber-400' : 'text-red-400'}`}>{item.errorMessage}</p>}
                     </div>
                   ))}
                 </div>
