@@ -1213,7 +1213,8 @@ const handlePublish = async () => {
                         {item.status === 'FAILED' && <AlertCircle size={16} className="text-red-500 shrink-0" />}
                         {item.status === 'DELIVERY_UNKNOWN' && <AlertCircle size={16} className="text-amber-400 shrink-0" />}
                       </div>
-                      {['DELIVERING', 'FAILED', 'DELIVERY_UNKNOWN'].includes(item.status) && item.errorMessage && <p className={`text-xs mt-1 break-words ${item.status === 'DELIVERING' ? 'text-blue-300' : item.status === 'DELIVERY_UNKNOWN' ? 'text-amber-400' : 'text-red-400'}`}>{item.errorMessage}</p>}
+                      {item.status === 'FAILED' && <p className="text-xs mt-1 break-words text-red-400">Не удалось опубликовать пост. Попробуйте позже.</p>}
+                      {item.status === 'DELIVERY_UNKNOWN' && <p className="text-xs mt-1 break-words text-amber-400">Проверяем результат публикации. Не отправляйте пост повторно, пока статус не обновится.</p>}
                     </div>
                   ))}
                 </div>

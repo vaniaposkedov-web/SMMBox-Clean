@@ -477,7 +477,11 @@ export default function PostsHistory() {
             <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-6 bg-[#0f1115]">
               {['FAILED', 'DELIVERY_UNKNOWN'].includes(selectedPost.status) && selectedPost.errorMessage && (
                 <div className="mb-4 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-red-400 break-words">
-                  {selectedPost.status === 'DELIVERY_UNKNOWN' ? 'Результат отправки неизвестен: ' : 'Причина ошибки: '}{selectedPost.errorMessage}
+                  {['VK', 'VKONTAKTE'].includes(String(selectedPost.account?.provider || '').toUpperCase())
+                    ? selectedPost.status === 'DELIVERY_UNKNOWN'
+                      ? 'Не удалось получить подтверждение публикации. Проверьте канал перед повторной отправкой.'
+                      : 'Не удалось опубликовать пост. Попробуйте позже.'
+                    : `${selectedPost.status === 'DELIVERY_UNKNOWN' ? 'Результат отправки неизвестен: ' : 'Причина ошибки: '}${selectedPost.errorMessage}`}
                 </div>
               )}
               {currentMediaList.length > 0 && (
