@@ -480,9 +480,12 @@ export default function WatermarkConstructor() {
                     >
                       <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleImageUpload} />
                       {settings.image ? (
-                        <div className="relative inline-block">
-                          <img loading="lazy" decoding="async" src={settings.image} style={CHECKERBOARD} className="h-10 object-contain rounded-md" alt="" />
-                          <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-0.5 rounded-full shadow-md"><Edit3 size={10}/></div>
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="relative inline-block max-w-full">
+                            <img loading="lazy" decoding="async" src={settings.image} style={CHECKERBOARD} className="h-28 sm:h-32 max-w-full object-contain rounded-lg" alt="Логотип" />
+                            <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-1 rounded-full shadow-md"><Edit3 size={12}/></div>
+                          </div>
+                          <span className="text-[10px] font-bold text-gray-500 group-hover:text-gray-300 transition-colors">Нажмите, чтобы заменить</span>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center gap-2">
