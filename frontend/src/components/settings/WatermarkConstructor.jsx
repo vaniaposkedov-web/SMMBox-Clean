@@ -5,7 +5,10 @@ import {
   Upload, Edit3, X, Plus, Trash2, CheckCircle2, ChevronLeft,
   Search, ChevronDown
 } from 'lucide-react';
-import { DEFAULT_WATERMARK, PREVIEW_CONTAINER_STYLE, compressLogo, getWatermarkPreviewStyle, getWatermarkProblem } from './watermarkTools';
+import { DEFAULT_WATERMARK, PREVIEW_CONTAINER_STYLE, compressLogo, removeLogoBackground, getWatermarkPreviewStyle, getWatermarkProblem } from './watermarkTools';
+
+// Шахматка показывает, где у логотипа прозрачный фон
+const CHECKERBOARD = { backgroundImage: 'conic-gradient(#374151 25%, #1f2937 0 50%, #374151 0 75%, #1f2937 0)', backgroundSize: '10px 10px' };
 
 const SAMPLE_IMAGE = '/images/watermark-preview.webp';
 
@@ -84,15 +87,34 @@ export default function WatermarkConstructor() {
 
   const updateSettings = (updates) => setSettings(prev => ({ ...prev, ...updates }));
 
+  // Только что загруженный логотип: исходник и вариант без фона, чтобы переключатель «Убрать фон» мог вернуть исходник.
+  const [logo, setLogo] = useState(null);
+  const [removeLogoBg, setRemoveLogoBg] = useState(true);
+  const isFreshLogo = Boolean(logo) && [logo.source, logo.cleaned].includes(settings.image);
+
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
+    e.target.value = ''; // Тот же файл можно выбрать ещё раз
     if (!file) return;
     try {
-      updateSettings({ image: await compressLogo(file), type: 'image' });
+      const source = await compressLogo(file);
+      const result = await removeLogoBackground(source).catch(() => ({ reason: 'not-plain' }));
+      setLogo({ source, cleaned: result.image || null, reason: result.reason || null });
+      updateSettings({ image: removeLogoBg && result.image ? result.image : source, type: 'image' });
     } catch (error) {
       alert(error.message);
     }
   };
+
+  const toggleLogoBg = (checked) => {
+    setRemoveLogoBg(checked);
+    if (isFreshLogo) updateSettings({ image: checked && logo.cleaned ? logo.cleaned : logo.source });
+  };
+
+  const logoBgNote = !isFreshLogo || !removeLogoBg ? null
+    : logo.cleaned ? { text: 'Фон убран', className: 'text-green-400' }
+    : logo.reason === 'transparent' ? { text: 'У логотипа уже прозрачный фон', className: 'text-gray-400' }
+    : { text: 'Фон не получилось убрать: он не однотонный. Логотип останется как есть.', className: 'text-amber-400' };
 
   const watermarkStyle = { ...getWatermarkPreviewStyle(settings), zIndex: 30, pointerEvents: 'none', transition: 'all 0.2s ease-out' };
 
@@ -459,7 +481,7 @@ export default function WatermarkConstructor() {
                       <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleImageUpload} />
                       {settings.image ? (
                         <div className="relative inline-block">
-                          <img loading="lazy" decoding="async" src={settings.image} className="h-10 object-contain rounded-md" alt="" />
+                          <img loading="lazy" decoding="async" src={settings.image} style={CHECKERBOARD} className="h-10 object-contain rounded-md" alt="" />
                           <div className="absolute -top-2 -right-2 bg-blue-600 text-white p-0.5 rounded-full shadow-md"><Edit3 size={10}/></div>
                         </div>
                       ) : (
@@ -469,6 +491,16 @@ export default function WatermarkConstructor() {
                         </div>
                       )}
                     </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <label htmlFor="logo-remove-bg" className="text-[10px] font-bold text-gray-400 cursor-pointer">Убрать фон</label>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input id="logo-remove-bg" type="checkbox" checked={removeLogoBg} onChange={e => toggleLogoBg(e.target.checked)} className="sr-only peer" />
+                        <div className="w-7 h-3.5 bg-gray-700 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400/60 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                    {logoBgNote && <p className={`text-[10px] leading-snug ${logoBgNote.className}`}>{logoBgNote.text}</p>}
+                    <p className="text-[10px] leading-snug text-gray-500">Фон уберётся чище всего, если логотип на однотонном фоне: белом, чёрном или любом другом одном цвете.</p>
                   </div>
                 )}
 
