@@ -17,6 +17,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const KOMOD_CONFIRM_MS = Number(process.env.KOMOD_TEST_CONFIRM_MS) || 15 * 60_000;
 const KOMOD_POLL_MS = Number(process.env.KOMOD_TEST_POLL_MS) || 5000;
 
+// Для каких групп ВК команда «включить сетку» отправляется не перед каждым постом, а только когда нужно.
+// Список адресов через запятую (group_123,wall_456) или all — для всех. Пусто — как раньше, перед каждым постом.
+const GRID_CHECK_TARGETS = String(process.env.KOMOD_GRID_CHECK_TARGETS || '').split(',').map((item) => item.trim()).filter(Boolean);
+const isGridCheckTarget = (providerId) => GRID_CHECK_TARGETS.includes('all') || GRID_CHECK_TARGETS.includes(String(providerId));
+// Если Kom-OD не сообщает, включена ли сетка, команда повторяется раз в сутки (и после перезапуска сервера).
+const GRID_REFRESH_MS = 24 * 60 * 60 * 1000;
+const gridSetAt = new Map();
+
 const isKomodFlag = (value) => value === true || value === 1 || String(value) === '1';
 
 async function waitForKomodPublication(token, postData, userId, providerId, internalPostId, deadlineAt = null) {
@@ -227,8 +235,23 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         throw new Error('Группа не подключена в Kom-OD. Подключите её заново в разделе «Аккаунты и страницы».');
     }
 
+    // Фото должны выходить сеткой. Настройка хранится у группы в Kom-OD, и раньше она отправлялась перед каждым постом.
+    // Проверяем догадку, что эта команда прямо перед постом срывает первую попытку Kom-OD (у групп она падала в 7 случаях из 12).
+    // Для групп из KOMOD_GRID_CHECK_TARGETS команда уходит, только если сетка выключена или давно не подтверждалась.
+    const gridKnown = targetGroup.post_images_as_grid !== undefined && targetGroup.post_images_as_grid !== null;
+    const gridIsOn = gridKnown && isKomodFlag(targetGroup.post_images_as_grid);
+    const gridSetRecently = Date.now() - (gridSetAt.get(String(targetGroup.id)) || 0) < GRID_REFRESH_MS;
+    const skipGridUpdate = isGridCheckTarget(providerId) && (gridKnown ? gridIsOn : gridSetRecently);
+    if (isGridCheckTarget(providerId)) {
+        logPost(userId, 'VK', 'GRID', skipGridUpdate ? `Сетка уже включена у ${targetGroup.id}, команда не отправляется` : `Включаем сетку у ${targetGroup.id}`, {
+            fieldInKomodAnswer: gridKnown,
+            value: gridKnown ? String(targetGroup.post_images_as_grid) : null,
+            groupFields: Object.keys(targetGroup)
+        });
+    }
+
     // 🔥 ИДЕАЛЬНАЯ КОПИЯ CURL-ЗАПРОСА АЛЕКСЕЯ
-    if (targetGroup) {
+    if (!skipGridUpdate) {
         try {
             const upRes = await axios.post(
                 `${KOMOD_BASE_URL}/group/${targetGroup.id}`,
@@ -241,6 +264,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                     validateStatus: () => true
                 }
             );
+            if (upRes.status < 400) gridSetAt.set(String(targetGroup.id), Date.now());
             logPost(userId, 'VK', 'INFO', `СЕТКА: Обновлена для ${targetGroup.id}. Ответ шлюза: HTTP ${upRes.status}`);
         } catch (e) {
             logPost(userId, 'VK', 'ERROR', `Ошибка обновления группы: ${e.message}`);
