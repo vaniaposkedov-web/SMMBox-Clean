@@ -6,9 +6,6 @@ export const formatWait = (seconds) => {
   return `${minutes} ${minutes % 10 === 1 && minutes % 100 !== 11 ? 'минуты' : 'минут'}`;
 };
 
-// Отправка партнёрам: сжатие и загрузка одного фото занимают пару секунд, запись партнёрам почти мгновенна.
-export const estimateShareSeconds = (photosCount, partnersCount) => Math.ceil(3 + photosCount * 2.5 + partnersCount * 0.2);
-
 export const getDeliveryMessage = (result, partners) => {
   const failed = result.failed || [];
   if (failed.length === 0) return 'Пост дошёл до партнёров!';

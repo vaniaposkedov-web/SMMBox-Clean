@@ -643,6 +643,45 @@ export const useStore = create(
 
       
 
+      // Отправка партнёрам без загрузки фото: сервер берёт фото, которые у него уже лежат.
+      // source: { mediaIds } — фото, загруженные при создании поста, или { postId } — свой пост из истории.
+      // Ответ с fallback: true значит «этот пост так отправить нельзя, используйте sharePostAction».
+      sharePostByRef: async (text, source, partnerIds, requestKey) => {
+        try {
+          const token = localStorage.getItem('token') || get().token;
+          if (!token || token === 'null') return { success: false, error: 'Войдите в аккаунт заново' };
+          const res = await fetch('/api/posts/share', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text || '', partnerIds, requestKey, ...source })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            get().fetchSharedPosts();
+            return { success: true, delivered: data.delivered || [], failed: data.failed || [], usedThumbnails: Boolean(data.usedThumbnails) };
+          }
+          return { success: false, error: data.error, fallback: Boolean(data.fallback) };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения' };
+        }
+      },
+
+      // Партнёр берёт присланный пост в работу: сервер сам кладёт ему фото как уже загруженные.
+      stageSharedPost: async (sharedPostId) => {
+        try {
+          const token = localStorage.getItem('token') || get().token;
+          const res = await fetch(`/api/posts/shared/${encodeURIComponent(sharedPostId)}/stage`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (res.ok && data.success) return { success: true, photos: data.photos || [] };
+          return { success: false, error: data.error, fallback: Boolean(data.fallback) };
+        } catch (error) {
+          return { success: false, error: 'Ошибка соединения' };
+        }
+      },
+
       sharePostAction: async (text, mediaBlobs, partnerIds, requestKey) => {
         try {
           const token = localStorage.getItem('token') || get().token;

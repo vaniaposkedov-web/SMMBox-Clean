@@ -2,8 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { PostGridSkeleton } from '../components/Skeleton';
 import { newRequestKey } from '../imageTools';
 import { useStore } from '../store';
-import SendingNotice from '../components/SendingNotice';
-import { estimateShareSeconds, getDeliveryMessage, isSuccessNotice } from '../sendingTime';
+import { getDeliveryMessage, isSuccessNotice } from '../sendingTime';
 import { useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, Clock, AlertCircle, Search, Calendar, Image as ImageIcon, Send, Trash2, X,
@@ -103,7 +102,7 @@ export default function PostsHistory() {
   const navigate = useNavigate();
   const { 
     postsHistory, fetchPostsHistory, deleteScheduledPostAction, saveTempDraft, 
-    myPartners, sharePostAction 
+    myPartners, sharePostAction, sharePostByRef
   } = useStore();
   
   const [activeTab, setActiveTab] = useState('published');
@@ -125,7 +124,6 @@ export default function PostsHistory() {
   const [selectedPartners, setSelectedPartners] = useState([]);
   const [partnerStatus, setPartnerStatus] = useState('idle');
   const [isSharing, setIsSharing] = useState(false);
-  const [shareEta, setShareEta] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   // Метка одного нажатия: повтор при плохой связи не отправит пост партнёру второй раз.
   const shareKeyRef = useRef(null);
@@ -269,25 +267,30 @@ export default function PostsHistory() {
     if (selectedPartners.length === 0) return;
     
     setIsSharing(true);
-    setShareEta(estimateShareSeconds(mediaCount, selectedPartners.length));
     setPartnerStatus('sending');
-    
-    try {
-      const loaded = await Promise.all(Array.from({ length: mediaCount }, (_, index) => loadSourceFile(sourceMediaList[index], currentMediaList[index], `share_${index}.webp`)));
-      const validBlobs = loaded.map((item) => item.file).filter(Boolean);
-      const usedThumbnails = loaded.some((item) => item.isThumbnail);
 
-      if (validBlobs.length < mediaCount) {
-        setIsSharing(false);
-        setPartnerStatus('idle');
-        setToastMessage('Не удалось загрузить фото этого поста. Партнёрам ничего не отправлено.');
-        setTimeout(() => setToastMessage(null), 3000);
-        return;
-      }
-      
+    try {
       if (!shareKeyRef.current) shareKeyRef.current = newRequestKey();
-      const res = await sharePostAction(selectedPost.text, validBlobs, selectedPartners, shareKeyRef.current);
-      
+      // Фото этого поста уже лежат на сервере: он сам делает копию партнёру, браузер ничего не скачивает и не загружает.
+      let res = await sharePostByRef(selectedPost.text, { postId: selectedPost.id }, selectedPartners, shareKeyRef.current);
+      let usedThumbnails = Boolean(res?.usedThumbnails);
+
+      // Запасной путь для старых постов, у которых картинки хранятся прямо в базе: скачать и загрузить заново.
+      if (res?.fallback) {
+        const loaded = await Promise.all(Array.from({ length: mediaCount }, (_, index) => loadSourceFile(sourceMediaList[index], currentMediaList[index], `share_${index}.webp`)));
+        const validBlobs = loaded.map((item) => item.file).filter(Boolean);
+        usedThumbnails = loaded.some((item) => item.isThumbnail);
+
+        if (validBlobs.length < mediaCount) {
+          setIsSharing(false);
+          setPartnerStatus('idle');
+          setToastMessage('Не удалось загрузить фото этого поста. Партнёрам ничего не отправлено.');
+          setTimeout(() => setToastMessage(null), 3000);
+          return;
+        }
+        res = await sharePostAction(selectedPost.text, validBlobs, selectedPartners, shareKeyRef.current);
+      }
+
       if (res?.success) {
         setPartnerStatus('sent');
         setIsSharing(false);
@@ -598,11 +601,6 @@ export default function PostsHistory() {
                 </div>
               )}
             </div>
-            {isSharing && (
-              <div className="px-6 py-4 border-t border-gray-800 bg-gray-900/50">
-                <SendingNotice subject="Пост будет отправлен партнёрам" seconds={shareEta} hint="Не закрывайте страницу, пока идёт отправка." keepPageOpen />
-              </div>
-            )}
 
             <div className="p-6 border-t border-gray-800 bg-gray-900/50 flex gap-3">
               <button onClick={() => setShowPartnerModal(false)} disabled={isSharing} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all disabled:opacity-40">

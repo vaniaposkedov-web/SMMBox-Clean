@@ -10,6 +10,7 @@ router.post('/upload-media', authMiddleware, upload.single('media'), postControl
 router.post('/share', authMiddleware, upload.array('media', 10), postController.shareWithPartners);
 
 router.get('/shared', authMiddleware, postController.getSharedPosts);
+router.post('/shared/:id/stage', authMiddleware, postController.stageSharedPost);
 router.delete('/shared/:id', authMiddleware, postController.deleteSharedPost);
 
 // РОУТЫ ДЛЯ КАЛЕНДАРЯ И РЕДАКТИРОВАНИЯ

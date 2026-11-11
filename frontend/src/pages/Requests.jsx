@@ -83,7 +83,7 @@ export default function Requests() {
   const { 
     user, fetchPartnerData, fetchSharedPosts,
     acceptPartnership, declinePartnership,
-    deleteSharedPostAction, saveTempDraft, 
+    deleteSharedPostAction, saveTempDraft, stageSharedPost,
     markNotificationAsRead
   } = useStore();
   
@@ -187,6 +187,34 @@ export default function Requests() {
     setIsPreparing(true);
 
     try {
+      // Быстрый путь: сервер сам кладёт фото этого поста как уже загруженные, и кнопка «Далее» активна сразу.
+      const staged = await stageSharedPost(previewPost.id);
+      if (staged.success) {
+        saveTempDraft({
+          text: previewPost.text || '',
+          photos: staged.photos.map((photo) => ({
+            id: `dup_${Math.random().toString(36).substr(2, 9)}`,
+            url: getImageUrl(photo.url),
+            file: null,
+            uploadState: 'uploaded',
+            mediaId: photo.mediaId,
+            uploadError: null
+          })),
+          step: 1, view: 'wizard', publishMode: mode,
+          sharedPostId: previewPost.id
+        });
+        setIsPreparing(false);
+        navigate('/publish');
+        return;
+      }
+      // Сервер ответил понятной причиной (например, фото уже удалены): повторять другим способом бессмысленно.
+      if (staged.error && !staged.fallback && staged.error !== 'Ошибка соединения') {
+        setIsPreparing(false);
+        alert(staged.error);
+        return;
+      }
+
+      // Запасной путь: браузер скачивает фото, а страница публикации загружает их заново.
       const reconstructedPhotos = await Promise.all(currentMediaList.map(async (url, index) => {
         const file = await urlToFile(url, `shared_${index}.jpg`);
         return file ? { id: `dup_${Math.random().toString(36).substr(2, 9)}`, url: getImageUrl(url), file: file } : null;

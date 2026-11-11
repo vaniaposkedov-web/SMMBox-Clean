@@ -400,6 +400,39 @@ const parseJson = (value, fallback) => { try { return value ? JSON.parse(value) 
 
 const removeUploadedFiles = (req) => Promise.all((req.files || []).map((file) => fs.promises.unlink(file.path).catch(() => {})));
 
+// === ФОТО, КОТОРЫЕ УЖЕ ЛЕЖАТ НА СЕРВЕРЕ ===
+const UPLOADS_DIR = path.join(__dirname, '../../uploads');
+
+// Имя фото, загруженного человеком при создании поста. В имени зашит его владелец: чужое фото взять нельзя.
+const stagedMediaPath = (userId, mediaId) => {
+    const mediaName = path.basename(String(mediaId));
+    const ownerPrefix = `staged_${String(userId)}_`;
+    if (mediaName !== mediaId || !mediaName.startsWith(ownerPrefix) || !/^[a-z0-9-]{36}\.jpg$/i.test(mediaName.slice(ownerPrefix.length))) return null;
+    return path.join(TEMP_QUEUE_DIR, mediaName);
+};
+
+// Адрес вида /uploads/... из базы → файл на диске. Выйти за пределы папки uploads нельзя.
+const resolveUploadUrl = (url) => {
+    const value = String(url || '');
+    if (!value.startsWith('/uploads/')) return null;
+    const file = path.resolve(UPLOADS_DIR, value.slice('/uploads/'.length));
+    return file.startsWith(UPLOADS_DIR + path.sep) ? file : null;
+};
+
+const allFilesExist = async (files) => {
+    const checks = await Promise.all(files.map((file) => fs.promises.stat(file).then((stats) => stats.isFile(), () => false)));
+    return checks.every(Boolean);
+};
+
+// Копия фото для партнёра: без пересжатия, поэтому мгновенно. Имя shared_* — такие файлы удаляются через 7 дней.
+const copyToShared = async (file) => {
+    await fs.promises.mkdir(POSTS_MEDIA_DIR, { recursive: true });
+    const extension = path.extname(file).toLowerCase() === '.webp' ? 'webp' : 'jpg';
+    const fileName = `shared_${Date.now()}_${crypto.randomUUID().slice(0, 8)}.${extension}`;
+    await fs.promises.copyFile(file, path.join(POSTS_MEDIA_DIR, fileName));
+    return `/uploads/posts/${fileName}`;
+};
+
 exports.uploadPostMedia = async (req, res) => {
     const file = req.file;
     if (!file) return res.status(400).json({ success: false, error: 'Выберите изображение' });
@@ -1138,8 +1171,60 @@ exports.shareWithPartners = async (req, res) => {
         // 🛡️ 2. БЕЗОПАСНАЯ ОБРАБОТКА ФАЙЛОВ (И ОТ OOM, И ОТ ОШИБОК ПАРСИНГА)
         let savedImageUrls = [];
         let failedPhotos = 0;
+        let usedThumbnails = false;
+        let sourcePostText = null;
 
-        if (req.files && req.files.length > 0) {
+        // БЫСТРЫЙ ПУТЬ: фото уже лежат на сервере. Браузер присылает только их имена или номер своего поста,
+        // сервер делает партнёру копию без пересжатия. Занимает доли секунды и не зависит от очереди публикаций.
+        const hasMediaIds = req.body.mediaIds !== undefined && req.body.mediaIds !== null;
+        const sourcePostId = req.body.postId ? String(req.body.postId) : null;
+        if (hasMediaIds || sourcePostId) {
+            let sourceFiles = [];
+            if (hasMediaIds) {
+                let mediaIds = req.body.mediaIds;
+                if (typeof mediaIds === 'string') { try { mediaIds = JSON.parse(mediaIds); } catch (e) { mediaIds = null; } }
+                if (!Array.isArray(mediaIds) || mediaIds.length > 10 || new Set(mediaIds).size !== mediaIds.length) {
+                    return res.status(400).json({ success: false, error: 'Некорректный список фотографий' });
+                }
+                sourceFiles = mediaIds.map((mediaId) => stagedMediaPath(senderId, mediaId));
+                if (sourceFiles.some((file) => !file)) {
+                    return res.status(400).json({ success: false, error: 'Фотография недействительна или принадлежит другому пользователю' });
+                }
+                if (!(await allFilesExist(sourceFiles))) {
+                    return res.status(400).json({ success: false, error: 'Фотография не найдена на сервере. Загрузите её повторно.' });
+                }
+            } else {
+                const sourcePost = await prisma.post.findFirst({
+                    where: { id: sourcePostId, account: { userId: senderId } },
+                    select: { text: true, originalMediaUrls: true, mediaUrls: true }
+                });
+                if (!sourcePost) return res.status(404).json({ success: false, error: 'Пост не найден' });
+                sourcePostText = sourcePost.text || '';
+                const originals = parseJson(sourcePost.originalMediaUrls, null) || [];
+                const thumbnails = parseJson(sourcePost.mediaUrls, []) || [];
+                // Старые посты могли хранить картинки прямо в базе: их браузер отправит прежним способом.
+                if ([...originals, ...thumbnails].some((url) => String(url).startsWith('data:'))) {
+                    return res.status(400).json({ success: false, fallback: true, error: 'Этот пост нужно отправить обычным способом' });
+                }
+                const originalFiles = originals.map(resolveUploadUrl);
+                const thumbnailFiles = thumbnails.map(resolveUploadUrl);
+                // Партнёр получает исходные фото без водяного знака. Если их уже удалили (хранятся 7 дней), берём копии из истории.
+                if (originalFiles.every(Boolean) && await allFilesExist(originalFiles)) {
+                    sourceFiles = originalFiles;
+                } else if (thumbnailFiles.every(Boolean) && await allFilesExist(thumbnailFiles)) {
+                    sourceFiles = thumbnailFiles;
+                    usedThumbnails = thumbnailFiles.length > 0;
+                } else {
+                    return res.status(400).json({ success: false, error: 'Не удалось найти фото этого поста. Партнёрам ничего не отправлено.' });
+                }
+            }
+            try {
+                savedImageUrls = await Promise.all(sourceFiles.map(copyToShared));
+            } catch (error) {
+                console.error('Не удалось скопировать фото для партнёра:', error.message);
+                return res.status(500).json({ success: false, error: 'Не удалось подготовить фото. Пост не отправлен, попробуйте ещё раз.' });
+            }
+        } else if (req.files && req.files.length > 0) {
             // ВЕТКА А: Если фронтенд прислал файлы через FormData
             // Фото обрабатываются параллельно, порядок сохраняется.
             const processed = await mapLimit(req.files, 3, async (file) => {
@@ -1201,7 +1286,7 @@ exports.shareWithPartners = async (req, res) => {
         }
 
         const mediaString = JSON.stringify(savedImageUrls);
-        const postText = req.body.text || '';
+        const postText = typeof req.body.text === 'string' ? req.body.text : (sourcePostText || '');
 
         // 🛡️ 3. ЗАПИСЬ В БАЗУ ДАННЫХ. Пост дошёл до партнёра, когда он появился в его входящих.
         // Партнёры обрабатываются параллельно: сбой у одного не мешает остальным.
@@ -1247,7 +1332,7 @@ exports.shareWithPartners = async (req, res) => {
             return res.status(500).json({ success: false, error: 'Не удалось доставить пост партнёрам. Попробуйте ещё раз.' });
         }
 
-        res.json({ success: true, delivered, failed });
+        res.json({ success: true, delivered, failed, usedThumbnails });
     } catch (error) {
         console.error('ФАТАЛЬНАЯ ОШИБКА ШЕРИНГА:', error);
         res.status(500).json({ success: false, error: 'Внутренняя ошибка сервера. Попробуйте ещё раз.' });
@@ -1284,6 +1369,41 @@ exports.getSharedPosts = async (req, res) => {
 };
 
 // === ОТКАЗАТЬСЯ ОТ ПОСТА ПАРТНЕРА (С УВЕДОМЛЕНИЕМ) ===
+// Партнёр нажал «Использовать пост»: сервер сам кладёт ему фото этого поста как уже загруженные.
+// Раньше браузер скачивал каждое фото и загружал обратно, а кнопка «Далее» ждала.
+exports.stageSharedPost = async (req, res) => {
+    const userId = String(getUserId(req));
+    const created = [];
+    try {
+        const shared = await prisma.sharedPost.findFirst({ where: { id: req.params.id, receiverId: userId }, select: { mediaUrls: true } });
+        if (!shared) return res.status(404).json({ success: false, error: 'Пост не найден' });
+
+        const urls = (parseJson(shared.mediaUrls, []) || []).slice(0, 10);
+        // Старые посты могли хранить картинки прямо в базе: их браузер подготовит прежним способом.
+        if (urls.some((url) => String(url).startsWith('data:'))) return res.status(400).json({ success: false, fallback: true });
+
+        const files = urls.map(resolveUploadUrl);
+        if (!files.every(Boolean) || !(await allFilesExist(files))) {
+            return res.status(400).json({ success: false, error: 'Фото этого поста уже удалены с сервера: они хранятся 7 дней.' });
+        }
+
+        await fs.promises.mkdir(TEMP_QUEUE_DIR, { recursive: true });
+        const photos = await mapLimit(files, 3, async (file, index) => {
+            const mediaId = `staged_${userId}_${crypto.randomUUID()}.jpg`;
+            const target = path.join(TEMP_QUEUE_DIR, mediaId);
+            created.push(target);
+            if (/\.jpe?g$/i.test(file)) await fs.promises.copyFile(file, target);
+            else await sharp(file, { failOn: 'none' }).rotate().jpeg({ quality: 90 }).toFile(target);
+            return { mediaId, url: urls[index] };
+        });
+        res.json({ success: true, photos });
+    } catch (error) {
+        await Promise.all(created.map((file) => fs.promises.unlink(file).catch(() => {})));
+        console.error('Не удалось подготовить фото поста партнёра:', error.message);
+        res.status(500).json({ success: false, error: 'Не удалось подготовить фото. Попробуйте ещё раз.' });
+    }
+};
+
 exports.deleteSharedPost = async (req, res) => {
     try {
         const post = await prisma.sharedPost.findFirst({

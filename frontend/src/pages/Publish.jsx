@@ -11,7 +11,7 @@ import SendingNotice, { VkSendingNotice, VK_CONFIRM_MS } from '../components/Sen
 const isVkResult = (item) => ['VK', 'VKONTAKTE'].includes(String(item?.provider || '').toUpperCase());
 const isSendingStatus = (status) => ['PROCESSING', 'DELIVERING'].includes(status);
 import ScheduleTimePicker from '../components/ScheduleTimePicker';
-import { estimateShareSeconds, getDeliveryMessage, isSuccessNotice } from '../sendingTime';
+import { getDeliveryMessage, isSuccessNotice } from '../sendingTime';
 import { blobFileName, compressImages, newRequestKey } from '../imageTools';
 import { ChannelPickerSkeleton, ListSkeleton } from '../components/Skeleton';
 import { MIN_SCHEDULE_AHEAD_MINUTES, fromKeys, getEarliestScheduleTime, toDateKey, toTimeKey } from '../scheduleTime';
@@ -39,7 +39,7 @@ export default function Publish() {
   const { 
     user, accounts, fetchAccounts, globalSettings, fetchGlobalSettings, 
     tempDraft, saveTempDraft, createPostAction, uploadPostMedia,
-    myPartners, sharePostAction, fetchPartnerData
+    myPartners, sharePostAction, sharePostByRef, fetchPartnerData
   } = useStore();
   const fetchCurrentUser = useStore((state) => state.fetchCurrentUser);
   const loaded = useStore((state) => state.loaded);
@@ -48,6 +48,7 @@ export default function Publish() {
   const shareKeyRef = useRef(null);
   // Состояние кнопки обновляется не мгновенно: двойное нажатие успело бы отправить два запроса.
   const isSendingRef = useRef(false);
+  const isSharingRef = useRef(false);
 
   // Тариф мог появиться только что: без свежих данных клиент увидел бы плашку «без тарифа».
   useEffect(() => {
@@ -117,7 +118,6 @@ export default function Publish() {
 
   
   const [isSharing, setIsSharing] = useState(false);
-  const [shareEta, setShareEta] = useState(null);
 
   // После отправки следим за настоящим статусом постов в очереди
   const publishIds = useMemo(() => publishResults.map((p) => p.id).join(','), [publishResults]);
@@ -156,22 +156,26 @@ export default function Publish() {
 
     return () => clearInterval(timer);
   }, [step, publishMode, publishIds]);
+ // Отправка партнёрам не связана с публикацией: у неё своя защита от двойного нажатия,
+ // поэтому после «Партнёрам» кнопка «Опубликовать» работает как обычно (и наоборот).
  const handleShareToPartners = async () => {
-    if (selectedPartners.length === 0 || isSendingRef.current) return;
-    isSendingRef.current = true;
+    if (selectedPartners.length === 0 || isSharingRef.current) return;
+    isSharingRef.current = true;
     
     setIsSharing(true);
-    setShareEta(estimateShareSeconds(photos.length, selectedPartners.length));
     setPartnerStatus('sending'); // Включаем статус загрузки
-    
+
     // Даем React 50мс на отрисовку спиннера "Отправка..."
     setTimeout(async () => {
         try {
-          const webpBlobs = await compressImages(photos.map(p => p.file));
           if (!shareKeyRef.current) shareKeyRef.current = newRequestKey();
-          // Как видишь, сюда передается только чистый text и чистые webpBlobs. Партнер получает исходники!
-          const res = await sharePostAction(text, webpBlobs, selectedPartners, shareKeyRef.current);
-          
+          // Фото уже лежат на сервере: передаём только их имена, сервер сам делает копию партнёру. Это доли секунды,
+          // и пост не встаёт в очередь публикаций. Партнёр получает исходники, без водяного знака.
+          // Запасной путь (сжать и загрузить заново) нужен, только если какое-то фото ещё не на сервере.
+          const res = arePhotosReady
+            ? await sharePostByRef(text, { mediaIds: photos.map(p => p.mediaId) }, selectedPartners, shareKeyRef.current)
+            : await sharePostAction(text, await compressImages(photos.map(p => p.file)), selectedPartners, shareKeyRef.current);
+
           if (res?.success) {
             shareKeyRef.current = null;
             // ⚡ УЛУЧШЕНИЕ UX: Показываем статус успеха ПЕРЕД закрытием окна
@@ -199,7 +203,7 @@ export default function Publish() {
           setToastMessage('Ошибка соединения при отправке');
           setTimeout(() => setToastMessage(null), 3000);
         } finally {
-          isSendingRef.current = false;
+          isSharingRef.current = false;
         }
     }, 50);
   };
@@ -1273,12 +1277,6 @@ const handlePublish = async () => {
                 <button onClick={resetForm} className="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white py-4 rounded-xl font-bold border border-gray-700 transition-colors">
                   <LayoutTemplate size={20} /> <span>В главное меню</span>
                 </button>
-                <button
-                  onClick={() => setShowPartnerModal(true)}
-                  className="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-500/20 active:scale-95"
-                >
-                  <Share2 size={18} /> Поделиться с партнерами
-                </button>
               </div>
             </div>
           );
@@ -1290,11 +1288,22 @@ const handlePublish = async () => {
 
       {step < 4 && (
         <div className="fixed bottom-[72px] md:bottom-0 left-0 md:left-64 right-0 bg-admin-card/95 backdrop-blur-xl border-t border-gray-800 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:pb-4 z-30 transition-all shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-          <div className="max-w-3xl mx-auto flex items-center gap-3">
+          <div className="max-w-3xl mx-auto flex items-center gap-2 sm:gap-3">
             <button onClick={() => { if (step === 1) setView(publishMode === 'schedule' ? 'calendar' : 'start'); else setStep(step - 1); }} className="w-14 h-14 shrink-0 flex items-center justify-center bg-gray-800 text-white rounded-2xl hover:bg-gray-700 transition-colors">
               <ChevronLeft size={24} />
             </button>
-            <button 
+            {/* Партнёрам пост уходит сразу и отдельно от публикации: свои каналы выбирать не нужно */}
+            {step === 3 && (
+              <button
+                onClick={() => setShowPartnerModal(true)}
+                disabled={isPublishing || !arePhotosReady}
+                title="Отправить пост партнёрам сразу, без публикации в свои каналы"
+                className="h-14 px-3 sm:px-4 shrink-0 flex items-center justify-center gap-1.5 sm:gap-2 rounded-2xl font-bold text-[13px] sm:text-sm text-purple-200 bg-purple-500/15 border border-purple-500/30 hover:bg-purple-500/25 transition-all active:scale-95 disabled:opacity-40"
+              >
+                <Share2 size={18} /> <span>Партнёрам</span>
+              </button>
+            )}
+            <button
               onClick={() => {
                 if (step === 1 && !arePhotosReady) return;
                 if (step === 2 && !text.trim() && !isImprovingAI) return setTimeout(() => alert('Напишите текст поста!'), 10);
@@ -1302,7 +1311,7 @@ const handlePublish = async () => {
                 setStep(step + 1);
               }}
               disabled={isPublishing || (step === 1 && !arePhotosReady)}
-              className={`flex-1 flex items-center justify-center gap-2 h-14 rounded-2xl font-bold text-base transition-all active:scale-95
+              className={`flex-1 min-w-0 flex items-center justify-center gap-2 h-14 rounded-2xl font-bold ${step === 3 ? 'text-sm sm:text-base' : 'text-base'} transition-all active:scale-95
                 ${step === 1 && !arePhotosReady ? 'bg-gray-700 text-gray-400 cursor-not-allowed active:scale-100' : step === 3 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white text-black'}`}
             >
               <span className={`pointer-events-none items-center gap-2 ${isPublishing ? 'flex' : 'hidden'}`}><Loader2 size={20} className="animate-spin" /> Обработка...</span>
@@ -1378,12 +1387,6 @@ const handlePublish = async () => {
               )}
             </div>
             
-            {isSharing && (
-              <div className="p-4 border-t border-gray-800 bg-gray-900/50">
-                <SendingNotice subject="Пост будет отправлен партнёрам" seconds={shareEta} hint="Не закрывайте страницу, пока идёт отправка." keepPageOpen />
-              </div>
-            )}
-
             <div className="p-4 border-t border-gray-800 bg-gray-900/50 flex gap-3">
               <button onClick={() => setShowPartnerModal(false)} disabled={isSharing} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-3 rounded-xl font-bold transition-all text-sm disabled:opacity-40">
                 Отмена
