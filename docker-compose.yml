@@ -30,7 +30,8 @@ services:
     # При обновлении сайта есть время закончить посты, которые уже отправляются.
     stop_grace_period: 240s
     environment:
-      - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD}@db:5432/smmbox?schema=public
+      # connection_limit: по умолчанию база даёт сайту 5 соединений, а 20 мест отправки и запросы сайта требуют больше.
+      - DATABASE_URL=postgresql://admin:${POSTGRES_PASSWORD}@db:5432/smmbox?schema=public&connection_limit=25
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -42,7 +43,8 @@ services:
       - PORT=5000
       - KOMOD_TOKEN=${KOMOD_TOKEN}
       # Сколько постов отправляется одновременно. Было 2: посты, ждущие повтора Kom-OD, держали всю очередь.
-      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-10}
+      # 20 — безопасный предел для 2 ядер: больше постов одновременно готовят фото, и сайт начинает тормозить.
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-20}
       # Проверка на двух тестовых группах: команда «сетка фото» уходит в Kom-OD, только когда нужно. Для всех: all.
       - KOMOD_GRID_CHECK_TARGETS=${KOMOD_GRID_CHECK_TARGETS:-group_243007100,group_237679542}
       - AI_API_KEY=${AI_API_KEY:-}
