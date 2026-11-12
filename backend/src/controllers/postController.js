@@ -27,6 +27,33 @@ const gridSetAt = new Map();
 
 const isKomodFlag = (value) => value === true || value === 1 || String(value) === '1';
 
+// === РАЗГРУЗКА ОЧЕРЕДИ ВК ===
+// Раньше пост ВК занимал место в очереди, пока Kom-OD не подтвердит публикацию (до 15 минут), и задерживал всех.
+// Для адресов из KOMOD_BACKGROUND_TARGETS (список через запятую или all) пост только передаётся в Kom-OD,
+// место освобождается сразу, а подтверждения собирает фоновая проверка trackKomodPosts.
+const KOMOD_API_URL = 'https://kom-od.ru/api/v1';
+const BACKGROUND_TARGETS = String(process.env.KOMOD_BACKGROUND_TARGETS || '').split(',').map((item) => item.trim()).filter(Boolean);
+const isKomodBackgroundTarget = (providerId) => BACKGROUND_TARGETS.includes('all') || BACKGROUND_TARGETS.includes(String(providerId));
+
+// Список групп Kom-OD общий на всех клиентов и растёт вместе с ними: при пачке постов он скачивается один раз в минуту, а не перед каждым постом.
+const KOMOD_GROUPS_TTL_MS = 60_000;
+let komodGroupsCache = { at: 0, groups: null };
+const fetchKomodGroups = async (token, { useCache = false } = {}) => {
+    if (useCache && komodGroupsCache.groups && Date.now() - komodGroupsCache.at < KOMOD_GROUPS_TTL_MS) return komodGroupsCache.groups;
+    const res = await axios.get(`${KOMOD_API_URL}/group`, { headers: { 'Access-Token': token }, timeout: 30_000 });
+    const groups = res.data?.data?.items || res.data?.data || [];
+    komodGroupsCache = { at: Date.now(), groups };
+    return groups;
+};
+
+// Пост точно не дошёл до Kom-OD (сбой до передачи или прямой отказ): его можно отправить ещё раз без риска дубля.
+// permanent: повтор не поможет, пока человек что-то не исправит.
+const komodNotSent = (error, permanent = false) => {
+    error.komodNotSent = true;
+    error.komodPermanent = permanent;
+    return error;
+};
+
 async function waitForKomodPublication(token, postData, userId, providerId, internalPostId, deadlineAt = null) {
     const postId = String(postData?.id || '');
     if (!postId) {
@@ -203,8 +230,10 @@ async function resumeKomodVK(token, taskId, sentAt, providerId, userId, internal
 }
 
 // onAccepted(taskId): Kom-OD принял пост. Номер задания запоминается, чтобы после перезапуска сервера продолжить слежение.
-async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null, userId = 'CRON', internalPostId = null, onAccepted = null) {
-    const KOMOD_BASE_URL = 'https://kom-od.ru/api/v1';
+// options.background: не ждать публикации, а сразу вернуть номер задания Kom-OD (дальше следит фоновая проверка).
+async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDate = null, userId = 'CRON', internalPostId = null, onAccepted = null, options = {}) {
+    const KOMOD_BASE_URL = KOMOD_API_URL;
+    const background = Boolean(options.background);
     const form = new FormData();
 
     let targetGroupId = null;
@@ -212,9 +241,6 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
 
 
     logPost(userId, 'VK', 'START', `Начинаем отправку. Провайдер: ${providerId}`);
-
-    const grpRes = await axios.get(`${KOMOD_BASE_URL}/group`, { headers: { 'Access-Token': token } });
-    const allGroups = grpRes.data?.data?.items || grpRes.data?.data || [];
 
     // Ключ шлюза общий на всех клиентов, поэтому ищем только среди групп аккаунтов этого пользователя
     // и только по точному совпадению номера или адреса группы.
@@ -224,15 +250,24 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
     });
     const ownAccountIds = new Set(ownProfiles.map((profile) => String(profile.providerAccountId)));
     const urlTail = (group) => String(group.url || '').replace(/\/+$/, '').split('/').pop().replace(/^(club|public|event|id)(?=\d)/, '');
-
-    const targetGroup = allGroups.find((group) => (
+    const findTarget = (groups) => groups.find((group) => (
         ownAccountIds.has(String(group.account_id)) &&
         (String(group.uid || group.id) === cleanId || urlTail(group) === cleanId)
     ));
 
+    let targetGroup;
+    try {
+        targetGroup = findTarget(await fetchKomodGroups(token, { useCache: background }));
+        // Группу могли подключить минуту назад: в сохранённом списке её ещё нет.
+        if (!targetGroup && background) targetGroup = findTarget(await fetchKomodGroups(token));
+    } catch (error) {
+        logPost(userId, 'VK', 'ERROR', 'Не удалось получить список групп Kom-OD', { code: error.code || null, httpStatus: error.response?.status || null });
+        throw komodNotSent(error);
+    }
+
     if (!targetGroup) {
         logPost(userId, 'VK', 'ERROR', `Группа ${providerId} не найдена среди подключённых аккаунтов`);
-        throw new Error('Группа не подключена в Kom-OD. Подключите её заново в разделе «Аккаунты и страницы».');
+        throw komodNotSent(new Error('Группа не подключена в Kom-OD. Подключите её заново в разделе «Аккаунты и страницы».'), true);
     }
 
     // Фото должны выходить сеткой. Настройка хранится у группы в Kom-OD, и раньше она отправлялась перед каждым постом.
@@ -261,6 +296,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
                         'Access-Token': token,
                         'Content-Type': 'application/x-www-form-urlencoded'
                     },
+                    timeout: 20_000,
                     validateStatus: () => true
                 }
             );
@@ -336,7 +372,7 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
             const gatewayError = new Error('Ошибка шлюза: ' + (typeof details === 'string' ? details : JSON.stringify(details)));
             gatewayError.gatewayStatus = postRes.status;
             gatewayError.gatewayDetails = details;
-            throw gatewayError;
+            throw komodNotSent(gatewayError, true); // Kom-OD ответил отказом: задание не создано
         }
 
         const postData = responseData?.data;
@@ -352,8 +388,17 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         });
 
         if (onAccepted && postData?.id) await onAccepted(String(postData.id));
+        if (background) {
+            if (!postData?.id) {
+                const error = new Error('Kom-OD не вернул ID задания публикации');
+                error.code = 'KOMOD_POST_UNCONFIRMED';
+                throw error;
+            }
+            return String(postData.id);
+        }
         await waitForKomodPublication(token, postData, userId, providerId, internalPostId);
         logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
+        return String(postData?.id || '');
 
     } catch (error) {
         const responseData = error.response?.data;
@@ -366,6 +411,107 @@ async function sendToKomodVK(token, providerId, text, imageBuffers, publishAtDat
         throw error;
     }
 }
+
+// === ФОНОВАЯ ПРОВЕРКА ПОСТОВ ВК ===
+// Следит за постами, переданными в Kom-OD (статус DELIVERING и номер задания в базе), и ставит им итог:
+// опубликовано — сразу «опубликован»; не опубликовано за 15 минут — «ошибка» или «нет подтверждения».
+// Состояние хранится в базе, поэтому перезапуск сервера слежение не обрывает.
+const KOMOD_TRACK_FAST_MS = KOMOD_POLL_MS * 2;   // Первые две минуты пост проверяется каждые 10 секунд
+const KOMOD_TRACK_SLOW_MS = KOMOD_POLL_MS * 6;   // Дальше — каждые 30: Kom-OD повторяет попытку раз в 6 минут
+const KOMOD_TRACK_FAST_PERIOD_MS = Number(process.env.KOMOD_TEST_CONFIRM_MS) ? KOMOD_CONFIRM_MS / 3 : 2 * 60_000;
+const komodTrack = new Map(); // id поста → { nextCheckAt, snapshot, failed }
+let komodTrackRunning = false;
+
+const trackOneKomodPost = async (token, post) => {
+    const memo = komodTrack.get(post.id) || {};
+    const userId = post.account?.userId || 'CRON';
+    const providerId = post.account?.providerId || '';
+    const taskId = String(post.komodTaskId);
+    const sentAt = post.komodSentAt ? new Date(post.komodSentAt).getTime() : Date.now();
+
+    let state = null;
+    try {
+        const res = await axios.get(`${KOMOD_API_URL}/post/${encodeURIComponent(taskId)}`, {
+            headers: { 'Access-Token': token },
+            timeout: 15000,
+            validateStatus: () => true
+        });
+        if (res.status < 400 && res.data?.success !== false && res.data?.data) state = res.data.data;
+    } catch (error) {
+        logPost(userId, 'VK', 'API_CHECK_ERROR', `Не удалось проверить задание ${taskId}`, { code: error.code || null });
+    }
+
+    if (state) {
+        const task = state.task || {};
+        const details = {
+            postId: taskId,
+            published: state.published ?? null,
+            fail: state.fail ?? null,
+            runCounter: task.run_counter ?? null,
+            allowRetry: task.allow_retry ?? null,
+            isCompleted: task.is_completed ?? null
+        };
+        const snapshot = JSON.stringify(details);
+        if (snapshot !== memo.snapshot) {
+            memo.snapshot = snapshot;
+            logPost(userId, 'VK', 'API_RESPONSE', 'Статус задания Kom-OD', details);
+        }
+
+        if (isKomodFlag(state.published)) {
+            const { count } = await prisma.post.updateMany({
+                where: { id: post.id, status: 'DELIVERING' },
+                data: { status: 'PUBLISHED', errorMessage: null }
+            });
+            komodTrack.delete(post.id);
+            if (count > 0) {
+                logPost(userId, 'VK', 'SUCCESS', `Пост успешно улетел в ${providerId}`);
+                if (post.sharedPostId) {
+                    await confirmSharedPostPublished(post.sharedPostId).catch((error) => console.error(`[KOMOD TRACK] Отметка поста партнёра ${post.sharedPostId} не сохранена:`, error.message));
+                }
+            }
+            return;
+        }
+        memo.failed = isKomodFlag(state.fail) || isKomodFlag(task.is_completed);
+    }
+
+    const age = Date.now() - sentAt;
+    if (age >= KOMOD_CONFIRM_MS) {
+        const data = memo.failed
+            ? { status: 'FAILED', errorMessage: `Kom-OD завершил задание ${taskId} с ошибкой и не опубликовал его за 15 минут` }
+            : { status: 'DELIVERY_UNKNOWN', errorMessage: 'Ответ сервиса публикации не получен. Проверьте канал перед повторной публикацией.' };
+        await prisma.post.updateMany({ where: { id: post.id, status: 'DELIVERING' }, data });
+        komodTrack.delete(post.id);
+        logPost(userId, 'VK', 'ERROR', 'Ошибка отправки', { code: memo.failed ? 'KOMOD_POST_FAILED' : 'KOMOD_POST_UNCONFIRMED', error: data.errorMessage });
+        return;
+    }
+
+    memo.nextCheckAt = Date.now() + (age < KOMOD_TRACK_FAST_PERIOD_MS ? KOMOD_TRACK_FAST_MS : KOMOD_TRACK_SLOW_MS);
+    komodTrack.set(post.id, memo);
+};
+
+exports.trackKomodPosts = async () => {
+    if (komodTrackRunning) return { checked: 0 };
+    komodTrackRunning = true;
+    try {
+        const token = process.env.KOMOD_TOKEN;
+        if (!token) return { checked: 0 };
+        const posts = await prisma.post.findMany({
+            where: { status: 'DELIVERING', komodTaskId: { not: null } },
+            select: { id: true, komodTaskId: true, komodSentAt: true, sharedPostId: true, account: { select: { userId: true, providerId: true } } },
+            orderBy: { komodSentAt: 'asc' },
+            take: 1000
+        });
+        const waiting = new Set(posts.map((post) => post.id));
+        for (const id of komodTrack.keys()) if (!waiting.has(id)) komodTrack.delete(id);
+
+        const now = Date.now();
+        const due = posts.filter((post) => (komodTrack.get(post.id)?.nextCheckAt || 0) <= now);
+        await mapLimit(due, 5, (post) => trackOneKomodPost(token, post).catch((error) => console.error(`[KOMOD TRACK] Пост ${post.id}:`, error.message)));
+        return { checked: due.length, waiting: posts.length };
+    } finally {
+        komodTrackRunning = false;
+    }
+};
 
 const getUserId = (req) => req.userId;
 
@@ -978,7 +1124,8 @@ exports.failStuckPosts = async () => {
         data: { status: 'FAILED', errorMessage: 'Публикация прервалась из-за сбоя на сервере. Отправьте пост ещё раз.' }
     });
     const unknown = await prisma.post.updateMany({
-        where: { status: 'DELIVERING', createdAt: { lt: cutoff }, OR: [{ publishAt: null }, { publishAt: { lt: cutoff } }] },
+        // Посты, переданные в Kom-OD, сюда не попадают: их итог ставит фоновая проверка trackKomodPosts.
+        where: { status: 'DELIVERING', komodTaskId: null, createdAt: { lt: cutoff }, OR: [{ publishAt: null }, { publishAt: { lt: cutoff } }] },
         data: { status: 'DELIVERY_UNKNOWN', errorMessage: 'Связь прервалась во время отправки. Проверьте канал перед повторной публикацией.' }
     });
     if (count > 0) console.error(`[CRON] Зависшие посты отмечены как ошибка: ${count}`);
@@ -1040,6 +1187,11 @@ exports.initCron = () => {
             console.error('[CRON FATAL ERROR]', e.message);
         }
     });
+
+    // Подтверждения постов ВК от Kom-OD. Следующий проход не начинается, пока идёт предыдущий.
+    setInterval(() => {
+        exports.trackKomodPosts().catch((e) => console.error('[KOMOD TRACK] Ошибка проверки постов ВК', e.message));
+    }, KOMOD_POLL_MS);
 
     cron.schedule('*/5 * * * *', async () => {
         try {
@@ -1520,7 +1672,10 @@ exports.retryPost = async (req, res) => {
             data: {
                 status: 'SCHEDULED',
                 errorMessage: null,
-                publishAt: new Date()
+                publishAt: new Date(),
+                // Прежнее задание Kom-OD закончилось ошибкой: за новой отправкой фоновая проверка следит заново.
+                komodTaskId: null,
+                komodSentAt: null
             }
         });
         if (count === 0) return res.status(400).json({ success: false, error: 'Можно переотправлять только посты с ошибкой' });
@@ -1562,5 +1717,6 @@ exports.confirmSharedPostPublished = confirmSharedPostPublished;
 exports.sendToTelegram = sendToTelegram;
 exports.sendToKomodVK = sendToKomodVK;
 exports.resumeKomodVK = resumeKomodVK;
+exports.isKomodBackgroundTarget = isKomodBackgroundTarget;
 exports.applyWatermark = applyWatermark;
 exports.saveImageToFile = saveImageToFile;

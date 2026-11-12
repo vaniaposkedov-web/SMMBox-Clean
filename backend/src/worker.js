@@ -1,4 +1,4 @@
-const { Worker, UnrecoverableError } = require('bullmq');
+const { Worker, UnrecoverableError, DelayedError } = require('bullmq');
 const { connection, WORKER_CONCURRENCY } = require('./queue');
 const prisma = require('./utils/prisma');
 const fs = require('fs');
@@ -14,7 +14,7 @@ const describeError = (error) => {
 
 // ИМПОРТИРУЕМ твои функции из postController. 
 // ВАЖНО: Тебе нужно зайти в postController.js и убедиться, что ты экспортируешь эти функции (напиши exports.applyWatermark = applyWatermark и т.д.)
-const { sendToTelegram, sendToKomodVK, resumeKomodVK, applyWatermark, saveImageToFile, confirmSharedPostPublished } = require('./controllers/postController');
+const { sendToTelegram, sendToKomodVK, resumeKomodVK, isKomodBackgroundTarget, applyWatermark, saveImageToFile, confirmSharedPostPublished } = require('./controllers/postController');
 
 // Ответ сервиса «так нельзя» (нет прав, канал удалён) не изменится от повтора: ошибка показывается сразу.
 const isPermanentError = (error) => error instanceof UnrecoverableError || error.code === 'KOMOD_POST_FAILED' || [400, 401, 403, 404].includes(error.response?.status);
@@ -51,11 +51,43 @@ const getOptimizedBase = async (filePath) => {
     return buffer;
 };
 
-const worker = new Worker('posts_v2', async (job) => {
+// Сколько постов одного человека могут одновременно ждать подтверждения от Kom-OD.
+// Остальные его посты ждут в очереди и никому не мешают. Неизвестно, сколько заданий сразу выдерживает Kom-OD, поэтому предел осторожный.
+const KOMOD_MAX_ACTIVE_PER_USER = process.env.KOMOD_MAX_ACTIVE_PER_USER === undefined ? 5 : Number(process.env.KOMOD_MAX_ACTIVE_PER_USER);
+const KOMOD_SLOT_RECHECK_MS = Number(process.env.KOMOD_TEST_POLL_MS) || 10_000;
+
+// Номер задания Kom-OD должен попасть в базу: по нему пост найдёт фоновая проверка.
+const saveKomodTask = async (postId, taskId, sentAt) => {
+    for (let attempt = 1; ; attempt += 1) {
+        try {
+            await prisma.post.updateMany({ where: { id: postId, status: 'DELIVERING' }, data: { komodTaskId: String(taskId), komodSentAt: new Date(sentAt || Date.now()) } });
+            return;
+        } catch (error) {
+            if (attempt >= 3) throw error;
+            await sleep(1000);
+        }
+    }
+};
+
+// Миниатюры для истории постов. Сбой здесь не должен влиять на публикацию.
+const saveThumbnails = async (postId, buffers, statuses) => {
+    try {
+        const urls = await Promise.all(buffers.map(async (buf) => {
+            const thumbBuf = await sharp(buf).resize({ width: 400, fit: 'inside', withoutEnlargement: true }).webp({ quality: 65 }).toBuffer();
+            return await saveImageToFile(thumbBuf, 'history', 'webp');
+        }));
+        if (urls.length) await prisma.post.updateMany({ where: { id: postId, status: { in: statuses } }, data: { mediaUrls: JSON.stringify(urls) } });
+    } catch (thumbnailError) {
+        console.error(`[WORKER] Миниатюры поста ${postId} не сохранены:`, thumbnailError.message);
+    }
+};
+
+const worker = new Worker('posts_v2', async (job, token) => {
     const { postId, accountId, text, filePaths, watermarkConfig, signatureText } = job.data;
     let dispatchStarted = false;
     let providerDelivered = false;
-    
+    let komodBackground = false;
+
     console.log(`[WORKER] Начал обработку поста ${postId}`);
 
     try {
@@ -84,6 +116,24 @@ const worker = new Worker('posts_v2', async (job) => {
         const account = await prisma.account.findUnique({ where: { id: accountId } });
         if (!account) throw new Error('Аккаунт не найден');
 
+        // Пост ВК только передаётся в Kom-OD и сразу освобождает место: подтверждение ждёт фоновая проверка.
+        komodBackground = account.provider.toLowerCase() === 'vk' && isKomodBackgroundTarget(account.providerId);
+
+        if (komodBackground && resumeKomod) {
+            // Сервер перезапустился между «Kom-OD принял» и записью в базу: дописываем номер задания, заново ничего не отправляем.
+            await saveKomodTask(postId, job.data.komodTaskId, job.data.komodSentAt);
+            console.log(`[WORKER] Пост ${postId}: задание Kom-OD ${job.data.komodTaskId} передано фоновой проверке`);
+            return;
+        }
+
+        if (komodBackground && KOMOD_MAX_ACTIVE_PER_USER > 0) {
+            const active = await prisma.post.count({ where: { status: 'DELIVERING', komodTaskId: { not: null }, account: { userId: account.userId } } });
+            if (active >= KOMOD_MAX_ACTIVE_PER_USER) {
+                await job.moveToDelayed(Date.now() + KOMOD_SLOT_RECHECK_MS, token);
+                throw new DelayedError();
+            }
+        }
+
         // 1-2. Читаем файлы и готовим основу фото (один раз на публикацию)
         const optimizedBaseBuffers = await Promise.all(filePaths.map(getOptimizedBase));
 
@@ -108,7 +158,7 @@ const worker = new Worker('posts_v2', async (job) => {
         if (!resumeKomod) {
             const dispatch = await prisma.post.updateMany({
                 where: { id: postId, status: 'PROCESSING' },
-                data: { status: 'DELIVERING', errorMessage: null }
+                data: { status: 'DELIVERING', errorMessage: null, komodTaskId: null, komodSentAt: null }
             });
             if (dispatch.count === 0) throw new UnrecoverableError('Статус публикации изменился до отправки');
         }
@@ -130,6 +180,18 @@ const worker = new Worker('posts_v2', async (job) => {
             await sleep(2000); // 🟢 АНТИ-СПАМ: Задержка 2 секунды после отправки в ТГ
         } else if (providerType === 'vk') {
             if (!process.env.KOMOD_TOKEN) throw new UnrecoverableError('KOMOD_TOKEN не настроен');
+            if (komodBackground) {
+                let sentAt = Date.now();
+                const taskId = await sendToKomodVK(process.env.KOMOD_TOKEN, account.providerId, finalText, processedBuffers, null, account.userId, postId, async (acceptedId) => {
+                    sentAt = Date.now();
+                    await job.updateData({ ...job.data, komodTaskId: acceptedId, komodSentAt: sentAt });
+                }, { background: true });
+                providerDelivered = true;
+                await saveKomodTask(postId, taskId, sentAt);
+                await saveThumbnails(postId, processedBuffers, ['DELIVERING', 'PUBLISHED']);
+                console.log(`[WORKER] Пост ${postId} передан в Kom-OD (задание ${taskId}), место в очереди свободно`);
+                return;
+            }
             if (resumeKomod) {
                 console.log(`[WORKER] Пост ${postId}: после перезапуска продолжаем следить за заданием Kom-OD ${job.data.komodTaskId}`);
                 await resumeKomodVK(process.env.KOMOD_TOKEN, job.data.komodTaskId, job.data.komodSentAt, account.providerId, account.userId, postId);
@@ -176,13 +238,26 @@ const worker = new Worker('posts_v2', async (job) => {
         console.log(`[WORKER] Успешно завершил пост ${postId}`);
 
     } catch (error) {
+        if (error instanceof DelayedError) throw error; // Пост ждёт своей очереди у Kom-OD: это не ошибка, попытка не тратится
         console.error(`[WORKER ERROR] Ошибка поста ${postId}:`, error.message);
-        
+
         await waitIfRateLimited(error);
 
         const isPermanent = isPermanentError(error);
         const isRateLimited = error.response?.status === 429;
         const isLastAttempt = isPermanent || job.attemptsMade + 1 >= (job.opts.attempts || 1);
+
+        // Пост точно не дошёл до Kom-OD (нет связи со списком групп, группа не подключена, прямой отказ).
+        // Дубля быть не может, поэтому это обычная ошибка с кнопкой «Повторить», а не «результат неизвестен».
+        if (komodBackground && error.komodNotSent && !providerDelivered && !job.data.komodTaskId) {
+            const final = error.komodPermanent || isLastAttempt;
+            await prisma.post.updateMany({
+                where: { id: postId, status: { in: ['PROCESSING', 'DELIVERING'] } },
+                data: final ? { status: 'FAILED', errorMessage: describeError(error) } : { status: 'PROCESSING', errorMessage: null }
+            }).catch((updateError) => console.error(`[WORKER ERROR] Статус поста ${postId} не сохранён:`, updateError.message));
+            if (final) throw new UnrecoverableError(error.message);
+            throw error; // BullMQ повторит попытку
+        }
         const postState = await prisma.post.findUnique({ where: { id: postId }, select: { status: true } }).catch((stateError) => {
             console.error(`[WORKER ERROR] Не удалось проверить статус поста ${postId}:`, stateError.message);
             return null;

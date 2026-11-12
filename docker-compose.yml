@@ -47,6 +47,11 @@ services:
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-20}
       # Проверка на двух тестовых группах: команда «сетка фото» уходит в Kom-OD, только когда нужно. Для всех: all.
       - KOMOD_GRID_CHECK_TARGETS=${KOMOD_GRID_CHECK_TARGETS:-group_243007100,group_237679542}
+      # Разгрузка очереди ВК: пост передаётся в Kom-OD и сразу освобождает место, подтверждение ждёт фоновая проверка.
+      # Пока только две тестовые группы. Для всех: all.
+      - KOMOD_BACKGROUND_TARGETS=${KOMOD_BACKGROUND_TARGETS:-group_243007100,group_237679542}
+      # Сколько постов одного человека одновременно ждут подтверждения Kom-OD (0 — без предела).
+      - KOMOD_MAX_ACTIVE_PER_USER=${KOMOD_MAX_ACTIVE_PER_USER:-5}
       - AI_API_KEY=${AI_API_KEY:-}
       - AI_API_URL=${AI_API_URL:-https://api.zveno.ai/v1/chat/completions}
       - AI_MODEL=${AI_MODEL:-openai/gpt-4o-mini}

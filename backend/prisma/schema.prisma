@@ -193,6 +193,9 @@ model Post {
   sharedPostId      String?
   sharedPost        SharedPost? @relation(fields: [sharedPostId], references: [id], onDelete: SetNull)
   batchId           String?
+  // Пост ВК передан в Kom-OD и ждёт подтверждения: номер задания и время передачи. За ним следит фоновая проверка.
+  komodTaskId       String?
+  komodSentAt       DateTime?
   @@index([accountId])
   @@index([accountId, createdAt])
   @@index([batchId])
