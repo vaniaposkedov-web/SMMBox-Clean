@@ -48,8 +48,8 @@ services:
       # Проверка на двух тестовых группах: команда «сетка фото» уходит в Kom-OD, только когда нужно. Для всех: all.
       - KOMOD_GRID_CHECK_TARGETS=${KOMOD_GRID_CHECK_TARGETS:-group_243007100,group_237679542}
       # Разгрузка очереди ВК: пост передаётся в Kom-OD и сразу освобождает место, подтверждение ждёт фоновая проверка.
-      # Пока только две тестовые группы. Для всех: all.
-      - KOMOD_BACKGROUND_TARGETS=${KOMOD_BACKGROUND_TARGETS:-group_243007100,group_237679542}
+      # Включено для всех 13.11.2026 после проверки на тестовых группах. Выключить: пустое значение или список групп.
+      - KOMOD_BACKGROUND_TARGETS=${KOMOD_BACKGROUND_TARGETS:-all}
       # Сколько постов одного человека одновременно ждут подтверждения Kom-OD (0 — без предела).
       - KOMOD_MAX_ACTIVE_PER_USER=${KOMOD_MAX_ACTIVE_PER_USER:-5}
       - AI_API_KEY=${AI_API_KEY:-}
