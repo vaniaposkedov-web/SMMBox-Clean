@@ -56,6 +56,12 @@ const getOptimizedBase = async (filePath) => {
 const KOMOD_MAX_ACTIVE_PER_USER = process.env.KOMOD_MAX_ACTIVE_PER_USER === undefined ? 5 : Number(process.env.KOMOD_MAX_ACTIVE_PER_USER);
 const KOMOD_SLOT_RECHECK_MS = Number(process.env.KOMOD_TEST_POLL_MS) || 10_000;
 
+// Не чаще одного поста в одну группу ВК за минуту. По журналу за 10–13.11 у постов, которые шли в ту же группу
+// 2+ раза за минуту, первая попытка Kom-OD падала в 88% случаев против 71% у остальных. Посты в разные группы не ждут.
+// 0 — без паузы.
+const KOMOD_GROUP_GAP_MS = process.env.KOMOD_GROUP_GAP_MS === undefined ? 60_000 : Number(process.env.KOMOD_GROUP_GAP_MS);
+const groupSentAt = new Map(); // группа → когда в неё ушёл последний пост (в этом процессе; после перезапуска берём из базы)
+
 // Номер задания Kom-OD должен попасть в базу: по нему пост найдёт фоновая проверка.
 const saveKomodTask = async (postId, taskId, sentAt) => {
     for (let attempt = 1; ; attempt += 1) {
@@ -87,6 +93,7 @@ const worker = new Worker('posts_v2', async (job, token) => {
     let dispatchStarted = false;
     let providerDelivered = false;
     let komodBackground = false;
+    let groupClaim = null;
 
     console.log(`[WORKER] Начал обработку поста ${postId}`);
 
@@ -132,6 +139,23 @@ const worker = new Worker('posts_v2', async (job, token) => {
                 await job.moveToDelayed(Date.now() + KOMOD_SLOT_RECHECK_MS, token);
                 throw new DelayedError();
             }
+        }
+
+        if (komodBackground && KOMOD_GROUP_GAP_MS > 0) {
+            const latest = await prisma.post.findFirst({
+                where: { accountId: account.id, komodSentAt: { not: null } },
+                orderBy: { komodSentAt: 'desc' },
+                select: { komodSentAt: true }
+            });
+            // Проверка и отметка идут без ожидания между ними: два поста в одну группу не займут одну минуту.
+            const lastSent = Math.max(groupSentAt.get(account.id) || 0, latest ? new Date(latest.komodSentAt).getTime() : 0);
+            const now = Date.now();
+            if (now - lastSent < KOMOD_GROUP_GAP_MS) {
+                await job.moveToDelayed(lastSent + KOMOD_GROUP_GAP_MS + Math.floor(Math.random() * 1000), token);
+                throw new DelayedError();
+            }
+            groupClaim = { accountId: account.id, previous: groupSentAt.get(account.id) };
+            groupSentAt.set(account.id, now);
         }
 
         // 1-2. Читаем файлы и готовим основу фото (один раз на публикацию)
@@ -249,6 +273,11 @@ const worker = new Worker('posts_v2', async (job, token) => {
 
         // Пост точно не дошёл до Kom-OD (нет связи со списком групп, группа не подключена, прямой отказ).
         // Дубля быть не может, поэтому это обычная ошибка с кнопкой «Повторить», а не «результат неизвестен».
+        // Пост до Kom-OD не дошёл: минута этой группы не потрачена, следующий пост может уйти сразу.
+        if (groupClaim && error.komodNotSent && !providerDelivered) {
+            if (groupClaim.previous) groupSentAt.set(groupClaim.accountId, groupClaim.previous);
+            else groupSentAt.delete(groupClaim.accountId);
+        }
         if (komodBackground && error.komodNotSent && !providerDelivered && !job.data.komodTaskId) {
             const final = error.komodPermanent || isLastAttempt;
             await prisma.post.updateMany({
